@@ -20,7 +20,7 @@ export function writeCronScratchFixture(
         ...input,
         storeKey: cronStoreKey(storePath),
         nowMs,
-      }).result,
+      }),
     options,
   );
 }

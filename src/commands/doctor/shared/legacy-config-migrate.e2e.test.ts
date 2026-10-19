@@ -4,6 +4,7 @@ import { resolveDefaultAgentWorkspaceDir } from "../../../agents/workspace-defau
 import { findLegacyConfigIssues } from "../../../config/legacy.js";
 import type { OpenClawConfigWithLegacyRoster } from "../../../config/legacy.roster.js";
 import { validateConfigObjectRaw } from "../../../config/validation.js";
+import { projectRetiredHeartbeatConfig } from "../../doctor-heartbeat-legacy.js";
 import { applyLegacyDoctorMigrations } from "./legacy-config-compat.js";
 import { migrateLegacyConfig } from "./legacy-config-migrate.js";
 
@@ -360,7 +361,13 @@ describe("legacy config migration end to end", () => {
     expect(result.changes).toContain(
       "Moved agents.defaults.promptOverlays.gpt5.personality → plugins.entries.openai.config.personality.",
     );
-    expectValid(result.config);
+    expect(result.partiallyValid).toBe(true);
+    if (!result.config) {
+      throw new Error("Expected normalized legacy configuration");
+    }
+    const projected = projectRetiredHeartbeatConfig(result.config);
+    expect(projected).not.toHaveProperty("channels.defaults.heartbeatVisibility");
+    expectValid(projected);
     expect(apply(result.config)).toEqual({ next: null, changes: [] });
     const serialized = JSON.stringify(result.config);
     for (const key of [

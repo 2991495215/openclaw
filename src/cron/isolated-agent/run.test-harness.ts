@@ -15,6 +15,10 @@ import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-
 import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import type * as CronHelpers from "./helpers.js";
+import {
+  makeDefaultEmbeddedResult,
+  makeDefaultModelFallbackResult,
+} from "./run-model-fixtures.test-support.js";
 import { makeCronSession } from "./run-session-fixtures.test-support.js";
 
 export { makeCronSession, makeCronSessionEntry } from "./run-session-fixtures.test-support.js";
@@ -92,7 +96,8 @@ vi.mock("../../sessions/runtime-context.js", () => ({
   appendSessionRuntimeContext: appendSessionRuntimeContextMock,
 }));
 // mock-isolation: Use synthetic target generations instead of capturing live sessions or admitting follow-up turns.
-vi.mock("../../auto-reply/reply/session-event-target.js", () => ({
+vi.mock("../../auto-reply/reply/session-event-target.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../auto-reply/reply/session-event-target.js")>()),
   captureSessionEventTargetForHost: vi.fn(async (agentId: string, sessionKey: string) => ({
     agentId,
     sessionKey,
@@ -423,27 +428,6 @@ vi.mock("./session.js", () => ({
   loadCronSessionEntryLatest: loadSessionEntryMock,
   prepareCronSession: resolveCronSessionMock,
 }));
-
-function makeDefaultModelFallbackResult() {
-  return {
-    result: {
-      result: {
-        payloads: [{ text: "test output" }],
-        meta: { agentMeta: {} },
-      },
-    },
-    provider: "openai",
-    model: "gpt-5.4",
-    attempts: [],
-  };
-}
-
-function makeDefaultEmbeddedResult() {
-  return {
-    payloads: [{ text: "test output" }],
-    meta: { agentMeta: {} },
-  };
-}
 
 export function mockRunCronFallbackPassthrough(): void {
   runWithModelFallbackMock.mockImplementation(async (params) => ({

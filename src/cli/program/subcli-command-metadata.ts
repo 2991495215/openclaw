@@ -15,7 +15,7 @@ const commands = [
   command("gateway", "Run, inspect, and query the WebSocket Gateway"),
   command("daemon", "Manage the Gateway service (launchd/systemd/schtasks)"),
   command("logs", "Tail gateway file logs via RPC", { hasSubcommands: false }),
-  command("system", "System tools (events, presence)"),
+  command("system", "System tools (session events, presence)"),
   command("models", "Model discovery, scanning, and configuration"),
   command("promos", "Discover and claim promotional model offers from ClawHub"),
   command("telemetry", "Inspect and manage anonymous usage telemetry", { parentDefaultHelp: true }),

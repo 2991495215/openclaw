@@ -338,7 +338,6 @@ const patchErrors = {
   scriptSyntax: "cron script payload has a syntax error",
   triggerConflict: "cannot be combined with a condition trigger",
   disabledScript: "the operator set cron.triggers.enabled: false",
-  agent: 'cron: sessionTarget "main" is only valid for the default agent',
   channel: "cron announce delivery requires an explicit channel",
 };
 const announce = { mode: "announce" as const, channel: "telegram", to: "123" };
@@ -390,10 +389,15 @@ it.each<InvalidPatch>([
     { payload: { kind: "script", script: "return {}" } },
     { cronConfig: { triggers: { enabled: false } } },
   ],
-  ["agent", fixtureJob, { agentId: "custom-agent" }, { defaultAgentId: "main" }],
   ["channel", explicitChannelJob, { delivery: { channel: "last" } }, options],
 ])("rejects invalid %s patch", (error, makeJob, patch, opts) => {
   expect(() => applyJobPatch(makeJob(), patch, opts)).toThrow(patchErrors[error]);
+});
+
+it("keeps explicit agent ownership when patching a main-session job", () => {
+  const current = fixtureJob();
+  applyJobPatch(current, { agentId: "custom-agent" }, { defaultAgentId: "main" });
+  expect(current).toMatchObject({ agentId: "custom-agent", sessionTarget: "main" });
 });
 
 const creationErrors = {

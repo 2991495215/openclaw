@@ -27,6 +27,7 @@ import {
 } from "../test-utils/gateway-scheduler-clock.js";
 import { getGatewayProcessInstanceId } from "./process-instance.js";
 import {
+  createCronEventCollector,
   expectEnqueuedRunPayload,
   runCronJobAndWaitForFinished,
   waitForCronEvent,
@@ -250,42 +251,6 @@ async function createDirectCronState(params?: {
   return cronState;
 }
 
-function createCronEventCollector(signal: AbortSignal) {
-  const events: Record<string, unknown>[] = [];
-  const waiters = new Set<(payload: Record<string, unknown>) => void>();
-  return {
-    broadcast: (event: string, payload: unknown) => {
-      if (event !== "cron" || !payload || typeof payload !== "object" || Array.isArray(payload)) {
-        return;
-      }
-      const record = payload as Record<string, unknown>;
-      events.push(record);
-      for (const notify of waiters) {
-        notify(record);
-      }
-    },
-    async wait(check: (payload: Record<string, unknown>) => boolean) {
-      const existing = events.find(check);
-      if (existing) {
-        return existing;
-      }
-      const result = createDeferred<Record<string, unknown>>();
-      const notify = (payload: Record<string, unknown>) => {
-        if (check(payload)) {
-          waiters.delete(notify);
-          result.resolve(payload);
-        }
-      };
-      waiters.add(notify);
-      try {
-        return await withinTest(result.promise, signal);
-      } finally {
-        waiters.delete(notify);
-      }
-    },
-  };
-}
-
 async function addWebhookCronJob(params: {
   ws: WebSocket;
   name: string;
@@ -386,6 +351,7 @@ describe("gateway server cron", () => {
 
   test("broadcasts cron attention state without repeating job definitions", async () => {
     const { ws, request, run } = await startCronClient();
+    await prepareCronSessionReply("Scheduled inspection complete");
     const text = "Synthetic scheduled inspection. ".repeat(512).trim();
     const addedEvent = waitForCronEvent(ws, (event) => event?.action === "added");
     const response = await request(

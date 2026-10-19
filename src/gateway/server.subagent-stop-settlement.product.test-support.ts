@@ -61,7 +61,6 @@ export function buildSubagentStopConfig(
       defaults: {
         workspace,
         skipBootstrap: true,
-        heartbeat: { every: "0m" },
         model: { primary: "synthetic/stop-proof" },
         subagents: { allowAgents: ["*"] },
       },

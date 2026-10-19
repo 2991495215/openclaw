@@ -165,13 +165,14 @@ const USER_FACING_SESSION_STATE_PRESERVING_SOURCE_TOOLS: ReadonlySet<string> = n
 
 export function shouldPreserveUserFacingSessionStateForInputProvenance(value: unknown): boolean {
   const provenance = normalizeInputProvenance(value);
-  if (provenance?.kind === "internal_system" || isProgressCardRefreshInputProvenance(provenance)) {
-    return true;
+  const sourceTool = provenance?.sourceTool?.toLowerCase();
+  if (provenance?.kind === "internal_system") {
+    // Goal turns continue user-directed work, including its usage and native session.
+    return sourceTool !== "session_goal_resume" && sourceTool !== "session_goal_continue";
   }
   if (provenance?.kind !== "inter_session") {
     return false;
   }
-  const sourceTool = provenance.sourceTool?.toLowerCase();
   return sourceTool ? USER_FACING_SESSION_STATE_PRESERVING_SOURCE_TOOLS.has(sourceTool) : false;
 }
 

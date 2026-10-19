@@ -1,0 +1,15 @@
+import type { DeliveryContext } from "../utils/delivery-context.types.js";
+
+export type SystemEvent = {
+  /**
+   * OpenClaw-assigned opaque identity for one queued occurrence. Preserve it when returning a
+   * snapshot to consume. It changes on replacement or re-enqueue; optional only for legacy
+   * ID-less compatibility.
+   */
+  id?: string;
+  text: string;
+  ts: number;
+  contextKey?: string | null;
+  deliveryContext?: DeliveryContext;
+  sessionStorePath?: string | null;
+};

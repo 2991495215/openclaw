@@ -179,7 +179,9 @@ describe("happy path prompt snapshots", () => {
     expect(prompt).toContain('"sourceReplyDeliveryMode": "automatic"');
     expect(prompt).toContain("This is an unattended scheduled run.");
     expect(prompt).toContain("Automation scratch (revision 1):");
-    expect(prompt).toContain("If nothing needs doing, reply exactly NO_REPLY.");
+    expect(prompt).toContain(
+      "If nothing needs doing, reply with exactly NO_REPLY as the entire final answer.",
+    );
   });
 
   it("rejects unknown and noncanonical Codex prompt deltas", async () => {

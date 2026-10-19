@@ -228,7 +228,7 @@ describe("worker placement startup concurrency", () => {
         state: "attached" as const,
         attachedSessionIds: [REQUEST.sessionId],
       };
-      const joined = createDeferredCore();
+      const callerChecked = createDeferredCore();
       const entered = createDeferredCore();
       const finish = createDeferredCore();
       const token = {};
@@ -292,11 +292,6 @@ describe("worker placement startup concurrency", () => {
         undefined,
         { placements, environments, redispatchPlacement: vi.fn(), warn: vi.fn() },
       );
-      const waitForInitialPlacement = coordinator.waitForInitialPlacement;
-      vi.spyOn(coordinator, "waitForInitialPlacement").mockImplementation(async (...args) => {
-        joined.resolve();
-        return await waitForInitialPlacement(...args);
-      });
       const setup = coordinator.dispatch(REQUEST);
       try {
         await Promise.race([entered.promise, setup]);
@@ -304,6 +299,7 @@ describe("worker placement startup concurrency", () => {
         const admission = coordinator.ensurePlacement({
           request: REQUEST,
           assertCurrent: () => {
+            callerChecked.resolve();
             if (!callerCurrent) {
               throw new Error("caller revoked");
             }
@@ -318,7 +314,7 @@ describe("worker placement startup concurrency", () => {
           },
           (error: unknown) => error,
         );
-        await Promise.race([joined.promise, result]);
+        await Promise.race([callerChecked.promise, result]);
         callerCurrent = outcome !== "caller revoked";
         finish.resolve();
         await setup;

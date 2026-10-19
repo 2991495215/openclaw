@@ -16,8 +16,8 @@ import type {
   SourceDeliveryOutcome,
   SourceDeliveryPlan,
 } from "../../infra/outbound/source-delivery-plan.types.js";
-import type { SystemEvent } from "../../infra/system-events.js";
-import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
+import type { SystemEvent } from "../../infra/system-events.types.js";
+import type { ReplyOperationObservation } from "../../sessions/reply-operation-state.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
@@ -112,6 +112,8 @@ export type SessionEventSourcePolicy = Readonly<
 export type ScheduledSessionAutomation = {
   job: CronStoredJob;
   operatorAuthority?: AdmittedRunOperatorAuthority;
+  /** Original Control UI admin classification, revalidated by the restored operator source. */
+  controlUiAdmin?: true;
   admissionSource: NonNullable<AdmittedRunContext["admissionSource"]>;
   executionIdentity?: import("../../cron/service/state.js").CronExecutionIdentityAdmission;
   deliveryAttemptFence?:
@@ -123,10 +125,10 @@ export type ScheduledSessionAutomation = {
   /** Selected absent notices share the receiver's exact ordinary creation operation. */
   bindSessionCreation?: (operation: SessionEntryCreationOperation) => () => void;
   beforeStart?: (
-    operation?: ReplyOperation,
+    operation?: ReplyOperationObservation,
   ) => boolean | NonNullable<CronRunOutcome["admissionDeferredReason"]>;
   /** Retain an on-exit occurrence in its current admission until foreground work settles. */
-  waitForIdle?: (signal?: AbortSignal, operation?: ReplyOperation) => Promise<void>;
+  waitForIdle?: (signal?: AbortSignal, operation?: ReplyOperationObservation) => Promise<void>;
   onStarted?: () => void;
   onExecutionStarted?: (info: { runId: string; sessionId?: string; sessionKey: string }) => void;
   onExecutionPhase?: (info: CronAgentExecutionPhaseUpdate) => void;

@@ -76,6 +76,8 @@ import {
   createSessionBody,
   createSessionTurn,
   createProviderSurface,
+  createPreparedReplyTurn as turn,
+  internalEventOptions,
   createTelegramGroupSession,
   ownerParams,
 } from "./get-reply-run.test-support.js";
@@ -474,18 +476,6 @@ async function prepareActiveQueue(mode: "steer" | "collect" | "interrupt" | "fol
   return runtime;
 }
 
-function turn(
-  body: string,
-  common: ReplyRunParams["ctx"],
-  session: Partial<ReplyRunParams["sessionCtx"]> = {},
-  inbound: Partial<ReplyRunParams["ctx"]> = {},
-) {
-  return {
-    ctx: { ...createInboundBody(body), ...common, ...inbound },
-    sessionCtx: { ...createSessionBody(body), ...common, ...session },
-  };
-}
-
 const activePreparedFixtures: ReturnType<typeof createReplyOperation>[] = [];
 function activatePreparedRun(sessionKey = "session-key") {
   const operation = createReplyOperation({
@@ -524,9 +514,6 @@ function requireRunReplyAgentCall(index = 0) {
   );
 }
 
-const internalEventOptions = {
-  internalEventExecution: { onStarted: () => {}, onTerminal: async () => {} },
-};
 function requireLastRunReplyAgentCall() {
   return requireRunReplyAgentCall(-1);
 }
@@ -559,7 +546,7 @@ describe("runPreparedReply media-only handling", () => {
       "owner-source-replaced",
       "without-source-factory",
       "maintenance-copy",
-      "heartbeat",
+      "system-event",
       "room-event",
       "foreign-defaults",
       "internal",
@@ -703,6 +690,15 @@ describe("runPreparedReply media-only handling", () => {
           ChatType: "group",
           SenderId: kind === "discord-owner-alias" ? "transport-alias" : "owner-1",
           InboundEventKind: kind === "room-event" ? "room_event" : undefined,
+          ...(kind === "system-event"
+            ? {
+                InternalTurnSource: "event" as const,
+                InputProvenance: {
+                  kind: "internal_system" as const,
+                  sourceTool: "background-task",
+                },
+              }
+            : {}),
           ...(kind === "internal"
             ? { InputProvenance: { kind: "inter_session" as const, sourceTool: "sessions_send" } }
             : {}),
@@ -727,6 +723,7 @@ describe("runPreparedReply media-only handling", () => {
               : {}),
             opts: {
               runId: "original-ingress",
+              ...(kind === "system-event" ? internalEventOptions : {}),
               suppressNextUserMessagePersistence: kind === "replay",
             },
           });

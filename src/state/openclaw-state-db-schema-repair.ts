@@ -464,7 +464,7 @@ export function detectOpenClawStateDatabaseSchemaMigrationsFromDatabase(
   if (userVersion < 28) {
     migrations.push({ kind: "github-publication-draft-v28", path: pathname });
   }
-  if (userVersion < 29 && tableExists(db, "cron_jobs")) {
+  if (userVersion < 29) {
     migrations.push({ kind: "automation-policy-fence-v29", path: pathname });
   }
   if (!hasCanonicalAuditEventsSchema(db)) {

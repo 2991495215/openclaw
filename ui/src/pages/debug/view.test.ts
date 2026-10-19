@@ -242,7 +242,9 @@ describe("DebugPage presentation", () => {
   it("shows unavailable diagnostics instead of claiming a disabled scheduler", async () => {
     const page = mountDebugHost(
       createDebugApplicationContext(async (method) => {
-        if (method === "cron.status") throw new Error("cron.status unavailable");
+        if (method === "cron.status") {
+          throw new Error("cron.status unavailable");
+        }
         return diagnosticResponse(method);
       }),
     );

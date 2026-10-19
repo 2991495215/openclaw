@@ -28,6 +28,10 @@ import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gate
 import { tryBeginGatewayRootWorkAdmission } from "../../process/gateway-work-admission.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db-lifecycle.js";
+import {
+  closeOpenClawStateDatabaseByPathAsync,
+  openOpenClawStateDatabase,
+} from "../../state/openclaw-state-db.js";
 import { resolveApprovalSessionAudienceWithFallback } from "../approval-session-audience.js";
 import { prepareNodeClaudeSkillRuntime } from "../node-claude-skill-runtime.js";
 import { NodeRegistry } from "../node-registry.js";
@@ -73,6 +77,7 @@ vi.mock("../../agents/subagents/registry/subagent-registry-state.js", async (ori
 
 const dirs = useAutoCleanupTempDirTracker(afterAll);
 let env: NodeJS.ProcessEnv;
+let stateDatabasePath: string;
 const context = createGatewayRequestContext(makeContextParams());
 context.getRuntimeConfig = () => cfg;
 context.getCommittedRuntimeConfig = () => cfg;
@@ -92,6 +97,7 @@ function request(method: string, params: Record<string, unknown>): GatewayReques
 beforeAll(() => {
   env = { OPENCLAW_STATE_DIR: dirs.make("incognito-session-controls-") };
   vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
+  stateDatabasePath = openOpenClawStateDatabase({ env }).path;
 });
 beforeEach(() => {
   vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
@@ -122,6 +128,7 @@ afterEach(() => {
 afterAll(async () => {
   memorySessionActorOwners.reset();
   await closeOpenClawAgentDatabasesAsync();
+  await closeOpenClawStateDatabaseByPathAsync(stateDatabasePath);
   vi.unstubAllEnvs();
 });
 

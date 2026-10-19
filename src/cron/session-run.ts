@@ -80,6 +80,7 @@ export async function runCronSessionTurn(params: {
     (await prepareAutomationSystemEvents(queueKey, job.id, job.state.runningAtMs));
   let noticesStarted = false;
   let operatorAuthority: AdmittedRunOperatorAuthority | undefined;
+  let controlUiAdmin: true | undefined;
   using operatorLease = new DisposableStack();
   const assertCurrent = () => {
     params.assertCurrent();
@@ -110,6 +111,7 @@ export async function runCronSessionTurn(params: {
       if (operator) {
         operatorLease.defer(operator.release);
         operatorAuthority = operator.authority;
+        controlUiAdmin = operator.controlUiAdmin ? true : undefined;
       }
       assertCurrent();
     }
@@ -233,6 +235,7 @@ export async function runCronSessionTurn(params: {
       scheduledAutomation: {
         job,
         operatorAuthority,
+        controlUiAdmin,
         admissionSource: params.admissionSource,
         prepare: params.prepare,
         executionIdentity: params.executionIdentity,

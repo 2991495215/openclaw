@@ -31,20 +31,9 @@ import {
   registerSystemEventStoreOwner,
   recordSystemEventStoreReplaced,
 } from "./system-event-ownership.js";
+import type { SystemEvent } from "./system-events.types.js";
 
-export type SystemEvent = {
-  /**
-   * OpenClaw-assigned opaque identity for one queued occurrence. Preserve it when returning a
-   * snapshot to consume. It changes on replacement or re-enqueue; optional only for legacy
-   * ID-less compatibility.
-   */
-  id?: string;
-  text: string;
-  ts: number;
-  contextKey?: string | null;
-  deliveryContext?: DeliveryContext;
-  sessionStorePath?: string | null;
-};
+export type { SystemEvent } from "./system-events.types.js";
 
 const MAX_EVENTS = 20;
 const AUTOMATION_NOTICE_PROMPT_CHARS = 2000;

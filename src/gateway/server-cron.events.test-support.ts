@@ -1,5 +1,6 @@
 import { expect } from "vitest";
 import type WebSocket from "ws";
+import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import { onceMessage, rpcReq } from "./test-helpers.js";
 
 const CRON_WAIT_TIMEOUT_MS = 10_000;
@@ -37,4 +38,40 @@ export async function runCronJobAndWaitForFinished(ws: WebSocket, jobId: string)
   expect(response.ok).toBe(true);
   expectEnqueuedRunPayload(response.payload);
   return await finished;
+}
+
+export function createCronEventCollector(signal: AbortSignal) {
+  const events: Record<string, unknown>[] = [];
+  const waiters = new Set<(payload: Record<string, unknown>) => void>();
+  return {
+    broadcast: (event: string, payload: unknown) => {
+      if (event !== "cron" || !payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return;
+      }
+      const record = payload as Record<string, unknown>;
+      events.push(record);
+      for (const notify of waiters) {
+        notify(record);
+      }
+    },
+    async wait(check: (payload: Record<string, unknown>) => boolean) {
+      const existing = events.find(check);
+      if (existing) {
+        return existing;
+      }
+      const result = createDeferred<Record<string, unknown>>();
+      const notify = (payload: Record<string, unknown>) => {
+        if (check(payload)) {
+          waiters.delete(notify);
+          result.resolve(payload);
+        }
+      };
+      waiters.add(notify);
+      try {
+        return await withinTest(result.promise, signal);
+      } finally {
+        waiters.delete(notify);
+      }
+    },
+  };
 }

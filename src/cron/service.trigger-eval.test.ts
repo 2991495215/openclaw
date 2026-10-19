@@ -8,6 +8,7 @@ import { CronService } from "./service.js";
 import { setupCronServiceSuite, writeCronStoreSnapshot } from "./service.test-harness.js";
 import { createCronRunHandle, finishCronRun } from "./service/run-history.js";
 import { createCronServiceState, type CronServiceDeps } from "./service/state.js";
+import { DEFAULT_STARTUP_DEFERRED_MISSED_AGENT_JOB_DELAY_MS } from "./service/timer-execution-timeout.js";
 import { loadCronStore } from "./store.js";
 import { cronStoreKey } from "./store/key.js";
 import { inspectActiveCronRunReceipt } from "./store/run-receipt-store.test-support.js";
@@ -745,7 +746,29 @@ describe("cron trigger cadence", () => {
       evaluateCronTrigger: evaluate,
       cronConfig: undefined,
     });
+    h.cron.pauseScheduling();
+    const catchupAt = nowMs + DEFAULT_STARTUP_DEFERRED_MISSED_AGENT_JOB_DELAY_MS;
+    expect(evaluate).not.toHaveBeenCalled();
+    expect((await readStoredJob(storePath, "missed-watcher"))?.state).toMatchObject({
+      nextRunAtMs: catchupAt,
+      startupCatchupAtMs: catchupAt,
+      lastRunAtMs: nowMs - 60_000,
+    });
+    vi.setSystemTime(catchupAt - 1);
+    expect(await h.cron.run("missed-watcher", "due")).toEqual({
+      ok: true,
+      ran: false,
+      reason: "not-due",
+    });
+    expect(evaluate).not.toHaveBeenCalled();
+    vi.setSystemTime(catchupAt);
+    expect(await h.cron.run("missed-watcher", "due")).toEqual({ ok: true, ran: true });
     expect(evaluate).toHaveBeenCalledOnce();
-    expect(h.cron.getJob("missed-watcher")?.state.nextRunAtMs).toBe(nowMs + 30_000);
+    expect(h.cron.getJob("missed-watcher")?.state).toMatchObject({
+      nextRunAtMs: catchupAt + 30_000,
+      lastTriggerEvalAtMs: catchupAt,
+      triggerEvalCount: 1,
+    });
+    expect(h.runSessionEvent).not.toHaveBeenCalled();
   });
 });

@@ -114,8 +114,15 @@ export async function prepareDoctorHealthDatabaseBackups(params: {
   if (schemas.agentDatabaseMigrationDiscovery && versions.versionMigrations) {
     schemas.agentDatabaseMigrationDiscovery.versionMigrations = versions.versionMigrations;
   }
+  // Older or refused stores cannot use canonical heartbeat readers before schema repair.
+  // Preserve the full rollback group and let the migration owner report those findings.
+  const schemaPreparationPending =
+    Boolean(schemas.pendingMigrations?.length) ||
+    Boolean(schemas.agentRefusals?.length) ||
+    schemas.indeterminate.length > 0;
   // Snapshot reuse must cover current-schema stores in the same rollback group too.
   const backupInventory =
+    schemaPreparationPending ||
     params.automaticHeartbeatRepair ||
     (await hasPendingHeartbeatMigration(
       databaseTargets?.map((database) => ({

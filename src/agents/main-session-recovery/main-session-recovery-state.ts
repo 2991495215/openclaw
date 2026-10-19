@@ -1,9 +1,6 @@
 import { stripInternalMetadataForDisplay } from "../../auto-reply/reply/display-text-sanitize.js";
 import { PENDING_FINAL_DELIVERY_CLEAR_PATCH } from "../../auto-reply/reply/pending-final-delivery-state.js";
-import type {
-  InternalSessionEntry as SessionEntry,
-  MainRestartRecoveryState,
-} from "../../config/sessions.js";
+import type { MainRestartRecoveryState } from "../../config/sessions/main-session-recovery.types.js";
 import {
   hasMainSessionRecoveryClaim,
   isMainRestartRecoveryCandidate,
@@ -12,6 +9,7 @@ import {
   recordLifecycleFence,
   resolveRestartRecoveryTerminalClientRunId,
 } from "../../config/sessions/restart-recovery-state.js";
+import type { InternalSessionEntry as SessionEntry } from "../../config/sessions/types.js";
 import { isTerminalSessionStatus } from "../../config/sessions/types.js";
 import {
   buildMainSessionRecoveryClearPatch,

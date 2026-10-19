@@ -1,4 +1,4 @@
-import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
+import type { InternalSessionEntry as SessionEntry } from "../../config/sessions/types.js";
 
 export function isMainRestartRecoveryAggregateEmptyAndUnowned(entry: SessionEntry): boolean {
   const state = entry.mainRestartRecovery;

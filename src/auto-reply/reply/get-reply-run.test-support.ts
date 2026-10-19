@@ -17,6 +17,22 @@ export function createProviderSurface<T extends string>(provider: T) {
   return { Provider: provider, Surface: provider };
 }
 
+export function createPreparedReplyTurn(
+  body: string,
+  common: Parameters<typeof runPreparedReply>[0]["ctx"],
+  session: Partial<Parameters<typeof runPreparedReply>[0]["sessionCtx"]> = {},
+  inbound: Partial<Parameters<typeof runPreparedReply>[0]["ctx"]> = {},
+) {
+  return {
+    ctx: { ...createInboundBody(body), ...common, ...inbound },
+    sessionCtx: { ...createSessionBody(body), ...common, ...session },
+  };
+}
+
+export const internalEventOptions = {
+  internalEventExecution: { onStarted: () => {}, onTerminal: async () => {} },
+};
+
 export function createTelegramGroupSession(): SessionEntry {
   return {
     sessionId: "session-telegram-group",

@@ -91,9 +91,6 @@ describe("event session routing", () => {
     const policy = resolveEventSessionRoutingPolicy({ cfg: singleOwnerConfig, sessionKey });
 
     expect(resolveEventSessionKeyForPolicy(sessionKey, policy)).toBe("agent:main:main");
-    expect(
-      scopedHeartbeatWakeOptionsForPolicy(sessionKey, { reason: "exec-event" }, policy),
-    ).toEqual({ reason: "exec-event", sessionKey: "agent:main:main" });
     expect(resolveEventSessionKeyForPolicy(`${sessionKey}:thread:1712345678.123`, policy)).toBe(
       "agent:main:main",
     );

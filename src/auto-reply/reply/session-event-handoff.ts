@@ -523,6 +523,7 @@ export function enqueueSessionEventForHost(
         occurrenceId,
         deliveryContext: route,
         target,
+        assertCurrent,
       });
       const result = await dispatchInboundMessageWithRoutedChannelDispatcher({
         cfg: { ...cfg, session: { ...cfg.session, store: storePath } },

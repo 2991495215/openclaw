@@ -1,6 +1,6 @@
 import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
 import { onGatewayWorkMetricsChanged } from "../../infra/gateway-work-metrics-events.js";
-import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
+import type { ReplyOperationObservation } from "../../sessions/reply-operation-state.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { markCronJobWaitingForIdle, type CronActiveJobMarker } from "../active-jobs.js";
 import type { CronJob } from "../types.js";
@@ -13,7 +13,7 @@ export async function waitForCronExecutionIdle(
   options: {
     activeJobMarker: CronActiveJobMarker | undefined;
     ownSessionKey?: string;
-    ownReplyOperation?: ReplyOperation;
+    ownReplyOperation?: ReplyOperationObservation;
     signal: AbortSignal;
     assertCurrent: () => void | Promise<void>;
   },

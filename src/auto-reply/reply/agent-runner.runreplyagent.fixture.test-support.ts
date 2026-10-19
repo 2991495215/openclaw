@@ -8,10 +8,25 @@ import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
-import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
+import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { waitForReplyRunSuccessorAdmission } from "../../sessions/session-controller.wait.js";
 import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db.js";
+
+export function requireStoredSessionEntry(storePath: string, sessionKey = "main"): SessionEntry {
+  return expectDefined(
+    loadSessionEntry({ storePath, sessionKey, readConsistency: "latest" }),
+    `stored session entry for ${sessionKey}`,
+  );
+}
+
+export function makeSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
+  return {
+    sessionId: "session",
+    updatedAt: Date.now(),
+    ...overrides,
+  };
+}
 
 export function createReplyAgentSessionFixture() {
   beforeEach(() => setRuntimeConfigSnapshot({}));

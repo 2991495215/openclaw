@@ -315,17 +315,19 @@ async function createFixture(jobIds = ["job-1"]) {
       upsertCronJobRow(db, cronStoreKey(fixture.storePath), { ...job, id }, index);
     }
   }, fixture.options);
+  const write = (
+    content: string | null,
+    input: Partial<
+      Pick<
+        Parameters<typeof writeCronScratchFixture>[0],
+        "jobId" | "storePath" | "expectedRevision" | "nowMs" | "sourceSha256"
+      >
+    > = {},
+  ) => writeCronScratchFixture({ ...fixture, jobId: "job-1", content, ...input });
   return {
     ...fixture,
-    write: (
-      content: string | null,
-      input: Partial<
-        Pick<
-          Parameters<typeof writeCronScratchFixture>[0],
-          "jobId" | "storePath" | "expectedRevision" | "nowMs" | "sourceSha256"
-        >
-      > = {},
-    ) => writeCronScratchFixture({ ...fixture, jobId: "job-1", content, ...input }),
+    write: (...input: Parameters<typeof write>) => write(...input).result,
+    writeOutcome: write,
     read: (jobId = "job-1", storePath = fixture.storePath) =>
       readCronJobScratchState(storePath, jobId, fixture.options),
   };
@@ -358,11 +360,10 @@ describe("cron job scratch store", () => {
       ["resurrected", 2, 50, conflict(3), false],
       ["recreated", 3, 60, written("recreated", 4, 60), true],
     ] as const) {
-      const completion = scratchReceipt();
-      expect(
-        await completion.run(async () => fixture.write(content, { expectedRevision, nowMs })),
-      ).toEqual(expected);
-      expect(completion.isCommitted()).toBe(committed);
+      expect(fixture.writeOutcome(content, { expectedRevision, nowMs })).toEqual({
+        result: expected,
+        written: committed,
+      });
       if (expected.ok) {
         const { ok: _ok, ...snapshot } = expected;
         expect(fixture.read()).toEqual(snapshot);

@@ -1,10 +1,10 @@
 import { describe, expectTypeOf, it } from "vitest";
 import type { AgentHarnessAttemptParams } from "./agent-harness-runtime.js";
 
-type ReleasedOperation = NonNullable<AgentHarnessAttemptParams["replyOperation"]>;
+type HarnessOperation = NonNullable<AgentHarnessAttemptParams["replyOperation"]>;
 
 // A third-party consumer handles the published alternatives exhaustively.
-function describeResult(result: NonNullable<ReleasedOperation["result"]>): string {
+function describeResult(result: NonNullable<HarnessOperation["result"]>): string {
   switch (result.kind) {
     case "completed":
       return "completed";
@@ -16,9 +16,9 @@ function describeResult(result: NonNullable<ReleasedOperation["result"]>): strin
   }
 }
 
-describe("released harness operation observations", () => {
-  it("retains the published phase, result, and turn-kind alternatives", () => {
-    expectTypeOf<ReleasedOperation["phase"]>().toEqualTypeOf<
+describe("harness operation observations", () => {
+  it("exposes the canonical phase, result, and turn-kind alternatives", () => {
+    expectTypeOf<HarnessOperation["phase"]>().toEqualTypeOf<
       | "queued"
       | "waiting_for_deferred_maintenance"
       | "waiting_for_global_lane"
@@ -29,8 +29,8 @@ describe("released harness operation observations", () => {
       | "failed"
       | "aborted"
     >();
-    expectTypeOf<ReleasedOperation["turnKind"]>().toEqualTypeOf<
-      "visible" | "heartbeat" | "queued_followup"
+    expectTypeOf<HarnessOperation["turnKind"]>().toEqualTypeOf<
+      "visible" | "background" | "queued_followup"
     >();
     expectTypeOf<ReturnType<typeof describeResult>>().toEqualTypeOf<string>();
   });

@@ -187,14 +187,15 @@ it.for([
   async ({ edit, deleteAfterRun, overdueRestart }, { signal }) => {
     const delayMs = 60_000;
     const payload = createAgentGate();
-    const runIsolatedAgentJob = vi
-      .fn<CronServiceDeps["runIsolatedAgentJob"]>()
+    const runSessionEvent = vi
+      .fn<NonNullable<CronServiceDeps["runSessionEvent"]>>()
       .mockImplementationOnce(async () => {
         await payload.run();
         return { status: "ok", summary: "CI is pending", nextCheck: { delayMs } };
       })
       .mockResolvedValue({ status: "ok", summary: "CI passed" });
-    const options = { runIsolatedAgentJob };
+    const runIsolatedAgentJob = vi.fn(async () => ({ status: "ok" as const }));
+    const options = { runSessionEvent, runIsolatedAgentJob };
     let { cron } = createCron(options);
     try {
       await cron.start();
@@ -233,6 +234,7 @@ it.for([
       clock.setTime(atMs + 1_000);
       payload.release.resolve();
       await pendingRun;
+      expect(runIsolatedAgentJob).not.toHaveBeenCalled();
       const continuationAtMs = atMs + 1_000 + delayMs;
       for (const jobs of await jobViews(cron)) {
         if (edit === "remove") {
@@ -267,11 +269,11 @@ it.for([
       ({ cron } = createCron(options));
       cron.pauseScheduling();
       await cron.start();
-      expect(runIsolatedAgentJob).toHaveBeenCalledTimes(1);
+      expect(runSessionEvent).toHaveBeenCalledTimes(1);
       expect(cron.getJob(job.id)?.state.nextRunAtMs).toBe(continuationAtMs);
       clock.setTime(continuationAtMs + 2_000);
       await expect(cron.run(job.id, "due")).resolves.toMatchObject({ ok: true, ran: true });
-      expect(runIsolatedAgentJob).toHaveBeenCalledTimes(2);
+      expect(runSessionEvent).toHaveBeenCalledTimes(2);
       for (const jobs of await jobViews(cron)) {
         if (deleteAfterRun) {
           expect(jobs).toEqual([]);
@@ -620,7 +622,7 @@ it("recovers an overdue interrupted replacement without deleting it", async () =
   const runSessionEvent = vi.fn(async () => ({ status: "ok" as const }));
   const onEvent = vi.fn((event: CronEvent) => event);
   const runIsolatedAgentJob = vi.fn(async () => ({ status: "ok" as const }));
-  const { cron } = createCron({
+  const { cron, state } = createCron({
     enqueueSystemEvent,
     runSessionEvent,
     runIsolatedAgentJob,
@@ -629,6 +631,11 @@ it("recovers an overdue interrupted replacement without deleting it", async () =
   try {
     await cron.start();
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
+    expect(runSessionEvent).not.toHaveBeenCalled();
+    const replacementRunAt = now + DEFAULT_STARTUP_DEFERRED_MISSED_AGENT_JOB_DELAY_MS;
+    expect(cron.getJob(job.id)?.state.nextRunAtMs).toBe(replacementRunAt);
+    clock.setTime(replacementRunAt);
+    await onTimer(state);
     expect(runSessionEvent).toHaveBeenCalledOnce();
     expect(runIsolatedAgentJob).not.toHaveBeenCalled();
     expect(runSessionEvent).toHaveBeenCalledWith(
@@ -639,7 +646,7 @@ it("recovers an overdue interrupted replacement without deleting it", async () =
       expect(jobs[0]).toMatchObject({
         id: job.id,
         enabled: false,
-        state: { lastRunAtMs: now, lastRunStatus: "ok" },
+        state: { lastRunAtMs: replacementRunAt, lastRunStatus: "ok" },
       });
       expect(jobs[0]?.state.nextRunAtMs).toBeUndefined();
       expect(jobs[0]?.state.runningAtMs).toBeUndefined();
@@ -656,7 +663,7 @@ it("recovers an overdue interrupted replacement without deleting it", async () =
           error: "cron: job interrupted by gateway restart",
           runAtMs: interruptedAt,
         }),
-        expect.objectContaining({ jobId: job.id, status: "ok", runAtMs: now }),
+        expect.objectContaining({ jobId: job.id, status: "ok", runAtMs: replacementRunAt }),
       ]),
     );
   } finally {

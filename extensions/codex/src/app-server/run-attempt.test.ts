@@ -2192,9 +2192,6 @@ describe("runCodexAppServerAttempt", () => {
         });
       try {
         const harness = createStartedThreadHarness();
-        if (kind === "authorized") {
-          params.toolAuthorityFingerprint = "synthetic-authority";
-        }
         const run = runCodexAppServerAttempt(params);
         await awaitGateBeforeSettlement(
           harness.waitForMethod("turn/start"),

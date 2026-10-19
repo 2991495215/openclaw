@@ -102,18 +102,22 @@ export function repairDanglingSkillWorkshopCollectionReviewIndex(database: Datab
     return false;
   }
   return withSqliteWritableSchema(database, () => {
-    database
+    database // sqlite-allow-raw -- Repair the exact malformed catalog row before ordinary schema parsing.
       .prepare("UPDATE sqlite_schema SET sql = ? WHERE type = 'index' AND name = ?")
       .run(
         `CREATE INDEX ${LEGACY_SKILL_WORKSHOP_COLLECTION_REVIEWS_INDEX} ON skill_workshop_collection_reviews(create_time DESC, review_id DESC)`,
         LEGACY_SKILL_WORKSHOP_COLLECTION_REVIEWS_INDEX,
       );
     // SAFETY: the pragma result is treated as unknown and validated before arithmetic.
-    const row = database.prepare("PRAGMA schema_version").get() as {
+    const row = database // sqlite-allow-raw -- Read SQLite's schema cookie before reloading the repaired catalog.
+      .prepare("PRAGMA schema_version")
+      .get() as {
       schema_version?: unknown;
     };
     const schemaVersion = typeof row.schema_version === "number" ? row.schema_version : 0;
+    // sqlite-allow-raw -- Bump the schema cookie and reparse the repaired catalog.
     database.exec(`PRAGMA schema_version = ${schemaVersion + 1}; PRAGMA writable_schema = OFF;`);
+    // sqlite-allow-raw -- Drop the repaired legacy index inside the caller's transaction.
     database.exec(`DROP INDEX ${LEGACY_SKILL_WORKSHOP_COLLECTION_REVIEWS_INDEX};`);
     return true;
   });

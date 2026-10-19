@@ -10,7 +10,7 @@ import {
   type SessionSourceAssertion,
 } from "../config/sessions/session-source-authority.js";
 import { notifyGatewayWorkMetricsChanged } from "../infra/gateway-work-metrics-events.js";
-import type { ReplyOperation } from "../sessions/session-controller.contracts.js";
+import type { ReplyOperationObservation } from "../sessions/reply-operation-state.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { CronStandingGrantAuthority } from "./standing-grant-authority.types.js";
 
@@ -229,7 +229,7 @@ export type CronActiveJobMarker = {
   selfRemovalAccepted?: true;
   onInactive?: Set<() => void>;
   inactiveNotified?: true;
-  idleAdmissionWait?: { replyOperation?: ReplyOperation };
+  idleAdmissionWait?: { replyOperation?: ReplyOperationObservation };
 };
 
 function getCronActiveJobState(): CronActiveJobState {
@@ -500,7 +500,7 @@ export function hasActiveCronJobsForAgent(
 /** Pending idle work remains drain-visible without making peer waiters block each other. */
 export function markCronJobWaitingForIdle(
   marker: CronActiveJobMarker | undefined,
-  replyOperation?: ReplyOperation,
+  replyOperation?: ReplyOperationObservation,
 ): () => void {
   if (!marker || !isCronActiveJobMarkerCurrent(marker)) {
     throw new Error("Cron idle admission lost its active run marker");
@@ -517,7 +517,7 @@ export function markCronJobWaitingForIdle(
 }
 
 /** Excludes only the captured reply owner, never a successor that reuses its session key. */
-export function isCronReplyOperationWaitingForIdle(operation: ReplyOperation): boolean {
+export function isCronReplyOperationWaitingForIdle(operation: ReplyOperationObservation): boolean {
   if (operation.abortSignal.aborted || operation.result) {
     return false;
   }

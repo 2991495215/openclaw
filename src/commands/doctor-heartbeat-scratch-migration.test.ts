@@ -290,7 +290,7 @@ describe("HEARTBEAT.md cron scratch migration", () => {
         jobId: monitor.id,
         content: "stale writer",
         expectedRevision: 0,
-      }),
+      }).result,
     ).toMatchObject({ ok: false, reason: "revision-conflict" });
     await maybeMigrateHeartbeatFilesToScratch({ cfg, shouldRepair: true });
     const retried = readCronJobScratchState(storePath, monitor.id);
@@ -345,7 +345,7 @@ describe("HEARTBEAT.md cron scratch migration", () => {
         jobId: monitor.id,
         content: "stale writer",
         expectedRevision: 0,
-      }),
+      }).result,
     ).toMatchObject({ ok: false, reason: "revision-conflict" });
     await maybeMigrateHeartbeatFilesToScratch({ cfg, shouldRepair: true });
     const retried = readCronJobScratchState(storePath, monitor.id);
@@ -368,7 +368,7 @@ describe("HEARTBEAT.md cron scratch migration", () => {
       content: null,
       expectedRevision: state.currentRevision,
     });
-    expect(unset.ok).toBe(true);
+    expect(unset.result.ok).toBe(true);
     await fs.writeFile(fixture.heartbeatPath, "recreated\n", "utf8");
 
     const result = await maybeMigrateHeartbeatFilesToScratch({

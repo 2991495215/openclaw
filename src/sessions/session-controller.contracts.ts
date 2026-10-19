@@ -26,6 +26,7 @@ import type { OpenClawAgentDatabaseIdentity } from "../state/openclaw-agent-db-i
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import type {
   ReplyOperationState,
+  ReplyOperationObservation,
   ReplyOperationActivePhase,
   ReplyOperationResult as ControllerReplyOperationResult,
 } from "./reply-operation-state.js";
@@ -172,7 +173,7 @@ export type ReplyBackendQueueMessageMismatch =
   | "reply_expectation_mismatch"
   | "task_suggestion_delivery_mode_mismatch";
 
-export type ReplyOperation = {
+export type ReplyOperation = ReplyOperationObservation & {
   readonly watchdog: SessionControllerWatchdog;
   readonly personalToolParticipants?: ReplyTurnParticipants;
   readonly key: string;
@@ -185,7 +186,6 @@ export type ReplyOperation = {
   readonly routeThreadId?: string | number;
   /** Transcript branch leaf from which this operation was admitted. */
   readonly originatingLeafEntryId?: string | null;
-  readonly abortSignal: AbortSignal;
   readonly resetTriggered: boolean;
   /**
    * True when this operation was admitted to recover a terminal session (a
@@ -211,7 +211,6 @@ export type ReplyOperation = {
   /** Concrete provider/model route currently selected for this operation. */
   readonly toolAuthorityRoute?: ReplyToolAuthorityRoute;
   readonly phase: ReplyOperationPhase;
-  readonly result: ReplyOperationResult | null;
   /** Its fenced admission ended; raw producer settlement remains independently retained. */
   readonly admissionRetired: boolean;
   /** Retire only after exact writer fences and execution authority permit a successor. */

@@ -283,13 +283,15 @@ it(
                 );
                 writeToolCall(response, "sessions", "pin", { action: "patch", pinned: true });
                 break;
-              case 4:
-                expect(JSON.parse(toolOutput(body, "pin"))).toMatchObject({
+              case 4: {
+                const pinOutput = toolOutput(body, "pin");
+                expect(JSON.parse(pinOutput), pinOutput).toMatchObject({
                   status: "updated",
                   sessionKey,
                 });
                 writeToolCall(response, "automations", "rearm", { action: "next_check", in: "5s" });
                 break;
+              }
               case 5:
                 expect(JSON.parse(toolOutput(body, "rearm"))).toMatchObject({
                   ok: true,

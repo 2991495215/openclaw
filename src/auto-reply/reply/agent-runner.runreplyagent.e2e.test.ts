@@ -66,6 +66,8 @@ import { registerReplyCompactionCases } from "./agent-runner.runreplyagent.compa
 import { registerImmediateFailurePolicyCases } from "./agent-runner.runreplyagent.failure-policy.cases.js";
 import {
   createReplyAgentSessionFixture,
+  makeSessionEntry,
+  requireStoredSessionEntry,
   runSuccessfulReplyModelFixture,
 } from "./agent-runner.runreplyagent.fixture.test-support.js";
 import { registerFollowupDrainCases } from "./agent-runner.runreplyagent.followup-drain.cases.js";
@@ -139,21 +141,6 @@ const requireRecord = createRequireRecord("record", "expected-label-object");
 
 function mockCallArgs(mock: ReturnType<typeof vi.fn>, label: string, callIndex = 0): unknown[] {
   return expectDefined(mock.mock.calls[callIndex], `${label} mock call ${callIndex}`);
-}
-
-function requireStoredSessionEntry(storePath: string, sessionKey = "main"): SessionEntry {
-  return expectDefined(
-    loadSessionEntry({ storePath, sessionKey, readConsistency: "latest" }),
-    `stored session entry for ${sessionKey}`,
-  );
-}
-
-function makeSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
-  return {
-    sessionId: "session",
-    updatedAt: Date.now(),
-    ...overrides,
-  };
 }
 
 async function makeSessionFixture<SessionKey extends string = "main">(
@@ -1535,14 +1522,20 @@ describe("runReplyAgent admission and terminal accounting", () => {
 
     const result = await run();
 
-    if (empty) {
-      expect(result).toBeUndefined();
-    }
+    expect(result).toMatchObject(
+      empty
+        ? {
+            text: "No answer was returned. Ask again if you still need one.",
+            isError: true,
+            isStatusNotice: true,
+          }
+        : { text: "final" },
+    );
     expect(runState.admission).toEqual({ status: "owned" });
     expect(runState.agentTurn).toBe(empty ? "failed" : "ok");
     expect(state.runEmbeddedAgentMock).toHaveBeenCalledOnce();
     expect(getSessionControllerOperation("main")).toBeUndefined();
-    expect(vi.mocked(scheduleFollowupDrain)).not.toHaveBeenCalled();
+    expect(vi.mocked(scheduleFollowupDrain)).toHaveBeenCalledOnce();
   });
   it.each([
     {

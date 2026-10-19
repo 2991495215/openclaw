@@ -6,6 +6,7 @@ import { channelRouteTargetsMatchExact } from "../../plugin-sdk/channel-route.js
 import { normalizeAgentId } from "../../routing/session-key.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
+import { bindCommandOwnerAuthority } from "../command-owner-authority.js";
 import type { MsgContext } from "../templating.js";
 import type { SessionEventEnqueueOptions, SessionEventTarget } from "./session-event-contract.js";
 import {
@@ -59,10 +60,14 @@ export function buildSessionEventContext(params: {
   agentId: string;
   sessionKey: string;
   text: string;
-  options: Pick<SessionEventEnqueueOptions, "source" | "sourceTurnId" | "readmissionAttempt">;
+  options: Pick<
+    SessionEventEnqueueOptions,
+    "source" | "sourceTurnId" | "readmissionAttempt" | "scheduledAutomation"
+  >;
   occurrenceId: string;
   deliveryContext?: DeliveryContext;
   target: SessionEventTarget;
+  assertCurrent: () => void;
 }): MsgContext {
   const { agentId, sessionKey, text, options, occurrenceId, deliveryContext, target } = params;
   const ctx: MsgContext = {
@@ -93,6 +98,16 @@ export function buildSessionEventContext(params: {
       ? `${occurrenceId}:readmission-${options.readmissionAttempt}`
       : occurrenceId,
   };
+  const automation = options.scheduledAutomation;
+  if (automation?.controlUiAdmin && automation.operatorAuthority) {
+    bindCommandOwnerAuthority(ctx, {
+      operatorAuthority: automation.operatorAuthority,
+      isCurrent: () => {
+        params.assertCurrent();
+        return true;
+      },
+    });
+  }
   setChannelSourceTurnId(ctx, options.sourceTurnId);
   return ctx;
 }

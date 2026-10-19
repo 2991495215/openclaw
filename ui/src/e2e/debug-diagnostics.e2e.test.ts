@@ -447,7 +447,7 @@ async function exerciseDiagnostics({ page }: { page: Page }) {
   await contains(snapshots, "Offline");
   await contains(snapshots, "Connect to the Gateway to refresh diagnostics.");
   expect(await refresh.isDisabled()).toBe(true);
-  await contains(snapshots, "diagnostics-e2e");
+  await contains(raw, "diagnostics-e2e");
   await page.setViewportSize({ height: 844, width: 390 });
   await noOverflow();
   await page.setViewportSize({ height: 1000, width: 1280 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel-constants.js";
 import type { MsgContext } from "../templating.js";
 import { resolveSourceReplyExpectation } from "./source-reply-delivery-mode.js";
 
@@ -9,7 +10,7 @@ const ctx: MsgContext = {
   MentionSource: "implicit_thread",
 };
 
-describe("implicit thread reply expectation", () => {
+describe("source reply expectation", () => {
   it.each([
     { policy: "allow", overrides: {}, expected: "optional" },
     { policy: "disallow", overrides: {}, expected: "required" },
@@ -18,6 +19,28 @@ describe("implicit thread reply expectation", () => {
     { policy: "allow", overrides: { MentionSource: undefined }, expected: "required" },
     { policy: "allow", overrides: { CommandSource: "native" }, expected: "required" },
     { policy: "allow", overrides: { ChatType: "direct" }, expected: "required" },
+    {
+      policy: undefined,
+      overrides: {
+        Provider: INTERNAL_MESSAGE_CHANNEL,
+        InternalTurnSource: "event",
+        InputProvenance: { kind: "internal_system", sourceTool: "exec" },
+      },
+      expected: "optional",
+    },
+    {
+      policy: undefined,
+      overrides: {
+        Provider: INTERNAL_MESSAGE_CHANNEL,
+        InputProvenance: { kind: "internal_system", sourceTool: "exec" },
+      },
+      expected: "result-required",
+    },
+    {
+      policy: undefined,
+      overrides: { Provider: INTERNAL_MESSAGE_CHANNEL, InternalTurnSource: "event" },
+      expected: "result-required",
+    },
   ] as const)(
     "selects $expected for $policy with $overrides",
     ({ policy, overrides, expected }) => {

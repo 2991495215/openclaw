@@ -6,7 +6,7 @@ import { runWithGatewayDetachedWorkContinuation } from "../../process/gateway-wo
 import { runWithSessionControllerCleanup } from "../../sessions/session-controller.cleanup-context.js";
 import { isCronRunSessionKey } from "../../sessions/session-key-utils.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
-import type { InternalGetReplyOptions } from "./get-reply.types.js";
+import type { GetReplyOptions } from "../get-reply-options.types.js";
 import type {
   ScheduledSessionAutomation,
   SessionEventExecution,
@@ -44,14 +44,13 @@ export function prepareCronRunContinuationCleanup(
 export function resolveScheduledSessionReplyOptions(
   automation?: ScheduledSessionAutomation,
 ): Pick<
-  InternalGetReplyOptions,
-  | "operatorAuthority"
+  GetReplyOptions,
   | "sourceReplyDeliveryMode"
-  | "modelOverride"
   | "thinkingLevelOverride"
   | "timeoutOverrideSeconds"
   | "bootstrapContextMode"
-> {
+> &
+  Pick<ScheduledSessionAutomation, "operatorAuthority"> & { modelOverride?: string } {
   if (!automation) {
     return {};
   }

@@ -135,7 +135,21 @@ describe("isAgentMediatedCompletionSourceTool", () => {
 });
 
 describe("shouldPreserveUserFacingSessionStateForInputProvenance", () => {
-  it("does not preserve user-facing session state for external or user-directed handoffs", () => {
+  it("classifies user-directed and background handoffs", () => {
+    for (const [sourceTool, preserve] of [
+      ["session_goal_resume", false],
+      ["session_goal_continue", false],
+      ["cron", true],
+      ["progress_card_refresh", true],
+    ] as const) {
+      expect(
+        shouldPreserveUserFacingSessionStateForInputProvenance({
+          kind: "internal_system",
+          sourceTool,
+        }),
+        sourceTool,
+      ).toBe(preserve);
+    }
     expect(
       shouldPreserveUserFacingSessionStateForInputProvenance({
         kind: "external_user",

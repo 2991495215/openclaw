@@ -32,6 +32,7 @@ export type SourceReplyDeliveryModeContext = Pick<
   | "WasMentioned"
   | "MentionSource"
   | "InputProvenance"
+  | "InternalTurnSource"
 >;
 
 export function isUnauthorizedTextSlashCommand(ctx: SourceReplyDeliveryModeContext): boolean {
@@ -97,6 +98,13 @@ export function resolveSourceReplyExpectation(params: {
   ctx: SourceReplyDeliveryModeContext;
   cfg: OpenClawConfig;
 }): ReplyExpectation {
+  // Admitted notifications may settle quietly even when their session has no delivery route.
+  if (
+    params.ctx.InternalTurnSource === "event" &&
+    params.ctx.InputProvenance?.kind === "internal_system"
+  ) {
+    return "optional";
+  }
   const commandExpectation = resolveCommandReplyExpectation({
     cfg: params.cfg,
     sessionKey: params.ctx.SessionKey,
@@ -149,6 +157,7 @@ export function resolveFollowupReplyExpectation(queued: FollowupRun, cfg: OpenCl
         SessionKey: queued.run.sessionKey,
         InboundEventKind: queued.currentInboundEventKind,
         InputProvenance: queued.run.inputProvenance,
+        InternalTurnSource: queued.run.internalEventExecution ? "event" : undefined,
       },
       cfg,
     })

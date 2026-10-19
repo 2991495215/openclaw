@@ -615,7 +615,10 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
   it("records the child result after a no-delivery parent returns only a silent reply", async () => {
     await useRealOutcome();
     const reply = "Finished the delegated report";
-    mockChildRun([{ text: "NO_REPLY" }]);
+    mockAgentRun({
+      meta: { terminalReply: { disposition: "silent" } },
+      acceptedSessionSpawns: [{ runId: "run-child", childSessionKey: "agent:default:child" }],
+    });
     resolveCronDeliveryPlanMock.mockReturnValue({ mode: "none", requested: false });
     listDescendantRunsForRequesterMock.mockResolvedValue([
       {

@@ -7,7 +7,7 @@ import type { SessionCreatedActor } from "../../config/sessions/session-entry-pr
 import type { CronConfig } from "../../config/types.cron.js";
 import type { GatewayScheduler, GatewaySchedulerScope } from "../../infra/gateway-scheduler.js";
 import { LEGACY_IMPLICIT_AGENT_ID } from "../../routing/session-key.js";
-import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
+import type { ReplyOperationObservation } from "../../sessions/reply-operation-state.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { CronAgentAvailability } from "../agent-availability.js";
 import type { CronCompletionDeliveryFence } from "../delivery-attempt-fence.js";
@@ -116,7 +116,7 @@ export type CronSessionRunPreparation = {
 export type CronIdleAdmissionWait = (
   ownSessionKey?: string,
   signal?: AbortSignal,
-  ownReplyOperation?: ReplyOperation,
+  ownReplyOperation?: ReplyOperationObservation,
 ) => Promise<void>;
 export type CronIdleAdmissionSource = { signal: AbortSignal; assertCurrent: () => void };
 
@@ -137,7 +137,7 @@ export type CronServiceDeps = {
   isExecutionIdle?: (
     job: CronJob,
     ownSessionKey?: string,
-    ownReplyOperation?: ReplyOperation,
+    ownReplyOperation?: ReplyOperationObservation,
   ) => boolean;
   runSessionEvent?: (params: {
     waitForIdle?: CronIdleAdmissionWait;

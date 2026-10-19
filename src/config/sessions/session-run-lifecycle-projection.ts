@@ -422,8 +422,10 @@ export function projectSessionLifecyclePatch(
     isMainRestartRecoveryCandidate(entry, params.canonicalKey) &&
     (patch.status === "interrupted" || (phase === "start" && patch.lifecycleRunId === eventRunId))
   ) {
-    // Source-less starts and restart aborts arm custody in their existing write.
-    patch.restartRecoveryRuns = entry.restartRecoveryRuns;
+    // Keep a successor's explicit retirement of the previous recovery episode.
+    if (!Object.hasOwn(patch, "restartRecoveryRuns")) {
+      patch.restartRecoveryRuns = entry.restartRecoveryRuns;
+    }
     recordLifecycleFence(patch, {
       runId: eventRunId,
       lifecycleGeneration: params.event.lifecycleGeneration ?? params.currentLifecycleGeneration,

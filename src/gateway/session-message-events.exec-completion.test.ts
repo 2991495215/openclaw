@@ -224,7 +224,9 @@ describe("exec completion WebChat publication", () => {
         source: "exec",
         expectedTarget,
       });
-      expect(await withinTest(receipt.settled, signal)).toMatchObject({
+      const outcome = await withinTest(receipt.settled, signal);
+      expect(outcome.error).toBeUndefined();
+      expect(outcome).toMatchObject({
         status: "completed",
         executionStarted: true,
         delivered: false,

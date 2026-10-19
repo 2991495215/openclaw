@@ -1,7 +1,7 @@
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
-import type { ReplyOperation } from "../sessions/session-controller.contracts.js";
+import type { ReplyOperationObservation } from "../sessions/reply-operation-state.js";
 import { activeSessionOperations } from "../sessions/session-controller.state.js";
 import { hasActiveCronJobsForAgent, isCronReplyOperationWaitingForIdle } from "./active-jobs.js";
 import { resolveCronDeliverySessionKey } from "./session-target.js";
@@ -13,7 +13,7 @@ export function isCronExecutionIdle(
   job: CronJob,
   agentId: string,
   _ownSessionKey?: string,
-  ownReplyOperation?: ReplyOperation,
+  ownReplyOperation?: ReplyOperationObservation,
 ): boolean {
   if (hasActiveCronJobsForAgent(agentId, job.id, { excludeIdleWaiters: true })) {
     return false;
