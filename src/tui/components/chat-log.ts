@@ -269,7 +269,7 @@ export class ChatLog extends Container {
     if (previous) {
       previous.setText(text);
       previous.setImages(options?.images ?? []);
-      return previous;
+      return;
     }
     const component = new MarkdownMessageComponent("user", text, this.imageRenderer);
     component.setImages(options?.images ?? []);
@@ -277,7 +277,6 @@ export class ChatLog extends Container {
       this.userComponents.set(options.messageId, component);
     }
     this.appendNonSystem(component);
-    return component;
   }
 
   addLiveUser(
@@ -291,7 +290,8 @@ export class ChatLog extends Container {
   ) {
     const existing = this.userComponents.get(options.messageId);
     if (existing) {
-      return this.addUser(text, options);
+      this.addUser(text, options);
+      return;
     }
 
     // Persisted execution ownership can differ from the originating send;
@@ -302,7 +302,7 @@ export class ChatLog extends Container {
       pending.component.setImages(options.images ?? []);
       this.pendingUsers.delete(options.sendId);
       this.userComponents.set(options.messageId, pending.component);
-      return pending.component;
+      return;
     }
 
     const component = new MarkdownMessageComponent("user", text, this.imageRenderer);
@@ -334,10 +334,9 @@ export class ChatLog extends Container {
       this.children.splice(firstRunComponentIndex, 0, component);
       this.reserveLiveUserSlot(protectedComponents, firstRunComponent, options.runId);
       this.pruneOverflow(protectedComponents);
-      return component;
+      return;
     }
     this.appendNonSystem(component);
-    return component;
   }
 
   addPendingUser(runId: string, text: string) {
@@ -345,12 +344,11 @@ export class ChatLog extends Container {
     if (existing) {
       existing.text = text;
       existing.component.setText(text);
-      return existing.component;
+      return;
     }
     const component = new MarkdownMessageComponent("user", text, this.imageRenderer);
     this.pendingUsers.set(runId, { component, text });
     this.appendNonSystem(component);
-    return component;
   }
 
   dropPendingUser(runId: string): void {
@@ -548,12 +546,11 @@ export class ChatLog extends Container {
         this.removeChild(this.btwMessage);
         this.appendNonSystem(this.btwMessage);
       }
-      return this.btwMessage;
+      return;
     }
     const component = new BtwInlineMessage(params);
     this.btwMessage = component;
     this.appendNonSystem(component);
-    return component;
   }
 
   dismissBtw() {
