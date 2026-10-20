@@ -49,11 +49,7 @@ import {
   resolveGatewayToolOperatorSelection,
   wrapGatewayPersonalToolExecution,
 } from "./gateway-caller-context.js";
-import {
-  callAgentToolGatewayRequest,
-  hasGatewayToolRoutingContext,
-  type AgentToolGatewayRequestCaller,
-} from "./in-process-gateway.js";
+import { callAgentToolGatewayRequest, hasGatewayToolRoutingContext } from "./in-process-gateway.js";
 import {
   resolveSessionToolTargetAgentId,
   runWithScopedSessionAccess,
@@ -196,7 +192,6 @@ export function createSessionStatusTool(opts?: {
   activeModelProvider?: string;
   activeModelId?: string;
   metadataSnapshot?: PluginMetadataSnapshot;
-  callGateway?: AgentToolGatewayRequestCaller;
   /** Active live-run route, kept separate from the persisted/origin delivery route. */
   activeDeliveryContext?: DeliveryContext;
 }): AnyAgentTool {
@@ -210,8 +205,7 @@ export function createSessionStatusTool(opts?: {
     execute: wrapGatewayPersonalToolExecution(async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const operatorSelection = resolveGatewayToolOperatorSelection();
-      const gatewayCall = opts?.callGateway ?? callAgentToolGatewayRequest;
-      const gatewayScoped = opts?.callGateway !== undefined || hasGatewayToolRoutingContext();
+      const gatewayScoped = hasGatewayToolRoutingContext();
       const changesSince = readNonNegativeIntegerParam(params, "changesSince");
       const includeCapabilities = params.capabilities === true;
       const {
@@ -281,7 +275,7 @@ export function createSessionStatusTool(opts?: {
             mainSessionKey,
             visibility: sessionVisibility,
             a2aPolicy,
-            callGateway: gatewayCall,
+            callGateway: callAgentToolGatewayRequest,
           }));
         accessByTarget.set(cacheKey, access);
         if (!access.allowed) {
@@ -394,7 +388,7 @@ export function createSessionStatusTool(opts?: {
           mainKey,
           requesterInternalKey: effectiveRequesterKey,
           restrictToSpawned,
-          callGateway: gatewayCall,
+          callGateway: callAgentToolGatewayRequest,
         });
         if (resolvedSession.ok) {
           const visibleSession = await resolveVisibleSessionReference({
@@ -404,7 +398,7 @@ export function createSessionStatusTool(opts?: {
             requesterAgentId,
             restrictToSpawned: opts?.sandboxed === true,
             visibilitySessionKey: requestedKeyInput,
-            callGateway: gatewayCall,
+            callGateway: callAgentToolGatewayRequest,
           });
           if (!visibleSession.ok) {
             // The resolver's copy already names the denying policy (including the
@@ -525,7 +519,9 @@ export function createSessionStatusTool(opts?: {
         ) {
           return;
         }
-        const described = await gatewayCall<{ session: { sessionId?: string } | null }>({
+        const described = await callAgentToolGatewayRequest<{
+          session: { sessionId?: string } | null;
+        }>({
           method: "sessions.describe",
           params: { key: scopedResolved.key, agentId },
         });
@@ -557,7 +553,7 @@ export function createSessionStatusTool(opts?: {
               raw: modelRaw,
               resolved: scopedResolved,
               metadataSnapshot: opts?.metadataSnapshot,
-              gatewayCall: gatewayScoped ? gatewayCall : undefined,
+              gatewayCall: gatewayScoped ? callAgentToolGatewayRequest : undefined,
             });
             scopedResolved = patched.resolved;
             changedModel = patched.changedModel;
@@ -697,7 +693,7 @@ ${JSON.stringify(routeDetails, null, 2)}
             : undefined;
           const capabilities = includeCapabilities
             ? await resolveSessionCapabilities({
-                callGateway: gatewayCall,
+                callGateway: callAgentToolGatewayRequest,
                 agentId,
                 // The Gateway inventory resolves canonical keys, not legacy bare main aliases.
                 sessionKey: normalizeVisibilityTargetSessionKey(scopedResolved.key, agentId),
