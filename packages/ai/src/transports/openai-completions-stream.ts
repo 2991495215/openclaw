@@ -134,7 +134,8 @@ export async function processCompletionsStream(
   const encryptedReasoning = createOpenAIEncryptedToolCallReasoningTracker();
   // Preview schedules are per active tool call; WeakMap keys die with the block.
   const toolArgumentPreviewSchedules = new WeakMap<ToolCallBlock, ToolArgumentPreviewSchedule>();
-  const provisionalCommentaryTags = directMode ? options.provisionalCommentaryTags : new Map();
+  const provisionalCommentaryTags =
+    directMode && options.provisionalCommentaryTags ? options.provisionalCommentaryTags : new Map();
   const blockIndices = new WeakMap<TextBlock | ThinkingBlock | ToolCallBlock, number>();
   let explicitVisibleTextBlocks: Set<TextBlock> | undefined;
   const normalizeToolCallDeltas = createOpenAICompletionsToolCallDeltaNormalizer();

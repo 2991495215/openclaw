@@ -305,7 +305,9 @@ describe("noteMemorySearchHealth", () => {
           checkId: "core/doctor/memory-search",
           severity: "warning",
           path,
-          fixHint: expect.stringContaining("Verify:"),
+          fixHint: expect.stringContaining(
+            provider === "openai" ? "Then rerun: openclaw doctor" : "Verify:",
+          ),
         }),
       ]);
       expect(note).not.toHaveBeenCalled();

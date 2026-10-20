@@ -26,6 +26,23 @@ function buildParams(commandBody: string) {
   return buildCommandTestParams(commandBody, cfg, undefined, { workspaceDir: "/tmp/workspace" });
 }
 
+function activeParams(commandBody?: string): ReturnType<typeof buildParams> {
+  return {
+    ...buildParams(commandBody ?? "/btw what changed?"),
+    agentDir: "/tmp/agent",
+    sessionEntry: { sessionId: "session-1", updatedAt: Date.now() },
+  };
+}
+
+const run = (params: ReturnType<typeof buildParams>) => handleBtwCommand(params, true);
+const runnerArgs = () => mockFirstObjectArg(runBtwSideQuestionMock);
+function expectReply(result: Awaited<ReturnType<typeof run>>, text: string, question?: string) {
+  expect(result).toEqual({
+    shouldContinue: false,
+    reply: { text, ...(question ? { btw: { question } } : {}) },
+  });
+}
+
 describe("handleBtwCommand", () => {
   const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
