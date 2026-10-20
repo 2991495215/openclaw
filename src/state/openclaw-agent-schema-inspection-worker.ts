@@ -126,6 +126,7 @@ const inspectionResponse = z.discriminatedUnion("ok", [
         version: z.number().int().safe(),
         integrityGateOutcome: z.enum(["cached", "healthy"]).optional(),
         preparationPending: z.literal(true).optional(),
+        emptyStore: z.boolean().optional(),
         writerAppVersion: z.string().optional(),
         reason: z.string().optional(),
         failure: agentSchemaInspectionErrorSchema.optional(),
