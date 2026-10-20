@@ -14,7 +14,6 @@ vi.mock("../plugins/public-surface-loader.js", () => publicSurfaceLoaderMocks);
 // tests independent of the host plugin metadata graph.
 vi.mock("../plugins/plugin-metadata-snapshot.runtime.js", () => ({
   getCurrentPluginMetadataSnapshotRuntime: () => undefined,
-  resolvePluginMetadataSnapshotRuntime: () => undefined,
 }));
 
 import {

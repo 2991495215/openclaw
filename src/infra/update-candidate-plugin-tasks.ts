@@ -11,14 +11,14 @@ export async function runUpdateCandidatePluginTasks<T>(
   return result.results;
 }
 
-export async function createUpdateCandidatePluginPool<Input, Output>(workers?: number) {
+export async function createUpdateCandidatePluginPool<Input, Output>() {
   const [{ WorkerTaskPool }, { resolveRuntimeProcessEntrypointUrl }] = await Promise.all([
     import("./worker-task-pool.js"),
     import("./runtime-process-url.js"),
   ]);
   return new WorkerTaskPool<Input, Output>({
     workerUrl: resolveRuntimeProcessEntrypointUrl("updateCandidateState"),
-    ...(workers === undefined ? { workerClass: "compute" as const } : { maxWorkers: workers }),
+    workerClass: "compute",
     maxPendingTasks: 4,
     restartOnError: false,
   });

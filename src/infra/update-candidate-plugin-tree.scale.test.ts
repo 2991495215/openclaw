@@ -50,7 +50,6 @@ it.each(["copy", "retain"] as const)(
     });
     expect(plan.copies).toHaveLength(33);
     expect(new Set(plan.copies.map(([owner]) => owner))).toEqual(new Set([...owners, discovered]));
-    expect(plan.edges).toHaveLength(32 * 33);
     if (mode === "copy") {
       await copyUpdateCandidatePluginTrees(plan, { targetStateDir, candidateRoot });
     } else {

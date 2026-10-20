@@ -8,10 +8,8 @@ import type { PluginManifestRecord } from "./manifest-registry.js";
 // Snapshot reads go through the registration-slot bridge so this module stays
 // off the control-plane/kysely graph; doctor closures cold-load it via
 // parseModelRef consumers.
-import {
-  getCurrentPluginMetadataSnapshotRuntime,
-  resolvePluginMetadataSnapshotRuntime,
-} from "./plugin-metadata-snapshot.runtime.js";
+import { resolvePluginMetadataSnapshotRuntime } from "./plugin-metadata-snapshot-required.js";
+import { getCurrentPluginMetadataSnapshotRuntime } from "./plugin-metadata-snapshot.runtime.js";
 import type { PluginMetadataSnapshot } from "./plugin-metadata-snapshot.types.js";
 import { getActivePluginRegistryWorkspaceDirFromStateCore } from "./runtime-workspace-state.js";
 
@@ -59,5 +57,5 @@ export function resolveManifestModelIdNormalizationPolicies(
     workspaceDir,
     allowWorkspaceScopedCurrent: true,
   });
-  return snapshot ? snapshot.owners.modelIdNormalizationPolicies : new Map();
+  return snapshot.owners.modelIdNormalizationPolicies;
 }

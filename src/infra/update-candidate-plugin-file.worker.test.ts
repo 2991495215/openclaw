@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readDirectoryIdentity } from "@openclaw/fs-safe/advanced";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { resolveRuntimeProcessEntrypointUrl } from "./runtime-process-url.js";
@@ -9,25 +9,13 @@ import type {
   UpdateCandidatePluginFileReply,
   UpdateCandidatePluginFileRequest,
 } from "./update-candidate-plugin-file.js";
-import type {
-  UpdateCandidatePluginHashReply,
-  UpdateCandidatePluginHashRequest,
-} from "./update-candidate-plugin-hash.js";
 import {
   copyUpdateCandidatePluginTrees,
   prepareUpdateCandidatePluginTrees,
 } from "./update-candidate-plugin-tree.js";
 import { WorkerTaskPool } from "./worker-task-pool.js";
 
-vi.mock("node:os", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:os")>()),
-  availableParallelism: () => 8,
-}));
-
 const directories = useAutoCleanupTempDirTracker(afterEach);
-beforeEach(() => {
-  vi.spyOn(process, "availableMemory").mockReturnValue(4 * 1024 ** 3);
-});
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -89,12 +77,7 @@ it.each(["auto", "off"] as const)(
     vi.stubEnv("FS_SAFE_NATIVE_MODE", nativeMode);
     const dispatch = vi.spyOn(WorkerTaskPool.prototype, "run");
     const f = await fixture(1032);
-    if (process.versions.bun && process.platform === "linux") {
-      expect(dispatch).not.toHaveBeenCalled();
-    } else {
-      expect(dispatch).toHaveBeenCalledTimes(9);
-      expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "snapshot-hash" }), {});
-    }
+    expect(dispatch).not.toHaveBeenCalled();
     await copyUpdateCandidatePluginTrees(f.plan, {
       targetStateDir: f.privateRoot,
       candidateRoot: f.candidateRoot,
@@ -121,7 +104,7 @@ it.each(["auto", "off"] as const)(
   },
 );
 
-it.each(["root", "ancestor", "destination", "source"] as const)(
+it.each(["root", "ancestor", "destination"] as const)(
   "refuses a changed %s across the copy worker boundary",
   async (replacement) => {
     const f = await fixture();
@@ -134,9 +117,6 @@ it.each(["root", "ancestor", "destination", "source"] as const)(
       await fs.symlink(retired, f.owner, "junction");
     } else if (replacement === "destination") {
       await fs.writeFile(f.request.destination, "existing private bytes");
-    } else {
-      await fs.chmod(f.request.entry.path, 0o600);
-      await fs.writeFile(f.request.entry.path, "altered payload!");
     }
     await withWorker(async (worker) => {
       const reply = await worker.run(f.request, {});
@@ -144,50 +124,11 @@ it.each(["root", "ancestor", "destination", "source"] as const)(
       expect(await fs.readdir(f.destination)).toEqual(
         replacement === "destination" ? ["0.txt"] : [],
       );
-      if (replacement === "source") {
-        expect(reply).toMatchObject({
-          error: { message: expect.stringContaining("changed after snapshot inventory") },
-        });
-      } else {
-        expect(await fs.readFile(f.request.entry.path, "utf8")).toBe("plugin payload 0");
-      }
+      expect(await fs.readFile(f.request.entry.path, "utf8")).toBe("plugin payload 0");
       if (replacement === "destination") {
         expect(reply).toMatchObject({ code: "already-exists" });
         expect(await fs.readFile(f.request.destination, "utf8")).toBe("existing private bytes");
       }
     });
-  },
-);
-
-it.each(["file", "parent"] as const)(
-  "rejects a replaced source %s through the actual hash worker",
-  async (replacement) => {
-    const f = await fixture();
-    const entry = f.request.entry;
-    const request: UpdateCandidatePluginHashRequest = {
-      type: "snapshot-hash",
-      filePath: entry.path,
-      expected: await fs.lstat(entry.path, { bigint: true }),
-    };
-    await withWorker<UpdateCandidatePluginHashRequest, UpdateCandidatePluginHashReply>(
-      async (worker) => {
-        expect(await worker.run(request, {})).toEqual({ type: "hashed", sha256: entry.sha256 });
-        const original = await fs.readFile(entry.path);
-        await fs.rename(
-          replacement === "file" ? entry.path : f.source,
-          path.join(f.base, "retired"),
-        );
-        if (replacement === "parent") {
-          await fs.mkdir(f.source);
-        }
-        await fs.writeFile(entry.path, original, { mode: entry.mode });
-        const reply = await worker.run(request, {});
-        expect(reply).toMatchObject({
-          type: "failed",
-          error: { message: expect.stringContaining("File changed while hashing snapshot") },
-        });
-        expect(await fs.readdir(f.destination)).toEqual([]);
-      },
-    );
   },
 );

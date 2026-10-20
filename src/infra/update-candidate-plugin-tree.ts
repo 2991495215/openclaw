@@ -11,10 +11,6 @@ import { isPackageUpdateRecoveryArtifactName } from "./package-update-backup-pat
 import { hasNodeErrorCode, isPathInside, isPathStrictlyInside } from "./path-guards.js";
 import type { UpdateCandidatePluginCodeLink } from "./update-candidate-plugin-code-links.js";
 import { copyUpdateCandidatePluginFiles } from "./update-candidate-plugin-file.js";
-import {
-  withUpdateCandidatePluginFileHashing,
-  type UpdateCandidatePluginFileHasher,
-} from "./update-candidate-plugin-hash.js";
 import { runUpdateCandidatePluginTasks } from "./update-candidate-plugin-tasks.js";
 import {
   ignoreUnresolvedPluginLink,
@@ -83,7 +79,7 @@ async function dependencyOwner(
   }
 }
 
-export function assertUpdateCandidatePluginCopySource(source: string, privateRoot: string): void {
+function assertUpdateCandidatePluginCopySource(source: string, privateRoot: string): void {
   if (isPathInside(source, privateRoot) || isPathInside(privateRoot, source)) {
     throw new Error("Plugin copy source overlaps update state");
   }
@@ -99,17 +95,7 @@ export async function prepareUpdateCandidatePluginTrees(params: {
   retainedHostRoot?: string;
   /** Installed runtime lookups stop at the package manager's owning project. */
   retainedDependencyRoot?: string;
-  onProgress?: () => void | Promise<void>;
 }): Promise<UpdateCandidatePluginTreePlan> {
-  return await withUpdateCandidatePluginFileHashing((hashFile) =>
-    prepareUpdateCandidatePluginTreesWithHashing(params, hashFile),
-  );
-}
-
-async function prepareUpdateCandidatePluginTreesWithHashing(
-  params: Parameters<typeof prepareUpdateCandidatePluginTrees>[0],
-  hashFile: UpdateCandidatePluginFileHasher,
-): Promise<UpdateCandidatePluginTreePlan> {
   const roots = new Map(params.roots);
   const privateRoot = resolvePathViaExistingAncestorSync(path.resolve(params.targetStateDir));
   const candidateRoot = resolvePathViaExistingAncestorSync(path.resolve(params.candidateRoot));
@@ -180,23 +166,12 @@ async function prepareUpdateCandidatePluginTreesWithHashing(
       path: file,
       size: Number(stat.size),
       mode: Number(stat.mode & 0o7777n),
-      dev: stat.dev.toString(),
-      ino: stat.ino.toString(),
     };
     let entry: UpdateCandidatePluginEntry;
     if (stat.isDirectory()) {
       entry = { ...common, kind: "directory" };
     } else if (stat.isFile()) {
-      entry = {
-        ...common,
-        kind: "file",
-        birthtimeNs: stat.birthtimeNs.toString(),
-        mtimeNs: stat.mtimeNs.toString(),
-        ctimeNs: stat.ctimeNs.toString(),
-        uid: stat.uid.toString(),
-        gid: stat.gid.toString(),
-        sha256: await hashFile(file, stat),
-      };
+      entry = { ...common, kind: "file" };
     } else if (stat.isSymbolicLink()) {
       const target =
         process.platform === "win32"
@@ -211,15 +186,6 @@ async function prepareUpdateCandidatePluginTreesWithHashing(
     } else {
       throw new Error(`Unsupported plugin snapshot entry: ${file}`);
     }
-    return entry;
-  }
-  async function recordEntry(entry: UpdateCandidatePluginEntry): Promise<void> {
-    footprints.set(entry.path, entry);
-    await params.onProgress?.();
-  }
-  async function measureEntry(file: string): Promise<UpdateCandidatePluginEntry> {
-    const entry = await readEntry(file);
-    await recordEntry(entry);
     return entry;
   }
   async function discoverHoistedDependencies(directory: string): Promise<void> {
@@ -298,7 +264,8 @@ async function prepareUpdateCandidatePluginTreesWithHashing(
       return;
     }
     scanned.add(directory);
-    const rootEntry = await measureEntry(directory);
+    const rootEntry = await readEntry(directory);
+    footprints.set(directory, rootEntry);
     if (rootEntry.kind === "symlink") {
       const target = path.resolve(path.dirname(directory), rootEntry.link);
       const real = await fs.realpath(directory);
@@ -390,7 +357,7 @@ async function prepareUpdateCandidatePluginTreesWithHashing(
         }
       } else {
         const leaf = observations.get(file)!;
-        await recordEntry(leaf.measured);
+        footprints.set(file, leaf.measured);
         if (leaf.edge) {
           edges.set(file, leaf.edge);
         }
@@ -611,8 +578,6 @@ async function prepareUpdateCandidatePluginTreesWithHashing(
     hostLinks: [...hostLinks],
     relocations,
     aliases,
-    moduleBindings: [...moduleAliases],
-    edges: [...edges].map(([source, edge]) => ({ source, target: edge.target, real: edge.real })),
   };
 }
 
@@ -627,7 +592,6 @@ export async function copyUpdateCandidatePluginTrees(
 ): Promise<void> {
   const targets = resolveUpdateCandidatePluginTreeTargets(plan, params);
   const { privateRoot, candidateRoot, copies, hostLinks, relocations, destinationFor } = targets;
-  await targets.assertBindings();
   await fs.mkdir(privateRoot, { recursive: true, mode: 0o700 });
   const rootIdentity = await readDirectoryIdentity(privateRoot);
   const destinationRoot = await openRoot(privateRoot);
