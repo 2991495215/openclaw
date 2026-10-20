@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as terminalNotes from "../../packages/terminal-core/src/note.js";
 import { readWorkspaceStateSnapshot } from "../agents/workspace-state-store.js";
 import { writeOpenClawConfig } from "../config/test-helpers.js";
 import { runDoctorHealthFlow } from "../flows/doctor-health.js";
@@ -366,6 +367,7 @@ describe("container image replacement Doctor repair and startup readiness", () =
 
   it("refuses startup and Doctor repair when a core agent schema has conflicting markers", async () => {
     await withContainerState(async (stateDir) => {
+      const notes = vi.spyOn(terminalNotes, "note");
       const databasePath = seedSchema19Agent(stateDir, true);
       const original = fs.readFileSync(databasePath);
       await withAgentDatabaseStartupAdmission(async () => {
@@ -380,7 +382,7 @@ describe("container image replacement Doctor repair and startup readiness", () =
           expect.objectContaining({
             check: "media-persistence",
             code: "step-refused",
-            message: expect.stringContaining("metadata schema version 18 does not match 19"),
+            message: "Skipped agent database migration for [redacted-path]",
           }),
           expect.objectContaining({
             check: "transcript-directives",
@@ -388,6 +390,10 @@ describe("container image replacement Doctor repair and startup readiness", () =
           }),
         ]),
       });
+      expect(notes).toHaveBeenCalledWith(
+        expect.stringContaining(`${databasePath} metadata schema version 18 does not match 19`),
+        "Doctor warnings",
+      );
       expect(fs.readFileSync(databasePath)).toEqual(original);
       await withAgentDatabaseStartupAdmission(async () => {
         await expect(runStartupConfigPreflight({ gateway: true })).rejects.toMatchObject({

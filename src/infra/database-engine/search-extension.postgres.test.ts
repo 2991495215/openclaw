@@ -12,6 +12,7 @@ import { admitStoreSearch } from "./adapters.js";
 import { withEngineStoreAdmission } from "./admission-scope.js";
 import type { SearchSchema, StoreSchema } from "./contract.js";
 import { openEngineStore, readEngineAnchor } from "./open.js";
+import { getPostgresPhysicalFacts } from "./physical-facts.js";
 
 const configured = getEnvironmentData("openclaw.test.workboard.connection");
 const connection = typeof configured === "string" ? configured : undefined;
@@ -101,7 +102,7 @@ describe.skipIf(!connection)("PostgreSQL search extension admission", () => {
   afterAll(() => {
     withEngineStoreAdmission(() => {
       try {
-        db?.exec(`DROP SCHEMA "${db.schema}" CASCADE`);
+        db?.exec(`DROP SCHEMA "${getPostgresPhysicalFacts(db)!.namespace}" CASCADE`);
       } finally {
         connections.forEach((opened) => opened.close());
         anchor?.close();
@@ -286,14 +287,14 @@ describe.skipIf(!connection)("PostgreSQL search extension admission", () => {
           .prepare(
             "SELECT 1 AS present FROM information_schema.columns WHERE table_schema = ? AND table_name = 'broken' AND column_name = 'openclaw_search'",
           )
-          .get(db.schema),
+          .get(getPostgresPhysicalFacts(db)!.namespace),
       ).toBeUndefined();
       expect(
         db
           .prepare(
             "SELECT 1 AS present FROM pg_indexes WHERE schemaname = ? AND indexname = 'broken_search_gin'",
           )
-          .get(db.schema),
+          .get(getPostgresPhysicalFacts(db)!.namespace),
       ).toBeUndefined();
       expect(
         db
@@ -344,7 +345,7 @@ describe.skipIf(!connection)("PostgreSQL search extension admission", () => {
           .prepare(
             "SELECT 1 AS present FROM information_schema.columns WHERE table_schema = ? AND table_name = 'nested' AND column_name = 'openclaw_search'",
           )
-          .get(db.schema),
+          .get(getPostgresPhysicalFacts(db)!.namespace),
       ).toBeUndefined();
       expect(
         db

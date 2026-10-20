@@ -326,7 +326,7 @@ export function registerExecutionPhaseReceiptTests(inputs: FixtureInputs) {
         } else {
           expect(result?.failure?.cause).toMatchObject({
             name: "UpdateRecoveryRequiredError",
-            record: { runId: fixture.run.runId },
+            message: `Update ${fixture.run.runId} has unfinished recovery; reconcile it before starting another update.`,
           });
         }
       }),

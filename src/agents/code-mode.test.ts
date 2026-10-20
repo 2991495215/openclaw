@@ -382,7 +382,6 @@ it("records Code Mode skills.read of a workshop skill as run usage and skill.use
         name: "learned",
         source: "workspace",
         activation: "read",
-        skillFile: "/skills/learned/SKILL.md",
       },
     ]);
     await vi.waitFor(() => expect(used).toHaveLength(1));
