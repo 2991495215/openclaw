@@ -25,7 +25,6 @@ import type {
   ReplyBackendQueueMessageOptions,
   ReplyMessageInjectionOutcome,
 } from "./session-controller.contracts.js";
-import type { readReplyOperationReplyAccounting } from "./session-controller.reply-accounting.js";
 
 export function resolveReplyBackendQueueMessageMismatch(
   backend: Pick<
@@ -38,10 +37,7 @@ export function resolveReplyBackendQueueMessageMismatch(
     | "runId"
   >,
   options?: ReplyBackendQueueMessageOptions,
-  authority?: {
-    toolAuthorityFingerprint?: string;
-    replyCompletionOwner?: ReturnType<typeof readReplyOperationReplyAccounting>;
-  },
+  authority?: { toolAuthorityFingerprint?: string },
 ): ReplyBackendQueueMessageMismatch | undefined {
   if (options?.isInboundUserMessage === true) {
     const runContext = backend.runId ? getAgentRunContext(backend.runId) : undefined;
@@ -60,14 +56,7 @@ export function resolveReplyBackendQueueMessageMismatch(
   }
   if (
     options?.terminalReplyExpectation !== undefined &&
-    options.terminalReplyExpectation !== (backend.terminalReplyExpectation ?? "required") &&
-    // The bound core terminal owner can retain a stronger human answer obligation.
-    // Raw/sessionless sinks keep their released exact-expectation contract.
-    !(
-      options.isInboundUserMessage === true &&
-      options.terminalReplyExpectation !== "optional" &&
-      authority?.replyCompletionOwner?.hasHostTerminalOwner
-    )
+    options.terminalReplyExpectation !== (backend.terminalReplyExpectation ?? "required")
   ) {
     return "reply_expectation_mismatch";
   }

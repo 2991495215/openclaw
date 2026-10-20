@@ -580,9 +580,7 @@ function prepareStream(
     supportsTranscriptCommitWait: true,
     supportsQueueMessageImages: true,
     sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
-    get terminalReplyExpectation() {
-      return resolveReplyExpectation(attempt);
-    },
+    terminalReplyExpectation: resolveReplyExpectation(attempt),
     taskSuggestionDeliveryMode: attempt.taskSuggestionDeliveryMode,
     recoverStalledModelCall: recoverStalledModelCall
       ? () => {

@@ -814,7 +814,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/tools/scoped-session-access.test.ts",
   "src/agents/tools/sessions-send-tool.queue-authority.test.ts",
   "src/agents/tools/sessions-send-policy.test.ts",
-  "src/agents/tools/agent-step.retained-peer.test.ts",
   "src/agents/sessions/agent-session-code-mode-source.test.ts",
   "src/agents/sessions/agent-session-compaction.admission.test.ts",
   "src/agents/sessions/agent-session-compaction.degraded-reload.test.ts",

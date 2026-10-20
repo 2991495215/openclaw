@@ -99,10 +99,7 @@ export async function handleAgentExecutionError(params: {
     takePendingLifecycleTerminal().emit("error", err);
     turn.replyOperation?.fail("run_failed", err);
     await params.modelPatch.fail(err);
-    const replyExpectation = resolveReplyExpectation({
-      ...turn.followupRun.run,
-      replyOperation: turn.replyOperation,
-    });
+    const replyExpectation = resolveReplyExpectation(turn.followupRun.run);
     payload.text = resolveAgentRunFailureText({
       text: payload.text,
       replyExpectation,
@@ -167,7 +164,7 @@ export async function handleAgentExecutionError(params: {
       )
     ) {
       runState.replyCompletion = resolveReplyCompletion(
-        resolveReplyExpectation({ ...turn.followupRun.run, replyOperation: turn.replyOperation }),
+        resolveReplyExpectation(turn.followupRun.run),
         "pending",
       );
       takePendingLifecycleTerminal().emit("end", undefined, {

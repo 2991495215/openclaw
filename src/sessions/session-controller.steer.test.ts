@@ -202,6 +202,51 @@ function revocableAuthority(message: string) {
 }
 
 describe("submitSessionControllerSteer", () => {
+  it.each(["required", "optional"] as const)(
+    "preserves human input custody with a %s reply owner",
+    async (terminalReplyExpectation) => {
+      const { operation, input } = startTurn();
+      const received: string[] = [];
+      const fingerprint = "human-reply-contract-tools";
+      operation.attachBackend({
+        ...makeBackend("human-reply-contract-run", {
+          queueMessage: async (text, options) => {
+            received.push(text);
+            options?.onQueueAccepted?.(true);
+          },
+        }),
+        toolAuthorityFingerprint: fingerprint,
+        terminalReplyExpectation,
+      });
+      const result = await steer(
+        input,
+        {
+          isInboundUserMessage: true,
+          terminalReplyExpectation: "required",
+          toolAuthorityFingerprint: fingerprint,
+        },
+        undefined,
+        "Answer this human correction",
+      );
+
+      if (terminalReplyExpectation === "required") {
+        expect(result).toMatchObject({
+          status: "accepted",
+          targetRunId: "human-reply-contract-run",
+        });
+        await input.settlement.promise;
+        expect(input.phase).toBe("consumed");
+        expect(received).toEqual(["Answer this human correction"]);
+        expectNoInput(input);
+      } else {
+        expect(result).toMatchObject({ status: "rejected", reason: "reply_expectation_mismatch" });
+        expect(received).toEqual([]);
+        expectQueued(input);
+      }
+      expect(operation.result).toBeNull();
+    },
+  );
+
   it("preserves the published backend transcript-wait contract without a native capability observation", async () => {
     const received: unknown[] = [];
     const operation: NonNullable<AgentHarnessAttemptParams["replyOperation"]> =

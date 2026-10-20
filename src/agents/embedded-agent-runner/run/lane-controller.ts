@@ -26,7 +26,6 @@ import type {
   CommandQueueTaskDeadline,
 } from "../../../process/command-queue.types.js";
 import { withSessionTurn } from "../../../sessions/session-controller.admission.js";
-import { readReplyOperationReplyAccounting } from "../../../sessions/session-controller.reply-accounting.js";
 import {
   assertSessionControllerOperation,
   markReplyOperationExecutionStarted,
@@ -670,8 +669,6 @@ export function createEmbeddedRunLaneController<TParams extends LaneParams>(opti
           abortSignal,
         },
         async (operation, turnSignal) => {
-          // This core run owner, including bundled harnesses, settles terminal reply accounting.
-          readReplyOperationReplyAccounting(operation)?.bindHostTerminalOwner();
           options.setParams({
             ...options.getParams(),
             replyOperation: operation,

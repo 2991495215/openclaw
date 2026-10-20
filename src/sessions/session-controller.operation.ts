@@ -46,10 +46,6 @@ import {
 } from "./session-controller.operation-admission.js";
 import { createReplyOperationRecovery } from "./session-controller.operation-recovery.js";
 import {
-  bindReplyOperationReplyAccounting,
-  createReplyOperationReplyAccounting,
-} from "./session-controller.reply-accounting.js";
-import {
   clearReplyRunState,
   evictReplyOperationByOperation,
   getAttachedBackend,
@@ -90,9 +86,9 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
   let staleExpiryReason: replyRunSettle.ReplyOperationStaleReason | undefined;
   let terminalRecovery = false;
   let acceptedSteeredInboundAudio = false;
+  let sourceReplyDelivered = false;
   // A recorded yield ends the turn's work before settlement records it as the result.
   const ended = () => state.result !== null || state.phase === "yielded";
-  const replyAccounting = createReplyOperationReplyAccounting(ended);
   const settledResult = (): ReplyOperationResult =>
     state.phase === "yielded" ? { kind: "yielded" } : { kind: "completed" };
   const toolAuthority = createReplyOperationToolAuthority({
@@ -386,7 +382,7 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
       return acceptedSteeredInboundAudio;
     },
     get sourceReplyDelivered() {
-      return replyAccounting.sourceReplyDelivered;
+      return sourceReplyDelivered;
     },
     get toolAuthorityFingerprint() {
       return toolAuthority.toolAuthorityFingerprint;
@@ -471,9 +467,11 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
     },
     markSteeredInputAccepted({ inboundAudio }) {
       acceptedSteeredInboundAudio ||= inboundAudio;
-      replyAccounting.resetSourceReplyDelivery();
+      sourceReplyDelivered = false;
     },
-    markSourceReplyDelivered: replyAccounting.markSourceReplyDelivered,
+    markSourceReplyDelivered() {
+      sourceReplyDelivered = true;
+    },
     bindToolAuthoritySnapshot: toolAuthority.bindToolAuthoritySnapshot,
     bindToolAuthoritySnapshotAsync: toolAuthority.bindToolAuthoritySnapshotAsync,
     projectToolAuthorityFingerprint: toolAuthority.projectToolAuthorityFingerprint,
@@ -701,7 +699,6 @@ export function createReplyOperation(params: CreateReplyOperationParams): ReplyO
     }
   });
 
-  bindReplyOperationReplyAccounting(operation, replyAccounting);
   backendReadyByOperation.set(operation, backendReady.promise);
   installReplyOperationAdmission(operation, admitted, params.mailboxClaim);
   installed = true;

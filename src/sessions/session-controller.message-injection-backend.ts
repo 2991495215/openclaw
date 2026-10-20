@@ -6,17 +6,18 @@ import {
 } from "../agents/harness/tool-authority-preparation.js";
 import { createMessageInjectionAuthority } from "../auto-reply/reply/message-injection-authority.js";
 import { hasPromptImageInput } from "../media/prompt-image-input.js";
-import type {
-  ReplyBackendHandle,
-  ReplyBackendMessageInjection,
-  ReplyBackendQueueMessageOptions,
-  ReplyMessageInjectionOptions,
-  ReplyMessageInjectionResolution,
-  ReplyTurnParticipants,
-  ReplyToolAuthorityPreparation,
+import {
+  replyMessageInjectionTargetOwner,
+  type ReplyMessageInjectionTarget,
+  type ReplyBackendHandle,
+  type ReplyBackendMessageInjection,
+  type ReplyBackendQueueMessageOptions,
+  type ReplyMessageInjectionOptions,
+  type ReplyMessageInjectionResolution,
+  type ReplyTurnParticipants,
+  type ReplyToolAuthorityPreparation,
 } from "./session-controller.contracts.js";
 import { resolveReplyBackendQueueMessageMismatch } from "./session-controller.message-injection-failure.js";
-import type { readReplyOperationReplyAccounting } from "./session-controller.reply-accounting.js";
 
 function resolveReplyBackendMessageInjection(
   backend: ReplyBackendHandle,
@@ -78,7 +79,6 @@ export function resolveReplyBackendMessageInjectionRejection(params: {
   backend: ReplyBackendHandle | undefined;
   canInject: () => boolean;
   toolAuthorityFingerprint?: string;
-  replyCompletionOwner?: ReturnType<typeof readReplyOperationReplyAccounting>;
   options?: ReplyBackendQueueMessageOptions;
   personalToolParticipant?: ReplyMessageInjectionOptions["personalToolParticipant"];
   personalToolParticipants?: ReplyTurnParticipants;
@@ -186,17 +186,55 @@ export function resolveReplyBackendMessageInjectionRejection(params: {
         backend,
         injection,
         prepareQueueMessage: injection.prepareQueueMessage,
-        recordAcceptedHumanReply:
-          params.options?.isInboundUserMessage === true &&
-          params.options.terminalReplyExpectation !== "optional" &&
-          params.replyCompletionOwner?.hasHostTerminalOwner
-            ? () =>
-                params.replyCompletionOwner!.recordAcceptedHumanReply(
-                  backend.terminalReplyExpectation === "result-required" ||
-                    params.options?.terminalReplyExpectation === "result-required"
-                    ? "result-required"
-                    : "required",
-                )
-            : undefined,
       };
+}
+
+/** Advisory only; injection still prepares and checks the captured owner at its effect. */
+export function canInjectReplyMessageTarget(
+  target: ReplyMessageInjectionTarget,
+  options?: ReplyMessageInjectionOptions,
+): boolean {
+  try {
+    if (options?.canAdmit?.() === false) {
+      return false;
+    }
+    const owner = target[replyMessageInjectionTargetOwner];
+    const {
+      toolAuthorityOverlay,
+      requesterToolAuthority,
+      toolAuthorityPreparation,
+      personalToolParticipant,
+      assertCurrent,
+      allowPendingUserInputAnswer,
+      inboundAudio,
+      canAdmit: _canAdmit,
+      allowCollaborativeSteering: _allowCollaborativeSteering,
+      ...backendOptions
+    } = options ?? {};
+    toolAuthorityPreparation?.compatAssertCurrent();
+    assertCurrent?.();
+    return (
+      "injection" in
+      owner.resolve({
+        options: {
+          ...backendOptions,
+          ...(requesterToolAuthority || toolAuthorityOverlay
+            ? {
+                toolAuthorityFingerprint: requesterToolAuthority
+                  ? owner.projectRequesterToolAuthorityFingerprint(requesterToolAuthority)
+                  : toolAuthorityOverlay &&
+                    owner.projectToolAuthorityFingerprint(toolAuthorityOverlay),
+              }
+            : {}),
+        },
+        requesterToolAuthority,
+        personalToolParticipant: toolAuthorityOverlay ?? personalToolParticipant,
+        inboundAudio,
+        allowPendingUserInputAnswer,
+        assertCurrent,
+      })
+    );
+  } catch {
+    return false;
+  }
 }

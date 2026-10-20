@@ -24,7 +24,6 @@ import {
   onGatewayDeviceSourceRevoked,
   readGatewayDeviceSourceAuthority,
   readGatewayDeviceSourceIdentity,
-  readGatewayDeviceReconnectSourceIdentity,
   retainGatewayDeviceRevocation,
 } from "./device-revocation.js";
 import {
@@ -58,11 +57,7 @@ type OperatorSource = {
 };
 
 // Comparison records live only while captured work retains their original authority.
-type OperatorSourceBucket = {
-  owner: object;
-  entries: Set<OperatorSource>;
-};
-const operatorSources = new WeakMap<object, OperatorSourceBucket>();
+const operatorSources = new WeakMap<GatewayClient, Set<OperatorSource>>();
 const continuationAuthorities = resolveGlobalSingleton(
   Symbol.for("openclaw.gatewayOperatorContinuationAuthorities"),
   () => new WeakMap<AdmittedRunOperatorAuthority, AdmittedRunOperatorAuthority>(),
@@ -76,11 +71,11 @@ export function bindGatewayOperatorContinuationAuthority(
   continuationAuthorities.set(work, source);
 }
 
-function getOperatorSources(owner: object): OperatorSourceBucket {
-  let sources = operatorSources.get(owner);
+function getOperatorSources(client: GatewayClient): Set<OperatorSource> {
+  let sources = operatorSources.get(client);
   if (!sources) {
-    sources = { owner, entries: new Set() };
-    operatorSources.set(owner, sources);
+    sources = new Set();
+    operatorSources.set(client, sources);
   }
   return sources;
 }
@@ -97,12 +92,8 @@ function retainOperatorSource(
   client: GatewayClient,
   owners: OperatorSource["owners"],
   membership: string | undefined,
-  callerGuard: (() => boolean) | undefined,
 ) {
-  const clientSources = getOperatorSources(client);
-  const deviceSource = readGatewayDeviceReconnectSourceIdentity(callerGuard, clientSources.owner);
-  // A reconnect joins comparison records, never either request's live authority.
-  const sources = deviceSource ? getOperatorSources(deviceSource).entries : clientSources.entries;
+  const sources = getOperatorSources(client);
   let source =
     membership === undefined
       ? undefined
@@ -544,7 +535,6 @@ export async function captureGatewayOperatorRunAuthority(input: {
       client,
       sourceOwners,
       readOperatorModelPolicyMembership(modelPolicy.original),
-      params.hasCurrentClientAuthority,
     );
     releaseSource = source.release;
     const grant =

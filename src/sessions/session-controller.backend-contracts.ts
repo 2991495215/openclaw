@@ -299,8 +299,6 @@ export type ReplyMessageInjectionResolution =
       injection: ReplyBackendMessageInjection;
       /** Internal FIFO preflight for a released synchronous sink. */
       prepareQueueMessage?: () => Promise<void>;
-      /** Record real backend acceptance on this captured operation, never a keyed successor. */
-      recordAcceptedHumanReply?: () => void;
     };
 
 export type ReplyMessageInjectionRejectionReason =

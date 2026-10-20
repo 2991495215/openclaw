@@ -6,7 +6,6 @@ import { resolveSilentReplySettings } from "../config/silent-reply.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
 import type { InputProvenance } from "../sessions/input-provenance.js";
-import { readReplyOperationReplyAccounting } from "../sessions/session-controller.reply-accounting.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,
   isInternalNonDeliveryChannel,
@@ -102,7 +101,6 @@ export function isSyntheticSourceReplyTurn(params: {
 }
 /** Resolve legacy runtime inputs once; explicit host requiredness always wins. */
 export function resolveReplyExpectation(params: {
-  replyOperation?: object;
   terminalReplyExpectation?: ReplyExpectation;
   allowEmptyAssistantReplyAsSilent?: boolean;
   trigger?: EmbeddedRunTrigger;
@@ -114,34 +112,28 @@ export function resolveReplyExpectation(params: {
   lane?: string;
   privateCompletion?: true;
 }): ReplyExpectation {
-  const commandExpectation =
-    params.terminalReplyExpectation ??
-    resolveCommandReplyExpectation({
-      cfg: params.config ?? EMPTY_REPLY_CONFIG,
-      sessionKey: params.sessionKey,
-      sessionEntry: params.sessionEntry,
-      messageChannel: params.messageChannel,
-      opts: {
-        lane: params.lane,
-        privateCompletion: params.privateCompletion,
-        inputProvenance: params.inputProvenance,
-      },
-    });
-  const expectation =
+  if (params.terminalReplyExpectation !== undefined) {
+    return params.terminalReplyExpectation;
+  }
+  const commandExpectation = resolveCommandReplyExpectation({
+    cfg: params.config ?? EMPTY_REPLY_CONFIG,
+    sessionKey: params.sessionKey,
+    sessionEntry: params.sessionEntry,
+    messageChannel: params.messageChannel,
+    opts: {
+      lane: params.lane,
+      privateCompletion: params.privateCompletion,
+      inputProvenance: params.inputProvenance,
+    },
+  });
+  return (
     commandExpectation ??
     (isSyntheticSourceReplyTurn(params) ||
     (params.allowEmptyAssistantReplyAsSilent ??
       (params.trigger !== undefined && params.trigger !== "user" && params.trigger !== "manual"))
       ? "optional"
-      : "required");
-  const accepted = readReplyOperationReplyAccounting(
-    params.replyOperation,
-  )?.acceptedHumanReplyExpectation;
-  return accepted
-    ? expectation === "result-required" || accepted === "result-required"
-      ? "result-required"
-      : "required"
-    : expectation;
+      : "required")
+  );
 }
 
 /** Background failures are recorded; only an admitted user's missing answer needs chat text. */
@@ -151,9 +143,6 @@ export function shouldDeliverMissingReplyNotice(
     currentInboundEventKind?: InboundEventKind;
   },
 ): boolean {
-  if (readReplyOperationReplyAccounting(params.replyOperation)?.acceptedHumanReplyExpectation) {
-    return true;
-  }
   return (
     resolveReplyExpectation(params) === "required" &&
     !isSyntheticSourceReplyTurn(params) &&

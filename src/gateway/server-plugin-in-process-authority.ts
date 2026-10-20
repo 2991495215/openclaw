@@ -4,7 +4,6 @@ import {
   captureGatewayToolCallerAssertion,
   getGatewayToolCallerIdentity,
   resolveGatewayToolOperatorSelection,
-  withGatewayToolCallerIdentity,
   withoutGatewayToolCallerIdentity,
 } from "../agents/tools/gateway-caller-context.js";
 import { composeSessionSourceAssertion } from "../config/sessions/session-source-authority.js";
@@ -140,21 +139,12 @@ export function runWithOperatorToolGatewayCleanupContext<T>(run: () => T): T {
 }
 
 /** Captured while live; its accepting owner, not the original invocation, releases it. */
-export function captureOperatorToolGatewayContinuationContext(
-  target?: { sessionKey: string; agentId?: string },
-  options?: { retainRequester?: true },
-) {
+export function captureOperatorToolGatewayContinuationContext(target?: {
+  sessionKey: string;
+  agentId?: string;
+}) {
   const scope = getPluginRuntimeGatewayRequestScope();
   const caller = getGatewayToolCallerIdentity();
-  const requester =
-    options?.retainRequester && caller
-      ? {
-          agentId: caller.agentId,
-          sessionKey: caller.sessionKey,
-          origin: resolveGatewayToolOperatorSelection({ requireRequesterOrigin: true })
-            .requesterOrigin,
-        }
-      : undefined;
   const resolveGatewayContext = caller?.gatewayContextResolver ?? scope?.resolveGatewayContext;
   if (!getInProcessGatewayRequestContext(resolveGatewayContext)) {
     return undefined;
@@ -230,42 +220,18 @@ export function captureOperatorToolGatewayContinuationContext(
         }
         lifetime.signal.throwIfAborted();
       };
-      const runInScope = <T>(run: () => T): T => {
-        assertCurrent();
-        return withoutGatewayToolCallerIdentity(() =>
-          runOutsideOperatorToolGatewayAuthority(() =>
-            withPluginRuntimeGatewayRequestScope(continuationScope, run),
-          ),
-        );
-      };
       return {
         assertCurrent,
         operatorAuthority: captured?.authority,
         scopes: resolved.client.connect.scopes,
         signal: lifetime.signal,
         release,
-        run: runInScope,
-        /** Re-enter only the requester selected before transfer, under this retained source. */
-        runWithRequester<T>(run: () => Promise<T>): Promise<T> {
-          return runInScope(() =>
-            requester?.origin
-              ? withGatewayToolCallerIdentity(
-                  {
-                    agentId: requester.agentId,
-                    sessionKey: requester.sessionKey,
-                    requesterOrigin: requester.origin,
-                    operatorAuthority: captured?.authority,
-                    personalToolIdentityScoped: true,
-                    personalToolSelection: Object.freeze({
-                      operatorAuthority: captured?.authority,
-                      requesterOrigin: requester.origin,
-                      assertCurrent,
-                    }),
-                    gatewayContextResolver: resolveGatewayContext,
-                  },
-                  run,
-                )
-              : run(),
+        run<T>(run: () => T): T {
+          assertCurrent();
+          return withoutGatewayToolCallerIdentity(() =>
+            runOutsideOperatorToolGatewayAuthority(() =>
+              withPluginRuntimeGatewayRequestScope(continuationScope, run),
+            ),
           );
         },
       };

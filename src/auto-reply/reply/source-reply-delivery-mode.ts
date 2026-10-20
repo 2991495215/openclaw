@@ -1,7 +1,6 @@
 import {
   isSyntheticSourceReplyTurn,
   resolveCommandReplyExpectation,
-  resolveReplyExpectation,
   type ReplyExpectation,
 } from "../../agents/reply-completion.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
@@ -9,7 +8,6 @@ import { resolveSilentReplySettings } from "../../config/silent-reply.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isProgressCardRefreshInputProvenance } from "../../sessions/input-provenance.js";
 import type { SessionSendPolicyDecision } from "../../sessions/send-policy.js";
-import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
 import { classifySilentReplyConversationType } from "../../shared/silent-reply-policy.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import { resolveCommandTurnContext } from "../command-turn-context.js";
@@ -142,40 +140,6 @@ export function resolveSourceReplyExpectation(params: {
     return "optional";
   }
   return "required";
-}
-
-/** Re-reads accepted human accounting on the held terminal owner after asynchronous work. */
-export function resolveTerminalSourceReplyExpectation(params: {
-  followupRun: FollowupRun;
-  replyOperation?: ReplyOperation;
-  sessionCtx: SourceReplyDeliveryModeContext;
-  cfg: OpenClawConfig;
-  isHeartbeat?: boolean;
-  reportedExpectation?: ReplyExpectation;
-}): ReplyExpectation {
-  const { followupRun, replyOperation, sessionCtx, cfg, isHeartbeat } = params;
-  const hostExpectation =
-    followupRun.run.terminalReplyExpectation ??
-    resolveSourceReplyExpectation({
-      ctx: {
-        ...sessionCtx,
-        InboundEventKind: followupRun.currentInboundEventKind,
-        InputProvenance: followupRun.run.inputProvenance,
-      },
-      cfg,
-      isHeartbeat,
-    });
-  // Backend accounting may strengthen an answer obligation, never waive the host's.
-  return resolveReplyExpectation({
-    ...followupRun.run,
-    replyOperation,
-    terminalReplyExpectation:
-      hostExpectation === "result-required" || params.reportedExpectation === "result-required"
-        ? "result-required"
-        : hostExpectation === "required" || params.reportedExpectation === "required"
-          ? "required"
-          : "optional",
-  });
 }
 
 export function resolveFollowupReplyExpectation(queued: FollowupRun, cfg: OpenClawConfig) {
