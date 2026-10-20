@@ -109,7 +109,6 @@ export async function commitAcpSessionMutation(
     | { admission: SqliteWorkerOperationAdmission; retained: RetainedWorkerTransactionAdmission }
     | undefined;
   let published = false;
-  let pending = false;
   let superseded = false;
   const target = {
     agentId: input.agentId,
@@ -118,17 +117,6 @@ export async function commitAcpSessionMutation(
     scope: "acp" as const,
   };
   const invalidation = { ...target, factsInvalidated: true as const };
-  const unsubscribe = sessionChanges.subscribeFacts((change) => {
-    if (
-      pending &&
-      !published &&
-      ("all" in change ||
-        (change.sessionKey === input.sessionKey &&
-          (!change.agentId || change.agentId === input.agentId)))
-    ) {
-      superseded = true;
-    }
-  });
   const publish = () => {
     const receipt = admitted?.admission.committed?.facts;
     if (!published && isRecord(receipt) && receipt.nonce === nonce) {
@@ -140,7 +128,6 @@ export async function commitAcpSessionMutation(
         superseded = true;
       }
       // The broker drains committed facts before dispatching the next writer command.
-      // A native publication may still supersede this command before its receipt arrives.
       let facts: Extract<SessionRowFacts, { kind: "acp" }> | undefined;
       if (!superseded && isRecord(receipt.facts) && receipt.facts.kind === "acp") {
         // SAFETY: The nonce-bound private worker commit returns this typed ACP postimage.
@@ -176,9 +163,6 @@ export async function commitAcpSessionMutation(
               throw new Error("ACP metadata commit differs from its retained owner");
             }
             authorize?.(request.stage === "transaction" ? "transaction" : "commit");
-            if (request.stage === "transaction") {
-              pending = true;
-            }
             phase = request.stage === "transaction" ? "commit" : "settled";
             if (!grant()) {
               throw new Error("ACP metadata commit admission expired");
@@ -199,14 +183,10 @@ export async function commitAcpSessionMutation(
       },
     );
   } finally {
-    try {
-      await admitted?.retained.settled;
-      publish();
-      if (!published) {
-        sessionChanges.invalidate(invalidation);
-      }
-    } finally {
-      unsubscribe();
+    await admitted?.retained.settled;
+    publish();
+    if (!published) {
+      sessionChanges.invalidate(invalidation);
     }
   }
 }

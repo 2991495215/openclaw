@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement } from "../../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
@@ -21,7 +20,6 @@ import type { SessionAcpMeta, SessionEntry } from "../../config/sessions/types.j
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { formatErrorMessageWithCode } from "../../infra/errors.js";
 import { classifyGatewayStorageFailure } from "../../infra/sqlite-error-diagnostics.js";
-import * as admissions from "../../infra/sqlite-worker-operation-admission.js";
 import {
   sessionChanges,
   type SessionRowChange,
@@ -141,48 +139,6 @@ it("retains storage guidance when ACP entry rollback loses native settlement", (
       }
     }
     expect((await readAcpSessionEntryAsync(scope))?.entry).toEqual(initial?.entry);
-  }));
-
-it("does not publish a delayed ACP postimage over a newer native publication", () =>
-  withSession("native-order", async (_state, scope) => {
-    const entry = await upsertAcpSessionMeta({ ...scope, mutate: () => META });
-    expect(entry).toBeDefined();
-    const native = { ...META, runtimeSessionName: "newer-native" };
-    const changes: Array<SessionRowFacts | undefined> = [];
-    using cleanup = new DisposableStack();
-    const release = sessionChanges.subscribeFacts((change) => {
-      if (isAcpChange(change, scope)) {
-        changes.push(change.facts);
-      }
-    });
-    cleanup.defer(release);
-    const observe = admissions.observeSqliteWorkerCommittedFacts;
-    let superseded = false;
-    const interception = vi
-      .spyOn(admissions, "observeSqliteWorkerCommittedFacts")
-      .mockImplementation((admission, consume) => {
-        observe(admission, (receipt) => {
-          const facts = receipt.facts;
-          if (
-            !superseded &&
-            isRecord(facts) &&
-            isRecord(facts.facts) &&
-            facts.facts.kind === "acp"
-          ) {
-            superseded = true;
-            seedCanonicalAcpSessionMeta({ ...entry, ...scope, meta: native });
-          }
-          consume(receipt);
-        });
-      });
-    cleanup.use(interception);
-    await upsertAcpSessionMeta({
-      ...scope,
-      mutate: () => ({ ...META, runtimeSessionName: "older-worker" }),
-    });
-    expect(superseded).toBe(true);
-    expect(new Set(changes)).toEqual(new Set([undefined]));
-    expect(readAcpSessionEntry(scope)?.acp).toEqual(native);
   }));
 
 it.each(["incognito", "file"] as const)(

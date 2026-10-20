@@ -187,6 +187,20 @@ describe("agent-created Claw drafts", () => {
     ).rejects.toThrow();
   });
 
+  it("rejects an invalid personal identity at the ClawHub boundary", async () => {
+    const workspaceDir = tempDirs.make("claw-draft-identity-");
+    const draft = await createClawDraft(workspaceDir);
+    await writeFile(draft.path, JSON.stringify(proposal));
+    vi.stubGlobal("fetch", async () => Response.json({ user: { handle: "invalid/publisher" } }));
+
+    await expect(
+      reviewClawDraft(
+        { workspaceDir, draftId: draft.draftId },
+        { token: "fixture-personal-token" },
+      ),
+    ).rejects.toMatchObject({ code: "clawhub_identity_required" });
+  });
+
   it("uploads exactly the reviewed archive under the personal publisher and reports scanning honestly", async () => {
     const workspaceDir = tempDirs.make("claw-draft-publish-");
     const draft = await createClawDraft(workspaceDir);

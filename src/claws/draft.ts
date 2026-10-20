@@ -117,19 +117,13 @@ function parseProposal(content: string): ClawDraftDocument {
   return value;
 }
 
-/** Build a disposable, immutable publication snapshot from authored text only. */
+/** Build an immutable authored-text snapshot using the validated ClawHub identity. */
 export async function prepareClawDraft(params: {
   workspaceDir: string;
   draftId: string;
   publisher: string;
   choices?: ClawDraftReviewChoices;
 }) {
-  if (!/^[a-z0-9][a-z0-9._-]*$/.test(params.publisher)) {
-    throw new ClawProjectError(
-      "invalid_publisher",
-      "ClawHub did not return a valid personal publisher handle.",
-    );
-  }
   const draft = await readClawDraft(params.workspaceDir, params.draftId);
   const selected = applyClawDraftChoices(parseProposal(draft.content), params.choices);
   const proposal = selected.proposal;
