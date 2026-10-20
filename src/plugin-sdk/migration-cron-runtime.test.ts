@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import { runWithLocalStateOwner } from "../cli/local-state-owner.js";
 import { loadCronStore, resolveCronStorePathAsync } from "../cron/store.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { applyMigrationCronJob, type MigrationCronJob } from "./migration-cron-runtime.js";
-import { createMigrationAgent } from "./migration-runtime.js";
+import {
+  applyMigrationCronJob,
+  createMigrationAgent,
+  type MigrationCronJob,
+} from "./migration-runtime.js";
 import type { MigrationProviderContext } from "./plugin-entry.js";
 
 const job: MigrationCronJob = {

@@ -42,7 +42,7 @@ export type { MigrationCronJob } from "./migration-cron-runtime.js";
 export async function validateMigrationCronJob(
   input: MigrationCronJob,
 ): Promise<string | undefined> {
-  return (await import("./migration-cron-runtime.js")).validateMigrationCronJob(input);
+  return (await import("./migration-cron-runtime.js")).validateMigrationCronJobCore(input);
 }
 
 /** Adds a migrated routine through the offline scheduler owner without starting it. */
@@ -50,7 +50,7 @@ export async function applyMigrationCronJob(
   ctx: MigrationProviderContext,
   input: MigrationCronJob,
 ): Promise<"created" | "existing" | "conflict"> {
-  return await (await import("./migration-cron-runtime.js")).applyMigrationCronJob(ctx, input);
+  return await (await import("./migration-cron-runtime.js")).applyMigrationCronJobCore(ctx, input);
 }
 
 type MigrationAgentEntry = NonNullable<

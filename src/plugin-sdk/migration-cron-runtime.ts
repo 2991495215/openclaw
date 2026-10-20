@@ -39,7 +39,7 @@ function nativeInput(input: MigrationCronJob): CronJobCreate {
 }
 
 /** Use the scheduler's own validation before presenting a migration plan. */
-export async function validateMigrationCronJob(
+export async function validateMigrationCronJobCore(
   input: MigrationCronJob,
 ): Promise<string | undefined> {
   try {
@@ -52,7 +52,7 @@ export async function validateMigrationCronJob(
 }
 
 /** Adds through native admission without starting the scheduler or replacing an existing job. */
-export async function applyMigrationCronJob(
+export async function applyMigrationCronJobCore(
   ctx: MigrationProviderContext,
   input: MigrationCronJob,
 ): Promise<"created" | "existing" | "conflict"> {

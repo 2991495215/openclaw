@@ -1,6 +1,5 @@
 import { resolveConfigPath } from "../config/paths.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { CreateAgentSuccess } from "./agent-create.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "./agent-scope.js";
 import { isWorkspaceBootstrapPending } from "./workspace.js";
 
@@ -9,10 +8,10 @@ export async function createExistingAgentResult(
   config: OpenClawConfig,
   entry: { id: string; name?: string },
   fallbackName: string,
-): Promise<CreateAgentSuccess & { config: OpenClawConfig; configPath: string }> {
+) {
   const workspace = resolveAgentWorkspaceDir(config, entry.id);
   return {
-    status: "existing",
+    status: "existing" as const,
     agentId: entry.id,
     name: entry.name ?? fallbackName,
     workspace,
