@@ -171,6 +171,8 @@ export type CronRunOutcome = {
   error?: string;
   /** True once agent execution begins; retries after this point can replay side effects. */
   executionStarted?: boolean;
+  /** Lifecycle-owned restart fact; transient input to cron settlement, not a public event. */
+  interruptedByRestart?: boolean;
   /** Optional classifier for execution errors to guide fallback behavior. */
   errorKind?: "delivery-target";
   errorClassification?: CronRunErrorClassification;
@@ -211,7 +213,7 @@ export type CronJobExecutionResult = CronRunOutcome &
     triggerEval?: CronTriggerEvalOutcome;
   };
 
-/** One run's requested delay before the same paced job runs again. */
+/** One run's requested delay before the same paced job or one-shot continuation runs again. */
 export type CronNextCheckProposal = {
   delayMs: number;
 };
@@ -369,6 +371,8 @@ export type CronJob = CronJobBase<
 > & {
   declarationKey?: string;
   displayName?: string;
+  /** Read-only execution placement derived from the stored stream target. */
+  streamExecutionHost?: "gateway" | "sandbox";
   owner?: {
     agentId?: string;
     sessionKey?: string;
@@ -406,7 +410,12 @@ export type CronToolsAllowProvenance =
     ));
 
 /** Persisted row shape; public Gateway and wire contracts use CronJob. */
-export type CronStoredJob = CronJob & {
+export type CronStoredJob = Omit<CronJob, "streamExecutionHost"> & {
+  /** Original authenticated source for a same-conversation continuation, never a public grant. */
+  operatorSource?: {
+    source: import("../gateway/operator-run-recovery-source.codec.js").RestartRecoveryOperatorSource;
+    executionRevision: string;
+  };
   /** Captured inference owner; private and independent of scheduled tool authority. */
   inferenceBinding?: import("./inference-binding.js").CronInferenceBinding;
   /** Creation-bound destination for isolated results when no external route exists. */
@@ -450,7 +459,7 @@ type CronJobStateInput = Partial<
 /** Create input accepted by cron APIs before id/timestamps/state are assigned. */
 export type CronJobCreate = Omit<
   CronJob,
-  "id" | "createdAtMs" | "updatedAtMs" | "state" | "scheduledToolPolicy"
+  "id" | "createdAtMs" | "updatedAtMs" | "state" | "scheduledToolPolicy" | "streamExecutionHost"
 > & {
   /** Internal callers can reserve a durable id before creation; public cron.add omits this. */
   id?: string;
@@ -471,6 +480,7 @@ export type CronJobPatch = Partial<
     | "displayName"
     | "owner"
     | "scheduledToolPolicy"
+    | "streamExecutionHost"
     | "pacing"
     | "trigger"
   >

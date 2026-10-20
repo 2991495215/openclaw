@@ -128,14 +128,13 @@ describe("fresh agent schema admission", () => {
     using database = openNodeSqliteDatabase(":memory:");
     database.exec("PRAGMA foreign_keys = OFF;");
     admitSqliteSchema(database);
-    let allowed = true;
-    const withMutation = <T>(run: () => T): T => {
-      if (!allowed) {
-        throw new Error("creation authority revoked");
-      }
-      const result = run();
-      allowed = false;
-      return result;
+    const withCommit = () => {
+      // Refuse the physical commit after creation has written its owner, not an assumed nested phase.
+      expect(database.isTransaction).toBe(true);
+      expect(database.prepare("SELECT agent_id FROM schema_meta").get()).toEqual({
+        agent_id: "fresh",
+      });
+      throw new Error("creation authority revoked");
     };
     expect(() =>
       ensureOpenClawAgentSchema(
@@ -143,7 +142,7 @@ describe("fresh agent schema admission", () => {
         "fresh",
         ":memory:",
         OPENCLAW_AGENT_SCHEMA_VERSION,
-        withMutation,
+        withCommit,
       ),
     ).toThrow("creation authority revoked");
     expect(database.isTransaction).toBe(false);

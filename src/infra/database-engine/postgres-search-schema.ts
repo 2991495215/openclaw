@@ -2,18 +2,16 @@ import type { PostgresSqlConnection } from "../sql-connection.js";
 import {
   getSqliteDatabaseAdmission,
   publishSqliteDatabaseAdmission,
-  type SqliteDatabaseAdmissionKey,
+  type SqliteDatabaseFactKey,
 } from "../sqlite-database-admission.js";
 import { DatabaseSearchCapabilityUnavailableError } from "./capability-unavailable.js";
 import type { SearchSchema } from "./contract.js";
 
 export const pgSearchName = (name: string) => `"${name.replaceAll('"', '""')}"`;
 export const searchConfig = "openclaw_simple_unaccent";
-const key: SqliteDatabaseAdmissionKey<string[]> = {
+const key: SqliteDatabaseFactKey<string[]> = {
   name: "database.postgres.search",
   schemaDependent: true,
-  read: (value) =>
-    Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined,
 };
 
 /** Called only by store admission; query paths consume these retained facts. */
@@ -91,7 +89,10 @@ export function assertPostgresSearchAdmitted(
   schema: SearchSchema,
 ): void {
   if (!db.isOpen || !getSqliteDatabaseAdmission(db, key)?.includes(JSON.stringify(schema))) {
-    throw new Error(
+    throw new DatabaseSearchCapabilityUnavailableError(
+      schema.mode !== "keyword-only" && Object.keys(schema.vector ?? {}).length
+        ? "vector"
+        : "fullText",
       "PostgreSQL search requires matching store admission; reopen the store with its search schema.",
     );
   }
@@ -158,12 +159,18 @@ END $$;`);
       owner = pgSearchName(source.source),
       id = pgSearchName(source.key),
       embedding = pgSearchName(source.embedding);
-    const project = `INSERT INTO ${table}(id, embedding) SELECT ${id}, openclaw_vector(${embedding}, ${source.dimensions}) FROM ${owner} WHERE ${embedding} IS NOT NULL`;
+    // Empty canonical bytes mean a text-only row, including NOT NULL source columns.
+    const project = `INSERT INTO ${table}(id, embedding) SELECT ${id}, openclaw_vector(${embedding}, ${source.dimensions}) FROM ${owner} WHERE octet_length(${embedding}) > 0`;
     statements.push(`CREATE TABLE ${table} (id TEXT PRIMARY KEY REFERENCES ${owner}(${id}) ON UPDATE CASCADE ON DELETE CASCADE, embedding ${ext}.vector(${source.dimensions}) NOT NULL);
 CREATE FUNCTION ${pgSearchName(`${index.table}_sync`)}() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  DELETE FROM ${table} WHERE id = NEW.${id};
-  IF NEW.${embedding} IS NOT NULL THEN INSERT INTO ${table}(id, embedding) VALUES (NEW.${id}, openclaw_vector(NEW.${embedding}, ${source.dimensions})); END IF;
+  IF TG_OP = 'UPDATE' AND OLD.${embedding} IS NOT DISTINCT FROM NEW.${embedding} THEN RETURN NEW; END IF;
+  IF octet_length(NEW.${embedding}) > 0 THEN
+    INSERT INTO ${table}(id, embedding) VALUES (NEW.${id}, openclaw_vector(NEW.${embedding}, ${source.dimensions}))
+    ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding;
+  ELSE
+    DELETE FROM ${table} WHERE id = NEW.${id};
+  END IF;
   RETURN NEW;
 END $$;
 CREATE TRIGGER ${pgSearchName(`${index.table}_sync`)} AFTER INSERT OR UPDATE OF ${embedding} ON ${owner} FOR EACH ROW EXECUTE FUNCTION ${pgSearchName(`${index.table}_sync`)}();
@@ -189,7 +196,7 @@ export function rebuildPostgresSearch(db: PostgresSqlConnection, schema: SearchS
   for (const index of Object.values(schema.vector ?? {})) {
     const source = index.postgres!;
     db.exec(
-      `DELETE FROM ${pgSearchName(index.table)}; INSERT INTO ${pgSearchName(index.table)}(id, embedding) SELECT ${pgSearchName(source.key)}, openclaw_vector(${pgSearchName(source.embedding)}, ${source.dimensions}) FROM ${pgSearchName(source.source)} WHERE ${pgSearchName(source.embedding)} IS NOT NULL`,
+      `DELETE FROM ${pgSearchName(index.table)}; INSERT INTO ${pgSearchName(index.table)}(id, embedding) SELECT ${pgSearchName(source.key)}, openclaw_vector(${pgSearchName(source.embedding)}, ${source.dimensions}) FROM ${pgSearchName(source.source)} WHERE octet_length(${pgSearchName(source.embedding)}) > 0`,
     );
   }
 }

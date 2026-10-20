@@ -141,6 +141,7 @@ export async function add(
         createdActor: opts?.createdActor,
         inferenceBinding: opts?.inferenceBinding,
         sourceConversation: opts?.sourceConversation,
+        operatorSource: opts?.operatorSource,
         skillLibrarySelections: opts?.skillLibrarySelections,
         scheduledToolPolicy: opts?.scheduledToolPolicy,
         toolsAllowProvenance: opts?.toolsAllowProvenance,
@@ -178,6 +179,7 @@ export async function add(
         previousJob: existing,
         nextJob: job,
         commitGuard: opts?.commitGuard,
+        streamAuthority: opts,
         agentId,
         mutationMethod: "cron.add",
         jobMutation: mutation,
@@ -190,6 +192,7 @@ export async function add(
       source,
       method: "cron.add",
       assertCurrent: opts?.commitGuard,
+      streamAuthority: opts,
       agentId,
       expectedJob: existing
         ? { id: existing.id, configRevision: resolveCronJobConfigRevision(existing) }
@@ -315,6 +318,7 @@ async function updateLoadedJob(params: {
     nextJob,
     source,
     commitGuard: opts?.commitGuard,
+    streamAuthority: opts,
     agentId:
       patch.agentId !== undefined
         ? resolveCronJobEffectiveAgentId(nextJob, resolveCurrentDefaultAgentId(state))
