@@ -13,7 +13,14 @@ import {
 } from "../../scripts/lib/android-release-e2e-diagnostics.js";
 
 describe("Android release public failure diagnostics", () => {
-  it("exports bridge stack offsets without debugger text, arguments, or paths", () => {
+  it.each([
+    ["guest-callback-close", "guest-callback-close"],
+    ["guest-rst", "guest-rst"],
+    ["guest-shutdown", "guest-shutdown"],
+    ["guest-invalid-op", "guest-invalid-op"],
+    ["guest-write-failure", "guest-write-failure"],
+    ["private-target", undefined],
+  ])("exports sanitized bridge stack offsets for %s", (target, expectedTarget) => {
     const facts = androidReleaseAdbBridgeLineFacts(
       "OPENCLAW_ADB_BRIDGE " +
         JSON.stringify({
@@ -22,7 +29,7 @@ describe("Android release public failure diagnostics", () => {
           gdbPid: 123,
           inferiorPid: 456,
           tid: 789,
-          target: "guest-callback-close",
+          target,
           arguments: "private-token",
           frames: [
             { module: "emulator", offset: 12779856, function: "private-symbol" },
@@ -37,7 +44,7 @@ describe("Android release public failure diagnostics", () => {
       gdbPid: 123,
       inferiorPid: 456,
       tid: 789,
-      target: "guest-callback-close",
+      target: expectedTarget,
       frames: [
         { module: "emulator", offset: 12779856 },
         { module: "other", offset: 123 },

@@ -10,11 +10,17 @@ import gdb
 
 # ELF virtual addresses from the official emulator 37.2.12 (16428233) binaries.
 # Closure enqueueing is inlined into several callers; destroyPipe alone misses it.
+# Guest labels mark the parser's distinct closure branches before shared cleanup.
+# guest-write-failure is the negative write result, not the normal RW entry.
 TARGETS = {
     "23b788a3b87b3228558924de4cb5477e2818b3b9415d6ce27d6438cf3e462b98": {
         "destroy-pipe": 0xC2E620,
         "guest-close": 0xC2F630,
         "guest-callback-close": 0xC30150,
+        "guest-rst": 0xB8C4B9,
+        "guest-shutdown": 0xB8C4C6,
+        "guest-invalid-op": 0xB8C5EA,
+        "guest-write-failure": 0xB8C8C7,
         "reset-active-pipe": 0xC2EAC0,
         "proxy-close": 0xC2F4B4,
         "proxy-event": 0xC2F4A0,
@@ -23,6 +29,10 @@ TARGETS = {
         "destroy-pipe": 0x11D7520,
         "guest-close": 0x11D8530,
         "guest-callback-close": 0x11D9050,
+        "guest-rst": 0x11353B9,
+        "guest-shutdown": 0x11353C6,
+        "guest-invalid-op": 0x11354EA,
+        "guest-write-failure": 0x11357C7,
         "reset-active-pipe": 0x11D79C0,
         "proxy-close": 0x11D83B4,
         "proxy-event": 0x11D83A0,
@@ -160,7 +170,7 @@ def trace():
         breakpoints.append(breakpoint)
         if target == "proxy-event":
             readiness = breakpoint
-    emit("installed", binarySha256=binary_hash, breakpoints=5)
+    emit("installed", binarySha256=binary_hash, breakpoints=len(breakpoints) - 1)
     gdb.events.stop.connect(on_stop)
     gdb.execute("continue")
     if interrupted:
