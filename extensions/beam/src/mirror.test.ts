@@ -28,6 +28,13 @@ import { BEAM_MAX_ITEMS, parseBeamUpload, type BeamUpload } from "./types.js";
 
 afterEach(() => vi.useRealTimers());
 
+// Hoist the catalog mock for this module's imports as well as the shared fixtures.
+vi.mock("openclaw/plugin-sdk/session-catalog-runtime", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("openclaw/plugin-sdk/session-catalog-runtime")>();
+  return { ...actual, listActiveSessionCatalogs: vi.fn(actual.listActiveSessionCatalogs) };
+});
+
 async function readRequestBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
