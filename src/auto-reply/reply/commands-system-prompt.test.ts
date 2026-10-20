@@ -78,7 +78,8 @@ vi.mock("../../skills/runtime/remote.js", () => ({
   getRemoteSkillEligibility: vi.fn(() => false),
 }));
 
-vi.mock("../../skills/runtime/session-snapshot.js", () => ({
+vi.mock("../../skills/runtime/session-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../skills/runtime/session-snapshot.js")>()),
   resolveReusableWorkspaceSkillSnapshot: vi.fn(() => ({
     snapshot: { prompt: "", skills: [], resolvedSkills: [] },
     shouldRefresh: false,

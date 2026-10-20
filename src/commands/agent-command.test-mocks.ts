@@ -298,7 +298,8 @@ vi.mock("../skills/discovery/agent-filter.js", () => ({
   resolveEffectiveAgentSkillFilter: vi.fn(() => undefined),
 }));
 
-vi.mock("../skills/runtime/session-snapshot.js", () => ({
+vi.mock("../skills/runtime/session-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../skills/runtime/session-snapshot.js")>()),
   resolveReusableWorkspaceSkillSnapshot: vi.fn(
     (params?: { existingSnapshot?: unknown; skillFilter?: string[] }) => ({
       snapshot: params?.existingSnapshot ?? {
