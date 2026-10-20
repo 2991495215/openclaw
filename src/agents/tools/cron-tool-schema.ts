@@ -340,20 +340,17 @@ function createCronFailureAlertSchema(): TSchema {
 }
 
 // Flattened schema: runtime validates per-action requirements.
-export function createCronToolSchema(options?: CronToolSchemaOptions): TSchema {
-  return cronToolSchemas(options);
-}
-
-const cronToolSchemas = createCachedToolSchema({
-  key: (options?: CronToolSchemaOptions) =>
-    JSON.stringify([
-      options?.triggersEnabled !== false,
-      options?.management ?? null,
-      options?.selfRemoveOnly === true,
-      Boolean(options?.agentSessionKey?.trim()),
-    ]),
-  build: buildCronToolSchema,
-});
+export const createCronToolSchema: (options?: CronToolSchemaOptions) => TSchema =
+  createCachedToolSchema({
+    key: (options?: CronToolSchemaOptions) =>
+      JSON.stringify([
+        options?.triggersEnabled !== false,
+        options?.management ?? null,
+        options?.selfRemoveOnly === true,
+        Boolean(options?.agentSessionKey?.trim()),
+      ]),
+    build: buildCronToolSchema,
+  });
 
 function buildCronToolSchema(options?: CronToolSchemaOptions): TSchema {
   const triggersEnabled = options?.triggersEnabled !== false;
