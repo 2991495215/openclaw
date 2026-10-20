@@ -558,13 +558,17 @@ describe("worker turn launcher local placement", () => {
       runId: "run-restarted",
     };
 
+    let settleFirst: (() => Promise<void>) | undefined;
     const first = localProvider.executeLocalTurn(claim, async () => {
+      settleFirst = resolveSessionPlacementForcedTerminalSettlement();
       firstStarted.resolve();
       await releaseFirst.promise;
     });
     await firstStarted.promise;
     const firstClaimId = placements.get(SESSION_ID)?.turnClaim?.claimId;
-    expect(await placements.clearLocalTurnClaimsAfterRestartAsync()).toBe(1);
+    expect(settleFirst).toBeTypeOf("function");
+    await settleFirst?.();
+    expect(placements.get(SESSION_ID)?.turnClaim).toBeNull();
 
     const second = localProvider.executeLocalTurn(claim, async () => {
       secondStarted.resolve();
