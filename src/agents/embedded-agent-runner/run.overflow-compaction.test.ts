@@ -520,8 +520,7 @@ describe("createEmbeddedRunCompactionRuntime", () => {
     expect(fixture.onAgentEvent).toHaveBeenCalledWith({
       stream: "compaction",
       data: {
-        phase: "end",
-        completed: true,
+        phase: "notice",
         messages: ["Compaction complete"],
       },
       sessionKey: "agent:main:session-1",
