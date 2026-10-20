@@ -124,18 +124,6 @@ function stopActiveProxyRegistration(
   restoreInactiveProxyRuntime(snapshot);
 }
 
-function createProxyHandle(
-  proxyUrl: string,
-  registration: ActiveManagedProxyRegistration,
-  snapshot: ProxyEnvSnapshot,
-): ProxyHandle {
-  return {
-    proxyUrl,
-    stop: async () => stopActiveProxyRegistration(registration, snapshot),
-    kill: () => stopActiveProxyRegistration(registration, snapshot),
-  };
-}
-
 function resolveProxyUrl(config: ProxyConfig | undefined): string {
   const candidate = config?.proxyUrl?.trim() || process.env["OPENCLAW_PROXY_URL"]?.trim();
   if (!candidate) {
@@ -225,7 +213,11 @@ export async function startProxy(config: ProxyConfig | undefined): Promise<Proxy
     `proxy: routing process HTTP traffic through external proxy ${redactProxyUrlForLog(proxyUrl)}`,
   );
 
-  return createProxyHandle(proxyUrl, registration, lifecycleBaseEnvSnapshot);
+  return {
+    proxyUrl,
+    stop: async () => stopActiveProxyRegistration(registration, lifecycleBaseEnvSnapshot),
+    kill: () => stopActiveProxyRegistration(registration, lifecycleBaseEnvSnapshot),
+  };
 }
 
 /** Stops a managed proxy handle if one was started. */
