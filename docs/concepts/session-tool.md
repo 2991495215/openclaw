@@ -382,7 +382,8 @@ A persisted steer is part of the target's history; acknowledgment does not mean
 that the model has finished processing it. A backend without durable steering
 support uses a queued turn with startup delivery recovery instead, reported as
 `targetDisposition: "queued"`. Successful steering produces no separate
-completion turn. `mode: "followup"` also joins a compatible active recipient; it starts a new turn when the recipient is idle.
+completion turn. `mode: "followup"` always starts a separately admitted turn with its own reply;
+it waits behind active work instead of joining that execution.
 
 If a retry with the same request ID finds that the original admission is still pending, the
 tool returns an error with `sentBeforeError: true` and the existing run ID, without

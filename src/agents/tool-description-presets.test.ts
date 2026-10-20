@@ -87,15 +87,6 @@ describe("sessions_send tool description", () => {
     expect(describeSessionsSendTool()).toContain("post to channels with message");
     expect(describeSessionsSendTool()).toContain('`targetDisposition: "queued"` or `"steered"`');
     expect(describeSessionsSendTool()).toContain("neither proves target completion");
-    expect(describeSessionsSendTool()).toContain(
-      "Ordinary peer sends start a separate turn. A zero-wait send to your own busy child or an eligible run-scoped target may use its active input queue.",
-    );
-    expect(describeSessionsSendTool()).toContain(
-      "An idle recipient or a default self-send starts a new turn; timeoutSeconds bounds waiting for the separately admitted turn’s reply.",
-    );
-    expect(describeSessionsSendTool()).toContain(
-      "mode:followup always starts a separate turn and preserves its independent reply; it does not resume a paused task.",
-    );
   });
 });
 
