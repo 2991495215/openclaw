@@ -71,6 +71,15 @@ next update's admission can record the failed outcome without waiting for the
 inactivity grace period. Live or unverifiable drivers and retained recovery
 continue to preserve their ownership.
 
+Handoff repair uses recorded boot sessions and process creation times to exclude
+prior-boot families and unrelated processes with reused parent PIDs. On Windows,
+a legacy handoff without a boot identity also qualifies as prior-boot when its
+durable write is more than five minutes before the current boot started. Unverified
+descendants and incomplete process censuses block settlement to prevent overlapping
+updaters. Positive handoff descendants, OpenClaw identities, and retained-runtime
+path holders also block repair. This does not relax Doctor's artifact-custody
+checks or remove retained recovery data.
+
 If the retained verifier cannot authenticate to the restarted Gateway, it stops
 retrying that rejection. Local HTTP readiness and runtime version/build identity
 can verify activation instead, with an RPC authentication warning recorded in
@@ -87,6 +96,14 @@ other maintenance writes can continue without requiring the database files to
 stop changing for a private copy. Inspection without that admission still uses
 an artifact-preserving copy and refuses an inconsistent source. This is
 candidate-side behavior; the installed updater runs first with its shipped checks.
+
+During update finalization, disposable plugin source copies and private SQLite
+inspection snapshots use the candidate helper's absolute `TMPDIR` (including
+when an older installed updater starts that helper). Normal Gateway cache
+placement is unchanged. Installed plugin projects, retained native admissions,
+and recovery or migration backups remain with their existing durable owners;
+`TMPDIR` does not relocate those writes or remove the need for free space on the
+installation and state filesystems.
 
 ### Migration integrity checks
 

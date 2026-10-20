@@ -107,21 +107,10 @@ export async function withPreparedEmbeddedRunToolAuthority<T, Attempt extends To
 }
 
 async function withPreparedEmbeddedRunToolAuthorityOwned<T, Attempt extends ToolAuthorityAttempt>(
-  internal: Pick<
-    EmbeddedRunAttemptInternalParams,
-    | "admittedRunContext"
-    | "replyOperation"
-    | "sessionPersistence"
-    | "trigger"
-    | "bindWatchdogAttempt"
-    | "executionSelection"
-  > & { queueInputAdapter?: ReplyQueueInputAdapter },
+  internal: Parameters<typeof withPreparedEmbeddedRunToolAuthority>[0],
   attempt: Attempt,
   narrow: ReplyToolAuthorityNarrow | undefined,
-  run: (
-    prepared: Attempt &
-      Pick<AgentHarnessAttemptParamsV2, "replyOperation" | "toolAuthorityFingerprint">,
-  ) => Promise<T>,
+  run: Parameters<typeof withPreparedEmbeddedRunToolAuthority<T, Attempt>>[3],
 ): Promise<T> {
   const admitted = internal.admittedRunContext;
   const instance = admitted.operationalRunInstance;

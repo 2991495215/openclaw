@@ -1,8 +1,5 @@
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
-import {
-  createOperationalRunInstanceRef,
-  type OperationalRunInstanceRef,
-} from "../../agents/admitted-run-context.js";
+import { createOperationalRunInstanceRef } from "../../agents/admitted-run-context.js";
 import type { MainSessionRecoveryPendingTarget } from "../../agents/main-session-recovery/main-session-recovery-store.js";
 import { scopePreparedModelRuntimeLease } from "../../agents/prepared-model-runtime-generation-scope.js";
 import {
@@ -120,7 +117,7 @@ export async function prepareAgentRunDispatch(
   const { lifecycleStorePath } = modelSelection;
   let timeoutSeconds: number | undefined;
   let preparing = true;
-  let operationalRunInstance: OperationalRunInstanceRef | undefined;
+  let operationalRunInstance: ReturnType<typeof createOperationalRunInstanceRef> | undefined;
   try {
     if (lifecycleStorePath) {
       await params.acquireGatewayWorkAdmission(lifecycleStorePath);
@@ -567,9 +564,11 @@ export async function prepareAgentRunDispatch(
     return undefined;
   }
   try {
-    // The transport request ends at acceptance; execution retains this exact caller.
+    // Accepted work retains this caller; native children also outlive requester recovery.
     capturedOperator = await retainGatewayOperatorRun({
       ...params,
+      independentContinuation:
+        params.client?.internal?.agentRunTracking === "native_subagent" ? true : undefined,
       entry: activeRunAbort.entry,
       abortSession: params.resolvedSessionKey
         ? {
