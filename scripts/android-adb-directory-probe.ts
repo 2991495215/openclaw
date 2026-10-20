@@ -49,6 +49,8 @@ const env = {
 await Promise.all([mkdir(env.ANDROID_AVD_HOME), mkdir(env.ANDROID_USER_HOME)]);
 const adb = path.join(sdk, "platform-tools/adb");
 const emulator = path.join(sdk, "emulator/emulator");
+const vsockPacketBytes = 16384;
+const vsockParameter = "vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size";
 const filter = "adbd:V libc:F DEBUG:V init:I tombstoned:I lmkd:I *:S";
 const run = promisify(execFile);
 const started = Date.now();
@@ -482,6 +484,19 @@ async function stopKernelTrace(trace: KernelTrace) {
       events: undefined,
       records: captured.events.length,
       writes: writes.length,
+      maxPacketBytes: Math.max(
+        0,
+        ...captured.events.flatMap((event) =>
+          event.event === "packet_enter" ? [event.bytes] : [],
+        ),
+      ),
+      maxAllocationBytes: Math.max(
+        0,
+        ...captured.events.flatMap((event) => (event.event === "alloc_enter" ? [event.bytes] : [])),
+      ),
+      allocationFailures: captured.events.filter(
+        (event) => event.event === "alloc_return" && event.isNull,
+      ).length,
       failedWrites: writes.filter((write) => write.result < 0),
       tail: captured.events.slice(-80),
     });
@@ -739,6 +754,10 @@ try {
           filter,
           "-logcat-output",
           logcat,
+          // Smaller packets avoid the failing large contiguous guest allocation.
+          "-qemu",
+          "-append",
+          `${vsockParameter}=${vsockPacketBytes}`,
         ],
         kernel,
       );
@@ -764,6 +783,24 @@ try {
       const identity = await command(adb, ["-s", serial, "emu", "avd", "name"]);
       if (!identity.stdout.split(/\r?\n/u).includes(name)) {
         throw new Error("emulator-identity-mismatch");
+      }
+      const packetLimit = await command(adb, [
+        "-s",
+        serial,
+        "shell",
+        "cat",
+        "/sys/module/vmw_vsock_virtio_transport_common/parameters/virtio_transport_max_vsock_pkt_buf_size",
+      ]);
+      const actualPacketBytes = /^\d+\s*$/u.test(packetLimit.stdout)
+        ? Number(packetLimit.stdout.trim())
+        : null;
+      record("guest-vsock-limit", {
+        cycle,
+        expectedBytes: vsockPacketBytes,
+        actualBytes: actualPacketBytes,
+      });
+      if (actualPacketBytes !== vsockPacketBytes) {
+        throw new Error("guest-vsock-limit-mismatch");
       }
       const configured = await command(adb, ["-s", serial, "shell", "getprop", "ro.boot.logcat"]);
       const logService = await command(adb, [
@@ -992,6 +1029,7 @@ try {
         "probe-command-failed",
         "boot-failed",
         "emulator-identity-mismatch",
+        "guest-vsock-limit-mismatch",
         "guest-logging-unavailable",
         "fixture-invalid",
         "idle-shell-not-ready",
