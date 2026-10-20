@@ -56,19 +56,13 @@ it.each(["agent", "transcribe"] as const)(
     const { document, mic } = inCall(undefined, true, false);
     const header = channelHeader(true);
     const settings = qaNode("huddle-toolbar-mic-popover-button", "");
-    document.body.append(
-      header,
-      settings,
-      input("Built-in Microphone"),
-      qaNode("huddle_window_titlebar_title", "Other team huddle"),
-    );
+    document.body.append(header, settings, input("Built-in Microphone"));
     afterClick(mic, () => {
       header.attributes.class = "p-huddle_channel_header_button__container";
     });
     const result = await fixture({ document, joined: true }).status({ mode });
     expect(clicks(mic, settings)).toEqual([1, 0]);
     expect(result.inCall).toBe(false);
-    expect(result.meetingTitle).toBeUndefined();
   },
 );
 
@@ -171,12 +165,7 @@ it("does not mute or route playback when membership ends during device enumerati
       muteWrites += 1;
     },
   });
-  document.body.append(
-    header,
-    playback,
-    qaNode("huddle_window_titlebar_title", "Other team huddle"),
-    input(),
-  );
+  document.body.append(header, playback, input());
   const result = await fixture({
     document,
     joined: true,
@@ -188,7 +177,6 @@ it("does not mute or route playback when membership ends during device enumerati
   expect(playback.sinkId).toBe("physical-out");
   expect(muteWrites).toBe(0);
   expect(result).toMatchObject({ inCall: false, audioOutputRouted: false });
-  expect(result.meetingTitle).toBeUndefined();
 });
 
 it("does not mistake an available virtual microphone for Slack's selected input", async () => {

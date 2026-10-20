@@ -51,7 +51,7 @@ vi.mock("./plugin-app-cache-key.js", () => ({
 }));
 vi.mock("./plugin-thread-config-deadline.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./plugin-thread-config-deadline.js")>()),
-  resolveCodexPluginThreadConfigStartupPolicy: () => ({ pluginThreadConfigRequired: false }),
+  resolveCodexPluginThreadConfigStartupPolicy: () => ({}),
   prepareCodexPluginThreadConfigStartupProvider: vi.fn(),
 }));
 vi.mock("./plugin-thread-config.js", async (importOriginal) => ({

@@ -37,7 +37,6 @@ export const SLACK_HUDDLE_SELECTORS = {
     '[data-qa="huddle_mini_player"]',
   ],
   signIn: ['form[action*="signin"]', 'input[name="email"]', 'input[type="password"]'],
-  title: ['[data-qa="huddle_window_titlebar_title"]', '[data-qa="huddle_details_title"]'],
   participants: [
     '[data-qa^="huddle_peer_tile_userId_"]',
     '[data-qa="huddle_avatar_stack__member"]',

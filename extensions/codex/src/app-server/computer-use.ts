@@ -60,12 +60,9 @@ import {
 export type { CodexComputerUseStatus } from "./computer-use-status.js";
 
 class CodexComputerUseSetupError extends Error {
-  readonly status: CodexComputerUseStatus;
-
   constructor(status: CodexComputerUseStatus) {
     super(status.message);
     this.name = "CodexComputerUseSetupError";
-    this.status = status;
   }
 }
 

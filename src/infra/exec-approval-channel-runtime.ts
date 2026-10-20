@@ -46,8 +46,6 @@ type ApprovalReplayClient = {
 
 /** Error raised when the gateway pauses approval reconnects after a terminal startup failure. */
 export class ExecApprovalChannelRuntimeTerminalStartError extends Error {
-  readonly detailCode: string | null;
-
   constructor(info: GatewayReconnectPausedInfo, cause?: unknown) {
     super(
       `native approval gateway client paused reconnect after startup auth failure` +
@@ -55,7 +53,6 @@ export class ExecApprovalChannelRuntimeTerminalStartError extends Error {
       cause === undefined ? undefined : { cause },
     );
     this.name = "ExecApprovalChannelRuntimeTerminalStartError";
-    this.detailCode = info.detailCode;
   }
 }
 

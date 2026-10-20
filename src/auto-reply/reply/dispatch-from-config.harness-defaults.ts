@@ -90,7 +90,6 @@ export function createShouldEmitVerboseProgress(params: {
       runVerbosity = settings;
     },
     shouldEmit: () => resolveLevel() !== "off",
-    shouldEmitFull: () => resolveLevel() === "full",
     shouldEmitAsync: () => shouldEmitAsync(false),
     shouldEmitFullAsync: () => shouldEmitAsync(true),
   };

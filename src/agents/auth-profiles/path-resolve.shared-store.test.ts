@@ -118,7 +118,7 @@ describe("shared auth store path resolution", () => {
       expect.objectContaining({
         name: "InvalidSharedAuthStoreOwnershipError",
         code: "INVALID_SHARED_AUTH_STORE_OWNERSHIP",
-        action: "openclaw doctor --fix",
+        message: expect.stringContaining("run openclaw doctor --fix"),
       }),
     );
     expect(resolveSharedAuthStoreOwnership(firstEnv)).toEqual({ location: "legacy-main" });

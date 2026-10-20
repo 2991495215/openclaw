@@ -11,13 +11,6 @@ export function expectStatusFields(
   expect(status).toEqual(expect.objectContaining(fields));
 }
 
-export async function expectSetupErrorStatus(
-  promise: Promise<CodexComputerUseStatus>,
-  fields: Partial<CodexComputerUseStatus>,
-): Promise<void> {
-  await expect(promise).rejects.toMatchObject({ status: expect.objectContaining(fields) });
-}
-
 const requireRecord = createRequireRecord("object", "label-not-object");
 
 export function requestCalls(request: CodexComputerUseRequest, method?: string) {

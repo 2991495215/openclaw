@@ -720,8 +720,7 @@ it.each(["dangling symlink", "unreadable file"] as const)(
       expect.objectContaining({
         name: "SharedAuthStoreSourceInspectionError",
         code: "SHARED_AUTH_STORE_SOURCE_UNREADABLE",
-        sourcePath,
-        ...(scenario === "dangling symlink" ? { action: "openclaw doctor --fix" } : {}),
+        message: expect.stringContaining(sourcePath),
       }),
     );
     expect(

@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createComputerUseRequest,
   expectRequestMethodNotCalled,
-  expectSetupErrorStatus,
   expectStatusFields,
   marketplaceEntry,
   requestCalls,
@@ -418,7 +417,7 @@ describe("Codex Computer Use setup", () => {
   it("requires an explicit install command for configured marketplace sources", async () => {
     const request = createComputerUseRequest({ installed: false });
 
-    await expectSetupErrorStatus(
+    await expect(
       ensureCodexComputerUse({
         pluginConfig: {
           computerUse: {
@@ -428,7 +427,8 @@ describe("Codex Computer Use setup", () => {
         },
         request,
       }),
-      { reason: "auto_install_blocked" },
+    ).rejects.toThrow(
+      "Computer Use auto-install only uses marketplaces Codex app-server has already discovered. Run /codex computer-use install to install from a configured marketplace source.",
     );
     expectRequestMethodNotCalled(request, "marketplace/add", "plugin/install");
   });
@@ -454,10 +454,9 @@ describe("Codex Computer Use setup", () => {
       "experimentalFeature/enablement/set",
     );
 
-    await expectSetupErrorStatus(installCodexComputerUse({ pluginConfig: remoteConfig, request }), {
-      ready: false,
-      reason: "marketplace_missing",
-    });
+    await expect(installCodexComputerUse({ pluginConfig: remoteConfig, request })).rejects.toThrow(
+      "Configured Codex marketplace openai-curated-remote was not found or does not contain computer-use. Run /codex computer-use install with a source or path to install from a new marketplace.",
+    );
     expectRequestMethodNotCalled(request, "plugin/read", "plugin/install", "marketplace/add");
   });
 
@@ -521,11 +520,9 @@ describe("Codex Computer Use setup", () => {
       pluginConfig: { computerUse: {} },
       request,
     });
-    const pending = expectSetupErrorStatus(install, {
-      ready: false,
-      reason: "marketplace_missing",
-      message: expect.stringContaining("features.plugins = false"),
-    });
+    const pending = expect(install).rejects.toThrow(
+      "Codex native plugin support is disabled (features.plugins = false). Enable it in the Codex config, then run /codex computer-use install.",
+    );
 
     await vi.advanceTimersByTimeAsync(60_000);
     await pending;

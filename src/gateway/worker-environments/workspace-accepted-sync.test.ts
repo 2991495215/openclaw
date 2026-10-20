@@ -633,7 +633,6 @@ describe("accepted workspace publication", () => {
     expect(thrown).toBeInstanceOf(AcceptedWorkspacePublicationIndeterminateError);
     expect(thrown).toMatchObject({
       message: "Accepted workspace publication is indeterminate and requires recovery",
-      operation: "apply",
       cause: expect.objectContaining({
         message: "Worker workspace sync failed: apply transport lost",
       }),

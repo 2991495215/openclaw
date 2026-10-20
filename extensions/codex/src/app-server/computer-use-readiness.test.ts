@@ -8,7 +8,6 @@ import {
 import {
   createComputerUseRequest,
   expectRequestMethodNotCalled,
-  expectSetupErrorStatus,
   expectStatusFields,
   requestCalls,
 } from "./computer-use.test-support.js";
@@ -194,12 +193,13 @@ describe("Codex Computer Use readiness", () => {
   it("reloads empty MCP exposure once during install before failing closed", async () => {
     const request = createComputerUseRequest({ installed: true, mcpToolsAvailable: false });
 
-    await expectSetupErrorStatus(
+    await expect(
       installCodexComputerUse({
         pluginConfig: { computerUse: { marketplaceName: "desktop-tools" } },
         request,
       }),
-      { ready: false, reason: "mcp_missing", mcpServerAvailable: false },
+    ).rejects.toThrow(
+      "Computer Use is installed, but the computer-use MCP server exposes no tools.",
     );
     expect(requestCalls(request, "config/mcpServer/reload")).toHaveLength(1);
     expectRequestMethodNotCalled(request, "thread/start");

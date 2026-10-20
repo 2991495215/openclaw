@@ -16,7 +16,6 @@ type Methods = Pick<AssistantDockOwner, "openSession" | "closeSession"> & {
 };
 type OpenClawAssistantPanel = SolidBridgeElement<AssistantPanelProps, Methods> & {
   readonly openSessionKey: string | null;
-  readonly assistantPanelOpen: boolean;
 };
 
 // The host outlives context-only Solid remounts; preserve its dock intent.
@@ -32,7 +31,6 @@ defineSolidBridge<AssistantPanelProps, Methods>(
     const state = projectOwner(panel, (owner) => owner);
     Object.defineProperties(element, {
       openSessionKey: { configurable: true, get: () => panel.openSessionKey },
-      assistantPanelOpen: { configurable: true, get: () => panel.dockLayout.open },
     });
     return <AssistantPanelView state={state.read} />;
   },

@@ -12,7 +12,7 @@ import {
   installCodexComputerUse as installComputerUse,
   readCodexComputerUseStatus as readStatus,
 } from "./computer-use.js";
-import { createComputerUseRequest, expectSetupErrorStatus } from "./computer-use.test-support.js";
+import { createComputerUseRequest } from "./computer-use.test-support.js";
 import type { CodexPluginConfig } from "./config.js";
 import { resolveCodexComputerUseConfig } from "./config.js";
 import type { MacOSDesktopCodexAppPathCandidate } from "./desktop-app-paths.js";
@@ -108,7 +108,9 @@ describe("managed unified Computer Use marketplace", () => {
         { autoInstall: true, pluginCacheMode: "shared", strictReadiness: false },
       );
       if (cacheState === "disabled") {
-        await expectSetupErrorStatus(ensureComputerUse(params), disabledStatus);
+        await expect(ensureComputerUse(params)).rejects.toThrow(
+          "Computer Use is disabled by native plugin policy. Run /codex computer-use install for explicit recovery, or enable computer-use@openai-bundled in native Codex config for automatic replacement.",
+        );
       } else {
         await expect(ensureComputerUse(params)).resolves.toMatchObject({ ready: true });
       }
@@ -246,7 +248,9 @@ describe("managed unified Computer Use marketplace", () => {
         expect(display).toContain("/codex computer-use install");
         expect(display).not.toContain("not installed");
       } else {
-        await expectSetupErrorStatus(ensureComputerUse(params), disabledStatus);
+        await expect(ensureComputerUse(params)).rejects.toThrow(
+          "Computer Use is disabled by native plugin policy. Run /codex computer-use install for explicit recovery, or enable computer-use@openai-bundled in native Codex config for automatic replacement.",
+        );
       }
       const methods = vi.mocked(params.request).mock.calls.map(([method]) => method);
       expect(methods).not.toContain("plugin/install");

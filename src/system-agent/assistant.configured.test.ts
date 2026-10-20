@@ -158,7 +158,6 @@ describe("OpenClaw configured-model planner", () => {
         }),
       ).rejects.toMatchObject({
         code: "SYSTEM_AGENT_INFERENCE_UNAVAILABLE",
-        stage: "planner",
         message: expect.stringContaining("The inference request timed out."),
       });
       expect(removeTempDir).toHaveBeenCalledOnce();
@@ -191,7 +190,6 @@ describe("OpenClaw configured-model planner", () => {
       }),
     ).rejects.toMatchObject({
       code: "SYSTEM_AGENT_INFERENCE_UNAVAILABLE",
-      stage: "planner",
       message: expect.stringContaining(guidance),
     });
     expect(runEmbeddedAgent).toHaveBeenCalledOnce();

@@ -57,9 +57,7 @@ describe.skipIf(!connection)("workboard port PostgreSQL refusal boundaries", () 
     const original = await hash(sourcePath);
     await client.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-port-fixture'`);
     try {
-      expect(
-        await runWorkboardPortTask({ operation: "preflight", config, probe: false }, scope),
-      ).toMatchObject({ privilegesChecked: false });
+      await runWorkboardPortTask({ operation: "preflight", config, probe: false }, scope);
       await expect(
         runWorkboardPortTask({ operation: "preflight", config, probe: true }, scope),
       ).rejects.toThrow("namespace privilege probe");

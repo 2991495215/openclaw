@@ -3,7 +3,6 @@ import { installCodexComputerUse } from "./computer-use.js";
 import {
   createComputerUseRequest,
   expectRequestMethodNotCalled,
-  expectSetupErrorStatus,
   requestCalls,
 } from "./computer-use.test-support.js";
 
@@ -11,7 +10,7 @@ describe("Codex Computer Use authority", () => {
   it("releases an accepted readiness thread when owner revocation blocks its tool call", async () => {
     const request = createComputerUseRequest({ installed: true });
     let ownerCurrent = true;
-    await expectSetupErrorStatus(
+    await expect(
       installCodexComputerUse({
         pluginConfig: { computerUse: {} },
         assertCurrent: () => {
@@ -31,8 +30,7 @@ describe("Codex Computer Use authority", () => {
           return result;
         },
       }),
-      { ready: false, reason: "live_test_failed" },
-    );
+    ).rejects.toThrow("Command owner was revoked");
     expectRequestMethodNotCalled(request, "mcpServer/tool/call");
     expect(
       requestCalls(request).filter(([method]) => method === "thread/unsubscribe"),

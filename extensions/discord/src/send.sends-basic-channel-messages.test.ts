@@ -463,8 +463,6 @@ it.each([
   await expect(
     sendMessageDiscord("channel:chan1", "hello", clientOptions(rest)),
   ).rejects.toMatchObject({
-    missingPermissions: missing,
-    discordCode: 50013,
     status: 403,
     message: expect.stringContaining(
       missing[0] ?? "permission check did not identify missing ViewChannel/SendMessages",

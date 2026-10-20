@@ -181,7 +181,7 @@ async function buildDiscordSendError(
   if (code === DISCORD_CANNOT_DM) {
     return new DiscordSendError(
       `discord dm failed: user blocks dms or privacy settings disallow it (code=${code})`,
-      { kind: "dm-blocked", discordCode: code, status: getDiscordErrorStatus(err) },
+      { status: getDiscordErrorStatus(err) },
     );
   }
   if (code !== DISCORD_MISSING_PERMISSIONS) {
@@ -217,10 +217,6 @@ async function buildDiscordSendError(
   return new DiscordSendError(
     `${missingLabel} (${apiDetails}). bot might be blocked by channel/thread overrides, archived thread state, reply target visibility, or app-role position`,
     {
-      kind: "missing-permissions",
-      channelId: ctx.channelId,
-      missingPermissions: missing,
-      discordCode: code,
       status,
     },
   );

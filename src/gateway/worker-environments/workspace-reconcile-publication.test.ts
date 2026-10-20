@@ -111,10 +111,7 @@ it.each([
     const f = await workspace(eol, !definitive);
     const publicationFailure = definitive
       ? new Error("publication rejected")
-      : new AcceptedWorkspacePublicationIndeterminateError(
-          phase,
-          new Error(`${phase} transport lost`),
-        );
+      : new AcceptedWorkspacePublicationIndeterminateError(new Error(`${phase} transport lost`));
     const state = journalFixture(
       async () => {
         if (phase === "commit") {

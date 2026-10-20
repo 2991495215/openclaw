@@ -48,7 +48,6 @@ it("uses prepared verbose policy and committed receipts without querying", async
       const sql = observeHostDataSql();
       try {
         expect(progress.shouldEmit()).toBe(level === "full");
-        expect(progress.shouldEmitFull()).toBe(level === "full");
         expect(await progress.shouldEmitAsync()).toBe(level === "full");
         expect(await progress.shouldEmitFullAsync()).toBe(level === "full");
         expect(

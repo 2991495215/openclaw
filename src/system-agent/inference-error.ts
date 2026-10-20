@@ -49,7 +49,7 @@ export class SystemAgentInferenceUnavailableError extends Error {
   readonly code = "SYSTEM_AGENT_INFERENCE_UNAVAILABLE";
 
   constructor(
-    readonly stage: SystemAgentInferenceStage,
+    stage: SystemAgentInferenceStage,
     readonly failures: readonly unknown[] = [],
     guidance: SystemAgentInferenceGuidance = stage === "conversation" ? "setup" : "retry",
   ) {

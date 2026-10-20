@@ -517,11 +517,7 @@ describe("Slack huddle browser adapter", () => {
 
   it("never lets a settling Join marker unlock audio without Slack's membership header", async () => {
     const { document, marker } = inCall(undefined, false, false);
-    document.body.append(
-      channelHeader(false),
-      qaNode("huddle_window_titlebar_title", "Other team huddle"),
-      qaNode("huddle_avatar_stack__member", ""),
-    );
+    document.body.append(channelHeader(false), qaNode("huddle_avatar_stack__member", ""));
     const browser = fixture({
       document,
       currentUrl: CLIENT_URL,
@@ -535,7 +531,6 @@ describe("Slack huddle browser adapter", () => {
     });
     const result = await browser.status({ readOnly: true });
     expect(result).toMatchObject({ inCall: false });
-    expect(result.meetingTitle).toBeUndefined();
     expect(result.participantCount).toBeUndefined();
     expect(browser.leave()).toMatchObject({ departed: false });
     expect(marker.clicks).toBe(0);

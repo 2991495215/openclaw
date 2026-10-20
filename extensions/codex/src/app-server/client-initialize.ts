@@ -45,7 +45,7 @@ export function buildCodexAppServerRuntimeIdentity(
 }
 
 class CodexAppServerVersionError extends Error {
-  constructor(readonly detectedVersion?: string) {
+  constructor(detectedVersion?: string) {
     const detected = detectedVersion
       ? `detected ${detectedVersion}`
       : "OpenClaw could not determine the running Codex version";

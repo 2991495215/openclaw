@@ -20,9 +20,8 @@ export const slackHuddleStatusCall: Parameters<
       notes.push("Slack captions are off or not visible. Enable the Slack preference to turn on captions by default when joining huddles.");
     }`,
   // The shared result lists inCall before this block; the later key wins, so the reported call and
-  // its global title/participants reflect membership as of return, after shared awaited work.
+  // its participants reflect membership as of return, after shared awaited work.
   extraResultSource: `inCall: inCall && authorityHolds(),
-    meetingTitle: inCall && authorityHolds() ? text(firstRaw(selectors.title)) || undefined : undefined,
     participantCount: inCall && authorityHolds()
       ? new Set(selectors.participants.flatMap((selector) => [...document.querySelectorAll(selector)])).size
       : undefined,`,

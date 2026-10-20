@@ -525,7 +525,11 @@ describe("createExecApprovalChannelRuntime", () => {
     });
 
     expect(caught).toBeInstanceOf(ExecApprovalChannelRuntimeTerminalStartError);
-    expect((caught as { detailCode?: string }).detailCode).toBe("PAIRING_REQUIRED");
+    expect(caught).toMatchObject({
+      message:
+        "native approval gateway client paused reconnect after startup auth failure (PAIRING_REQUIRED): gateway closed (1008): pairing required",
+      cause: authError,
+    });
 
     expect(mockGatewayClientStarts).toHaveBeenCalledTimes(1);
     expect(mockGatewayClientStops).toHaveBeenCalledTimes(1);

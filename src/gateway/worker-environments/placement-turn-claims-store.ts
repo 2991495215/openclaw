@@ -281,7 +281,7 @@ export function createPlacementTurnClaimWorkerOps(runtime: {
             command.type !== "placementTurns.releaseIfOwned"
           ) {
             publication?.invalidate();
-            throw new AcceptedWorkspacePublicationIndeterminateError("commit", error);
+            throw new AcceptedWorkspacePublicationIndeterminateError(error);
           }
           // Native settlement precedes readback. Never replay an uncertain claim or release.
           const reply = await (async () => {

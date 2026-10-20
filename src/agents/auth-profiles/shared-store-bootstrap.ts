@@ -80,14 +80,11 @@ export type SharedAuthLegacyRows = {
 
 export class SharedAuthStoreSourceInspectionError extends Error {
   readonly code = "SHARED_AUTH_STORE_SOURCE_UNREADABLE" as const;
-  readonly action = "openclaw doctor --fix" as const;
-  readonly sourcePath: string;
 
   constructor(sourcePath: string, operation: string, cause: unknown) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     super(`Cannot ${operation} legacy shared auth database ${sourcePath}: ${detail}`, { cause });
     this.name = "SharedAuthStoreSourceInspectionError";
-    this.sourcePath = sourcePath;
   }
 }
 

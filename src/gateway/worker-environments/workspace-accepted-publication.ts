@@ -7,10 +7,7 @@ export type AcceptedWorkspaceSettlementOutcome = "begun" | "rolled-back" | "appl
 export class AcceptedWorkspacePublicationIndeterminateError extends Error {
   override name = "AcceptedWorkspacePublicationIndeterminateError";
 
-  constructor(
-    readonly operation: "apply" | "commit",
-    publicationFailure: unknown,
-  ) {
+  constructor(publicationFailure: unknown) {
     super("Accepted workspace publication is indeterminate and requires recovery", {
       cause: publicationFailure,
     });

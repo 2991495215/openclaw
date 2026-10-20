@@ -40,8 +40,6 @@ const sharedAuthStoreOwnershipByDatabasePath = resolveGlobalSingleton(
 
 class InvalidSharedAuthStoreOwnershipError extends Error {
   readonly code = "INVALID_SHARED_AUTH_STORE_OWNERSHIP" as const;
-  readonly action = "openclaw doctor --fix" as const;
-  readonly stateKey = SHARED_AUTH_STORE_STATE_KEY;
 
   constructor(value: unknown) {
     super(

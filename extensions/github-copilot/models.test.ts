@@ -193,7 +193,7 @@ describe("github-copilot runtime auth", () => {
       await expect(authenticate(fetchImpl)).rejects.toMatchObject({
         name: "CopilotRuntimeAuthError",
         reason: "timeout",
-        timeoutMs: 30_000,
+        message: "Copilot authentication failed: timed out after 30000ms",
       });
     } finally {
       timeoutSpy.mockRestore();

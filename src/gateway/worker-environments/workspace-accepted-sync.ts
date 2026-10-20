@@ -139,7 +139,6 @@ export function createAcceptedWorkspacePublisher(params: {
         ...(input === undefined ? {} : { input }),
       });
     const settleIndeterminatePublication = async (
-      operation: "apply" | "commit",
       publicationFailure: unknown,
     ): Promise<AcceptedWorkspaceSettlementOutcome> => {
       try {
@@ -149,7 +148,7 @@ export function createAcceptedWorkspacePublisher(params: {
         }
         return parseAcceptedWorkspaceSettlement(settled.stdout);
       } catch {
-        throw new AcceptedWorkspacePublicationIndeterminateError(operation, publicationFailure);
+        throw new AcceptedWorkspacePublicationIndeterminateError(publicationFailure);
       }
     };
     const requirePublicationCommand = async (
@@ -171,7 +170,7 @@ export function createAcceptedWorkspacePublisher(params: {
       }
     };
     const finishIndeterminateCommit = async (commitFailure: unknown): Promise<void> => {
-      const outcome = await settleIndeterminatePublication("commit", commitFailure);
+      const outcome = await settleIndeterminatePublication(commitFailure);
       if (outcome === "committed") {
         return;
       }
@@ -179,7 +178,7 @@ export function createAcceptedWorkspacePublisher(params: {
         throw commitFailure;
       }
       await requirePublicationCommand("commit", async () => {
-        throw new AcceptedWorkspacePublicationIndeterminateError("commit", commitFailure);
+        throw new AcceptedWorkspacePublicationIndeterminateError(commitFailure);
       });
     };
     let transactionBegun = false;
@@ -237,7 +236,7 @@ export function createAcceptedWorkspacePublisher(params: {
       }
 
       await requirePublicationCommand("apply", async (applyFailure) => {
-        const outcome = await settleIndeterminatePublication("apply", applyFailure);
+        const outcome = await settleIndeterminatePublication(applyFailure);
         if (outcome !== "applied" && outcome !== "committed") {
           throw applyFailure;
         }

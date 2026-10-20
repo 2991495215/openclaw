@@ -661,7 +661,6 @@ export async function gatherDispatchRequest(
     noteRunVerbosity: verboseProgress.noteRunVerbosity,
     assertProgressCurrent,
     shouldEmitVerboseProgress: verboseProgress.shouldEmit,
-    shouldEmitFullVerboseProgress: verboseProgress.shouldEmitFull,
     shouldEmitVerboseProgressAsync: verboseProgress.shouldEmitAsync,
     shouldEmitFullVerboseProgressAsync: verboseProgress.shouldEmitFullAsync,
     replyRoute,
