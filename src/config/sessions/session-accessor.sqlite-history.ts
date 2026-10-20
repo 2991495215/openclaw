@@ -14,15 +14,7 @@ import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-wo
 import { isInternalSessionEffectsKey } from "./internal-session-key.js";
 import { listTranscriptArchivesFromDatabase } from "./session-accessor.sqlite-archive-read.js";
 import { withSqliteTranscriptArchiveSession } from "./session-accessor.sqlite-archive-session.js";
-import type {
-  TranscriptArchivePageBinding,
-  TranscriptArchivePageOptions,
-  TranscriptArchivePageResult,
-} from "./session-accessor.sqlite-archive-types.js";
-import {
-  runSqliteTranscriptArchivePageWorker,
-  runSqliteTranscriptArchiveReadWorker,
-} from "./session-accessor.sqlite-archive.js";
+import { runSqliteTranscriptArchiveReadWorker } from "./session-accessor.sqlite-archive.js";
 import type {
   SessionAccessScope,
   SessionTranscriptInstance,
@@ -39,13 +31,6 @@ import {
   resolveSqliteReadScope,
   toDatabaseOptions,
 } from "./session-accessor.sqlite-scope.js";
-import {
-  DEFAULT_VISIBLE_MESSAGE_MAX_BYTES,
-  DEFAULT_VISIBLE_MESSAGE_MAX_MESSAGES,
-  MAX_VISIBLE_MESSAGE_MAX_BYTES,
-  MAX_VISIBLE_MESSAGE_MAX_MESSAGES,
-  normalizeVisibleMessageLimit,
-} from "./session-accessor.sqlite-visible-cursor.js";
 import { assertCanonicalSqliteSessionKeysCurrent } from "./session-canonical-key.js";
 import type { SessionEntryProjection } from "./session-entry-snapshot-values.js";
 import { assertSessionStoreReadCandidate } from "./session-store-read-candidates.js";
@@ -55,73 +40,6 @@ import { withSessionHistoryWorkerReadCandidates } from "./session-transcript-wor
 import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-runtime.js";
 import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 import type { SessionEntry } from "./types.js";
-
-export async function readSessionTaskArchivePageReadOnly(
-  scope: SessionAccessScope,
-  options: TranscriptArchivePageOptions,
-): Promise<TranscriptArchivePageResult | undefined> {
-  return readTaskArchivePage(scope, options);
-}
-
-/** Revalidate retained bytes and unique run membership before disclosing a prepared page. */
-export async function verifySessionTranscriptArchivePageBindingReadOnly(
-  scope: SessionAccessScope,
-  runId: string,
-  binding: TranscriptArchivePageBinding,
-): Promise<void> {
-  const result = await readTaskArchivePage(scope, { runId }, binding);
-  if (!result) {
-    throw new Error("Archived transcript is no longer available.");
-  }
-}
-
-async function readTaskArchivePage(
-  scope: SessionAccessScope,
-  options: TranscriptArchivePageOptions,
-  verifyBinding?: TranscriptArchivePageBinding,
-): Promise<TranscriptArchivePageResult | undefined> {
-  const resolved = resolveSqliteReadScope(scope);
-  const databaseOptions = toDatabaseOptions(resolved);
-  const limit = normalizeVisibleMessageLimit(
-    options.limit,
-    DEFAULT_VISIBLE_MESSAGE_MAX_MESSAGES,
-    MAX_VISIBLE_MESSAGE_MAX_MESSAGES,
-    "limit",
-  );
-  const maxBytes = normalizeVisibleMessageLimit(
-    options.maxBytes,
-    DEFAULT_VISIBLE_MESSAGE_MAX_BYTES,
-    MAX_VISIBLE_MESSAGE_MAX_BYTES,
-    "maxBytes",
-  );
-  const contextMaxMessages =
-    options.contextMaxMessages === undefined
-      ? 0
-      : normalizeVisibleMessageLimit(
-          options.contextMaxMessages,
-          0,
-          MAX_VISIBLE_MESSAGE_MAX_MESSAGES,
-          "contextMaxMessages",
-        );
-  return withSqliteTranscriptArchiveSession(databaseOptions, async () => {
-    const [result] = await runSqliteTranscriptArchivePageWorker([
-      {
-        agentId: databaseOptions.agentId,
-        databasePath: resolveOpenClawAgentSqlitePath(databaseOptions),
-        logicalAgentId: resolved.agentId,
-        sessionKey: scope.sessionKey,
-        runId: options.runId,
-        cursor: options.cursor,
-        limit,
-        maxBytes,
-        contextMaxMessages,
-        verifyBinding,
-        projectionSources: options.projectionSources,
-      },
-    ]);
-    return result;
-  });
-}
 
 function prepareTranscriptInstanceEntries(
   database: Pick<OpenClawAgentDatabase, "agentId" | "db">,

@@ -1,5 +1,3 @@
-// Allow records above the RPC page budget without unbounded parsing amplification.
-export const MAX_TASK_ARCHIVE_RECORD_BYTES = 8 * 1024 * 1024;
 const TASK_ARCHIVE_RECORD_CAPACITY_ERROR =
   "Archived transcript is unavailable because a record exceeds the task-history read capacity.";
 

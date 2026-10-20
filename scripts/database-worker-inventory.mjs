@@ -2034,13 +2034,9 @@ const reviewedOperations = new Map([
     [
       {
         tier: "W",
-        operations: [
-          "readTranscriptArchivePresenceInWorker",
-          "readTranscriptArchiveFinalInWorker",
-          "readTranscriptArchivePageInWorker",
-        ],
+        operations: ["readTranscriptArchivePresenceInWorker", "readTranscriptArchiveFinalInWorker"],
         evidence:
-          "Only session-transcript.worker.ts:230 (presence) and session-accessor.sqlite-archive.worker.ts:483,491 (page/final) call these readers; shared archive listing remains T1.",
+          "Only session-transcript.worker.ts (presence) and session-accessor.sqlite-archive.worker.ts (final answer) call these readers; shared archive listing remains T1.",
       },
       {
         tier: "T1",
@@ -3507,7 +3503,6 @@ const workerModules = new Set([
   "src/channels/message/ingress-queue-health.kernel.ts",
   "src/channels/message/ingress-queue.kernel.ts",
 
-  "src/config/sessions/session-accessor.sqlite-archive-selection.ts", // Archive worker read-page selection only.
   "src/config/sessions/session-accessor.sqlite-mutation-worker.runtime.ts",
   "src/config/sessions/session-accessor.sqlite-summary.ts", // Only session-transcript.worker.ts dispatches the summary kernel at runtime.
   "src/config/sessions/session-accessor.sqlite-transcript-binding.ts", // History worker transcript-binding reader only.

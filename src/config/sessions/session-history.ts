@@ -71,7 +71,5 @@ export function listSessionTranscriptInstances(
 
 export {
   findSessionTranscriptArchiveEventReadOnly,
-  readSessionTaskArchivePageReadOnly,
-  verifySessionTranscriptArchivePageBindingReadOnly,
   listSessionTranscriptArchivesReadOnly,
 } from "./session-accessor.sqlite-history.js";

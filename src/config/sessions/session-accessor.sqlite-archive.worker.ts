@@ -41,7 +41,6 @@ import type {
   SqliteArchiveSessionRequest,
   SqliteArchiveSessionResponse,
   SessionTranscriptMaintenanceSizingInput,
-  TranscriptArchivePageResult,
   TranscriptArchivePublishPlan,
   TranscriptArchivePublishResult,
   TranscriptArchivePublishWorkerMessage,
@@ -377,14 +376,6 @@ async function runArchiveSession(
         type: "published",
         results: request.plans.map((plan) => publishTranscriptArchiveInWorker(plan, env)),
       };
-    } else if (request.operation === "read-page") {
-      const { readTranscriptArchivePageInWorker } =
-        await import("./session-accessor.sqlite-archive-read.js");
-      const results: Array<TranscriptArchivePageResult | undefined> = [];
-      for (const plan of request.plans) {
-        results.push(await readTranscriptArchivePageInWorker(plan, env));
-      }
-      response = { type: "page-read", results };
     } else {
       const { readTranscriptArchiveFinalInWorker } =
         await import("./session-accessor.sqlite-archive-read.js");

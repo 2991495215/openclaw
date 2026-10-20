@@ -362,8 +362,7 @@ export function selectSessionTranscriptActiveEntries<T, R>(params: {
   });
 }
 
-/** Selection policy is shared by memory readers and bounded, disk-backed archive readers. */
-export function* selectSessionTranscriptActiveEntryIndexes<T>(params: {
+function* selectSessionTranscriptActiveEntryIndexes<T>(params: {
   tree: Pick<SessionTranscriptTree<T>, "hasExplicitLeafUpdate" | "leafId">;
   entryCount: number;
   recordAt(index: number): unknown;
@@ -436,7 +435,7 @@ export function selectSessionTranscriptTreePathNodes<T>(
 }
 
 /** Visits leaf to root. Callers must discard every visited node when a cycle is found. */
-export function visitSessionTranscriptTreePathNodes<T>(
+function visitSessionTranscriptTreePathNodes<T>(
   byId: Pick<SessionTranscriptNavigationStorage<T>["byId"], "get">,
   leafId: string | null,
   seen: Pick<TranscriptNavigationSet, "has" | "add">,

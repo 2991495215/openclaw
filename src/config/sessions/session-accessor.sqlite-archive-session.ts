@@ -58,7 +58,6 @@ export async function withSqliteTranscriptArchiveSession<T>(
 type SqliteArchiveResponseByOperation = {
   materialize: Extract<SqliteArchiveSessionResponse, { type: "done" }>;
   publish: Extract<SqliteArchiveSessionResponse, { type: "published" }>;
-  "read-page": Extract<SqliteArchiveSessionResponse, { type: "page-read" }>;
   "read-final": Extract<SqliteArchiveSessionResponse, { type: "final-read" }>;
 };
 
