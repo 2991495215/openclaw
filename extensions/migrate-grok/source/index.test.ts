@@ -1,4 +1,3 @@
-import { createCipheriv, pbkdf2Sync } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -18,12 +17,7 @@ vi.mock("node:child_process", async (importOriginal) => ({
   execFile: io.execFile,
 }));
 
-import {
-  createGrokAccessTokenResolver,
-  detectGrokSource,
-  readGrokSecrets,
-  readGrokSource,
-} from "./index.js";
+import { createGrokAccessTokenResolver, detectGrokSource, readGrokSource } from "./index.js";
 
 const recipe = {
   profile: {
@@ -174,7 +168,7 @@ describe("Grok migration source boundary", () => {
     expect(io.fetch).not.toHaveBeenCalled();
   });
 
-  it("keeps secrets out of inventory and resolves only selected values during explicit apply", async () => {
+  it("keeps credential values out of inventory without reading a sibling credential file", async () => {
     const source = await write(path.join(root, "grok-migration.json"), {
       format: "grok-migration",
       version: 1,
@@ -199,7 +193,6 @@ describe("Grok migration source boundary", () => {
         },
       },
     });
-    await write(path.join(root, "secrets.json"), { PROVIDER_KEY: "private-provider-key" });
     const inventory = await readGrokSource({ source });
     expect(JSON.stringify(inventory)).not.toContain("private-");
     expect(inventory.settings.value).toEqual({ userTimeZone: "UTC" });
@@ -207,63 +200,16 @@ describe("Grok migration source boundary", () => {
       unsupportedEmbeddedCredentials: true,
       sourceAuthenticationRequired: true,
     });
-    const selectors = inventory.credentials.filter(
-      (selector) => selector.name === "PROVIDER_KEY" || selector.name === "EMPTY",
-    );
-    expect(await readGrokSecrets({ inventory, includeSecrets: false, selectors })).toEqual({});
-    const values = await readGrokSecrets({ inventory, includeSecrets: true, selectors });
-    expect(Object.values(values).toSorted()).toEqual(["", "private-provider-key"]);
+    expect(inventory.credentials.map((selector) => selector.name)).toEqual([
+      "API_KEY",
+      "EMPTY",
+      "PROVIDER_KEY",
+    ]);
     expect(io.execFile).not.toHaveBeenCalled();
-    await expect(
-      readGrokSecrets({
-        inventory,
-        includeSecrets: true,
-        selectors: [{ ...selectors[0]!, sourcePath: "/unrelated" }],
-      }),
-    ).rejects.toThrow("no longer in the source inventory");
+    expect(io.fetch).not.toHaveBeenCalled();
   });
 
-  it.skipIf(process.platform !== "darwin")(
-    "decrypts only selected native secrets in one captured Keychain operation without writing source state",
-    async () => {
-      const password = "synthetic-storage-password";
-      const key = pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1");
-      const encrypted = (value: string) => {
-        const cipher = createCipheriv("aes-128-cbc", key, Buffer.alloc(16, 32));
-        return Buffer.concat([Buffer.from("v10"), cipher.update(value), cipher.final()]).toString(
-          "base64",
-        );
-      };
-      await write(path.join(root, "settings.json"), { version: 1, activeAccountScope: "active" });
-      const file = await write(path.join(root, "user-secrets.json"), {
-        version: 2,
-        accounts: {
-          active: { FIRST: encrypted("first-value"), SECOND: encrypted("second-value") },
-          other: { PRIVATE: encrypted("unselected-value") },
-        },
-      });
-      const before = await fs.readFile(file);
-      const inventory = await readGrokSource({ source: root });
-      expect(inventory.credentials.map((selector) => selector.name)).toEqual(["FIRST", "SECOND"]);
-      expect(io.execFile).not.toHaveBeenCalled();
-      io.execFile.mockImplementation((_command, _args, _options, callback) =>
-        callback(null, Buffer.from(password + "\n")),
-      );
-      expect(
-        Object.values(await readGrokSecrets({ inventory, includeSecrets: true })).toSorted(),
-      ).toEqual(["first-value", "second-value"]);
-      expect(io.execFile).toHaveBeenCalledTimes(1);
-      expect(io.execFile.mock.calls[0]?.[1]).toEqual([
-        "find-generic-password",
-        "-s",
-        "Grok Bot Safe Storage",
-        "-w",
-      ]);
-      expect(await fs.readFile(file)).toEqual(before);
-    },
-  );
-
-  it("reads unredacted hosted MCP credentials only during explicit apply", async () => {
+  it("reads only redacted hosted MCP configuration and never private memory", async () => {
     hosted({
       GetAvailableMcpServers: {
         servers: [{ name: "remote", enabled: true, hasStaticCredentialHeaders: true }],
@@ -275,37 +221,28 @@ describe("Grok migration source boundary", () => {
       homeDir: root,
       resolveAccessToken: token,
     });
-    expect(token).not.toHaveBeenCalled();
-    const inventory = await readGrokSource({
-      source: "live",
-      homeDir: root,
-      resolveAccessToken,
-    });
+    const inventory = await readGrokSource({ source: "live", homeDir: root, resolveAccessToken });
+    expect(inventory.mcpServers.value[0]?.credentialSelectors).toHaveLength(1);
     expect(
       io.fetch.mock.calls
         .filter(([request]) => request.url.endsWith("/GetMcpConfig"))
         .map(([request]) => JSON.parse(request.init.body).redactSecrets),
     ).toEqual([true]);
-    await readGrokSecrets({ inventory, includeSecrets: false, resolveAccessToken });
-    hosted({
-      GetMcpConfig: {
-        configJson: JSON.stringify({
-          mcpServers: { remote: { headers: { Authorization: "portable-static-key" } } },
-        }),
-      },
-    });
-    const result = await readGrokSecrets({
-      inventory,
-      includeSecrets: true,
-      resolveAccessToken,
-    });
-    expect(Object.values(result)).toEqual(["portable-static-key"]);
+    expect(io.fetch.mock.calls.some(([request]) => /Memor/iu.test(request.url))).toBe(false);
     expect(token).toHaveBeenCalledTimes(1);
-    expect(
-      io.fetch.mock.calls
-        .filter(([request]) => request.url.endsWith("/GetMcpConfig"))
-        .map(([request]) => JSON.parse(request.init.body).redactSecrets),
-    ).toEqual([true, false]);
+  });
+
+  it("reopens default discovery sources when no desktop app directory exists", async () => {
+    hosted();
+    const options = { homeDir: root, resolveAccessToken: async () => "fixture-token" };
+    const detection = await detectGrokSource(options);
+    const reopened = await readGrokSource({ ...options, source: detection.source });
+    expect(reopened.agents.value.map((agent) => agent.id)).toEqual(["runtime-id"]);
+    // The same fallback also works with settings only, without a token.
+    await write(path.join(root, ".grokbot/settings.json"), { version: 1, userTimeZone: "UTC" });
+    const local = await detectGrokSource({ homeDir: root });
+    const settingsOnly = await readGrokSource({ homeDir: root, source: local.source });
+    expect(settingsOnly.settings.value.userTimeZone).toBe("UTC");
   });
 
   it("round-trips available partial content, photos, and MCP restrictions without claiming completeness", async () => {
@@ -447,10 +384,7 @@ describe("Grok migration source boundary", () => {
       id: "runtime-id",
       instructions: "Actual instructions",
       skills: { value: [{ content: "Complete source body" }] },
-      memory: {
-        status: "partial",
-        value: [{ content: "A learned fact", createdAt: "2020-09-13T12:26:40.000Z" }],
-      },
+      memory: { status: "unavailable", value: [] },
       plugins: { status: "unavailable" },
       avatar: { image: { bytes: Buffer.from([137, 80, 78, 71]), extension: "png" } },
     });
@@ -472,6 +406,18 @@ describe("Grok migration source boundary", () => {
     );
     expect(JSON.parse(skillCall?.[0].init.body)).toEqual({ agentId: "runtime-id" });
     expect(JSON.stringify(inventory)).not.toContain("fixture-token");
+    expect(io.fetch.mock.calls.some(([request]) => /Memor/iu.test(request.url))).toBe(false);
+    const perAgentRequests = io.fetch.mock.calls
+      .map(([request]) => JSON.parse(request.init.body).agentId)
+      .filter(Boolean);
+    expect(new Set(perAgentRequests)).toEqual(new Set(["runtime-id"]));
+    // Saved plans re-open the detected source during apply, even with no app directory.
+    const reopened = await readGrokSource({
+      homeDir: root,
+      source: inventory.source,
+      resolveAccessToken: token,
+    });
+    expect(reopened.agents.value.map((agent) => agent.id)).toEqual(["runtime-id"]);
   });
 
   it("reports access failure and truncated inventory instead of claiming an empty successful migration", async () => {
@@ -499,16 +445,16 @@ describe("Grok migration source boundary", () => {
     );
   });
 
-  it("reports a denied memory read without losing other owned bot data", async () => {
-    hosted({ ListGrokBotUserBotMemories: new Response("private diagnostic", { status: 403 }) });
+  it("reports a denied skill read without losing other owned bot data", async () => {
+    hosted({ ListGrokBotAgentSkills: new Response("private diagnostic", { status: 403 }) });
     const inventory = await readGrokSource({
       source: "live",
       homeDir: root,
       resolveAccessToken: async () => "fixture-token",
     });
-    expect(inventory.agents.value[0]?.memory).toMatchObject({ status: "unavailable", value: [] });
-    expect(inventory.agents.value[0]?.memory.reason).toContain("HTTP 403");
-    expect(inventory.agents.value[0]?.skills.status).toBe("complete");
+    expect(inventory.agents.value[0]?.skills).toMatchObject({ status: "unavailable", value: [] });
+    expect(inventory.agents.value[0]?.skills.reason).toContain("HTTP 403");
+    expect(inventory.agents.value[0]?.automations.status).toBe("complete");
     expect(JSON.stringify(inventory)).not.toContain("private diagnostic");
   });
 

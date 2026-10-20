@@ -74,6 +74,7 @@ it("previews account data and preserves full bot content, identity, memory and s
       }),
       expect.objectContaining({
         kind: "skill",
+        details: expect.objectContaining({ skillName: "Research" }),
         target: path.join(workspace, "skills/research/SKILL.md"),
       }),
     ]),
@@ -136,4 +137,106 @@ it("refuses source content changed after preview", async () => {
     reason: expect.stringContaining("changed"),
   });
   await expect(fs.stat(path.join(workspace, "SOUL.md"))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("skips incomplete memory and rejects an older plan that selected it", async () => {
+  const { ctx, workspace, snapshot, snapshotPath } = await fixture();
+  const provider = buildGrokMigrationProvider();
+  const original = await provider.plan(ctx);
+  await fs.writeFile(
+    snapshotPath,
+    JSON.stringify({
+      ...snapshot,
+      agents: [
+        {
+          ...snapshot.agents[0]!,
+          sourceStatus: { memory: { status: "partial", reason: "Private memory is incomplete." } },
+        },
+      ],
+    }),
+  );
+  const plan = await provider.plan(ctx);
+  expect(plan.items.some((item) => item.kind === "memory")).toBe(false);
+  const result = await provider.apply(ctx, {
+    ...original,
+    items: original.items.filter((item) => item.kind === "memory"),
+  });
+  expect(result.items[0]?.status).toBe("error");
+  await expect(fs.stat(path.join(workspace, "MEMORY.md"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
+
+it("reports credentials as manual even with consent and refuses saved credential actions", async () => {
+  const { ctx, snapshot, snapshotPath } = await fixture();
+  await fs.writeFile(
+    snapshotPath,
+    JSON.stringify({ ...snapshot, credentialNames: ["XAI_API_KEY"] }),
+  );
+  // Deliberately no secrets.json: neither preview nor recovery may resolve this value.
+  const provider = buildGrokMigrationProvider();
+  const selected = { ...ctx, includeSecrets: true };
+  const plan = await provider.plan(selected);
+  expect(plan.items.some((item) => item.action === "import-api-key")).toBe(false);
+  expect(
+    plan.items.some((item) => item.kind === "manual" && item.message?.includes("XAI_API_KEY")),
+  ).toBe(true);
+  const result = await provider.apply(selected, {
+    ...plan,
+    items: [
+      {
+        id: "legacy-credential",
+        kind: "secret",
+        action: "import-api-key",
+        status: "planned",
+        details: { selectorId: "old-selector", provider: "xai", profileId: "xai:old" },
+      },
+    ],
+  });
+  expect(result.items[0]).toMatchObject({
+    status: "skipped",
+    reason: expect.stringContaining("not copied"),
+  });
+  await expect(fs.stat(path.join(ctx.stateDir, "credentials"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
+
+it("offers curated integration setup without guessing packages from display names", async () => {
+  const { ctx, snapshot, snapshotPath, workspace } = await fixture();
+  await fs.writeFile(
+    snapshotPath,
+    JSON.stringify({
+      ...snapshot,
+      agents: [
+        {
+          ...snapshot.agents[0]!,
+          plugins: [
+            { pluginId: "48668144", name: "AgentMail", description: "Preferred research inbox." },
+            { pluginId: "unknown", name: "AgentMail", description: "Unverified service." },
+          ],
+        },
+      ],
+    }),
+  );
+  const provider = buildGrokMigrationProvider();
+  const plan = await provider.plan(ctx);
+  const integrations = plan.items.filter((item) => item.source?.includes(".plugins."));
+  expect(integrations).toHaveLength(2);
+  expect(integrations[0]).toMatchObject({
+    status: "skipped",
+    reason: expect.stringContaining("clawhub:@agentmail/agentmail --no-enable"),
+  });
+  expect(integrations[1]).toMatchObject({
+    status: "skipped",
+    reason: expect.stringContaining("No package is installed by name matching"),
+  });
+  await provider.apply(ctx, {
+    ...plan,
+    items: plan.items.filter((item) => item.details?.relativePath === "GROK-IMPORT.md"),
+  });
+  const guide = await fs.readFile(path.join(workspace, "GROK-IMPORT.md"), "utf8");
+  expect(guide).toContain("Grok connect cards, secret-request");
+  expect(guide).toContain("Preferred research inbox.");
+  expect(guide).toContain("No verified native mapping; manual setup required.");
 });

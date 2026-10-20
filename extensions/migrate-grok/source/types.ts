@@ -10,7 +10,7 @@ export type GrokSourceSection<T> = {
 
 export type GrokSourceIssue = { code: string; message: string; agentId?: string };
 
-/** A location, never a credential value. Resolution belongs to explicit apply. */
+/** Metadata for setup reminders only; credential values are never resolved or copied. */
 export type GrokCredentialSelector = {
   id: string;
   name: string;

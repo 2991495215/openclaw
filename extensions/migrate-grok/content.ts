@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { grokPluginSetup, GROK_TOOL_TRANSLATION_NOTE } from "./plugin-equivalents.js";
 import { renderGrokBotAvatar } from "./source/avatar.js";
 import type { GrokSourceAgent } from "./source/types.js";
 
@@ -6,6 +7,7 @@ export type GrokWorkspaceFile = {
   path: string;
   content: string | Uint8Array;
   kind: "workspace" | "memory" | "skill";
+  skillName?: string;
 };
 
 export function grokContentDigest(content: string | Uint8Array): string {
@@ -48,7 +50,7 @@ export function renderGrokWorkspace(agent: GrokSourceAgent): {
   if (agent.instructions) {
     files.push({ path: "SOUL.md", content: agent.instructions, kind: "workspace" });
   }
-  if (agent.memory.value.length) {
+  if (agent.memory.status === "complete" && agent.memory.value.length) {
     files.push({
       path: "MEMORY.md",
       kind: "memory",
@@ -71,6 +73,7 @@ export function renderGrokWorkspace(agent: GrokSourceAgent): {
     files.push({
       path: `skills/${slug}/SKILL.md`,
       kind: "skill",
+      skillName: skill.name,
       content: /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.test(skill.content)
         ? skill.content
         : `---\nname: ${JSON.stringify(slug)}\ndescription: ${JSON.stringify(skill.description)}\n---\n\n${skill.content}`,
@@ -92,6 +95,16 @@ export function renderGrokWorkspace(agent: GrokSourceAgent): {
           ]
         : []),
       ...limitations.map((message) => `\n- ${message}`),
+      ...(agent.plugins.value.length
+        ? [
+            "\n## Integration setup\n",
+            GROK_TOOL_TRANSLATION_NOTE,
+            ...agent.plugins.value.map((plugin) => {
+              const equivalent = grokPluginSetup(plugin.pluginId);
+              return `\n- ${plugin.name}: ${equivalent ? `${equivalent.name}. ${equivalent.setup}` : "No verified native mapping; manual setup required."}${plugin.description ? ` Source requirement: ${plugin.description}` : ""}`;
+            }),
+          ]
+        : []),
       "",
     ].join("\n"),
   });

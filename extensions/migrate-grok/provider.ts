@@ -10,7 +10,7 @@ export function buildGrokMigrationProvider(
     id: "grok",
     label: "Grok Bot",
     description:
-      "Import Grok Bot agents, settings, memory, skills, automations, and supported integrations.",
+      "Import Grok Bot agents, verified settings, exported memory, skills, and supported automation/connection definitions.",
     deferredApply: { retrySafe: true },
     async detect(ctx) {
       const { detectGrokSource } = await import("./source/index.js");

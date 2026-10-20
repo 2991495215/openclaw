@@ -32,8 +32,8 @@ import {
 import { applyGrokIntegrationItem } from "./integrations.js";
 import { buildGrokPlan } from "./plan.js";
 import { applyGrokSettingsItem } from "./settings.js";
-import { createGrokAccessTokenResolver, readGrokSecrets, readGrokSource } from "./source/index.js";
-import type { GrokCredentialSelector, GrokSourceInventory } from "./source/types.js";
+import { createGrokAccessTokenResolver, readGrokSource } from "./source/index.js";
+import type { GrokSourceInventory } from "./source/types.js";
 import { resolveGrokAgentTargets } from "./targets.js";
 
 async function readExisting(target: string): Promise<Buffer | undefined> {
@@ -154,43 +154,7 @@ export async function applyGrokPlan(params: {
   const reportDir = ctx.reportDir ?? path.join(ctx.stateDir, "migration", "grok");
   const results = new Map<MigrationItem, MigrationItem>();
   const failedAgents = new Set<string>();
-  const selectedCredentials = new Map<string, GrokCredentialSelector>();
-  for (const item of plan.items.filter((entry) => entry.status === "planned")) {
-    if (item.action === "import-api-key") {
-      const selector = inventory.credentials.find((entry) => entry.id === item.details?.selectorId);
-      if (selector) {
-        selectedCredentials.set(selector.id, selector);
-      }
-    } else if (item.action === "import-mcp" && item.details?.includeSecrets === true) {
-      const server = inventory.mcpServers.value.find(
-        (entry) => entry.name === item.details?.serverName,
-      );
-      for (const selector of server?.credentialSelectors ?? []) {
-        selectedCredentials.set(selector.id, selector);
-      }
-    }
-  }
-  let credentialBatch: Promise<Record<string, string>> | undefined;
-  const readSecrets = async (selectors: readonly GrokCredentialSelector[]) => {
-    const options = { inventory, includeSecrets: ctx.includeSecrets === true, resolveAccessToken };
-    credentialBatch ??= readGrokSecrets({
-      ...options,
-      selectors: [...selectedCredentials.values()],
-    });
-    // One unavailable credential must not prevent importing other selected integrations.
-    const values = await credentialBatch.catch(() =>
-      readGrokSecrets({ ...options, selectors: [...selectors] }),
-    );
-    const selected = new Map<string, string>();
-    for (const selector of selectors) {
-      const value = values[selector.id];
-      if (typeof value === "string") {
-        selected.set(selector.id, value);
-      }
-    }
-    return selected;
-  };
-  // Native creation must precede all files, credentials, and automation for that agent.
+  // Native creation must precede files and automations for that agent.
   const ordered = [
     ...plan.items.filter((item) => item.action === "create-agent"),
     ...plan.items.filter((item) => item.action !== "create-agent"),
@@ -264,7 +228,6 @@ export async function applyGrokPlan(params: {
           item,
           inventory,
           agentTargets: targets,
-          readSecrets,
         });
       }
     } catch (error) {

@@ -99,7 +99,11 @@ export async function buildGrokPlan(ctx: MigrationProviderContext): Promise<Migr
           status: conflict ? "conflict" : "planned",
           reason: conflict ? "target exists" : undefined,
           sourceRevision: { algorithm: "sha256", digest },
-          details: { sourceAgentId: agent.id, relativePath: file.path },
+          details: {
+            sourceAgentId: agent.id,
+            relativePath: file.path,
+            ...(file.skillName ? { skillName: file.skillName } : {}),
+          },
         }),
       );
     }

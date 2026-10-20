@@ -47,7 +47,7 @@ export async function readHostedInventory(
   inventory.issues.push({
     code: "source_cloud_credentials_unavailable",
     message:
-      "Grok cloud vault passwords and connected service OAuth sessions are not available as portable credentials. Reconnect those services; supported local user secrets and static MCP values can be selected during apply.",
+      "Grok cloud vault passwords and connected service OAuth sessions are not available as portable credentials. Credentials are not copied; configure the destination integrations separately.",
   });
   const read = (method: string, body: Record<string, unknown> = {}, dashboard = false) =>
     requestGrok(token, method, body, dashboard);
@@ -199,7 +199,10 @@ export async function readHostedInventory(
       name,
       instructions: text(row.description) ?? "",
       title: text(row.title),
-      memory: unavailable([], "Memory facts were not read."),
+      memory: unavailable(
+        [],
+        "Private cloud memory is not imported because complete export support is unverified. Supply a complete recipe or snapshot to import exported memory.",
+      ),
       skills: unavailable([], "Skills were not read."),
       automations: unavailable([], "Automations were not read."),
       plugins: unavailable([], "Plugin requirements were not read."),
@@ -243,30 +246,7 @@ export async function readHostedInventory(
       );
       agent.avatar.image = image.value;
     }
-    [agent.memory, agent.skills, agent.automations, agent.plugins] = await Promise.all([
-      section(
-        "ListGrokBotUserBotMemories",
-        [],
-        async () => {
-          const response = await read("ListGrokBotUserBotMemories", { agentId: id });
-          if (response.truncated === true || response.nextPageToken) {
-            throw new Error("The source returned a truncated memory list.");
-          }
-          return records(response.memories).map((fact) => {
-            if (typeof fact.text !== "string" || typeof fact.factId !== "string") {
-              throw new Error("Invalid source memory fact.");
-            }
-            const learnedAt = Number(fact.learnedAtMs);
-            const date =
-              Number.isSafeInteger(learnedAt) && learnedAt > 0 ? new Date(learnedAt) : undefined;
-            return {
-              content: fact.text,
-              createdAt: date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined,
-            };
-          });
-        },
-        id,
-      ),
+    [agent.skills, agent.automations, agent.plugins] = await Promise.all([
       section(
         "ListGrokBotAgentSkills",
         [],
@@ -339,11 +319,6 @@ export async function readHostedInventory(
         id,
       ),
     ]);
-    if (agent.memory.status === "complete") {
-      agent.memory.status = "partial";
-      agent.memory.reason =
-        "Learned memory facts were read; this API does not establish a complete export of additional private memory files or logs.";
-    }
     if (agent.plugins.status === "complete") {
       agent.plugins.status = "partial";
       agent.plugins.reason =
@@ -355,18 +330,11 @@ export async function readHostedInventory(
     status: agents.length === roster.value.length ? "complete" : "partial",
     value: agents,
   };
-  if (agents.some((agent) => agent.memory.status === "unavailable")) {
+  if (agents.length) {
     inventory.issues.push({
       code: "source_memory_unavailable",
       message:
-        "Some owned bot memory reads were denied or unavailable; complete recipes or snapshots can supply missing memory.",
-    });
-  }
-  if (agents.some((agent) => agent.memory.status === "partial")) {
-    inventory.issues.push({
-      code: "source_memory_partial",
-      message:
-        "Available learned facts were preserved. Additional private memory files or logs require a complete source recipe or snapshot.",
+        "Private cloud memory was not requested. Only complete memory included in a supplied recipe or snapshot is imported.",
     });
   }
 }

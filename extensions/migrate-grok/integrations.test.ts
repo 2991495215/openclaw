@@ -50,7 +50,7 @@ function inventory(): GrokSourceInventory {
 }
 
 describe("Grok integration migration", () => {
-  it("maps MCP transport and restrictions while leaving connections disabled for scope review and gating credentials", () => {
+  it("maps MCP transport and restrictions while leaving connections disabled for scope review and skipping credentials regardless of consent", () => {
     const items = planGrokIntegrations({ ctx, inventory: inventory(), agentTargets });
     expect(items.find((item) => item.target === "mcp.servers.calendar")?.details?.value).toEqual({
       url: "https://calendar.example/mcp",
@@ -66,17 +66,16 @@ describe("Grok integration migration", () => {
         enabled: false,
       },
     );
-    expect(items.find((item) => item.action === "import-api-key")).toMatchObject({
-      status: "skipped",
-      sensitive: true,
-    });
+    expect(items.some((item) => item.action === "import-api-key")).toBe(false);
     expect(
-      items.some((item) => item.kind === "manual" && item.source?.endsWith("grok-session")),
+      planGrokIntegrations({
+        ctx: { ...ctx, includeSecrets: true },
+        inventory: inventory(),
+        agentTargets,
+      })
+        .filter((item) => item.source?.includes("#credentials."))
+        .every((item) => item.kind === "manual" && item.status === "skipped"),
     ).toBe(true);
-    expect(
-      items.some((item) => item.kind === "manual" && item.source?.endsWith("prototype-name")),
-    ).toBe(true);
-    expect(items.filter((item) => item.action === "import-api-key")).toHaveLength(1);
     expect(
       items.find((item) => item.target === "mcp.servers.local-tools")?.details?.sourceEnabled,
     ).toBe(false);
@@ -85,36 +84,19 @@ describe("Grok integration migration", () => {
     ).toBe(true);
   });
 
-  it("never resolves credentials without current apply consent, and fails closed if a reviewed MCP secret disappears", async () => {
+  it("refuses credential-bearing MCP actions from older saved plans", async () => {
     const source = inventory();
-    const items = planGrokIntegrations({
-      ctx: { ...ctx, includeSecrets: true },
-      inventory: source,
-      agentTargets,
-    });
-    const item = items.find((entry) => entry.target === "mcp.servers.calendar");
-    if (!item) {
-      throw new Error("Missing planned MCP connection");
-    }
-    const readSecrets = async () => {
-      throw new Error("Credential reader must not run without consent");
-    };
-    expect(
-      await applyGrokIntegrationItem({ ctx, item, inventory: source, agentTargets, readSecrets }),
-    ).toMatchObject({
-      status: "skipped",
-    });
+    const item = planGrokIntegrations({ ctx, inventory: source, agentTargets }).find(
+      (entry) => entry.target === "mcp.servers.calendar",
+    )!;
+    const legacy = { ...item, details: { ...item.details, includeSecrets: true } };
     expect(
       await applyGrokIntegrationItem({
         ctx: { ...ctx, includeSecrets: true },
-        item,
+        item: legacy,
         inventory: source,
         agentTargets,
-        readSecrets: async () => new Map(),
       }),
-    ).toMatchObject({
-      status: "error",
-      reason: "A required MCP credential is no longer available.",
-    });
+    ).toMatchObject({ status: "skipped", reason: expect.stringContaining("not copied") });
   });
 });

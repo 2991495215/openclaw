@@ -1,6 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
 import {
-  applyMigrationConfigPatchItem,
   createMigrationConfigPatchItem,
   createMigrationManualItem,
   hasMigrationConfigPatchConflict,
@@ -10,32 +9,16 @@ import {
   resolveMigrationConfigRuntime,
 } from "openclaw/plugin-sdk/migration";
 import type { MigrationItem, MigrationProviderContext } from "openclaw/plugin-sdk/plugin-entry";
-import { updateAuthProfileStoreWithLock } from "openclaw/plugin-sdk/provider-auth";
 import { isRecord, normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import type { GrokCredentialSelector, GrokMcpServer, GrokSourceInventory } from "./source/types.js";
+import { grokPluginSetup, GROK_TOOL_TRANSLATION_NOTE } from "./plugin-equivalents.js";
+import type { GrokMcpServer, GrokSourceInventory } from "./source/types.js";
 import { grokImportId, type GrokAgentTargets } from "./targets.js";
-
-const API_KEY_PROVIDERS: Readonly<Record<string, string>> = {
-  XAI_API_KEY: "xai",
-  OPENAI_API_KEY: "openai",
-  ANTHROPIC_API_KEY: "anthropic",
-  OPENROUTER_API_KEY: "openrouter",
-  GOOGLE_API_KEY: "google",
-  GEMINI_API_KEY: "google",
-  GROQ_API_KEY: "groq",
-  MISTRAL_API_KEY: "mistral",
-  DEEPSEEK_API_KEY: "deepseek",
-};
 
 type IntegrationParams = {
   inventory: GrokSourceInventory;
   ctx: MigrationProviderContext;
   agentTargets: GrokAgentTargets;
 };
-
-function apiKeyProvider(name: string): string | undefined {
-  return Object.hasOwn(API_KEY_PROVIDERS, name) ? API_KEY_PROVIDERS[name] : undefined;
-}
 
 function manual(
   source: string,
@@ -44,18 +27,6 @@ function manual(
   recommendation: string,
 ): MigrationItem {
   return createMigrationManualItem({ id, source, message, recommendation });
-}
-
-function sameDefinition(existing: unknown, value: unknown, credentialSelectors: boolean): boolean {
-  if (!isRecord(existing)) {
-    return false;
-  }
-  const definition = credentialSelectors
-    ? Object.fromEntries(
-        Object.entries(existing).filter(([key]) => key !== "env" && key !== "headers"),
-      )
-    : existing;
-  return isDeepStrictEqual(definition, value);
 }
 
 function mcpDefinition(server: GrokMcpServer): Record<string, unknown> | undefined {
@@ -137,18 +108,13 @@ export function planGrokIntegrations(params: IntegrationParams): MigrationItem[]
         value,
         conflict:
           !ctx.overwrite &&
-          !sameDefinition(
-            ctx.config.mcp?.servers?.[server.name],
-            value,
-            Boolean(ctx.includeSecrets) && server.credentialSelectors.length > 0,
-          ) &&
+          !isDeepStrictEqual(ctx.config.mcp?.servers?.[server.name], value) &&
           hasMigrationConfigPatchConflict(ctx.config, path, value),
         message: `Import MCP connection "${server.name}".`,
         sensitive: server.credentialSelectors.length > 0,
         details: {
           serverName: server.name,
           sourceEnabled: server.enabled ?? null,
-          includeSecrets: Boolean(ctx.includeSecrets),
           credentialIds: server.credentialSelectors.map((selector) => selector.id).toSorted(),
         },
       }),
@@ -184,13 +150,13 @@ export function planGrokIntegrations(params: IntegrationParams): MigrationItem[]
         ),
       );
     }
-    if (server.credentialSelectors.length > 0 && !ctx.includeSecrets) {
+    if (server.credentialSelectors.length > 0) {
       items.push(
         manual(
           source,
           `manual:${id}:credentials`,
-          `MCP connection "${server.name}" stays disabled because its credentials were not selected.`,
-          "Rerun with --include-secrets or configure its environment and headers before enabling it.",
+          `MCP connection "${server.name}" requires credentials configured in OpenClaw; Grok credentials are not copied.`,
+          "Configure its environment and headers through native OpenClaw setup before enabling it. --include-secrets does not enable Grok credential copying.",
         ),
       );
     }
@@ -217,130 +183,32 @@ export function planGrokIntegrations(params: IntegrationParams): MigrationItem[]
   }
   for (const agent of inventory.agents.value) {
     for (const plugin of agent.plugins.value) {
+      const equivalent = grokPluginSetup(plugin.pluginId);
       items.push(
         manual(
           `${inventory.source}#agents.${agent.id}.plugins.${plugin.pluginId}`,
           `manual:${grokImportId(`plugin:${agent.id}:${plugin.pluginId}`)}`,
-          `Grok plugin "${plugin.name}" used by "${agent.name}" has no verified native package mapping.`,
-          "Install an equivalent OpenClaw integration and authorize it. Grok cloud connector grants and plugin identifiers are not reusable packages.",
+          equivalent
+            ? `Grok plugin "${plugin.name}" used by "${agent.name}" has a supported setup path: ${equivalent.name}. Setup and tool compatibility still require verification.`
+            : `Grok plugin "${plugin.name}" used by "${agent.name}" has no verified native package mapping.`,
+          equivalent
+            ? `${equivalent.setup} ${GROK_TOOL_TRANSLATION_NOTE}`
+            : "No package is installed by name matching. Identify and verify a native integration, then authorize it separately.",
         ),
       );
     }
   }
   for (const selector of inventory.credentials) {
-    const provider = apiKeyProvider(selector.name);
-    const source = `${inventory.source}#credentials.${selector.id}`;
-    if (!provider) {
-      items.push(
-        manual(
-          source,
-          `manual:${grokImportId(`credential:${selector.id}`)}`,
-          `Credential "${selector.name}" has no verified reusable provider mapping.`,
-          "Configure the matching integration manually. Source sign-in tokens and service-specific OAuth grants are not model API keys.",
-        ),
-      );
-      continue;
-    }
-    const profileId = `${provider}:${grokImportId(`credential:${selector.id}`)}`;
-    items.push({
-      id: `secret:${profileId}`,
-      kind: "secret",
-      action: "import-api-key",
-      status: ctx.includeSecrets ? "planned" : "skipped",
-      source,
-      target: `auth.profiles.${profileId}`,
-      sensitive: true,
-      applyPhase: "after-promotion",
-      ...(!ctx.includeSecrets
-        ? { reason: "Credential migration requires --include-secrets." }
-        : {}),
-      message: `Import the reusable ${provider} API key into the shared native credential store.`,
-      details: { selectorId: selector.id, provider, profileId },
-    });
-  }
-  return items;
-}
-
-async function applyApiKey(
-  params: IntegrationParams & {
-    item: MigrationItem;
-    readSecrets: (
-      selectors: readonly GrokCredentialSelector[],
-    ) => Promise<ReadonlyMap<string, string>>;
-  },
-): Promise<MigrationItem> {
-  const { ctx, item, inventory } = params;
-  const selector = inventory.credentials.find((entry) => entry.id === item.details?.selectorId);
-  const provider = selector && apiKeyProvider(selector.name);
-  const profileId = provider && `${provider}:${grokImportId(`credential:${selector?.id}`)}`;
-  if (!selector || !provider || !profileId || profileId !== item.details?.profileId) {
-    return markMigrationItemError(item, "The reviewed provider credential is no longer available.");
-  }
-  const configApi = resolveMigrationConfigRuntime(ctx);
-  if (!configApi) {
-    return markMigrationItemError(item, "config runtime unavailable");
-  }
-  const profile = { provider, mode: "api_key" as const };
-  const existingConfig = configApi.current().auth?.profiles?.[profileId];
-  if (
-    existingConfig &&
-    !ctx.overwrite &&
-    (existingConfig.provider !== provider || existingConfig.mode !== "api_key")
-  ) {
-    return markMigrationItemConflict(
-      item,
-      "A different provider credential profile already exists.",
+    items.push(
+      manual(
+        `${inventory.source}#credentials.${selector.id}`,
+        `manual:${grokImportId(`credential:${selector.id}`)}`,
+        `Credential "${selector.name}" is not copied; its portability has not been verified.`,
+        "Configure credentials through the destination provider or integration setup. --include-secrets does not enable Grok credential copying.",
+      ),
     );
   }
-  const value = (await params.readSecrets([selector])).get(selector.id);
-  ctx.signal?.throwIfAborted();
-  if (!value?.trim()) {
-    return markMigrationItemError(item, "The reviewed provider credential is no longer available.");
-  }
-  let conflict = false;
-  const store = await updateAuthProfileStoreWithLock({
-    stateDir: ctx.stateDir,
-    sharedStoreWrite: true,
-    profileId,
-    updater(fresh) {
-      ctx.signal?.throwIfAborted();
-      const existing = fresh.profiles[profileId];
-      if (existing && !ctx.overwrite) {
-        conflict =
-          existing.type !== "api_key" || existing.provider !== provider || existing.key !== value;
-        return false;
-      }
-      fresh.profiles[profileId] = {
-        type: "api_key",
-        provider,
-        key: value,
-        displayName: "Grok import",
-      };
-      return true;
-    },
-  });
-  if (conflict) {
-    return markMigrationItemConflict(item, "A different provider credential already exists.");
-  }
-  if (!store?.profiles[profileId]) {
-    return markMigrationItemError(item, "The native credential store did not accept the import.");
-  }
-  if (existingConfig && existingConfig.provider === provider && existingConfig.mode === "api_key") {
-    return { ...item, status: "migrated", deferredCompletion: true };
-  }
-  const updated = await applyMigrationConfigPatchItem(ctx, {
-    ...item,
-    details: { path: ["auth", "profiles", profileId], value: profile },
-  });
-  return {
-    ...item,
-    status: updated.status,
-    ...(updated.status === "migrated" ? { deferredCompletion: true } : {}),
-    reason:
-      updated.status === "error"
-        ? "The native config writer rejected the credential profile."
-        : updated.reason,
-  };
+  return items;
 }
 
 class McpMigrationConflict extends Error {}
@@ -384,9 +252,6 @@ async function writeMcpConfig(
 export async function applyGrokIntegrationItem(
   params: IntegrationParams & {
     item: MigrationItem;
-    readSecrets: (
-      selectors: readonly GrokCredentialSelector[],
-    ) => Promise<ReadonlyMap<string, string>>;
   },
 ): Promise<MigrationItem> {
   const { ctx, item, inventory } = params;
@@ -394,9 +259,10 @@ export async function applyGrokIntegrationItem(
     return item;
   }
   if (item.action === "import-api-key") {
-    return ctx.includeSecrets
-      ? applyApiKey(params)
-      : markMigrationItemSkipped(item, "Credential migration requires --include-secrets.");
+    return markMigrationItemSkipped(
+      item,
+      "Grok credentials are not copied. Configure credentials in OpenClaw.",
+    );
   }
   if (item.action !== "import-mcp") {
     return markMigrationItemError(item, "Unknown Grok integration migration action.");
@@ -422,34 +288,11 @@ export async function applyGrokIntegrationItem(
   ) {
     return markMigrationItemError(item, "The source MCP connection changed. Review a new plan.");
   }
-  const value = structuredClone(definition);
-  if (item.details.includeSecrets === true && server.credentialSelectors.length > 0) {
-    if (!ctx.includeSecrets) {
-      return markMigrationItemSkipped(item, "Credential migration requires --include-secrets.");
-    }
-    const secrets = await params.readSecrets(server.credentialSelectors);
-    ctx.signal?.throwIfAborted();
-    for (const selector of server.credentialSelectors) {
-      // The version-1 snapshot nests the same standard MCP config under mcpConfig.
-      const selectorPath =
-        selector.path?.[0] === "mcpConfig" ? selector.path.slice(1) : selector.path;
-      const [root, name, field, key, ...tail] = selectorPath ?? [];
-      const secret = secrets.get(selector.id);
-      if (
-        root !== "mcpServers" ||
-        name !== server.name ||
-        (field !== "env" && field !== "headers") ||
-        !key ||
-        ["__proto__", "constructor", "prototype"].includes(key) ||
-        tail.length ||
-        secret === undefined
-      ) {
-        return markMigrationItemError(item, "A required MCP credential is no longer available.");
-      }
-      const current = isRecord(value[field]) ? value[field] : {};
-      value[field] = { ...current, [key]: secret };
-    }
+  if (item.details.includeSecrets === true) {
+    return markMigrationItemSkipped(
+      item,
+      "Grok credentials are not copied. Review a new plan for the connection definition only.",
+    );
   }
-  // Returned plans/reports retain selectors only, never the ephemeral credential-bearing patch.
-  return await writeMcpConfig(ctx, item, server.name, value);
+  return await writeMcpConfig(ctx, item, server.name, definition);
 }

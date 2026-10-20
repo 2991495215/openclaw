@@ -122,7 +122,7 @@ export async function resolveGrokBotAccessToken(options: GrokBotAuthOptions = {}
 }
 
 /** Decrypt selected user secrets in one native prompt, exclusively during explicit apply. */
-export async function decryptGrokSafeStorage(
+async function decryptGrokSafeStorage(
   values: Record<string, string>,
 ): Promise<Record<string, string>> {
   if (!Object.keys(values).length) {
@@ -130,7 +130,7 @@ export async function decryptGrokSafeStorage(
   }
   if (process.platform !== "darwin") {
     throw new Error(
-      "Grok native secret import requires macOS. Export selected credentials on the source Mac first.",
+      "Reading native Grok sign-in requires macOS. Provide GROK_BOT_ACCESS_TOKEN to read the source on another platform.",
     );
   }
   for (const value of Object.values(values)) {
@@ -142,7 +142,7 @@ export async function decryptGrokSafeStorage(
       (encrypted.length - 3) % 16 !== 0
     ) {
       throw new Error(
-        "Unsupported Grok credential encryption. Export the selected credentials on the source Mac.",
+        "Unsupported Grok sign-in encryption. Sign in to Grok Bot again or provide GROK_BOT_ACCESS_TOKEN.",
       );
     }
   }
@@ -172,7 +172,7 @@ export async function decryptGrokSafeStorage(
     return result;
   } catch {
     throw new Error(
-      "Could not decrypt the selected Grok credentials. Unlock Grok Bot's Keychain on the source Mac and retry.",
+      "Could not read Grok sign-in. Unlock Grok Bot's Keychain on the source Mac and retry.",
     );
   } finally {
     passwordOutput.fill(0);

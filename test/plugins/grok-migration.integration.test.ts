@@ -6,12 +6,13 @@ import { ensureAuthProfileStoreWithoutExternalProfilesAsync } from "../../src/ag
 import { runWithLocalStateOwner } from "../../src/cli/local-state-owner.js";
 import { runMigrationApply } from "../../src/commands/migrate/apply.js";
 import { buildMigrationContext } from "../../src/commands/migrate/context.js";
+import { applyMigrationSelections } from "../../src/commands/migrate/selection.js";
 import type { OpenClawConfig } from "../../src/config/types.openclaw.js";
 import { loadCronStore, resolveCronStorePathAsync } from "../../src/cron/store.js";
 import { createPluginRuntime } from "../../src/plugins/runtime/index.js";
 import { createOpenClawTestState } from "../../src/test-utils/openclaw-test-state.js";
 
-it("migrates a full offline Grok configuration through native owners and safely retries", async () => {
+it("migrates verified offline Grok configuration through native owners and safely retries", async () => {
   const state = await createOpenClawTestState({ scenario: "minimal", label: "grok-migration" });
   onTestFinished(state.cleanup);
   await state.writeConfig({
@@ -100,6 +101,16 @@ it("migrates a full offline Grok configuration through native owners and safely 
   expect(plan.items.filter((item) => item.status === "conflict")).toMatchObject([
     { target: "agents.entries.main.name" },
   ]);
+  const selected = applyMigrationSelections(plan, { skills: ["Research"] });
+  expect(
+    selected.items.filter((item) => item.kind === "skill" && item.status === "planned"),
+  ).toHaveLength(1);
+  expect(
+    selected.items.find((item) => item.kind === "skill" && item.status === "planned")?.target,
+  ).toBe(path.join(state.workspaceDir, "skills/research/SKILL.md"));
+  expect(
+    selected.items.find((item) => item.target?.endsWith("skills/analyze/SKILL.md"))?.status,
+  ).toBe("skipped");
   expect(plan.items.some((item) => item.action === "create-agent")).toBe(true);
   expect(plan.items.some((item) => item.action === "create-cron")).toBe(true);
   expect(JSON.stringify(plan)).not.toContain(providerKey);
@@ -164,8 +175,9 @@ it("migrates a full offline Grok configuration through native owners and safely 
     args: ["serve"],
     transport: "stdio",
     enabled: false,
-    env: { API_KEY: mcpKey },
   });
+  expect(config.mcp?.servers?.fixture?.env).toBeUndefined();
+  expect(config.auth?.profiles).toBeUndefined();
   expect(await fs.readFile(path.join(state.workspaceDir, "AGENTS.md"), "utf8")).toBe(
     originalInstructions,
   );
@@ -207,12 +219,16 @@ it("migrates a full offline Grok configuration through native owners and safely 
       }),
     });
   const persisted = await readNativeState();
-  expect(Object.values(persisted.auth.profiles)).toContainEqual(
-    expect.objectContaining({ type: "api_key", provider: "openai", key: providerKey }),
-  );
-  expect(Object.values(persisted.importedAuth.profiles)).toContainEqual(
-    expect.objectContaining({ type: "api_key", provider: "openai", key: providerKey }),
-  );
+  expect(
+    Object.values(persisted.auth.profiles).some(
+      (profile) => "key" in profile && profile.key === providerKey,
+    ),
+  ).toBe(false);
+  expect(
+    Object.values(persisted.importedAuth.profiles).some(
+      (profile) => "key" in profile && profile.key === providerKey,
+    ),
+  ).toBe(false);
   expect(persisted.cron.jobs).toHaveLength(1);
   expect(persisted.cron.jobs[0]).toMatchObject({
     agentId: importedId,

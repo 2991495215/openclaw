@@ -26,7 +26,6 @@ import { parseGrokBotUrl, readGrokResponse, resolveGrokShareId } from "./transpo
 import type { GrokSourceDetection, GrokSourceInventory, GrokSourceOptions } from "./types.js";
 
 export type * from "./types.js";
-export { readGrokSecrets } from "./secrets.js";
 
 function home(options: GrokSourceOptions): string {
   return options.homeDir ?? os.homedir();
@@ -118,8 +117,8 @@ export async function detectGrokSource(
       (await exists(path.join(home(options), ".grokbot/settings.json"))));
   return {
     detected,
-    source,
-    kind: "local",
+    source: detected ? "live" : source,
+    kind: detected ? "live" : "local",
     notes: detected
       ? []
       : ["Grok Bot data was not found. Supply its application directory or a migration snapshot."],
