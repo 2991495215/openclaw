@@ -392,6 +392,8 @@ export function DesktopSizing(props: DesktopSizingOptions) {
 export function DesktopNotice(props: {
   errorText: string | null;
   noticeText: string | null;
+  setupHref?: string | null;
+  onSetupClick?: JSX.EventHandler<HTMLAnchorElement, MouseEvent>;
   availability?: DesktopAvailability;
 }) {
   return (
@@ -403,7 +405,16 @@ export function DesktopNotice(props: {
       ) : (
         props.noticeText && (
           <div class="desktop-note" role="status">
-            {props.noticeText}
+            <span>{props.noticeText}</span>
+            {props.setupHref && (
+              <a
+                class="desktop-note__action"
+                href={props.setupHref}
+                onClick={(event) => props.onSetupClick?.(event)}
+              >
+                {t("desktop.openSystemsSetup")}
+              </a>
+            )}
           </div>
         )
       )}

@@ -17,6 +17,7 @@ import {
   type SystemsInventory,
   type SystemsInventoryRow,
 } from "./systems-data.ts";
+import { readHostDesktopSetupNavigation } from "./systems-navigation.ts";
 import {
   SYSTEMS_GATEWAY_STALE_MS,
   SYSTEMS_NODE_STALE_MS,
@@ -40,6 +41,7 @@ type SystemsState = {
   showDetails: boolean;
   error: string | null;
   desktopSetupError: string | null;
+  desktopReturn: NonNullable<ReturnType<typeof readHostDesktopSetupNavigation>>["returnTo"];
   backups: BackupStatusResult | null;
   backupsError: string | null;
 };
@@ -59,6 +61,7 @@ export function createSystems(context: ApplicationContext) {
     showDetails: false,
     error: null,
     desktopSetupError: null,
+    desktopReturn: null,
     backups: null,
     backupsError: null,
   };
@@ -330,6 +333,12 @@ export function createSystems(context: ApplicationContext) {
       cancelBackups();
       resetDesktopSetup();
       return;
+    }
+    const search = context.router.getState().location?.search ?? "";
+    const setup = readHostDesktopSetupNavigation(search, context.basePath);
+    state.desktopReturn = setup?.returnTo ?? null;
+    if (setup) {
+      select("gateway");
     }
     subscriptions = [
       // Gateway receipts cancel stale inventory, backup, and desktop work before connection or access changes settle.

@@ -138,7 +138,12 @@ function harness(
   const context = createContext(gateway.gateway, createSessions("main", []));
   const runtimeConfig = createRuntimeConfigCapability(gateway.gateway);
   runtimeConfigs.push(runtimeConfig);
-  Object.assign(context, { basePath: "", navigate: vi.fn(), runtimeConfig });
+  Object.assign(context, {
+    basePath: "",
+    navigate: vi.fn(),
+    runtimeConfig,
+    router: { getState: () => ({ location: { pathname: "/systems", search: "", hash: "" } }) },
+  });
   const controller = createSystems(context);
   return { controller, gateway, context, request };
 }
@@ -156,6 +161,30 @@ async function mount(controller: Systems) {
 }
 
 describe("Systems workspace", () => {
+  it("opens host setup instead of the retained worker and offers a local return", async () => {
+    const { controller, context } = harness();
+    const { page } = await mount(controller);
+    controller.select(worker.id);
+    controller.setPresented(false);
+    Object.assign(context, {
+      router: {
+        getState: () => ({
+          location: {
+            pathname: "/systems",
+            search: "?desktopSetup=gateway&returnTo=%2Fchat",
+            hash: "",
+          },
+        }),
+      },
+    });
+    controller.setPresented(true);
+    await waitForSolid(() => {
+      expect(page.querySelector("h1")?.textContent).toBe("Test Gateway");
+      expect(page.querySelector('a[href="/chat"]')?.textContent).toBe("Return to desktop");
+    });
+    expect(controller.state.selectedId).toBe("gateway");
+  });
+
   it("shows and refreshes backup health on the landing view without machines", async () => {
     vi.useFakeTimers();
     const pending = createDeferred<BackupStatusResult>();

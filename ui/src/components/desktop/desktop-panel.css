@@ -176,10 +176,19 @@ openclaw-desktop-panel {
     white-space: nowrap;
   }
   .desktop-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
     padding: 7px 12px;
     border-bottom: 1px solid var(--border);
     color: var(--muted);
     font-size: 12px;
+  }
+  .desktop-note__action {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
   .desktop-note--error {
     color: var(--danger);

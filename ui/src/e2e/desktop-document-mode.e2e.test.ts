@@ -116,6 +116,7 @@ async function installDesktopClientFake(panel: Locator) {
 
 type DesktopOptions = {
   desktopObserve?: unknown;
+  methodResponses?: Record<string, unknown>;
   session?: unknown;
   inventoryMethod?: "environments.list" | "environments.status";
   environments?: Array<{ id: string } & Record<string, unknown>>;
@@ -123,6 +124,7 @@ type DesktopOptions = {
 async function startDesktopDocument(page: Page, route: string, options: DesktopOptions = {}) {
   const {
     desktopObserve = observe("document"),
+    methodResponses = {},
     session: describedSession,
     inventoryMethod = route === "focus/desktop" ? "environments.list" : "environments.status",
   } = options;
@@ -141,6 +143,7 @@ async function startDesktopDocument(page: Page, route: string, options: DesktopO
         workspace: "/tmp/openclaw-desktop-document",
         setupComplete: false,
       },
+      ...methodResponses,
     },
   });
   await page.goto(`${suite.server.baseUrl}${route}`);
@@ -182,6 +185,38 @@ async function openDesktopDocument(
 }
 
 suite.define(() => {
+  it("opens Gateway setup from a standalone Desktop and offers the same source on return", async () => {
+    await suite.withPage({ serviceWorkers: "block" }, async ({ page }) => {
+      const { panel } = await openDesktopDocument(page, "focus/desktop/source/gateway", {
+        environments: [{ ...gatewayEnvironment, desktop: false }],
+        methodResponses: {
+          "node.list": { nodes: [] },
+          "backup.status": { targets: [], schedules: [], locations: [] },
+          "system.info": {
+            machineName: "Gateway Mac",
+            hostname: "gateway.test",
+            platform: "darwin",
+            release: "test",
+            arch: "arm64",
+            osLabel: "macOS 27",
+            nodeVersion: "v26",
+            pid: 1,
+            uptimeMs: 1000,
+            cpuCount: 4,
+            loadAverage: [0, 0, 0],
+            memoryTotalBytes: 8192,
+            memoryFreeBytes: 4096,
+          },
+        },
+      });
+      await panel.getByRole("link", { name: "Open desktop setup", exact: true }).click();
+      await page.waitForURL((url) => url.pathname === "/systems");
+      const back = page.getByRole("link", { name: "Return to desktop", exact: true });
+      await back.waitFor();
+      expect(await back.getAttribute("href")).toBe("/focus/desktop/source/gateway");
+    });
+  });
+
   it("paints the session desktop without waiting for global inventory", async () => {
     await suite.withPage({ serviceWorkers: "block" }, async ({ page }) => {
       const sessionKey = "agent:main:targeted-desktop";
@@ -317,6 +352,7 @@ suite.define(() => {
         });
         if (initialState !== "active") {
           await exactText(panel, unavailable).waitFor();
+          expect(await panel.getByRole("link", { name: "Open desktop setup" }).count()).toBe(0);
           await button(panel, "Retry").waitFor();
           await expectRequests(gateway, { "environments.status": 0, "desktop.observe": 0 });
           await gateway.setSessionsListResponse(
@@ -497,6 +533,7 @@ suite.define(() => {
       );
 
       await exactText(panel, unavailable).waitFor();
+      expect(await panel.getByRole("link", { name: "Open desktop setup" }).count()).toBe(0);
       await exactText(panel, "Desktop sources").waitFor();
       expect(await gateway.getRequests("desktop.observe")).toHaveLength(0);
     });
@@ -589,6 +626,7 @@ suite.define(() => {
       );
 
       await exactText(panel, unavailable).waitFor();
+      expect(await panel.getByRole("link", { name: "Open desktop setup" }).count()).toBe(0);
       await exactText(panel, "Desktop sources").waitFor();
       expect(await gateway.getRequests("desktop.observe")).toHaveLength(0);
     });

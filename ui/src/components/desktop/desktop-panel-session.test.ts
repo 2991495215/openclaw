@@ -91,6 +91,32 @@ describe("session desktop connection", () => {
     return { panel, gateway, connect, disconnect };
   }
 
+  it("removes host setup recovery when the requested computer changes", async () => {
+    const request = requests({
+      "environments.status": (params) => ({
+        id: params?.environmentId ?? "gateway",
+        type: params?.environmentId === "gateway" ? "local" : "node",
+        status: "available",
+        desktop: false,
+      }),
+    });
+    const { panel, connect } = await mount(request, { requestedSource: "gateway" });
+    await waitForSolid(() => expect(panel.querySelector(".desktop-note__action")).not.toBeNull());
+    for (const target of ["node:workstation", null]) {
+      updatePanel(panel, { requestedSource: target });
+      await waitForSolid(() => {
+        expect(panel.textContent).toContain(
+          "The requested desktop is unavailable. Retry when the machine is ready.",
+        );
+        expect(panel.querySelector(".desktop-note__action")).toBeNull();
+        expect(panel.textContent).not.toContain("Host Desktop is not enabled");
+      });
+    }
+    expect(connect).not.toHaveBeenCalled();
+    expect(rpcCalls(request, "desktop.observe")).toHaveLength(0);
+    expect(rpcCalls(request, "environments.list")).toHaveLength(0);
+  });
+
   it("keeps a live source when a property burst restores the same connection inputs", async () => {
     const request = requests({ "environments.status": () => desktopEnvironment });
     const onFocusTargetChange = vi.fn();

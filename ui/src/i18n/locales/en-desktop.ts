@@ -27,6 +27,9 @@ const enDesktop = {
     loading: "Loading desktop sources…",
     empty: "No desktop-capable sources are available.",
     sourceUnavailable: "The requested desktop is unavailable. Retry when the machine is ready.",
+    hostSetupRequired:
+      "Host Desktop is not enabled on the Gateway computer. Open desktop setup to check screen sharing and enable access, then return here to retry.",
+    openSystemsSetup: "Open desktop setup",
     macLocked:
       "This Mac is locked. Sign in through Screen Sharing or on the Mac to use computer control.",
     macLockStateUnknown:

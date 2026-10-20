@@ -356,6 +356,7 @@ function HostDesktopSetup(props: { controller: Systems; row: SystemsInventoryRow
       </span>
       <h2>{t(title())}</h2>
       <p>{t(hint())}</p>
+      <p>{t("systems.desktopSetupPrivacyHint")}</p>
       {setup()?.state === "unsupported" && setup()!.detail ? <p>{setup()!.detail}</p> : null}
       {controller().state.desktopSetupError ? (
         <p class="systems-callout--error" role="alert">
@@ -467,6 +468,27 @@ function SystemsWorkspace(props: {
           <h1>{title()}</h1>
           <span>{row() ? t("systems." + systemKind(row()!)) : t("systems.selectHint")}</span>
         </div>
+        <Show when={controller().state.desktopReturn}>
+          {(target) => (
+            <a
+              class="btn"
+              href={target().pathname}
+              onClick={(event) => {
+                const destination = target();
+                // Focus views have a separate bootstrap; keep their native document navigation.
+                if (!shouldHandleNavigationClick(event) || !destination.routeId) {
+                  return;
+                }
+                event.preventDefault();
+                controller().context.navigate(destination.routeId, {
+                  pathname: destination.pathname,
+                });
+              }}
+            >
+              {t("systems.returnToDesktop")}
+            </a>
+          )}
+        </Show>
         <select
           class="systems-mobile-picker"
           aria-label={t("systems.select")}

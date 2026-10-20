@@ -46,6 +46,7 @@ export async function loadDesktopEnvironments(
       environments: EnvironmentSummary[];
       selectedSource: string | undefined;
       pendingSource?: string;
+      hostSetupRequired?: boolean;
     }
   | undefined
 > {
@@ -83,6 +84,11 @@ export async function loadDesktopEnvironments(
     }
   }
   return {
+    // Preserve the requested host before document recovery loads unrelated picker sources.
+    hostSetupRequired:
+      selectedEnvironment?.id === "gateway" &&
+      selectedEnvironment.status === "available" &&
+      selectedEnvironment.desktop !== true,
     selectedSource: environments.find(
       (environment) =>
         environment.id === selectedTarget &&
