@@ -3,12 +3,12 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { toStringifiedError } from "@openclaw/normalization-core/error-coercion";
 import { captureRuntimeConfig } from "../config/runtime-source-projection.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { runAbortableTimeout } from "../node-host/with-timeout.js";
 import { getPluginMetadataSnapshotCache } from "../plugins/plugin-cache.js";
 import { settlePluginNativeAdmissions } from "../plugins/plugin-native-admission-state.js";
 import { groupPluginRecords as groupRecords } from "../plugins/record-groups.js";
 import { createDeferredCore } from "../shared/deferred.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
 import { collectConfiguredAgentHarnessRuntimes } from "./harness-runtimes.js";
 import {

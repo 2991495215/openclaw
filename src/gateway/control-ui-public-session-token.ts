@@ -9,9 +9,8 @@ import {
 import { resolveDeviceIdentityStore } from "../infra/device-identity-store.js";
 import type { DeviceIdentity } from "../infra/device-identity.js";
 import { deriveCanonicalEd25519PrivateKeyRaw } from "../infra/ed25519-signature.js";
-import { pruneMapToMaxSize } from "../infra/map-size.js";
+import { getOrCreateInnerMap, pruneMapToMaxSize } from "../infra/map-size.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 
 const PUBLIC_SESSION_TOKEN_PREFIX = "v1.";
 const PUBLIC_SESSION_TOKEN_CIPHER = "aes-256-gcm";

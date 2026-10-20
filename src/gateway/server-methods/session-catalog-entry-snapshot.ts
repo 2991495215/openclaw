@@ -9,13 +9,13 @@ import type { SessionEntry } from "../../config/sessions.js";
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
 import { sessionCreatorProfileId } from "../../config/sessions/session-entry-provenance.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import type {
   SessionCatalogEntrySnapshot,
   SessionCatalogProvider,
 } from "../../plugins/session-catalog.js";
 import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { freezeJsonSnapshot } from "../../shared/immutable-data.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { projectSessionActor } from "../session-identity-projection.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "../session-request-agent.js";
 import type { SessionRowProjection } from "../session-row-projection.js";

@@ -3,6 +3,7 @@ import { uniqueStrings } from "@openclaw/normalization-core/string-normalization
 import { resolveProviderAuthAliasMap } from "../agents/provider-auth-aliases.js";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import {
   prepareBundledDiscoveryMode,
   readBundledDiscoveryModeMemoized,
@@ -24,7 +25,6 @@ import {
 import { hasKind } from "../plugins/slots.js";
 import { appendUniqueEnvVarCandidates } from "../shared/env-var-candidates.js";
 import { isDeeplyFrozenPlainData } from "../shared/immutable-data.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 
 const CORE_PROVIDER_AUTH_ENV_VAR_CANDIDATES = {
   anthropic: ["ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],

@@ -10,7 +10,7 @@ import {
 import { resolveAgentIdentity } from "../agents/identity.js";
 import { tryResolveLegacyCompatibilityAgentId } from "../config/legacy.default-agent-owner.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { pruneMapToMaxSize } from "../infra/map-size.js";
+import { getOrCreateInnerMap, pruneMapToMaxSize } from "../infra/map-size.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import {
   AVATAR_MAX_DATA_URL_CHARS,
@@ -22,7 +22,6 @@ import {
   isWindowsAbsolutePath,
   looksLikeAvatarPath,
 } from "../shared/avatar-policy.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 
 const ASSISTANT_IDENTITY_LIMITS = {
   name: 50,

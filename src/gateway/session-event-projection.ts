@@ -7,8 +7,8 @@ import {
   hasGatewayClientCap,
 } from "../../packages/gateway-protocol/src/client-info.js";
 import type { SessionRow } from "../../packages/gateway-protocol/src/schema/sessions-row.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { readGatewayAccessRevision } from "./gateway-access-revision.js";
 import type { PrepareSessionEventProjection } from "./server-broadcast-types.js";
 import type { GatewayClient } from "./server-methods/client-types.js";

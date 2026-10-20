@@ -1,4 +1,4 @@
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import type { OpenClawStateDatabaseReadAdmission } from "../state/openclaw-state-db-async-lifecycle.js";
 import { registerOpenClawStateDatabaseLifecycleListener } from "../state/openclaw-state-db-cache.js";
 import { McpConnectionAuthorityError } from "./mcp-connection-authority-error.js";

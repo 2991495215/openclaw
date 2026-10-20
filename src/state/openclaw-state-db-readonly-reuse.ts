@@ -1,8 +1,8 @@
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { SqliteCoordinatorError } from "../infra/sqlite-lifecycle-errors.js";
 import { runSqliteReadOperationSync } from "../infra/sqlite-schema-facts.js";
 import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import {
   getOpenClawDatabaseMaintenanceScope,
   observeOpenClawDatabaseMaintenanceResource,

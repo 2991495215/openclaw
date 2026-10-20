@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { PluginStateStoreError } from "../plugin-state/plugin-state-store.types.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import type {
   MeetingParticipationAttempt,
   MeetingParticipationContext,

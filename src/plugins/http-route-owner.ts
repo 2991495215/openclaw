@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { getPluginHttpRouteCanonicalPath } from "./http-path.js";
 import { pluginInstanceInvocation } from "./plugin-instance-invocation.js";
 import {

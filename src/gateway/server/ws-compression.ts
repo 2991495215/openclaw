@@ -8,7 +8,7 @@ import {
   inflateRawSync,
 } from "node:zlib";
 import type { WebSocket } from "ws";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import { gatewayFrameSegments } from "../serialized-json.js";
 import { gatewayReceiver } from "./ws-receiver.js";
 

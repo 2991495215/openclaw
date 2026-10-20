@@ -2,8 +2,8 @@ import {
   isPairedDeviceNodeBindingCurrent,
   resolveCurrentPairedDeviceNodeBinding,
 } from "../infra/device-pairing-node-state.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import type { VoiceWakeRoutingConfig } from "../infra/voicewake-routing.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { GATEWAY_EVENT_NODE_RUNNER_INVENTORY_CHANGED } from "./events.js";
 import { isLiveTextAppend } from "./live-text-continuity.js";
 import {

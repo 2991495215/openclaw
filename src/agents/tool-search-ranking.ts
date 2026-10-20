@@ -1,5 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 
 /** Collects property names and descriptions from a JSON-Schema-shaped value. */
 export function readParameterText(parameters: unknown, depth = 0): string {

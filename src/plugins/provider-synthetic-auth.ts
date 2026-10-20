@@ -1,5 +1,5 @@
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import type {
   ProviderResolveSyntheticAuthContext,
   ProviderSyntheticAuthResult,

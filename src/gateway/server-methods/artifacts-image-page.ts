@@ -7,9 +7,8 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { SessionTranscriptReadScope } from "../../config/sessions/session-accessor.js";
 import { isSessionTranscriptProjectionUnavailableError } from "../../config/sessions/session-accessor.sqlite-active-events.js";
-import { pruneMapToMaxSize } from "../../infra/map-size.js";
+import { getOrCreateInnerMap, pruneMapToMaxSize } from "../../infra/map-size.js";
 import type { TranscriptReadWindow } from "../../sessions/transcript-read-window.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { readSessionArtifacts } from "../session-transcript-readers.js";
 import { ArtifactSessionResolutionError } from "./artifacts-session-resolution.js";
 import type { GatewayClient } from "./types.js";

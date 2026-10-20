@@ -1,11 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isNativeError } from "node:util/types";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import {
   hasSqliteWorkerOutcomeUnknown,
   SqliteWorkerError,
 } from "../../infra/sqlite-worker-contract.js";
 import { GatewayRetainedWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { registerOpenClawStateDatabaseAsyncResource } from "../../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";

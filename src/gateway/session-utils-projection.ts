@@ -16,9 +16,9 @@ import {
   buildProjectedAgentRunIndex,
   type ProjectedAgentRunIndex,
 } from "../infra/agent-run-registry.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import type { SessionTranscriptUsageSnapshot } from "./session-transcript-derived-readers.js";
 import {
   createSessionRowModelCacheKey,

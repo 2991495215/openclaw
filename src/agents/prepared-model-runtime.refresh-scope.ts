@@ -1,9 +1,9 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createAbortError, racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { formatErrorMessage } from "../infra/errors.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { withAgentRosterFactsBatch } from "./agent-scope-config.js";
 import { assertPreparedModelRuntimeAdmissionCanWait } from "./prepared-model-runtime-admission.js";
 import { listConfiguredOwnerInputs } from "./prepared-model-runtime.configured.js";

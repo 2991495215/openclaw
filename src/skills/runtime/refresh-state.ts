@@ -1,4 +1,4 @@
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import { notifyListeners, registerListener } from "../../shared/listeners.js";
 import type { ExecutionSkillWorkspace } from "../loading/workspace-skill-roots.js";
 import { normalizeWorkspaceSkillRoots } from "../loading/workspace-skill-roots.js";

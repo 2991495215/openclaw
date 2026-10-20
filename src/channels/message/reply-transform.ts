@@ -6,7 +6,7 @@ import {
 } from "../../auto-reply/reply-payload.js";
 import { bindNormalizeReplyTransformOwner } from "../../auto-reply/reply/normalize-reply.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import type { ChannelMessagingAdapter } from "../plugins/types.public.js";
 
 const channelReplyTransformOwners = new WeakMap<object, Map<string, object>>();

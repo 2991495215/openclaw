@@ -1,4 +1,5 @@
 import { sha256Hex } from "../../infra/crypto-digest.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import { isPathInside } from "../../infra/path-guards.js";
 import { serveWorkerTasks } from "../../infra/worker-task-server.js";
 import {
@@ -6,7 +7,6 @@ import {
   withPluginCache,
   type PluginCache,
 } from "../../plugins/plugin-cache.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { pinConfigDir } from "../../utils.js";
 import { readWorkspaceSkillStatusFacts } from "../discovery/status-files.js";
 import {

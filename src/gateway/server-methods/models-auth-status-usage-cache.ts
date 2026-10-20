@@ -1,5 +1,6 @@
 import type { AuthProfileStore } from "../../agents/auth-profiles.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import { loadProviderUsageSummary } from "../../infra/provider-usage.load.js";
 import { PROVIDER_USAGE_TIMEOUT_MS } from "../../infra/provider-usage.shared.js";
 import type {
@@ -9,7 +10,6 @@ import type {
 } from "../../infra/provider-usage.types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { trackAsyncWork } from "../../shared/async-work-scope.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { formatForLog } from "../ws-log.js";
 import {
   clearProviderUsageRuntimeSnapshot,

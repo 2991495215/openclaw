@@ -5,7 +5,7 @@ import {
   type RetainedOperation,
 } from "@openclaw/worker-runtime/lifecycle";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
+import { getOrCreateInnerMap } from "./map-size.js";
 import {
   retainSnapshotWork,
   SqliteSnapshotCleanupError,

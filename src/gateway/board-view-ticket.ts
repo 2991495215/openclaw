@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import {
   capturePluginRegistryLifecycleEpoch,
   isPluginRegistryLifecycleEpochActive,
@@ -6,7 +7,6 @@ import {
 } from "../plugins/registry-lifecycle.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import type { GatewayContextResolver, GatewayRequestContext } from "./server-methods/types.js";
 import type { RemoteIngressPrincipalSnapshot } from "./server/client-identity-types.js";
 

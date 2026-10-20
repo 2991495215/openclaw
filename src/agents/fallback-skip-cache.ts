@@ -1,7 +1,7 @@
 // Process-local skip markers share credential failures across turns of a session.
 // Restarting clears them so every fallback candidate gets another attempt.
 import { parseStrictNonNegativeInteger } from "@openclaw/normalization-core/number-coercion";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { modelKey } from "./model-ref-shared.js";
 
 // Operators opt in with OPENCLAW_FALLBACK_SKIP_TTL_MS.

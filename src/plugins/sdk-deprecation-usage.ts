@@ -1,5 +1,5 @@
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { resolveGlobalMap } from "../shared/global-singleton.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 
 export type PluginSdkDeprecatedApi = {
   id: string;

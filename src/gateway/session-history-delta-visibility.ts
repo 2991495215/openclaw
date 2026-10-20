@@ -10,7 +10,7 @@ import {
   SessionHistoryDeltaPreparationError,
   unwrapSessionTranscriptWorkerReply,
 } from "../config/sessions/session-history-worker-errors.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { createChatHistoryRecoveryProjection } from "./chat-display-projection.core.js";
 import { createSubagentCoordinationHistoryProjection } from "./chat-display-projection.history.js";
 import { projectTranscriptEntryMessage } from "./session-transcript-entry-message.js";

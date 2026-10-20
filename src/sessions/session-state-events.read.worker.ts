@@ -1,8 +1,8 @@
 import { executeSqliteQuerySync, executeSqliteQueryTakeFirstSync } from "../infra/kysely-sync.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
 import { normalizeSqliteNumber } from "../infra/sqlite-number.js";
 import { runSqliteReadSnapshotSync } from "../infra/sqlite-transaction.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { SESSION_WATCH_PROVENANCE_AMBIENT_GROUP } from "../state/session-watch-cursor-provenance.js";
 import type { WorkerOperationHandlers } from "../state/worker-operation-registry.js";
 import {

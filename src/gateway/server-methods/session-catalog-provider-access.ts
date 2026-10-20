@@ -5,6 +5,7 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import { allowsProcessHomeSessionScan } from "../../config/paths.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import { PluginInstanceUnavailableError } from "../../plugins/plugin-instance-error.js";
 import { getPluginValueInstance } from "../../plugins/plugin-instance-scope.js";
 import type { PluginInstanceConsumer } from "../../plugins/plugin-instance.types.js";
@@ -17,7 +18,6 @@ import type {
   SessionCatalogListProviderParams,
   SessionCatalogProvider,
 } from "../../plugins/session-catalog.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { SessionCatalogListAdmission } from "./session-catalog-list-admission.js";
 import { startSessionCatalogListDiagnostics } from "./session-catalog-list-diagnostics.js";
 import { catalogError } from "./session-catalog-result.js";

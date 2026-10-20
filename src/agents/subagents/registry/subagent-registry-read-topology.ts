@@ -1,4 +1,4 @@
-import { getOrCreateInnerMap } from "../../../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../../../infra/map-size.js";
 import type { SubagentRunReadRecord } from "./subagent-registry-read.types.js";
 import { latestSubagentRun, recordLatestSubagentRun } from "./subagent-run-generation.js";
 

@@ -1,5 +1,5 @@
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { captureOpenClawStateDatabaseReadAdmission } from "../state/openclaw-state-db-cache.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { PluginStateOperationInvalidatedError } from "./plugin-state-operation-error.js";

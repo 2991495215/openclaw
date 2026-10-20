@@ -1,8 +1,7 @@
 import { resolveNonNegativeIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import type { ChannelDirectoryEntryKind, ChannelId } from "../../channels/plugins/types.public.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
-import { pruneMapToMaxSize } from "../map-size.js";
+import { getOrCreateInnerMap, pruneMapToMaxSize } from "../map-size.js";
 
 type CacheEntry<T> = {
   value: T;

@@ -9,6 +9,7 @@ import {
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { hashRuntimeConfigValue } from "../config/runtime-snapshot.js";
 import { projectConfigOntoRuntimeSourceSnapshot } from "../config/runtime-source-projection.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { prepareMediaCapabilityProviders } from "../plugins/capability-provider-runtime.js";
 import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { resolvePluginMetadataSnapshotAsync } from "../plugins/plugin-metadata-snapshot.js";
@@ -21,7 +22,6 @@ import type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.typ
 import { getPluginRegistryInspectionResources } from "../plugins/registry-inspection-resources.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { resolveRuntimeSyntheticAuthProviderRefs } from "../plugins/synthetic-auth.runtime.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { prepareAmbientAgentCredentialsForDiscovery } from "./agent-auth-discovery.js";
 import { discoverModelsFromCapturedSources } from "./agent-model-discovery.js";
 import { withAgentRosterFactsBatch } from "./agent-scope-config.js";

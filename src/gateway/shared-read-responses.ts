@@ -1,7 +1,7 @@
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+import { getOrCreateInnerMap } from "../infra/map-size.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
-import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { readGatewayAccessRevision } from "./gateway-access-revision.js";
 import type { GatewayReadSharing } from "./methods/descriptor.js";
 import { SerializedJsonPayload } from "./serialized-json.js";

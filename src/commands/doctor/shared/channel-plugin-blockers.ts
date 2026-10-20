@@ -4,6 +4,7 @@ import { listExplicitlyDisabledChannelIdsForConfig } from "../../../channels/con
 import type { AmbientEnvTriggerPolicy } from "../../../channels/config-presence.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import type { HealthFinding } from "../../../flows/health-checks.js";
+import { getOrCreateInnerMap } from "../../../infra/map-size.js";
 import {
   hasExplicitChannelConfig,
   listExplicitConfiguredChannelIdsForConfig,
@@ -20,7 +21,6 @@ import {
 import type { PluginManifestRecord } from "../../../plugins/manifest-registry.js";
 import { loadPluginManifestRegistryForPluginRegistry } from "../../../plugins/plugin-registry.js";
 import { isSafeChannelEnvVarTriggerName } from "../../../secrets/channel-env-var-names.js";
-import { getOrCreateInnerMap } from "../../../shared/inner-map.js";
 import { normalizeLowercaseStringSet } from "../../../shared/normalized-string-set.js";
 
 const CHANNEL_PLUGIN_BLOCKERS_CHECK_ID = "core/doctor/channel-plugin-blockers";

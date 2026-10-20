@@ -6,7 +6,7 @@ import {
   errorShape,
   missingScopeErrorShape,
 } from "../../../packages/gateway-protocol/src/index.js";
-import { getOrCreateInnerMap } from "../../shared/inner-map.js";
+import { getOrCreateInnerMap } from "../../infra/map-size.js";
 import { DEDUPE_MAX } from "../server-constants.js";
 import { projectSessionFastModeEntryResult } from "../session-fast-mode-presentation.js";
 import type { GatewayInflightResult } from "./inflight.js";
