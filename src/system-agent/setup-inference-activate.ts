@@ -639,7 +639,7 @@ async function verifyAndActivateCandidate(
   const lines = [
     `${staged.modelTarget === "utility" ? "Utility inference" : "Inference"} verified: ${staged.modelRef}`,
   ];
-  if (params.surface === "gateway" && params.recordSetupAudit !== false) {
+  if (params.surface === "gateway") {
     const after = await readSnapshot().catch(() => null);
     try {
       await appendSystemAgentAuditEntry({

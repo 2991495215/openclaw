@@ -408,8 +408,6 @@ export async function beginSessionEffect(
     env?: NodeJS.ProcessEnv;
     run?: SessionWorkRun;
     owner?: symbol;
-    /** Serialize preparation by the existing producer identity, not by a second turn queue. */
-    serializeOwner?: boolean;
     isSettling?: () => boolean;
     getAbortReason?: () => unknown;
     storeWriterIdentities?: Iterable<string | undefined>;
@@ -429,19 +427,6 @@ export async function beginSessionEffect(
   const entry = bindTarget(target);
   const state = lifecycle(entry);
   const current = ownerContext.getStore();
-  const predecessors =
-    params.serializeOwner && params.owner
-      ? [...selectedEffects([target])].filter((effect) => effect.owner === params.owner)
-      : [];
-  if (
-    predecessors.some(
-      (effect) =>
-        current?.effects.has(effect) &&
-        target.aliases.every((identity) => effect.ref.target.aliases.includes(identity)),
-    )
-  ) {
-    predecessors.length = 0;
-  }
   const operation =
     params.operation ??
     (current?.operation && getSessionControllerEntryForOperation(current.operation) === entry
@@ -559,18 +544,9 @@ export async function beginSessionEffect(
   state.effects.add(effect);
   const admission = () => resolveSessionEffectAdmission(effect, state, current, params.sourceInput);
   logAdmission("waiting", "controller-admission");
-  const stopAdmissionWait = diagnostic?.wait(
-    "lifecycle",
-    () =>
-      predecessors.find((predecessor) => predecessor.phase !== "released")?.diagnostic ??
-      state.mutations[0]?.diagnostic,
-  );
+  const stopAdmissionWait = diagnostic?.wait("lifecycle", () => state.mutations[0]?.diagnostic);
   try {
     assertAgentControllerAdmissionOpen(effect);
-    await waitUnlessAborted(
-      Promise.all(predecessors.map((predecessor) => predecessor.ref.released)),
-      signal,
-    );
     signal.throwIfAborted();
     if (effect.agent) {
       const journal = await readAgentDeletionJournalStatusInWorker(

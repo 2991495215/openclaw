@@ -53,7 +53,6 @@ export function expectTerminal(credential: AuthProfileCredential | undefined) {
 export function candidate(agentId: string, agentDir: string) {
   const databasePath = resolveAuthProfileDatabasePath(agentDir);
   return {
-    configured: true,
     agentId,
     agentDir,
     databasePath,

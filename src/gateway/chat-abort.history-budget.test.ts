@@ -47,7 +47,7 @@ it.each([2, 50])("keeps the newest %i progress events with bounded serialization
   });
   let result;
   try {
-    result = boundInFlightRunSnapshotForChatHistory({ snapshot, messages: [], maxBytes });
+    result = boundInFlightRunSnapshotForChatHistory({ snapshot, messagesBytes: 2, maxBytes });
   } finally {
     serialization.mockRestore();
   }
@@ -309,7 +309,7 @@ describe("resolveInFlightRunSnapshot", async () => {
     const maxBytes = jsonUtf8Bytes(messages) + jsonUtf8Bytes(minimal);
     const result = boundInFlightRunSnapshotForChatHistory({
       snapshot: { runId: "run-1", text: "x", startedAt: 1_000 },
-      messages,
+      messagesBytes: jsonUtf8Bytes(messages),
       maxBytes,
     });
     expect(result).toEqual(minimal);
@@ -328,7 +328,7 @@ describe("resolveInFlightRunSnapshot", async () => {
             steps: [{ step: "x".repeat(500), status: "pending" }],
           },
         },
-        messages: [],
+        messagesBytes: 2,
         maxBytes: 200,
       }),
     ).toEqual({ runId: "run-1", text: "short answer", plan: { steps: [] } });
@@ -356,7 +356,7 @@ describe("resolveInFlightRunSnapshot", async () => {
           events: [event],
           plan: { steps: [{ step: "y".repeat(1_000), status: "in_progress" }] },
         },
-        messages: [],
+        messagesBytes: 2,
         maxBytes: jsonUtf8Bytes([]) + jsonUtf8Bytes(expected),
       }),
     ).toEqual(expected);
@@ -364,7 +364,7 @@ describe("resolveInFlightRunSnapshot", async () => {
     expect(
       boundInFlightRunSnapshotForChatHistory({
         snapshot: { runId: "run-1", text: "", events: [event] },
-        messages: [],
+        messagesBytes: 2,
         maxBytes: jsonUtf8Bytes([]) + jsonUtf8Bytes({ runId: "run-1", text: "", events: [] }),
       }),
     ).toEqual({ runId: "run-1", text: "", events: [] });

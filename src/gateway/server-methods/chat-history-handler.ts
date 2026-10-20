@@ -583,8 +583,7 @@ export async function handleChatHistoryRequest({
             sessionInfo.activeLeafEntryId = delta.activeLeafEntryId;
             const boundedInFlightRun = boundInFlightRunSnapshotForChatHistory({
               snapshot: inFlightRun,
-              messages: delta.messages,
-              getMessagesBytes: () => delta.messagesBytes,
+              messagesBytes: delta.messagesBytes,
               maxBytes: maxResponseBytes - delta.activityBytes,
             });
             const payload = {
@@ -605,8 +604,7 @@ export async function handleChatHistoryRequest({
       }
       const boundedInFlightRun = boundInFlightRunSnapshotForChatHistory({
         snapshot: inFlightRun,
-        messages: [],
-        getMessagesBytes: () => messagesBytes,
+        messagesBytes,
         maxBytes: responseHistoryBytes,
       });
       const payload = {

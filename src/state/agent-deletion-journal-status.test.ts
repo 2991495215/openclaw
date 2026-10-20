@@ -80,8 +80,6 @@ it("revokes queued work and refuses the next turn after a worker deletion withou
       agentId: "doomed",
       scope: state.sessionsDir("doomed"),
       identities: ["same-session"],
-      owner: Symbol("turn"),
-      serializeOwner: true,
       assertAllowed: () => {},
     };
     const first = await beginSessionEffect(target);

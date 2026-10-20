@@ -24,6 +24,7 @@ import { getActivePluginRegistry, setActivePluginRegistry } from "../plugins/run
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { createNonExitingRuntime } from "../runtime.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import * as setupAudit from "./audit.js";
 import { activateSetupInference } from "./setup-inference-activate.js";
 import * as verifiedInference from "./verified-inference.js";
 
@@ -65,6 +66,7 @@ it.each([false, true])(
           },
           plugins: { entries: {} },
         });
+        vi.spyOn(setupAudit, "appendSystemAgentAuditEntry").mockResolvedValue("fixture-audit");
         const originalBytes = await fs.readFile(state.configPath, "utf8");
         const original = await readConfigFileSnapshot();
         const runningMetadata = resolvePluginMetadataSnapshot({
@@ -209,7 +211,6 @@ it.each([false, true])(
               agentId: "main",
               workspace: state.workspaceDir,
               surface: "gateway",
-              recordSetupAudit: false,
               runtime: createNonExitingRuntime(),
               onPreparationComplete,
               prompter: createWizardPrompter(),

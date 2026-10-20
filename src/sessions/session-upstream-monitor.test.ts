@@ -1,10 +1,13 @@
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import {
   appendTranscriptMessage,
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
+import * as sessionRead from "../config/sessions/session-entry-read-runtime.js";
+import * as transcript from "../config/sessions/transcript.js";
+import type { SessionEntry } from "../config/sessions/types.js";
 import { importSessionCatalogHistory } from "../plugins/session-catalog-history-import.js";
 import type { SessionCatalogProvider, SessionUpstreamProbe } from "../plugins/session-catalog.js";
 import {
@@ -18,6 +21,7 @@ import {
 } from "../test-utils/gateway-scheduler-clock.js";
 import { observeMainThreadSql } from "../test-utils/main-thread-sql-spies.test-support.js";
 import { useSessionStoreTempDirs } from "../test-utils/session-state-cleanup.js";
+import * as sessionQueries from "./session-controller.queries.js";
 import { listSessionStateEventsSince, registerSessionStateWatch } from "./session-state-events.js";
 import * as upstreamRuntime from "./session-upstream-links-runtime.js";
 import * as upstreamLinks from "./session-upstream-links.js";
@@ -92,17 +96,32 @@ function provider(
 function monitorOptions(
   database: ReturnType<typeof createDatabaseOptions>,
   check: NonNullable<SessionCatalogProvider["checkUpstreamActivity"]>,
-  overrides: Parameters<typeof runSessionUpstreamMonitorTick>[0] = {},
 ) {
   return {
     ...database,
     providers: [provider("claude", check)],
-    loadOwnRecentUserTexts: async () => [],
-    ...overrides,
   };
 }
 
+function mockSessionEntry(
+  read: (
+    scope: Parameters<typeof sessionRead.readSessionEntryReadOnlyInWorker>[0],
+  ) => Pick<SessionEntry, "sessionId"> & Partial<SessionEntry>,
+) {
+  return vi
+    .spyOn(sessionRead, "readSessionEntryReadOnlyInWorker")
+    .mockImplementation(async (scope) => ({
+      updatedAt: 0,
+      ...read(scope),
+    }));
+}
+
+beforeEach(() => {
+  vi.spyOn(transcript, "readRecentUserAssistantTextForSession").mockResolvedValue([]);
+  vi.spyOn(sessionQueries, "isSessionRunActive").mockReturnValue(false);
+});
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   await closeOpenClawStateDatabaseAsync();
   closeOpenClawStateDatabaseForTest();
@@ -124,12 +143,8 @@ describe("session upstream monitor", () => {
       const sessionKey = "agent:main:adopted:new-provider";
       await createLink(sessionKey, "claude", database);
       const check = vi.fn(async () => []);
-      await runSessionUpstreamMonitorTick(
-        monitorOptions(database, check, {
-          loadEntry: () => ({ sessionId: "new-provider", updatedAt: 100 }),
-          isRunActive: () => false,
-        }),
-      );
+      mockSessionEntry(() => ({ sessionId: "new-provider", updatedAt: 100 }));
+      await runSessionUpstreamMonitorTick(monitorOptions(database, check));
       expect(list).toHaveBeenCalledOnce();
       expect(check).toHaveBeenCalledWith(
         [expect.objectContaining({ sessionKey })],
@@ -144,7 +159,7 @@ describe("session upstream monitor", () => {
     const database = createDatabaseOptions();
     await createLink("agent:main:adopted:aborted-discovery", "claude", database);
     const lifecycle = new AbortController();
-    const loadEntry = vi.fn(() => ({ sessionId: "session-aborted", updatedAt: 100 }));
+    const loadEntry = mockSessionEntry(() => ({ sessionId: "session-aborted", updatedAt: 100 }));
     const check = vi.fn(async () => []);
     const missingCounts = createMissingCounts();
     missingCounts.set("previous-watch", { count: 2, linkUpdatedAt: 100 });
@@ -153,9 +168,6 @@ describe("session upstream monitor", () => {
         ...database,
         signal: lifecycle.signal,
         providers: [provider("claude", check)],
-        loadEntry,
-        isRunActive: () => false,
-        loadOwnRecentUserTexts: async () => [],
       },
       missingCounts,
     );
@@ -177,6 +189,7 @@ describe("session upstream monitor", () => {
       .spyOn(upstreamRuntime, "settleSessionUpstreamLink")
       .mockRejectedValueOnce(new Error("Upstream observation lost its idle session owner"));
     try {
+      mockSessionEntry(({ sessionKey }) => ({ sessionId: sessionKey, updatedAt: 1_000 }));
       await runSessionUpstreamMonitorTick({
         ...database,
         providers: [
@@ -190,8 +203,6 @@ describe("session upstream monitor", () => {
             })),
           ),
         ],
-        loadEntry: ({ sessionKey }) => ({ sessionId: sessionKey, updatedAt: 1_000 }),
-        loadOwnRecentUserTexts: async () => [],
       });
     } finally {
       settlement.mockRestore();
@@ -208,6 +219,7 @@ describe("session upstream monitor", () => {
       CREATE TRIGGER reject_upstream_event BEFORE INSERT ON session_state_events
       BEGIN SELECT RAISE(FAIL, 'synthetic event write failure'); END;
     `);
+    mockSessionEntry(() => ({ sessionId: "session-failed-event", updatedAt: 1_000 }));
     await runSessionUpstreamMonitorTick({
       ...database,
       providers: [
@@ -222,8 +234,6 @@ describe("session upstream monitor", () => {
           },
         ]),
       ],
-      loadEntry: () => ({ sessionId: "session-failed-event", updatedAt: 1_000 }),
-      loadOwnRecentUserTexts: async () => [],
     });
     expect(readLink(database, sessionKey)?.marker).toEqual({ offset: 0 });
     expect(await events(database, sessionKey)).toEqual([]);
@@ -257,7 +267,6 @@ describe("session upstream monitor", () => {
           ...database,
           providers: [claude],
           now: () => now,
-          loadOwnRecentUserTexts: async () => [],
         });
       }
       hostSql.expectIdle();
@@ -302,12 +311,11 @@ describe("session upstream monitor", () => {
     const check = vi.fn(async (probes: SessionUpstreamProbe[]) =>
       probes.map((probe) => ({ kind: "missing" as const, sessionKey: probe.sessionKey })),
     );
+    mockSessionEntry(() => ({ sessionId: "session-missing" }));
     const options = {
       ...database,
       providers: [provider("claude", check)],
       now: () => 3_000,
-      loadEntry: () => ({ sessionId: "session-missing" }) as never,
-      loadOwnRecentUserTexts: async () => [],
     };
     const missingCounts = createMissingCounts();
 
@@ -346,10 +354,9 @@ describe("session upstream monitor", () => {
       }
       return [{ kind: "missing" as const, sessionKey }];
     });
-    const options = monitorOptions(database, check, {
-      loadEntry: () => ({ sessionId: "session-missing-active-race" }) as never,
-      isRunActive: () => active,
-    });
+    mockSessionEntry(() => ({ sessionId: "session-missing-active-race" }));
+    vi.mocked(sessionQueries.isSessionRunActive).mockImplementation(() => active);
+    const options = monitorOptions(database, check);
     const missingCounts = createMissingCounts();
 
     await runSessionUpstreamMonitorTick(options, missingCounts);
@@ -383,10 +390,8 @@ describe("session upstream monitor", () => {
       }
       return [{ kind: "missing" as const, sessionKey }];
     });
-    const options = monitorOptions(database, check, {
-      loadEntry: () => ({ sessionId }) as never,
-      isRunActive: () => false,
-    });
+    mockSessionEntry(() => ({ sessionId }));
+    const options = monitorOptions(database, check);
     const missingCounts = createMissingCounts();
 
     await runSessionUpstreamMonitorTick(options, missingCounts);
@@ -426,13 +431,11 @@ describe("session upstream monitor", () => {
         }
         return [{ kind: "missing" as const, sessionKey }];
       });
+      mockSessionEntry(() => ({ sessionId: "session-missing-stopped", updatedAt: 1_000 }));
       const monitor = startSessionUpstreamMonitor({
         scheduler,
         ...database,
         providers: [provider("claude", check)],
-        loadEntry: () => ({ sessionId: "session-missing-stopped", updatedAt: 1_000 }),
-        isRunActive: () => false,
-        loadOwnRecentUserTexts: async () => [],
       });
 
       try {
@@ -496,9 +499,8 @@ describe("session upstream monitor", () => {
     const options = {
       ...database,
       providers: [provider("claude", check)],
-      loadEntry: () => ({ sessionId: "session-missing-reset" }) as never,
-      loadOwnRecentUserTexts: async () => [],
     };
+    mockSessionEntry(() => ({ sessionId: "session-missing-reset" }));
     const missingCounts = createMissingCounts();
 
     for (let index = 0; index < 5; index += 1) {
@@ -527,9 +529,8 @@ describe("session upstream monitor", () => {
     const options = {
       ...database,
       providers: [provider("claude", check)],
-      loadEntry: () => ({ sessionId: "session-missing-quiet" }) as never,
-      loadOwnRecentUserTexts: async () => [],
     };
+    mockSessionEntry(() => ({ sessionId: "session-missing-quiet" }));
     const missingCounts = createMissingCounts();
 
     for (let index = 0; index < 4; index += 1) {
@@ -553,9 +554,8 @@ describe("session upstream monitor", () => {
     const options = {
       ...database,
       providers: [provider("claude", check)],
-      loadEntry: () => ({ sessionId: "session-missing-same-source" }) as never,
-      loadOwnRecentUserTexts: async () => [],
     };
+    mockSessionEntry(() => ({ sessionId: "session-missing-same-source" }));
     const missingCounts = createMissingCounts();
 
     await runSessionUpstreamMonitorTick(options, missingCounts);
@@ -608,9 +608,8 @@ describe("session upstream monitor", () => {
       }
       return [{ kind: "missing" as const, sessionKey }];
     });
-    const options = monitorOptions(database, check, {
-      loadEntry: () => ({ sessionId: "session-missing-refreshed" }) as never,
-    });
+    mockSessionEntry(() => ({ sessionId: "session-missing-refreshed" }));
+    const options = monitorOptions(database, check);
     const missingCounts = createMissingCounts();
 
     await runSessionUpstreamMonitorTick(options, missingCounts);
@@ -628,9 +627,8 @@ describe("session upstream monitor", () => {
     const sessionKey = "agent:main:adopted:missing-pruned";
     await createLink(sessionKey, "claude", database);
     const check = vi.fn(async () => [{ kind: "missing" as const, sessionKey }]);
-    const options = monitorOptions(database, check, {
-      loadEntry: () => ({ sessionId: "session-missing-pruned" }) as never,
-    });
+    mockSessionEntry(() => ({ sessionId: "session-missing-pruned" }));
+    const options = monitorOptions(database, check);
     const missingCounts = createMissingCounts();
 
     await runSessionUpstreamMonitorTick(options, missingCounts);
@@ -644,6 +642,7 @@ describe("session upstream monitor", () => {
 
   it("clamps skewed upstream event times without touching bookkeeping clocks", async () => {
     const database = createDatabaseOptions();
+    mockSessionEntry(() => ({ sessionId: "session-clamped" }));
     const watched = "agent:main:adopted:clamped";
     await createLink(watched, "claude", database);
     const now = 100 * 24 * 60 * 60_000;
@@ -663,8 +662,6 @@ describe("session upstream monitor", () => {
       ...database,
       providers: [claude],
       now: () => now,
-      loadEntry: vi.fn(() => ({ sessionId: "session-clamped" }) as never),
-      loadOwnRecentUserTexts: async () => [],
     });
 
     const recordedEvents = (await listSessionStateEventsSince(watched, "main", 0, 20, database))
@@ -681,6 +678,7 @@ describe("session upstream monitor", () => {
 
   it("skips recording and marker writes when the link was refreshed mid-scan", async () => {
     const database = createDatabaseOptions();
+    mockSessionEntry(() => ({ sessionId: "session-refreshed" }));
     const watched = "agent:main:adopted:refreshed";
     await createLink(watched, "claude", database);
     const claude = provider("claude", async (probes: SessionUpstreamProbe[]) => {
@@ -712,8 +710,6 @@ describe("session upstream monitor", () => {
       ...database,
       providers: [claude],
       now: () => 3_000,
-      loadEntry: vi.fn(() => ({ sessionId: "session-refreshed" }) as never),
-      loadOwnRecentUserTexts: async () => [],
     });
 
     expect(await events(database, watched)).toHaveLength(0);
@@ -740,17 +736,16 @@ describe("session upstream monitor", () => {
       })),
     );
 
+    mockSessionEntry(({ sessionKey }) => {
+      if (sessionKey === broken) {
+        throw new Error("corrupt session store");
+      }
+      return { sessionId: "session-healthy" };
+    });
     await runSessionUpstreamMonitorTick({
       ...database,
       providers: [claude],
       now: () => 3_000,
-      loadEntry: vi.fn(({ sessionKey }: { sessionKey: string }) => {
-        if (sessionKey === broken) {
-          throw new Error("corrupt session store");
-        }
-        return { sessionId: "session-healthy" } as never;
-      }) as never,
-      loadOwnRecentUserTexts: async () => [],
     });
 
     expect(await events(database, broken)).toHaveLength(0);
@@ -759,6 +754,7 @@ describe("session upstream monitor", () => {
 
   it("preserves a coalesced upstream burst count in the event payload", async () => {
     const database = createDatabaseOptions();
+    mockSessionEntry(() => ({ sessionId: "session-burst" }));
     const sessionKey = "agent:main:adopted:burst";
     await createLink(sessionKey, "codex", database);
 
@@ -776,8 +772,6 @@ describe("session upstream monitor", () => {
           },
         ]),
       ],
-      loadEntry: () => ({ sessionId: "session-burst" }) as never,
-      loadOwnRecentUserTexts: async () => [],
     });
 
     expect(await events(database, sessionKey)).toEqual([
@@ -790,6 +784,7 @@ describe("session upstream monitor", () => {
 
   it("isolates provider failures", async () => {
     const database = createDatabaseOptions();
+    mockSessionEntry(() => ({ sessionId: "session" }));
     const codexSession = "agent:main:adopted:codex";
     await createLink("agent:main:adopted:claude", "claude", database);
     await createLink(codexSession, "codex", database);
@@ -812,8 +807,6 @@ describe("session upstream monitor", () => {
         }),
         provider("codex", codexCheck),
       ],
-      loadEntry: () => ({ sessionId: "session" }) as never,
-      loadOwnRecentUserTexts: async () => [],
     });
 
     expect(codexCheck).toHaveBeenCalledOnce();
@@ -827,21 +820,18 @@ describe("session upstream monitor", () => {
     const check = vi.fn(async (_probes: SessionUpstreamProbe[]) => []);
     const claude = provider("claude", check);
 
+    mockSessionEntry(() => ({ sessionId: "session-active" }));
+    vi.mocked(sessionQueries.isSessionRunActive).mockReturnValue(true);
     await runSessionUpstreamMonitorTick({
       ...database,
       providers: [claude],
-      loadEntry: () => ({ sessionId: "session-active" }) as never,
-      isRunActive: () => true,
-      loadOwnRecentUserTexts: async () => [],
     });
     expect(check).not.toHaveBeenCalled();
 
+    vi.mocked(sessionQueries.isSessionRunActive).mockReturnValue(false);
     await runSessionUpstreamMonitorTick({
       ...database,
       providers: [claude],
-      loadEntry: () => ({ sessionId: "session-active" }) as never,
-      isRunActive: () => false,
-      loadOwnRecentUserTexts: async () => [],
     });
 
     expect(check).toHaveBeenCalledWith([expect.objectContaining({ marker: { offset: 0 } })], {
@@ -868,10 +858,9 @@ describe("session upstream monitor", () => {
       ];
     });
 
-    const options = monitorOptions(database, check, {
-      loadEntry: () => ({ sessionId: "session-active-race" }) as never,
-      isRunActive: () => active,
-    });
+    mockSessionEntry(() => ({ sessionId: "session-active-race" }));
+    vi.mocked(sessionQueries.isSessionRunActive).mockImplementation(() => active);
+    const options = monitorOptions(database, check);
     await runSessionUpstreamMonitorTick(options);
     active = false;
     check.mockResolvedValueOnce([]);
@@ -882,6 +871,7 @@ describe("session upstream monitor", () => {
   });
 
   it("supplies provenance text so a matching upstream prompt advances without an event", async () => {
+    vi.mocked(transcript.readRecentUserAssistantTextForSession).mockRestore();
     const database = createDatabaseOptions();
     const sessionKey = "agent:main:adopted:provenance";
     const sessionId = "session-provenance";
@@ -917,7 +907,6 @@ describe("session upstream monitor", () => {
     await runSessionUpstreamMonitorTick({
       ...database,
       providers: [provider("claude", check)],
-      isRunActive: () => false,
     });
 
     expect(check).toHaveBeenCalledWith(
@@ -929,6 +918,7 @@ describe("session upstream monitor", () => {
   });
 
   it("reports a matching external prompt after catalog history import", async () => {
+    vi.mocked(transcript.readRecentUserAssistantTextForSession).mockRestore();
     const database = createDatabaseOptions();
     const sessionKey = "agent:main:adopted:catalog-import";
     const sessionId = "session-catalog-import";
@@ -964,7 +954,6 @@ describe("session upstream monitor", () => {
     await runSessionUpstreamMonitorTick({
       ...database,
       providers: [provider("pi", check)],
-      isRunActive: () => false,
     });
 
     expect(check).toHaveBeenCalledWith([expect.objectContaining({ ownRecentUserTexts: [] })], {
@@ -980,6 +969,10 @@ describe("session upstream monitor", () => {
     const sessionKey = "agent:main:adopted:recent-external";
     await createLink(sessionKey, "claude", database);
 
+    mockSessionEntry(() => ({ sessionId: "session-external", lastActivityAt: 5_000 }));
+    vi.mocked(transcript.readRecentUserAssistantTextForSession).mockResolvedValue([
+      { text: "OpenClaw prompt", role: "user" },
+    ]);
     await runSessionUpstreamMonitorTick({
       ...database,
       providers: [
@@ -994,9 +987,6 @@ describe("session upstream monitor", () => {
           },
         ]),
       ],
-      loadEntry: () => ({ sessionId: "session-external", lastActivityAt: 5_000 }) as never,
-      isRunActive: () => false,
-      loadOwnRecentUserTexts: async () => ["OpenClaw prompt"],
     });
 
     expect(

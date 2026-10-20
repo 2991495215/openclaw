@@ -47,7 +47,6 @@ export type CandidateAuthProfileStore = {
   agentDir: string;
   databasePath: string;
   databaseIdentity: DatabasePathIdentity;
-  configured: boolean;
   env: NodeJS.ProcessEnv;
 };
 
@@ -55,7 +54,6 @@ type CandidateSource = {
   agentId: string;
   agentDir?: string;
   databasePath: string;
-  configured: boolean;
 };
 
 function canonicalizeDatabasePath(databasePath: string): string {
@@ -82,7 +80,6 @@ async function collectStateRootCandidates(env: NodeJS.ProcessEnv): Promise<Candi
         agentId,
         agentDir,
         databasePath: resolveAuthProfileDatabasePath(agentDir),
-        configured: false,
       };
     });
 }
@@ -109,7 +106,6 @@ export async function listCandidateAuthProfileStores(params: {
       agentId,
       agentDir,
       databasePath: resolveAuthProfileDatabasePath(agentDir),
-      configured: true,
     });
   }
   sources.push(...(await collectStateRootCandidates(env)));
@@ -118,7 +114,6 @@ export async function listCandidateAuthProfileStores(params: {
     sources.push({
       agentId,
       databasePath: registered.path,
-      configured: false,
     });
   }
 
@@ -126,18 +121,14 @@ export async function listCandidateAuthProfileStores(params: {
   for (const source of sources) {
     const databasePath = canonicalizeDatabasePath(source.databasePath);
     const agentDir = source.agentDir ?? path.dirname(databasePath);
-    const existing = candidates.get(databasePath);
-    if (!existing) {
+    if (!candidates.has(databasePath)) {
       candidates.set(databasePath, {
         agentId: source.agentId,
         agentDir,
         databasePath,
         databaseIdentity: readDatabasePathIdentitySync(databasePath),
-        configured: source.configured,
         env,
       });
-    } else if (source.configured) {
-      existing.configured = true;
     }
   }
   return [...candidates.values()].toSorted((left, right) =>

@@ -106,25 +106,9 @@ export function captureSessionWorkRunInterruptions(params: {
   });
 }
 
-/** @internal Exposed for unit tests only. */
-export function getSessionWorkAdmissionOwnerRelease(params: {
-  scope: string;
-  identities: Iterable<string | undefined>;
-  owner: symbol;
-  phase?: "acquired";
-}) {
-  return releaseEffects(
-    [...selectedEffects([targetFrom(params)])].filter(
-      (effect) => effect.owner === params.owner && (!params.phase || effect.phase === params.phase),
-    ),
-  );
-}
-
 export function getCompetingSessionWorkAdmissionRelease(params: {
   scope: string;
   identities: Iterable<string | undefined>;
-  owner?: symbol;
-  excludePendingOwner?: symbol;
   beforeClaim?: SessionControllerMailboxClaim;
 }) {
   const current = ownerContext.getStore();
@@ -143,13 +127,7 @@ export function getCompetingSessionWorkAdmissionRelease(params: {
       ) {
         return false;
       }
-      return (
-        !current?.effects.has(effect) &&
-        (params.owner === undefined || effect.owner === params.owner) &&
-        (!params.excludePendingOwner ||
-          effect.owner !== params.excludePendingOwner ||
-          effect.phase === "acquired")
-      );
+      return !current?.effects.has(effect);
     }),
   );
 }

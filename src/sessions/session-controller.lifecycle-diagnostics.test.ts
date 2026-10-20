@@ -81,7 +81,6 @@ function hold(
   kind: "lifecycle" | "mutation",
   target: { scope: string; identities: string[] },
   trace?: DiagnosticTraceContext,
-  owner?: symbol,
 ) {
   const entered = createDeferred();
   const release = createDeferred();
@@ -96,8 +95,6 @@ function hold(
     kind === "lifecycle"
       ? beginSessionEffect({
           ...target,
-          owner,
-          serializeOwner: owner !== undefined,
           assertAllowed: params.run,
           revalidateAllowed: () => {},
         }).then((lease) => lease.release())
@@ -509,12 +506,11 @@ it("bounds holder, timer and warning state without inventing a holder", async ()
   );
   await Promise.all(holders.map((holder) => holder.entered));
   const target = { scope: "sensitive-capacity-store", identities: ["sensitive-capacity-session"] };
-  const owner = Symbol("bounded-effect-producer");
-  const unobserved = hold("lifecycle", target, traces.first, owner);
+  const unobserved = hold("mutation", target, traces.first);
   await unobserved.entered;
   holders[0]!.release();
   await holders[0]!.promise;
-  const waiters = Array.from({ length: 33 }, () => hold("lifecycle", target, undefined, owner));
+  const waiters = Array.from({ length: 33 }, () => hold("lifecycle", target));
   try {
     await advance(0);
     expect(vi.getTimerCount()).toBe(32);

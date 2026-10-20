@@ -190,8 +190,6 @@ export type ActivateSetupInferenceParams = {
   isRemoteProviderAuth?: boolean;
   /** Fresh-install opt-in for discovering existing native provider conversations. */
   nativeSessionCatalogsEnabled?: boolean;
-  /** False when an enclosing persistent-operation boundary owns the setup audit. */
-  recordSetupAudit?: boolean;
   runtime: RuntimeEnv;
   /** Explicit consent from the CLI command that tests and activates a saved sign-in. */
   activationConfirmed?: true;

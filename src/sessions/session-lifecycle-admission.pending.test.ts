@@ -1,10 +1,9 @@
 import { expect, it, vi } from "vitest";
-import { createDeferred, withinTest } from "../../test/helpers/promise.js";
+import { createDeferred } from "../../test/helpers/promise.js";
 import {
   createAgentRunDirectAbortError,
   createAgentRunRestartAbortError,
 } from "../agents/run-termination.js";
-import { runWithSessionControllerCleanup } from "./session-controller.cleanup-context.js";
 import {
   beginSessionEffect as beginAdmission,
   captureSessionWorkRunInterruptions as captureRuns,
@@ -26,9 +25,6 @@ const admit = (params: Parameters<typeof beginAdmission>[0]) =>
   beginAdmission({ assertAllowed: () => {}, ...params });
 function makeTarget<T extends string[]>(scope: string, ...identities: T) {
   return { scope, identities };
-}
-function ownedTarget(scope: string, ...identities: string[]) {
-  return { ...makeTarget(scope, ...identities), owner: Symbol(scope), serializeOwner: true };
 }
 function gate() {
   const entered = createDeferred();
@@ -187,162 +183,6 @@ it.each(["released", "interrupted", "undeclared", "caller", "wrong receipt"] as 
       }
     } finally {
       admission.release();
-    }
-  },
-);
-
-it("serializes pending owners in FIFO order without blocking other owners", async ({ signal }) => {
-  const serialized = {
-    ...ownedTarget("serialized.sqlite", "agent:main:serialized", "session"),
-    signal,
-  };
-  const barrier = gate();
-  const order: string[] = [];
-  const first = admit({
-    ...serialized,
-    assertAllowed: async () => {
-      await barrier.wait();
-      order.push("first");
-    },
-    revalidateAllowed: () => {},
-  });
-  await withinTest(barrier.entered, signal);
-  const follow = (name: string) =>
-    admit({
-      ...serialized,
-      identities: [serialized.identities[1]],
-      assertAllowed: () => void order.push(name),
-      revalidateAllowed: () => {},
-    });
-  const followers = [follow("second"), follow("third")] as const;
-  const passOtherOwner = async () => {
-    (await admit({ ...serialized, owner: Symbol("independent-owner") })).release();
-  };
-  try {
-    barrier.release();
-    for (const [index, pending] of [first, followers[0]].entries()) {
-      const lease = await withinTest(pending, signal);
-      await withinTest(passOtherOwner(), signal);
-      expect(order).toEqual(["first", "second", "third"].slice(0, index + 1));
-      lease.release();
-    }
-    (await withinTest(followers[1], signal)).release();
-    expect(order).toEqual(["first", "second", "third"]);
-  } finally {
-    barrier.release();
-    for (const attempt of [first, ...followers]) {
-      await attempt.then(
-        (lease) => lease.release(),
-        () => {},
-      );
-    }
-  }
-});
-
-it("keeps nested work reentrant while independent successors retain FIFO and current authority", async ({
-  signal,
-}) => {
-  const target = { ...ownedTarget("nested-owner.sqlite", "nested-owner-session"), signal };
-  const outer = await admit(target);
-  const order: string[] = [];
-  const follower = admit({
-    ...target,
-    assertAllowed: () => {
-      order.push("follower");
-    },
-  });
-  let detached: ReturnType<typeof beginAdmission> | undefined;
-  let allowed = true;
-  try {
-    await withinTest(
-      outer.run(async () => {
-        detached = runWithSessionControllerCleanup(() =>
-          admit({
-            ...target,
-            assertAllowed: () => {
-              if (!allowed) {
-                throw new Error("successor authority revoked");
-              }
-              order.push("detached");
-            },
-          }),
-        );
-        void detached.catch(() => {});
-        const inner = await admit({
-          ...target,
-          assertAllowed: () => {
-            order.push("nested");
-          },
-        });
-        inner.release();
-      }),
-      signal,
-    );
-    expect(outer.isActive()).toBe(true);
-    expect(order).toEqual(["nested"]);
-    outer.release();
-    const next = await withinTest(follower, signal);
-    expect(order).toEqual(["nested", "follower"]);
-    allowed = false;
-    next.release();
-    await expect(detached).rejects.toThrow("successor authority revoked");
-    expect(order).toEqual(["nested", "follower"]);
-  } finally {
-    outer.release();
-    for (const attempt of [follower, detached]) {
-      await attempt?.then(
-        (lease) => lease.release(),
-        () => {},
-      );
-    }
-  }
-});
-
-it.for(["caller abort", "Stop", "targeted Stop"])(
-  "cancels a pending owner wait on %s before its predecessor releases",
-  async (cancellation, { signal }) => {
-    const owned = ownedTarget(`cancel-owner-${cancellation}.sqlite`, "cancel-owner-session");
-    const { scope, identities } = owned;
-    const controller = new AbortController();
-    const reason = createAgentRunDirectAbortError();
-    const predecessorInterrupt = vi.fn();
-    const predecessor = await admit({ ...owned, onInterrupt: predecessorInterrupt });
-    const validate = vi.fn();
-    const run = { runId: "queued-run" };
-    const onInterrupt = vi.fn(() => ({ runId: run.runId }));
-    const pending = admissionOutcome(
-      admit({
-        ...owned,
-        ...(cancellation === "targeted Stop"
-          ? { run, onInterrupt }
-          : { signal: AbortSignal.any([controller.signal, signal]) }),
-        assertAllowed: validate,
-      }),
-    );
-    try {
-      (await admit({ scope, identities, signal })).release();
-      if (cancellation === "caller abort") {
-        controller.abort(reason);
-      } else if (cancellation === "targeted Stop") {
-        const captured = captureRuns({ ...owned, accept: () => true });
-        expect(captured).toHaveLength(1);
-        expect(captured[0]!.interrupt(reason)).toBe(true);
-        expect(captured[0]!.interrupt(reason)).toBe(false);
-        expect(onInterrupt).toHaveBeenCalledOnce();
-      } else {
-        await predecessor.run(async () => {
-          const interrupted = startInterruption({ scope, identities, reason });
-          await withinTest(interrupted.released, signal);
-        });
-      }
-      expect(await withinTest(pending, signal)).toBe(reason);
-      expect(validate).not.toHaveBeenCalled();
-      expect(predecessorInterrupt).not.toHaveBeenCalled();
-      expect(predecessor.isActive()).toBe(true);
-    } finally {
-      controller.abort(reason);
-      predecessor.release();
-      await pending;
     }
   },
 );

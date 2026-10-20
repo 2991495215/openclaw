@@ -430,7 +430,6 @@ it.each(["none", "active", "pending"] as const)(
     const sessionId = `owned-shutdown-${callbackFailure}`;
     const target = { storePath, sessionKey };
     const resolveGatewayContext = () => undefined;
-    const owner = Symbol(sessionKey);
     const controller = new AbortController();
     const pendingController = new AbortController();
     const interrupted = createDeferred();
@@ -458,7 +457,6 @@ it.each(["none", "active", "pending"] as const)(
     const admission = await beginSessionEffect({
       scope: storePath,
       identities: [sessionKey, sessionId],
-      owner,
       resolveGatewayContext,
       onInterrupt: (reason) => {
         recoveryMarkedBeforeInterruption = Boolean(loadSessionEntry(target)?.mainRestartRecovery);
@@ -474,10 +472,9 @@ it.each(["none", "active", "pending"] as const)(
     const pending = beginSessionEffect({
       scope: storePath,
       identities: [sessionKey, sessionId],
-      owner,
-      serializeOwner: true,
       resolveGatewayContext,
-      assertAllowed: pendingValidation,
+      assertAllowed: () => interrupted.promise,
+      revalidateAllowed: pendingValidation,
       onInterrupt: (reason) => {
         pendingController.abort(reason);
         if (callbackFailure === "pending") {

@@ -190,14 +190,13 @@ export function reportOmittedChatHistory(params: {
 
 export function boundInFlightRunSnapshotForChatHistory(params: {
   snapshot: InFlightRunSnapshot | undefined;
-  messages: unknown[];
-  getMessagesBytes?: () => number;
+  messagesBytes: number;
   maxBytes: number;
 }): InFlightRunSnapshot | undefined {
   if (!params.snapshot) {
     return undefined;
   }
-  const messagesBytes = params.getMessagesBytes?.() ?? jsonUtf8Bytes(params.messages);
+  const { messagesBytes } = params;
   const snapshotBytes = jsonUtf8Bytes(params.snapshot);
   if (messagesBytes + snapshotBytes <= params.maxBytes) {
     return params.snapshot;
