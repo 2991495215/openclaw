@@ -41,7 +41,6 @@ vi.mock("../model-auth.js", async (importOriginal) => {
   };
 });
 
-const AGENT_DIR = "/tmp/openclaw-model-config-helper";
 const MODEL = "gpt-5.5";
 
 type Decision = ReturnType<typeof resolveOpenAiImageMediaCandidate>;
@@ -93,7 +92,6 @@ const resolveMedia = (
   overrides: Partial<Parameters<typeof resolveOpenAiImageMediaCandidate>[0]> = {},
 ) =>
   resolveOpenAiImageMediaCandidate({
-    agentDir: AGENT_DIR,
     authStore: store({}),
     openAiModel: MODEL,
     resolveCodexMediaRoute: () => ({ model: MODEL }),
@@ -150,8 +148,6 @@ describe("hasProviderAuthForTool", () => {
       });
     const params = {
       provider: "unconfigured-provider",
-      agentDir: AGENT_DIR,
-      authProfileStoreSource: false,
     };
     try {
       expect(hasProviderAuthForTool(params)).toBe(false);

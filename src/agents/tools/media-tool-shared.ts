@@ -151,9 +151,7 @@ export function isCapabilityProviderConfigured<T extends CapabilityProvider>(par
     provider: providerId,
     cfg: params.cfg,
     workspaceDir: params.workspaceDir,
-    agentDir: params.agentDir,
     authStore: params.authStore,
-    authProfileStoreSource: params.authProfileStoreSource,
   });
 }
 
@@ -332,9 +330,7 @@ export function hasGenerationToolAvailability(params: {
       provider: providerId,
       cfg: params.cfg,
       workspaceDir: params.workspaceDir,
-      agentDir: params.agentDir,
       authStore: params.authStore,
-      authProfileStoreSource: params.authProfileStoreSource,
       capability: capabilityAuthOperation(params.providerKey),
     }),
   );

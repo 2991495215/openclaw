@@ -64,7 +64,6 @@ function resolveWebSearchRuntimeConfig(params?: {
 function hasEntryCredential(
   provider: WebProviderWithCredential,
   config: OpenClawConfig | undefined,
-  agentDir?: string,
   authStore?: AuthProfileStore,
   resolveAuthProfileStoreSource?: () => boolean,
 ): boolean {
@@ -74,28 +73,25 @@ function hasEntryCredential(
     resolveEnvValue: (configuredEnvVarId) =>
       (configuredEnvVarId ? readWebProviderEnvValue([configuredEnvVarId]) : undefined) ??
       readWebProviderEnvValue(provider.envVars),
-    resolveProviderAuthValue: (providerId) =>
-      hasAuthProfileForProvider({
-        provider: providerId,
-        authStore,
-        authProfileStoreSource: authStore ? undefined : resolveAuthProfileStoreSource?.(),
-        agentDir:
-          agentDir?.trim() || (authStore ? undefined : resolveDefaultAgentDir(config ?? {})),
-      }),
+    resolveProviderAuthValue: (providerId) => {
+      if (!authStore) {
+        resolveAuthProfileStoreSource?.();
+      }
+      return hasAuthProfileForProvider({ provider: providerId, authStore });
+    },
   });
 }
 
 function hasImplicitProviderSelectionSignal(
   provider: Parameters<typeof hasEntryCredential>[0],
   config: OpenClawConfig | undefined,
-  agentDir?: string,
   authStore?: AuthProfileStore,
   resolveAuthProfileStoreSource?: () => boolean,
 ): boolean {
   if (!providerRequiresCredential(provider)) {
     return false;
   }
-  return hasEntryCredential(provider, config, agentDir, authStore, resolveAuthProfileStoreSource);
+  return hasEntryCredential(provider, config, authStore, resolveAuthProfileStoreSource);
 }
 
 export function isWebSearchProviderConfigured(params: {
@@ -115,7 +111,7 @@ export function isWebSearchProviderConfigured(params: {
   authStore?: AuthProfileStore;
 }): boolean {
   const config = resolveWebSearchRuntimeConfig({ config: params.config });
-  return hasEntryCredential(params.provider, config, params.agentDir, params.authStore);
+  return hasEntryCredential(params.provider, config, params.authStore);
 }
 
 /** Lists runtime web_search providers after applying runtime config snapshots. */
@@ -178,7 +174,6 @@ export function resolveWebSearchProviderId(params: {
         !hasImplicitProviderSelectionSignal(
           provider,
           config,
-          params.agentDir,
           params.authStore,
           params.resolveAuthProfileStoreSource,
         )
@@ -197,7 +192,6 @@ function resolveRuntimePreferredWebSearchProviderId(params: {
   search?: WebSearchConfig;
   runtimeWebSearch?: RuntimeWebSearchMetadata;
   providers?: PluginWebSearchProviderEntry[];
-  agentDir?: string;
   authStore?: AuthProfileStore;
   resolveAuthProfileStoreSource?: () => boolean;
 }): string | undefined {
@@ -224,7 +218,6 @@ function resolveRuntimePreferredWebSearchProviderId(params: {
     !hasImplicitProviderSelectionSignal(
       provider,
       params.config,
-      params.agentDir,
       params.authStore,
       params.resolveAuthProfileStoreSource,
     )
@@ -329,16 +322,10 @@ async function resolveWebSearchCandidates(
     : options;
   let needsAuthSource = false;
   try {
-    const candidates = selectWebSearchCandidates(
-      preparedOptions,
-      context,
-      providers,
-      agentDir,
-      () => {
-        needsAuthSource = true;
-        return false;
-      },
-    );
+    const candidates = selectWebSearchCandidates(preparedOptions, context, providers, () => {
+      needsAuthSource = true;
+      return false;
+    });
     if (!needsAuthSource) {
       return candidates;
     }
@@ -349,20 +336,13 @@ async function resolveWebSearchCandidates(
     // Resolve the earlier profile gate before reporting a later selection error.
   }
   const authStore = await ensureAuthProfileStoreWithoutExternalProfilesAsync(agentDir);
-  return selectWebSearchCandidates(
-    { ...options, authStore },
-    context,
-    providers,
-    agentDir,
-    () => true,
-  );
+  return selectWebSearchCandidates({ ...options, authStore }, context, providers, () => true);
 }
 
 function selectWebSearchCandidates(
   options: ResolveWebSearchDefinitionParams | undefined,
   context: WebSearchRequestContext,
   providers: PluginWebSearchProviderEntry[],
-  agentDir: string,
   resolveAuthProfileStoreSource: () => boolean,
 ): PluginWebSearchProviderEntry[] {
   const { config, search, runtimeWebSearch } = context;
@@ -375,13 +355,11 @@ function selectWebSearchCandidates(
         search,
         runtimeWebSearch,
         providers,
-        agentDir,
         authStore: options?.authStore,
         resolveAuthProfileStoreSource,
       }),
       resolveWebSearchProviderId({
         config,
-        agentDir,
         authStore: options?.authStore,
         search,
         providers,
@@ -409,7 +387,6 @@ function selectWebSearchCandidates(
         hasImplicitProviderSelectionSignal(
           provider,
           config,
-          agentDir,
           options?.authStore,
           resolveAuthProfileStoreSource,
         ),
@@ -454,7 +431,6 @@ export function hasConfiguredWebSearchProvider(
         hasEntryCredential(
           provider,
           config,
-          options.agentDir,
           options.authStore,
           options.resolveAuthProfileStoreSource,
         )),

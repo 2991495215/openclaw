@@ -302,9 +302,7 @@ function shouldExposeVideoReferenceAudioParams(params: {
         provider: providerId,
         cfg: params.cfg,
         workspaceDir: params.workspaceDir,
-        agentDir: params.agentDir,
         authStore: params.authStore,
-        authProfileStoreSource: params.authProfileStoreSource,
       })
     ) {
       return true;

@@ -34,10 +34,7 @@ import {
   setRuntimeAuthProfileStoreSnapshot,
   updateRuntimeAuthProfileStoreSnapshot,
 } from "./runtime-snapshots.js";
-import {
-  resolveAuthProfileDatabasePath as resolveAgentAuthPath,
-  type AuthProfileDatabase,
-} from "./sqlite.js";
+import { resolveAuthProfileDatabasePath as resolveAgentAuthPath } from "./sqlite.js";
 import type { AuthProfileStore } from "./types.js";
 
 type RuntimeReadHost = Parameters<typeof createAuthProfileStoreRuntimeReader>[0];
@@ -64,9 +61,6 @@ type StoreReadHost = Pick<
   | "captureScope"
 > & {
   getScopedSharedAuthStore: () => AuthProfileStore | undefined;
-  resolvePersistedLoadOptions: (
-    options: Pick<LoadAuthProfileStoreOptions, "allowKeychainPrompt" | "database"> | undefined,
-  ) => { allowKeychainPrompt?: boolean; database?: AuthProfileDatabase };
   withPreparedAuthProfileStoreReads: ReturnType<
     typeof createAuthProfileStoreRuntimeReader
   >["withPreparedAuthProfileStoreReads"];
@@ -127,7 +121,6 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
     getScopedSharedAuthStore,
     resolveRuntimeAuthProfileAgentDir,
     resolveRuntimeAuthProfileLoadOptions,
-    resolvePersistedLoadOptions,
     loadAuthProfileStoreForAgent,
     captureScope,
     withPreparedAuthProfileStoreReads,
@@ -265,7 +258,7 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
     agentDir?: string,
     options?: Pick<
       LoadAuthProfileStoreOptions,
-      "allowKeychainPrompt" | "inheritedAuthDir" | "migrationProvider" | "config"
+      "allowKeychainPrompt" | "inheritedAuthDir" | "migrationProvider" | "config" | "database"
     >,
     env?: NodeJS.ProcessEnv,
   ): AuthProfileStoreReadSequence<AuthProfileStore | null> {
@@ -295,7 +288,7 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
               config: options?.config,
               readOnly: true,
               syncExternalCli: false,
-              ...resolvePersistedLoadOptions(options),
+              ...(options?.database ? { database: options.database } : {}),
             },
           }),
         };

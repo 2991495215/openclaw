@@ -83,10 +83,8 @@ function isExecutionAliasCandidateForProvider(
 
 function resolveImageModelConfigForTool(params: {
   cfg?: OpenClawConfig;
-  agentDir: string;
   workspaceDir?: string;
   authStore?: AuthProfileStore;
-  authProfileStoreSource?: boolean;
   preparedModelRuntime?: PreparedModelRuntimeSnapshot;
 }): ImageModelConfig | null {
   // Native-vision runs route post-prompt image bytes to the active model, not fallback config.
@@ -131,7 +129,6 @@ function resolveImageModelConfigForTool(params: {
     const decision = resolveOpenAiImageMediaCandidate({
       cfg: params.cfg,
       workspaceDir: params.workspaceDir,
-      agentDir: params.agentDir,
       authStore: params.authStore,
       openAiModel,
       resolveCodexMediaRoute,
@@ -213,9 +210,7 @@ function resolveImageModelConfigForTool(params: {
     explicit,
     cfg: params.cfg,
     workspaceDir: params.workspaceDir,
-    agentDir: params.agentDir,
     authStore: params.authStore,
-    authProfileStoreSource: params.authProfileStoreSource,
     candidates: [...primaryAliasCandidates, ...primaryCandidates, ...remainingAutoCandidates],
     isProviderConfigured: (provider) =>
       verifiedSubstituteProvider && provider === verifiedSubstituteProvider ? true : undefined,
@@ -352,7 +347,6 @@ export function createImageTool(options?: {
             assertCurrent();
             imageModelConfig = resolveImageModelConfigForTool({
               cfg: options?.config,
-              agentDir,
               workspaceDir: options?.workspaceDir,
               authStore,
               preparedModelRuntime: options?.preparedModelRuntime,
