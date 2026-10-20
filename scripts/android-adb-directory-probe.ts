@@ -22,6 +22,7 @@ import {
   androidReleaseAdbServerLineFacts,
   androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
+  androidReleaseAdbdLineFacts,
   androidReleaseCommandFacts,
   androidReleaseConsoleLineFacts,
   androidReleaseHostFacts,
@@ -247,6 +248,15 @@ async function consoleFacts(file: string, source: string, cycle: number) {
   record("console-capture", { cycle, source, bytes: Buffer.byteLength(text) });
   let adbdCrash = false;
   for (const line of text.split(/\r?\n/u)) {
+    const adbd = source === "logcat" ? androidReleaseAdbdLineFacts(line) : undefined;
+    if (adbd) {
+      record("guest-adbd", {
+        cycle,
+        ...adbd,
+        guestTime: /(?:^|\s)(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})(?:\s|$)/u.exec(line)?.[1],
+        collectedAfterCleanup: true,
+      });
+    }
     const facts = androidReleaseConsoleLineFacts(line);
     if (!facts) {
       continue;
@@ -377,7 +387,8 @@ async function syscallFacts(prefix: string, fd: number) {
   const closed = facts.find((fact) => fact.operation === "close" && fact.result === 0);
   return closed ? facts.filter((fact) => fact.startedAtSeconds <= closed.startedAtSeconds) : facts;
 }
-type GuestTrace = NonNullable<ReturnType<typeof androidReleaseAdbGuestSocketFacts>> & {
+type GuestTrace = {
+  sockets: NonNullable<ReturnType<typeof androidReleaseAdbGuestSocketFacts>>[];
   serial: string;
   pid: number;
   cycle: number;
@@ -428,7 +439,7 @@ async function prepareGuestTrace(serial: string, cycle: number): Promise<GuestTr
     helperErrno:
       Number(/^OPENCLAW_ADB_VSOCK_ERROR (\d+)$/mu.exec(inspected.stderr)?.[1]) || undefined,
   });
-  if (candidates.length !== 1) {
+  if (candidates.length === 0) {
     throw new Error("guest-transport-socket-unavailable");
   }
   const tasks = await guestRoot(serial, `ls /proc/${pid}/task\n`);
@@ -437,7 +448,7 @@ async function prepareGuestTrace(serial: string, cycle: number): Promise<GuestTr
     throw new Error("guest-trace-prerequisite-failed");
   }
   return {
-    ...candidates[0]!,
+    sockets: candidates,
     serial,
     pid,
     cycle,
@@ -474,7 +485,7 @@ echo $! >${guest.directory}/tracer.pid
         pid: guest.pid,
         tracerPid: tracer,
         tids: guest.tids,
-        fd: guest.fd,
+        sockets: guest.sockets,
       });
       return;
     }
@@ -500,7 +511,12 @@ async function guestSyscallFacts(guest: GuestTrace, sample = false) {
     );
     await writeFile(`${guest.prefix}.${tid}`, captured.stdout, { mode: 0o600 });
   }
-  return syscallFacts(guest.prefix, guest.fd);
+  return Promise.all(
+    guest.sockets.map(async (socket) => ({
+      ...socket,
+      facts: await syscallFacts(guest.prefix, socket.fd),
+    })),
+  );
 }
 async function stopGuestTrace(guest: GuestTrace) {
   if (!guest.started) {
@@ -535,20 +551,20 @@ pidof adbd
   if (!detached || !sameDaemon) {
     throw new Error("guest-trace-detach-failed");
   }
-  const facts = await guestSyscallFacts(guest);
-  record("transport-syscalls", {
-    cycle: guest.cycle,
-    side: "guest-adbd",
-    pid: guest.pid,
-    fd: guest.fd,
-    inode: guest.inode,
-    available: true,
-    records: facts.length,
-    terminal: facts.filter(
-      (fact) => fact.eof || fact.result < 0 || ["shutdown", "close"].includes(fact.operation),
-    ),
-    tail: facts.slice(-32),
-  });
+  for (const { facts, ...socket } of await guestSyscallFacts(guest)) {
+    record("transport-syscalls", {
+      cycle: guest.cycle,
+      side: "guest-adbd",
+      pid: guest.pid,
+      ...socket,
+      available: true,
+      records: facts.length,
+      terminal: facts.filter(
+        (fact) => fact.eof || fact.result < 0 || ["shutdown", "close"].includes(fact.operation),
+      ),
+      tail: facts.slice(-32),
+    });
+  }
 }
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 try {
@@ -818,7 +834,9 @@ try {
       if (!traced) {
         throw new Error("adb-syscall-trace-unavailable");
       }
-      const guestTraced = (await guestSyscallFacts(guest, true)).some((fact) => fact.result > 0);
+      const guestTraced = (await guestSyscallFacts(guest, true)).some(({ facts }) =>
+        facts.some((fact) => fact.result > 0),
+      );
       record("guest-trace-ready", { cycle, traced: guestTraced });
       if (!guestTraced) {
         throw new Error("guest-syscall-trace-unavailable");

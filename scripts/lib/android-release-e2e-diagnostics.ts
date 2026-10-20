@@ -39,6 +39,18 @@ export function androidReleaseAdbBridgeLineFacts(line: string) {
     inferiorPid: Number(facts.inferiorPid),
     tid: numeric(facts.tid),
     breakpoints: numeric(facts.breakpoints),
+    guestPort:
+      Number.isInteger(facts.guestPort) &&
+      Number(facts.guestPort) >= 0 &&
+      Number(facts.guestPort) <= 0xffffffff
+        ? Number(facts.guestPort)
+        : undefined,
+    hostPort:
+      Number.isInteger(facts.hostPort) &&
+      Number(facts.hostPort) >= 0 &&
+      Number(facts.hostPort) <= 0xffffffff
+        ? Number(facts.hostPort)
+        : undefined,
     binarySha256:
       typeof facts.binarySha256 === "string" && /^[a-f0-9]{64}$/u.test(facts.binarySha256)
         ? facts.binarySha256
@@ -193,7 +205,26 @@ export function androidReleaseAdbServerLineFacts(line: string) {
   if (!termination) {
     return undefined;
   }
-  const message = termination[2]!;
+  return {
+    event: "connection-terminated",
+    port: Number(termination[1]),
+    ...adbTerminationFacts(termination[2]!),
+    hostTime: /^(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})\s/u.exec(line)?.[1],
+  };
+}
+
+export function androidReleaseAdbdLineFacts(line: string) {
+  if (!/\b[VDIWEF]\s+adbd\s*:/u.test(line) || /[\r\n]/u.test(line)) {
+    return undefined;
+  }
+  const termination = /\bconnection terminated: (.+)$/u.exec(line);
+  if (termination) {
+    return { event: "connection-terminated", ...adbTerminationFacts(termination[1]!) };
+  }
+  return /\bkicking transport\b/u.test(line) ? { event: "transport-kick" } : undefined;
+}
+
+function adbTerminationFacts(message: string) {
   const reason =
     message === "read failed: EOF"
       ? "read-eof"
@@ -220,13 +251,7 @@ export function androidReleaseAdbServerLineFacts(line: string) {
   ].find(
     ([, text]) => message === `read failed: ${text}` || message === `poll failed: ${text}`,
   )?.[0];
-  return {
-    event: "connection-terminated",
-    port: Number(termination[1]),
-    reason,
-    errno,
-    hostTime: /^(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})\s/u.exec(line)?.[1],
-  };
+  return { reason, errno };
 }
 
 /** Public failure facts must never copy command arguments, app text or raw logs. */

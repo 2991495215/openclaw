@@ -5,6 +5,7 @@ import {
   androidReleaseAdbServerLineFacts,
   androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
+  androidReleaseAdbdLineFacts,
   androidReleaseCommandFacts,
   androidReleaseConsoleLineFacts,
   androidReleaseDeviceFacts,
@@ -31,6 +32,8 @@ describe("Android release public failure diagnostics", () => {
           inferiorPid: 456,
           tid: 789,
           target,
+          guestPort: 5555,
+          hostPort: 50037,
           arguments: "private-token",
           frames: [
             { module: "emulator", offset: 12779856, function: "private-symbol" },
@@ -46,6 +49,8 @@ describe("Android release public failure diagnostics", () => {
       inferiorPid: 456,
       tid: 789,
       target: expectedTarget,
+      guestPort: 5555,
+      hostPort: 50037,
       frames: [
         { module: "emulator", offset: 12779856 },
         { module: "other", offset: 123 },
@@ -230,6 +235,30 @@ describe("Android release public failure diagnostics", () => {
         "emulator-5580: connection terminated: read failed: EOF\nprivate-token",
       ),
     ).toBeUndefined();
+  });
+
+  it("exports guest transport decisions without identifiers or raw log text", () => {
+    expect(
+      androidReleaseAdbdLineFacts(
+        "10-20 04:33:31.344 542 600 I adbd : private-peer: connection terminated: read failed",
+      ),
+    ).toEqual({ event: "connection-terminated", reason: "read-error", errno: undefined });
+    expect(
+      androidReleaseAdbdLineFacts(
+        "10-20 04:33:31.345 542 600 I adbd : kicking transport private-peer",
+      ),
+    ).toEqual({ event: "transport-kick" });
+    expect(
+      androidReleaseAdbdLineFacts("I other : connection terminated: read failed"),
+    ).toBeUndefined();
+    expect(
+      androidReleaseAdbdLineFacts("I adbd : connection terminated: private-token\nprivate-token"),
+    ).toBeUndefined();
+    const facts = androidReleaseAdbdLineFacts(
+      "I adbd : private-peer: connection terminated: private-token",
+    );
+    expect(facts).toMatchObject({ reason: "unknown" });
+    expect(JSON.stringify(facts)).not.toContain("private");
   });
 
   it.each([

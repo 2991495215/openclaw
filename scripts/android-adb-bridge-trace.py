@@ -110,11 +110,22 @@ class BridgeBreakpoint(gdb.Breakpoint):
             if hit_count > 64:
                 emit("error", reason="debugger-error")
                 return True
+            socket = {}
+            if self.target in ("guest-rst", "guest-shutdown", "guest-invalid-op", "guest-write-failure"):
+                # At these verified branch entries, r9 holds VSockStream. Read its
+                # numeric ports only, so the guest trace can match the exact socket.
+                stream = int(gdb.newest_frame().read_register("r9"))
+                ports = bytes(gdb.selected_inferior().read_memory(stream + 0x40, 8))
+                socket = {
+                    "guestPort": int.from_bytes(ports[:4], "little"),
+                    "hostPort": int.from_bytes(ports[4:], "little"),
+                }
             emit(
                 "hit",
                 target=self.target,
                 tid=gdb.selected_thread().ptid[1],
                 frames=capture_frames(),
+                **socket,
             )
             return False
         except Exception:
