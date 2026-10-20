@@ -1,4 +1,17 @@
+import { setImmediate } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createTurnSequenceStream,
+  makeCall,
+  model,
+  user,
+} from "../../../packages/agent-core/src/agent-loop.test-support.js";
+import { Agent } from "../../../packages/agent-core/src/agent.js";
+import {
+  getAgentToolExecutionContext,
+  type AgentToolPendingInput,
+} from "../../../packages/agent-core/src/tool-execution-context.js";
+import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
 import { createSubagentRunRecord } from "../subagent-test-fixtures.test-helpers.js";
 import type { SubagentRunRecord } from "../subagents/registry/subagent-registry.types.js";
 import { createSubagentsTool } from "./subagents-tool.js";
@@ -6,6 +19,7 @@ const owner = vi.hoisted(() => ({
   runs: [] as SubagentRunRecord[],
   listeners: new Set<() => void>(),
   cancel: vi.fn(),
+  onWaitSubscribed: undefined as (() => void) | undefined,
 }));
 vi.mock("../subagents/registry/subagent-control.js", () => ({
   DEFAULT_RECENT_MINUTES: 30,
@@ -52,6 +66,7 @@ vi.mock("../subagents/registry/subagent-registry-publication.js", async (importO
       }
       const wake = () => listener({ runIds: undefined, sessionKeys: undefined });
       owner.listeners.add(wake);
+      owner.onWaitSubscribed?.();
       return () => owner.listeners.delete(wake);
     }) satisfies typeof actual.subscribeSubagentRunChanges,
   };
@@ -69,6 +84,7 @@ beforeEach(() => {
   owner.runs = [];
   owner.listeners.clear();
   owner.cancel.mockReset();
+  owner.onWaitSubscribed = undefined;
 });
 function run() {
   const entry = createSubagentRunRecord({
@@ -85,6 +101,96 @@ function tool() {
   return createSubagentsTool({ config: {}, agentId: "main", agentSessionKey: "agent:main:main" });
 }
 describe("subagents native run contract", () => {
+  it.for(["external_user", "inter_session"] as const)(
+    "wakes the real runtime wait for admitted %s input without cancelling the child",
+    async (kind, { signal }) => {
+      const entry = run();
+      entry.delivery = { status: "pending" };
+      const originalExecution = entry.execution;
+      const waitSubscribed = createDeferred();
+      owner.onWaitSubscribed = () => waitSubscribed.resolve();
+      const waitTool = tool();
+      let waitResult: Awaited<ReturnType<typeof waitTool.execute>> | undefined;
+      let capturedInput: AgentToolPendingInput | undefined;
+      let retainedNotifications = 0;
+      const requests: NonNullable<Parameters<typeof createTurnSequenceStream>[1]> = [];
+      const agent = new Agent({
+        initialState: {
+          model,
+          tools: [
+            {
+              ...waitTool,
+              execute: async (...args) => {
+                capturedInput = getAgentToolExecutionContext()?.pendingInput;
+                // Deliberately retain this subscription: invocation disposal must remove it.
+                capturedInput?.subscribe(() => {
+                  retainedNotifications += 1;
+                });
+                waitResult = await waitTool.execute(...args);
+                return waitResult;
+              },
+            },
+          ],
+        },
+        streamFn: createTurnSequenceStream(
+          [
+            [
+              {
+                ...makeCall("subagents"),
+                arguments: {
+                  action: "wait",
+                  runIds: [entry.runId],
+                  timeoutSeconds: 60,
+                },
+              },
+            ],
+            [{ type: "text", text: "Input observed; child remains running." }],
+          ],
+          requests,
+        ),
+      });
+      const pending = agent.prompt("Wait for the selected child.");
+      try {
+        await withinTest(waitSubscribed.promise, signal);
+        const correction = {
+          ...user("SYNTHETIC_ADMITTED_CORRECTION"),
+          provenance: kind === "external_user" ? { kind } : { kind, sourceTool: "sessions_send" },
+        };
+        agent.steer(correction);
+        // All fixture work is microtask-only; one event-loop fence exposes a missing wake.
+        await setImmediate();
+        expect(waitResult?.details, "admitted input must release the actual wait").toMatchObject({
+          reason: "input",
+          completed: [],
+          runs: [{ runId: entry.runId }],
+        });
+        await withinTest(pending, signal);
+        expect(requests).toHaveLength(2);
+        expect(
+          requests[1]?.filter(
+            (message) =>
+              message.role === "user" && message.content === "SYNTHETIC_ADMITTED_CORRECTION",
+          ),
+        ).toHaveLength(1);
+        expect(entry.execution).toBe(originalExecution);
+        expect(entry.delivery).toEqual({ status: "pending" });
+        expect(owner.cancel).not.toHaveBeenCalled();
+        expect(owner.listeners.size).toBe(0);
+        expect(capturedInput).toBeDefined();
+        expect(retainedNotifications).toBe(1);
+        agent.steer(user("SYNTHETIC_LATER_RUN_INPUT"));
+        capturedInput?.subscribe(() => {
+          retainedNotifications += 1;
+        });
+        agent.steer(user("SYNTHETIC_ANOTHER_LATER_INPUT"));
+        expect(capturedInput?.hasPending()).toBe(false);
+        expect(retainedNotifications).toBe(1);
+      } finally {
+        agent.abort();
+        await pending;
+      }
+    },
+  );
   it("subscribes before reading and does not consume the completed result's delivery obligation", async () => {
     const entry = run();
     entry.delivery = { status: "pending" };
