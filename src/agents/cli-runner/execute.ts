@@ -34,7 +34,6 @@ import {
   buildCliLiveOwnerKey,
   restartCliLiveSession,
 } from "./cli-live-session-registry.js";
-import { executeDeps } from "./execute-deps.js";
 import { createCliEventHandlers } from "./execute-events.js";
 import {
   CLAUDE_SELECTED_AUTH_ENV_KEYS,
@@ -55,6 +54,7 @@ import {
   resolvePromptInput,
   resolveSessionIdToSend,
   resolveSystemPromptUsage,
+  writeCliSystemPromptFile,
 } from "./helpers.js";
 import { cliBackendLog, CLI_BACKEND_LOG_OUTPUT_ENV } from "./log.js";
 import { createClaudeCliModelCallDiagnostics } from "./model-call-diagnostics.js";
@@ -129,9 +129,7 @@ export async function executePreparedCliRun(
   const shouldSendSystemPrompt =
     systemPromptArg &&
     (!useResume || backend.systemPromptWhen === "always" || resendSystemPromptForSoftResume);
-  let systemPromptFile:
-    | Awaited<ReturnType<typeof executeDeps.writeCliSystemPromptFile>>
-    | undefined;
+  let systemPromptFile: Awaited<ReturnType<typeof writeCliSystemPromptFile>> | undefined;
   const nodeSystemPrompt = nodePlacement && shouldSendSystemPrompt ? systemPromptArg : undefined;
 
   const basePrompt = cliSessionIdToUse
@@ -267,7 +265,7 @@ export async function executePreparedCliRun(
     await context.preparedBackend.beforeExecution?.();
     assertCurrent();
     if (!nodePlacement && !usePluginOwnedExecution && shouldSendSystemPrompt) {
-      systemPromptFile = await executeDeps.writeCliSystemPromptFile({
+      systemPromptFile = await writeCliSystemPromptFile({
         backend,
         systemPrompt: systemPromptArg,
       });
@@ -518,7 +516,6 @@ export async function executePreparedCliRun(
         context,
         assertCurrent,
         backend,
-        deps: executeDeps,
         events,
         toolTracking,
         diagnostics,

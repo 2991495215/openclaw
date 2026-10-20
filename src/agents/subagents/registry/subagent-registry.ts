@@ -667,7 +667,6 @@ async function resetSubagentRegistryForTests(opts?: { persist?: boolean }) {
   resumedRuns.clear();
   resumeReader.reset();
   pendingLifecycle.clearAll();
-  contextCleanup.reset();
   clearSubagentRunsReadCacheForTest();
   const sweeperRetirement = subagentSweeper.reset();
   subagentRestorer.reset();
