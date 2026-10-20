@@ -624,5 +624,5 @@ export {
   closeOpenClawStateDatabaseAsync,
   isOpenClawStateDatabaseOpen,
   closeOpenClawStateDatabaseForTest,
-  confirmOpenClawStateDatabaseIntegrity,
 } from "./openclaw-state-db-cache.js";
+export { confirmOpenClawStateDatabaseIntegrity } from "./openclaw-state-db-integrity.js";

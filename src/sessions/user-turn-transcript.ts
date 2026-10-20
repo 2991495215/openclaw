@@ -52,10 +52,8 @@ import type {
   UserTurnTranscriptUpdateMode,
 } from "./user-turn-transcript.types.js";
 
-const originalInputCommitNotifiers = new WeakMap<
-  UserTurnTranscriptRecorder,
-  (anchor: TranscriptEntryAnchor) => void
->();
+type InputNotifier = (anchor: TranscriptEntryAnchor) => void;
+const originalInputCommitNotifiers = new WeakMap<UserTurnTranscriptRecorder, InputNotifier>();
 
 export type {
   PersistedUserTurnMessage,
@@ -643,8 +641,6 @@ export function createUserTurnTranscriptRecorder(
         admission,
         message: admittedMessage,
         text,
-        // SAFETY: This is the host config already consumed by persistUserTurnTranscript.
-        config: resolvedPersistenceTarget?.config as SessionTranscriptTurnPersistOptions["config"],
         assertCurrent,
         assertWritable: () => {
           assertCurrent();
@@ -740,10 +736,4 @@ export function createUserTurnTranscriptRecorder(
     refresh: refreshAdmission,
   });
   return recorder;
-}
-
-if (process.env.VITEST || process.env.NODE_ENV === "test") {
-  (globalThis as Record<PropertyKey, unknown>)[Symbol.for("openclaw.userTurnTranscriptTestApi")] = {
-    persistUserTurnTranscript,
-  };
 }

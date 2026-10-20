@@ -21,13 +21,11 @@ import {
 } from "../infra/sqlite-worker-store.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
-import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { isStateDatabaseReadAdmissionInvalidatedError } from "./openclaw-state-db-async-lifecycle.js";
 import {
   captureOpenClawStateDatabaseReadAdmission,
   openClawStateDatabaseCache,
   publishOpenClawStateDatabaseWorkerAdmission,
-  assertPublishedOpenClawStateDatabaseLifecycle,
   registerOpenClawStateDatabaseAsyncResource,
   registerOpenClawStateDatabaseLifecycleListener,
 } from "./openclaw-state-db-cache.js";
@@ -54,7 +52,7 @@ import type {
 const log = createSubsystemLogger("state/worker");
 const SHARED_STATE_WORKER_IDLE_INSPECT_MS = 60_000;
 
-function createSharedStateWorkerOwner() {
+export function createSharedStateWorkerOwner() {
   const moduleUrl = resolveRuntimeProcessEntrypointUrl("sharedStateStore");
   const stores = new Set<Entry>();
   const activeEntries = new Set<Entry>();
@@ -714,15 +712,4 @@ function createSharedStateWorkerOwner() {
       return store;
     },
   };
-}
-
-export function getOpenClawStateWorkerOwner() {
-  // The owner registers with and publishes into the cache that created it. A
-  // retired generation must neither install its owner nor drive the current one.
-  assertPublishedOpenClawStateDatabaseLifecycle();
-  return resolveGlobalSingleton(
-    Symbol.for("openclaw.sharedStateWorkerOwner"),
-    createSharedStateWorkerOwner,
-    (sharedOwner) => sharedOwner.close(),
-  );
 }
