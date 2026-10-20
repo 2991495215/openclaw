@@ -1,8 +1,5 @@
 import { isFencedProviderReadAction } from "../../channels/plugins/message-action-dispatch.js";
-import {
-  composeSessionSourceAssertion,
-  type SessionSourceAssertion,
-} from "../../config/sessions/session-source-authority.js";
+import { composeSessionSourceAssertion } from "../../config/sessions/session-source-authority.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   resolveCurrentPromptReaction,
@@ -12,7 +9,10 @@ import {
 import { createAbortError } from "../../infra/abort-signal.js";
 import { resolveReplyRunForCurrentSessionId } from "../../sessions/session-controller.identity.js";
 import { findSessionControllerOperationByRunId } from "../../sessions/session-controller.queries.js";
-import { getGatewayToolCallerIdentity } from "./gateway-caller-context.js";
+import {
+  captureGatewayToolCallerAssertion,
+  getGatewayToolCallerIdentity,
+} from "./gateway-caller-context.js";
 
 /** Resolve execution authority from the private turn identity. */
 export function createMessageToolTurnAuthority(params: {
@@ -50,14 +50,11 @@ export function createMessageToolTurnAuthority(params: {
     channels.push(requester.channel);
   }
   return {
-    captureCaller: (
-      signal: AbortSignal | undefined,
-      capture: () => SessionSourceAssertion | undefined,
-    ) => {
+    captureCaller: (signal: AbortSignal | undefined) => {
       if (signal?.aborted) {
         throw createAbortError("Message send aborted");
       }
-      const assertCurrent = capture();
+      const assertCurrent = captureGatewayToolCallerAssertion();
       assertCurrent?.();
       return composeSessionSourceAssertion([assertCurrent], (assertSource) => {
         assertSource();

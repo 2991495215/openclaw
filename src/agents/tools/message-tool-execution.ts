@@ -33,7 +33,6 @@ import * as embeddedMessageDelivery from "../embedded-agent-message-delivery.js"
 import { createSandboxBridgeReadFile } from "../sandbox-media-paths.js";
 import { captureAgentWorkspaceReadiness } from "../workspace-readiness.js";
 import { type AnyAgentTool, jsonResult, readToolStringParam } from "./common.js";
-import { captureGatewayToolCallerAssertion } from "./gateway-caller-context.js";
 import {
   createMessageToolDecisionRecorder,
   resolveTrustedDecisionChannel,
@@ -217,7 +216,7 @@ function* createMessageToolSteps(
     prepareBeforeToolCallParams: explicitTargetGuard?.prepareBeforeToolCallParams,
     finalizeBeforeToolCallParams: explicitTargetGuard?.finalizeBeforeToolCallParams,
     execute: async (toolCallId, args, signal) => {
-      const assertCaller = turnAuthority.captureCaller(signal, captureGatewayToolCallerAssertion);
+      const assertCaller = turnAuthority.captureCaller(signal);
       // Shallow-copy so we don't mutate the original event args (used for logging/dedup).
       const params = { ...(args as Record<string, unknown>) };
       const action = readToolStringParam(params, "action", {

@@ -52,7 +52,6 @@ import {
 } from "./subagent-registry-sweeper-session-read.test-support.js";
 import {
   createArchivedSubagentSweeperRun as archivedRun,
-  createSubagentSweeperChildLookup as childRuns,
   createSubagentSweeperHarness as createHarness,
   createSubagentSweeperRun as run,
 } from "./subagent-registry-sweeper.test-support.js";
@@ -670,7 +669,6 @@ describe("subagent registry recovery scheduling", () => {
                 runId: entry.runId,
                 entry,
                 runs,
-                getRunsForChildSession: childRuns(runs),
                 retireObligations: vi.fn(async () => {}),
                 completeSubagentRunWithRecovery,
                 retireSupersededRun: vi.fn(),
