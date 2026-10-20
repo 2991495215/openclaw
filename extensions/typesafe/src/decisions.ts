@@ -105,91 +105,85 @@ function bindHostedFacts(inference: Inference, id: string, config: RuntimeConfig
 }
 
 /** Translate the host-selected decision contract through the TypeSafe transport. */
-function createDecisionProvider(getConfig: () => RuntimeConfig): DecisionProviderV1 {
-  return {
-    id: "typesafe",
-    contractVersion: 1,
-    isReady: () => {
-      const config = getConfig();
-      return hasCredentials(config);
-    },
-    async evaluate(batch: DecisionBatch, context) {
-      context.signal.throwIfAborted();
-      // Registration and readiness do not need the transport or compiled validators.
-      // Sample configuration and the remaining deadline after the cold import settles.
-      const { evaluate: evaluateTypeSafe } = await loadClient();
-      context.signal.throwIfAborted();
-      const config = getConfig();
-      if (!hasCredentials(config)) {
-        return { status: "unavailable", reason: "credentials-unavailable" };
-      }
-      const remaining = context.deadlineMonotonicMs - performance.now();
-      if (remaining <= 0) {
-        return { status: "unavailable", reason: "transport" };
-      }
-      const questions = Object.fromEntries(
-        Object.entries(batch.questions).map(([id, q]) => [
-          id,
-          q.type === "boolean" ? { ...q, type: "noul" } : q,
-        ]),
-      );
-      try {
-        const { evaluation } = await evaluateTypeSafe(
-          { state: batch.state, questions, model: context.model },
-          { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
-          context.signal,
-          context.deadlineMonotonicMs,
-          () => {
-            if (context.isAdmissible && !context.isAdmissible()) {
-              return false;
-            }
-            // DNS and capture admission may await; only the current owner may authorize egress.
-            const current = getConfig();
-            return (
-              current.baseUrl === config.baseUrl &&
-              current.providerConfig === config.providerConfig &&
-              current.apiKey === config.apiKey &&
-              !current.credentialsUnavailable
-            );
-          },
-        );
-        context.signal.throwIfAborted();
-        const answers: Record<string, DecisionBatchResult["answers"][string]> = {};
-        for (const [id, answer] of Object.entries(evaluation.answers)) {
-          if (answer.type === "noul") {
-            answers[id] = { type: "boolean", probabilityTrue: answer.noul };
-          } else if (answer.type === "choice") {
-            answers[id] = answer;
-          } else {
-            const question = batch.questions[id];
-            if (!question || question.type !== "score") {
-              return { status: "unavailable", reason: "invalid-response" };
-            }
-            answers[id] = {
-              type: "score",
-              score: answer.score,
-              confidence: answer.confidence,
-              probabilities: question.criteria.map((_level, i) => answer.probabilities[String(i)]!),
-            };
-          }
+async function evaluateDecisionBatch(
+  getConfig: () => RuntimeConfig,
+  batch: DecisionBatch,
+  context: Parameters<DecisionProviderV1["evaluate"]>[1],
+): ReturnType<DecisionProviderV1["evaluate"]> {
+  context.signal.throwIfAborted();
+  // Registration and readiness do not need the transport or compiled validators.
+  // Sample configuration and the remaining deadline after the cold import settles.
+  const { evaluate: evaluateTypeSafe } = await loadClient();
+  context.signal.throwIfAborted();
+  const config = getConfig();
+  if (!hasCredentials(config)) {
+    return { status: "unavailable", reason: "credentials-unavailable" };
+  }
+  const remaining = context.deadlineMonotonicMs - performance.now();
+  if (remaining <= 0) {
+    return { status: "unavailable", reason: "transport" };
+  }
+  const questions = Object.fromEntries(
+    Object.entries(batch.questions).map(([id, q]) => [
+      id,
+      q.type === "boolean" ? { ...q, type: "noul" } : q,
+    ]),
+  );
+  try {
+    const { evaluation } = await evaluateTypeSafe(
+      { state: batch.state, questions, model: context.model },
+      { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
+      context.signal,
+      context.deadlineMonotonicMs,
+      () => {
+        if (context.isAdmissible && !context.isAdmissible()) {
+          return false;
         }
-        return {
-          status: "ok",
-          result: {
-            model: evaluation.model,
-            answers,
-            usage: {
-              inputTokens: evaluation.usage.input_tokens,
-              outputTokens: evaluation.usage.output_tokens,
-            },
-          },
+        // DNS and capture admission may await; only the current owner may authorize egress.
+        const current = getConfig();
+        return (
+          current.baseUrl === config.baseUrl &&
+          current.providerConfig === config.providerConfig &&
+          current.apiKey === config.apiKey &&
+          !current.credentialsUnavailable
+        );
+      },
+    );
+    context.signal.throwIfAborted();
+    const answers: Record<string, DecisionBatchResult["answers"][string]> = {};
+    for (const [id, answer] of Object.entries(evaluation.answers)) {
+      if (answer.type === "noul") {
+        answers[id] = { type: "boolean", probabilityTrue: answer.noul };
+      } else if (answer.type === "choice") {
+        answers[id] = answer;
+      } else {
+        const question = batch.questions[id];
+        if (!question || question.type !== "score") {
+          return { status: "unavailable", reason: "invalid-response" };
+        }
+        answers[id] = {
+          type: "score",
+          score: answer.score,
+          confidence: answer.confidence,
+          probabilities: question.criteria.map((_level, i) => answer.probabilities[String(i)]!),
         };
-      } catch (error) {
-        context.signal.throwIfAborted();
-        return decisionFailure(error);
       }
-    },
-  };
+    }
+    return {
+      status: "ok",
+      result: {
+        model: evaluation.model,
+        answers,
+        usage: {
+          inputTokens: evaluation.usage.input_tokens,
+          outputTokens: evaluation.usage.output_tokens,
+        },
+      },
+    };
+  } catch (error) {
+    context.signal.throwIfAborted();
+    return decisionFailure(error);
+  }
 }
 
 /** The shared provider owns the same credential and full configured route as V1. */
@@ -280,7 +274,7 @@ export function createPreparedDecisionProvider(getConfig: () => RuntimeConfig): 
               ? undefined
               : context.auth.apiKey,
       };
-      const provider = createDecisionProvider(() => {
+      const getPreparedConfig = () => {
         const current = getConfig();
         // Reuse the exact prepared object only while the underlying config owner remains unchanged.
         return current.baseUrl === original.baseUrl &&
@@ -289,8 +283,8 @@ export function createPreparedDecisionProvider(getConfig: () => RuntimeConfig): 
           current.credentialsUnavailable === original.credentialsUnavailable
           ? prepared
           : { ...current, credentialsUnavailable: true };
-      });
-      const outcome = await provider.evaluate(v1, {
+      };
+      const outcome = await evaluateDecisionBatch(getPreparedConfig, v1, {
         model: context.model.id,
         agentId: context.agentId,
         signal: context.signal,
