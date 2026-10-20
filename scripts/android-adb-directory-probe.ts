@@ -17,6 +17,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
+  androidReleaseAdbBridgeLineFacts,
   androidReleaseAdbServerLineFacts,
   androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
@@ -120,6 +121,7 @@ type Owned = {
   stopped: boolean;
   label: string;
   privileged: boolean;
+  bridge?: { log: string; pid: number; cycle: number };
 };
 function service(
   label: string,
@@ -160,6 +162,23 @@ function groupAlive(owned: Owned) {
 }
 async function stop(owned: Owned) {
   owned.stopped = true;
+  if (owned.bridge) {
+    const installed = (await bridgeFacts(owned.bridge.log)).find(
+      (fact) => fact.event === "installed",
+    );
+    if (installed && running(owned)) {
+      const status = await readFile(`/proc/${owned.bridge.pid}/status`, "utf8").catch(() => "");
+      if (Number(/^TracerPid:\s+(\d+)/mu.exec(status)?.[1]) === installed.gdbPid) {
+        // Signal GDB itself: signalling sudo's group can forward the interrupt twice.
+        await command("sudo", ["-n", "kill", "-SIGINT", "--", String(installed.gdbPid)]).catch(
+          () => {
+            proof.cleanupConfirmed = false;
+          },
+        );
+        await Promise.race([owned.done, sleep(5000)]);
+      }
+    }
+  }
   for (const signal of ["SIGTERM", "SIGKILL"] as const) {
     if (groupAlive(owned)) {
       if (owned.privileged) {
@@ -177,6 +196,25 @@ async function stop(owned: Owned) {
   if (!joined || groupAlive(owned)) {
     proof.cleanupConfirmed = false;
   }
+  if (owned.bridge) {
+    const facts = await bridgeFacts(owned.bridge.log);
+    for (const fact of facts) {
+      record("bridge-trace", { cycle: owned.bridge.cycle, ...fact });
+    }
+    const status = await readFile(`/proc/${owned.bridge.pid}/status`, "utf8").catch(() => "");
+    const detached = facts.some((fact) => fact.event === "detached");
+    const tracerReleased = /^TracerPid:\s+0$/mu.test(status);
+    record("bridge-detach", { cycle: owned.bridge.cycle, detached, tracerReleased });
+    if (!detached || !tracerReleased) {
+      proof.cleanupConfirmed = false;
+    }
+  }
+}
+async function bridgeFacts(file: string) {
+  return (await readFile(file, "utf8").catch(() => "")).split("\n").flatMap((line) => {
+    const fact = androidReleaseAdbBridgeLineFacts(line);
+    return fact ? [fact] : [];
+  });
 }
 function running(owned: Owned) {
   return (
@@ -342,6 +380,7 @@ const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex
 try {
   for (const [label, bin, args, pattern] of [
     ["strace", "strace", ["--version"], /strace -- version ([\d.]+)/u],
+    ["gdb", "gdb", ["--version"], /GNU gdb[^\n]* ([\d.]+)\n/u],
     ["platform-tools", adb, ["version"], /Version ([\d.-]+)/u],
     [
       "emulator",
@@ -507,7 +546,10 @@ try {
       const tracers = [];
       for (const socket of sockets) {
         record("transport-socket", { cycle, ...socket });
-        // Both endpoints belong to this probe; raw mode never dereferences buffer pointers.
+        if (socket.side === "emulator") {
+          continue;
+        }
+        // Keep the host's raw syscall trace; GDB owns the emulator's ptrace attachment.
         const tracer = service(
           `${socket.side}-syscalls`,
           "sudo",
@@ -534,25 +576,58 @@ try {
         tracers.push(tracer);
         services.push(tracer);
       }
-      const traceDeadline = Date.now() + 5000;
+      const peer = sockets.find((socket) => socket.side === "emulator")!;
+      const bridgeLog = path.join(root, `${cycle}-bridge.private.log`);
+      const debuggerService = service(
+        "emulator-bridge",
+        "sudo",
+        [
+          "-n",
+          "gdb",
+          "--nx",
+          "--nh",
+          "--batch",
+          "-iex",
+          "set auto-load off",
+          "-ex",
+          `python probe_pid=${peer.pid}`,
+          "-x",
+          path.resolve("scripts/android-adb-bridge-trace.py"),
+        ],
+        bridgeLog,
+        true,
+      );
+      debuggerService.bridge = { log: bridgeLog, pid: peer.pid, cycle };
+      services.push(debuggerService);
+      tracers.push(debuggerService);
+      const traceDeadline = Date.now() + 30_000;
       let traced = false;
+      let hostTraced = false;
+      let bridgeTraced = false;
       while (tracers.every(running) && Date.now() < traceDeadline) {
-        // Prove that both mapped endpoints carry data before starting the stress loop.
+        if (!(await bridgeFacts(bridgeLog)).some((fact) => fact.event === "installed")) {
+          await sleep(100);
+          continue;
+        }
+        // Exercise the one-shot bridge breakpoint before trusting the closure probes.
         await command(adb, ["-s", serial, "shell", "true"]);
-        const coverage = await Promise.all(
-          sockets.map(async (socket) =>
-            (await syscallFacts(tracePrefix(socket.side), socket.fd)).some(
-              (fact) => fact.result > 0,
-            ),
-          ),
+        const host = sockets.find((socket) => socket.side === "adb-server")!;
+        hostTraced = (await syscallFacts(tracePrefix(host.side), host.fd)).some(
+          (fact) => fact.result > 0,
         );
-        if (coverage.every(Boolean)) {
+        bridgeTraced = (await bridgeFacts(bridgeLog)).some((fact) => fact.event === "ready");
+        if (hostTraced && bridgeTraced) {
           traced = true;
           break;
         }
         await sleep(100);
       }
-      record("syscall-trace-ready", { cycle, traced, endpoints: sockets.length });
+      record("trace-ready", {
+        cycle,
+        traced,
+        hostSyscalls: hostTraced,
+        emulatorBridge: bridgeTraced,
+      });
       if (!traced) {
         throw new Error("adb-syscall-trace-unavailable");
       }
@@ -618,6 +693,9 @@ try {
     } finally {
       await adbServerFacts(cycle, "before-cleanup");
       for (const socket of sockets) {
+        if (socket.side !== "adb-server") {
+          continue;
+        }
         const facts = await syscallFacts(tracePrefix(socket.side), socket.fd).catch(() => null);
         record("transport-syscalls", {
           cycle,

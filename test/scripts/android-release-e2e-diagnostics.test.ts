@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  androidReleaseAdbBridgeLineFacts,
   androidReleaseAdbServerLineFacts,
   androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
@@ -12,6 +13,53 @@ import {
 } from "../../scripts/lib/android-release-e2e-diagnostics.js";
 
 describe("Android release public failure diagnostics", () => {
+  it("exports bridge stack offsets without debugger text, arguments, or paths", () => {
+    const facts = androidReleaseAdbBridgeLineFacts(
+      "OPENCLAW_ADB_BRIDGE " +
+        JSON.stringify({
+          event: "hit",
+          timeSeconds: 1792469182.031,
+          gdbPid: 123,
+          inferiorPid: 456,
+          tid: 789,
+          target: "guest-callback-close",
+          arguments: "private-token",
+          frames: [
+            { module: "emulator", offset: 12779856, function: "private-symbol" },
+            { module: "/private/library.so", offset: 123, arguments: "private-token" },
+            { module: "emulator", offset: "private-token" },
+          ],
+        }),
+    );
+    expect(facts).toMatchObject({
+      event: "hit",
+      timeSeconds: 1792469182.031,
+      gdbPid: 123,
+      inferiorPid: 456,
+      tid: 789,
+      target: "guest-callback-close",
+      frames: [
+        { module: "emulator", offset: 12779856 },
+        { module: "other", offset: 123 },
+        { module: "emulator", offset: null },
+      ],
+    });
+    expect(JSON.stringify(facts)).not.toMatch(/private|arguments|function/u);
+    expect(androidReleaseAdbBridgeLineFacts("GDB error: private-token")).toBeUndefined();
+  });
+
+  it.each([
+    "not-json",
+    "null",
+    "[]",
+    JSON.stringify({ event: "private-event", timeSeconds: 1, gdbPid: 123, inferiorPid: 456 }),
+    JSON.stringify({ event: "installed", timeSeconds: 1, gdbPid: -1, inferiorPid: 456 }),
+    JSON.stringify({ event: "installed", timeSeconds: 1, gdbPid: "123", inferiorPid: 456 }),
+    JSON.stringify({ event: "hit", timeSeconds: "private-token", gdbPid: 123, inferiorPid: 456 }),
+  ])("rejects invalid debugger protocol records: %s", (payload) => {
+    expect(androidReleaseAdbBridgeLineFacts(`OPENCLAW_ADB_BRIDGE ${payload}`)).toBeUndefined();
+  });
+
   const tcpHeader = "sl local_address rem_address st tx_queue tr retrnsmt uid timeout inode";
   const hostSocket = "0: 0100007F:C001 0100007F:15CD 01 0:0 00:0 0 1001 0 111";
   const peerSocket = "1: 0100007F:15CD 0100007F:C001 01 0:0 00:0 0 1001 0 222";

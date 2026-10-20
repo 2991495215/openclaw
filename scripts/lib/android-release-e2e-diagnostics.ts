@@ -1,5 +1,87 @@
 import path from "node:path";
 
+/** Only the debugger's metadata protocol may leave its private output stream. */
+export function androidReleaseAdbBridgeLineFacts(line: string) {
+  const prefix = "OPENCLAW_ADB_BRIDGE ";
+  if (!line.startsWith(prefix)) {
+    return undefined;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(line.slice(prefix.length));
+  } catch {
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const facts = value as Record<string, unknown>;
+  const numeric = (candidate: unknown) =>
+    typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0
+      ? candidate
+      : undefined;
+  const event = facts.event;
+  if (
+    typeof event !== "string" ||
+    !["installed", "ready", "hit", "detached", "error"].includes(event) ||
+    numeric(facts.timeSeconds) === undefined ||
+    !Number.isSafeInteger(facts.gdbPid) ||
+    Number(facts.gdbPid) <= 1 ||
+    !Number.isSafeInteger(facts.inferiorPid) ||
+    Number(facts.inferiorPid) <= 1
+  ) {
+    return undefined;
+  }
+  return {
+    event,
+    timeSeconds: numeric(facts.timeSeconds)!,
+    gdbPid: Number(facts.gdbPid),
+    inferiorPid: Number(facts.inferiorPid),
+    tid: numeric(facts.tid),
+    breakpoints: numeric(facts.breakpoints),
+    binarySha256:
+      typeof facts.binarySha256 === "string" && /^[a-f0-9]{64}$/u.test(facts.binarySha256)
+        ? facts.binarySha256
+        : undefined,
+    target:
+      typeof facts.target === "string" &&
+      [
+        "destroy-pipe",
+        "guest-close",
+        "guest-callback-close",
+        "reset-active-pipe",
+        "proxy-close",
+        "proxy-event",
+      ].includes(facts.target)
+        ? facts.target
+        : undefined,
+    reason:
+      typeof facts.reason === "string" &&
+      [
+        "debugger-error",
+        "binary-mismatch",
+        "breakpoint-unresolved",
+        "unexpected-stop",
+        "detach-failed",
+      ].includes(facts.reason)
+        ? facts.reason
+        : undefined,
+    frames: Array.isArray(facts.frames)
+      ? facts.frames.slice(0, 16).flatMap((frame: unknown) => {
+          if (!frame || typeof frame !== "object" || !("module" in frame) || !("offset" in frame)) {
+            return [];
+          }
+          return [
+            {
+              module: frame.module === "emulator" ? "emulator" : "other",
+              offset: numeric(frame.offset) ?? null,
+            },
+          ];
+        })
+      : [],
+  };
+}
+
 /** Match both kernel socket rows, including the client's ephemeral port. */
 export function androidReleaseAdbSocketPair(table: string, adbInodes: string[], port: number) {
   const rows = table
