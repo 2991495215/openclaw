@@ -487,7 +487,8 @@ export async function prepareCodexThreadLifecyclePreflight(params: CodexStartOrR
     params.params.requireWorkspaceOnly !== true &&
     !ringZeroActive &&
     !messageOnlySourceReply &&
-    params.params.scheduledRuntimeAuthority === undefined;
+    params.params.scheduledRuntimeAuthority === undefined &&
+    params.params.sessionPersistence !== "detached";
   const imageGenerationDenied =
     params.params.pluginHarnessToolPolicySafeDeniedTools?.includes("image_generate") === true;
   if (restrictedToolSurface && params.nativeCodeModeEnabled !== false) {
