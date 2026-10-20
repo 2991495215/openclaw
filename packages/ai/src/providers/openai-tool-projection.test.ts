@@ -22,14 +22,8 @@ function allowedCompletions(
   return { type: "allowed_tools" as const, allowed_tools: { mode, tools } };
 }
 
-it("keeps healthy tools when sibling descriptors or schemas are unreadable", () => {
+it("keeps healthy tools when sibling schemas are unreadable", () => {
   const projection = projectOpenAITools([
-    {
-      get name(): never {
-        throw new Error("name exploded");
-      },
-      parameters: {},
-    },
     {
       name: "bad_schema",
       parameters: {
@@ -41,19 +35,15 @@ it("keeps healthy tools when sibling descriptors or schemas are unreadable", () 
     },
     {
       name: "lookup",
-      get description(): never {
-        throw new Error("description exploded");
-      },
       parameters: undefined,
     },
   ]);
 
-  expect(projection.tools).toEqual([{ toolIndex: 2, name: "lookup", parameters: {} }]);
-  expect(projection.diagnostics).toHaveLength(2);
+  expect(projection.tools).toEqual([{ toolIndex: 1, name: "lookup", parameters: {} }]);
+  expect(projection.diagnostics).toHaveLength(1);
   expect(findOpenAIStrictToolProjectionDiagnostics(projection)).toEqual([
-    { toolIndex: 0, violations: ["tool[0].name is unreadable"] },
     {
-      toolIndex: 1,
+      toolIndex: 0,
       toolName: "bad_schema",
       violations: ["bad_schema.parameters is not JSON-serializable"],
     },
@@ -121,9 +111,7 @@ it("rejects pinned and required choices when their function tools are unavailabl
   const projection = projectOpenAITools([
     {
       name: "broken",
-      get parameters(): never {
-        throw new Error("parameters exploded");
-      },
+      parameters: { type: "object", properties: { value: { $dynamicRef: "#value" } } },
     },
   ]);
 

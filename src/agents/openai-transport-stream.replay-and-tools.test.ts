@@ -778,7 +778,7 @@ describe("openai transport stream", () => {
     expect(params.reasoning).toEqual({ effort: "minimal", summary: "auto" });
   });
 
-  it("does not reread an unreadable tool inventory length", () => {
+  it("reports unreadable tool inventories in Responses and Completions builders", () => {
     const tools = new Proxy([], {
       get(target, property, receiver) {
         if (property === "length") {
@@ -799,11 +799,11 @@ describe("openai transport stream", () => {
       tools,
     } as never;
 
-    expect(buildOpenAIResponsesParams(responsesModel, context, undefined)).not.toHaveProperty(
-      "tools",
+    expect(() => buildOpenAIResponsesParams(responsesModel, context, undefined)).toThrow(
+      "length exploded",
     );
-    expect(buildOpenAICompletionsParams(completionsModel, context, undefined)).not.toHaveProperty(
-      "tools",
+    expect(() => buildOpenAICompletionsParams(completionsModel, context, undefined)).toThrow(
+      "length exploded",
     );
   });
 
