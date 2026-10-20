@@ -107,11 +107,8 @@ export async function enqueueGitRefMutation<T>(
 
 type GitCommandResult = SpawnResult & { timeoutMs: number };
 
-export function normalizeGitPathForFilesystem(
-  value: string,
-  platform: NodeJS.Platform = process.platform,
-): string {
-  if (platform !== "win32") {
+export function normalizeGitPathForFilesystem(value: string): string {
+  if (process.platform !== "win32") {
     return value;
   }
   // Translate only path-typed Git output at its filesystem boundary. Native

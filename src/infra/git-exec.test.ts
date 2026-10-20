@@ -252,7 +252,8 @@ it.each([
   { input: "/C", expected: "C:\\" },
   { input: "relative/repo", expected: "relative/repo" },
 ])("normalizes only standard MSYS drive paths on Windows: $input", ({ input, expected }) => {
-  expect(normalizeGitPathForFilesystem(input, "win32")).toBe(expected);
+  mockProcessPlatform("win32");
+  expect(normalizeGitPathForFilesystem(input)).toBe(expected);
 });
 
 it("overrides maintenance.autoDetach only for an explicitly owned Git command", async () => {
