@@ -170,9 +170,19 @@ it("does not resurrect a suspended reservation after the requester lookup finish
     expect(await restoration).toEqual([]);
   }));
 
-it.each(["owed", "killed", "suppressed", "retired during lookup"] as const)(
-  "restores only owed requester wakes before new human input (%s)",
-  async (scenario) => {
+// A yielded cohort keeps a retired member's wake so its continuation reports the cancellation;
+// an ordinary wave owes nothing once its members retire.
+it.each([
+  ["owed", true],
+  ["killed", true],
+  ["suppressed", true],
+  ["retired during lookup", true],
+  ["killed", false],
+  ["suppressed", false],
+  ["retired during lookup", false],
+] as const)(
+  "restores only owed requester wakes before new human input (%s, yielded: %s)",
+  async (scenario, yielded) => {
     await withMailbox(
       async ({ entry, inputs, reserve }) => {
         const retireObligation = () => {
@@ -227,7 +237,7 @@ it.each(["owed", "killed", "suppressed", "retired during lookup"] as const)(
         inputs.push(...restored);
         const human = reserve("new-human-input");
         const claim = tryClaimSessionControllerTask(human, "visible");
-        if (scenario === "owed") {
+        if (scenario === "owed" || yielded) {
           expect(restored).toHaveLength(1);
           expect(restored[0]?.phase).toBe("preparing");
           expect(claim).toBeUndefined();
@@ -246,8 +256,7 @@ it.each(["owed", "killed", "suppressed", "retired during lookup"] as const)(
         status: "dispatching",
         attemptCount: 1,
         rearmGeneration: 1,
-        requesterYieldBatch: true,
-        yieldedFinalDeliverable: true,
+        ...(yielded ? { requesterYieldBatch: true, yieldedFinalDeliverable: true } : {}),
         // The other member no longer has a retained wake, as after partial cleanup.
         batchRunIds: ["completion-run", "already-retired-sibling"],
       },
@@ -311,10 +320,7 @@ it.each([
       const restored = await restoration;
       inputs.push(...restored);
       const human = reserve("new-human-after-mixed-cohort");
-      if (
-        scenario === "whole batch retires during lookup" ||
-        scenario === "sibling replaced during lookup"
-      ) {
+      if (scenario === "sibling replaced during lookup") {
         expect(restored).toEqual([]);
         expect(tryClaimSessionControllerTask(human, "visible")).toBeDefined();
         return;

@@ -572,24 +572,23 @@ export function createEmbeddedRunCompactionRuntime(input: {
     assertRecoveryActive();
     return accepted.previousSessionId;
   };
-  const onCompactionHookMessages = async (payload: {
-    phase: "before" | "after";
-    messages: string[];
-  }) => {
+  // Notices are progress like recovery start/end: ordered, but never awaited by compaction.
+  const onCompactionHookMessages = (payload: { phase: "before" | "after"; messages: string[] }) => {
     const messages = payload.messages.filter((message) => message.trim().length > 0);
     if (messages.length === 0) {
       return;
     }
     assertRecoveryActive();
-    await params.onAgentEvent?.({
-      stream: "compaction",
-      data: {
-        phase: "notice",
-        messages,
-      },
-      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    runBestEffortCallback({
+      label: "compaction hook notice",
+      log,
+      callback: () =>
+        params.onAgentEvent?.({
+          stream: "compaction",
+          data: { phase: "notice", messages },
+          ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+        }),
     });
-    assertRecoveryActive();
   };
   const runOwnsCompactionHook = async (
     reason: string,

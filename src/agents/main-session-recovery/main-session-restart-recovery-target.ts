@@ -14,7 +14,6 @@ import {
   resolveAgentIdFromSessionKey,
 } from "../../routing/session-key.js";
 import { listSubagentRunsForRequester } from "../subagents/registry/subagent-registry-read.js";
-import { owesRequesterCompletion } from "../subagents/registry/subagent-requester-settle-identity.js";
 import { mainSessionRecoveryLog } from "./main-session-restart-recovery-shared.js";
 
 type RestartRecoveryDispatchParams = {
@@ -89,7 +88,10 @@ export async function resolveRestartRecoveryDispatchTarget(
   }
 }
 
-/** Recovery needs owed completion; Stop must also retire an already-canceled child's pending wake. */
+/**
+ * Captures the durable continuation that a completed requester turn yielded to. A retained
+ * yielded wake stays owed after its children retire; Stop also covers children without a report.
+ */
 export function captureYieldedMainSessionContinuation(params: {
   entry: SessionEntry;
   requester: RestartRecoveryDispatchTarget | undefined;
@@ -114,7 +116,7 @@ export function captureYieldedMainSessionContinuation(params: {
   const owner = listRuns().find(
     (run) =>
       !run.collect &&
-      (params.purpose === "stop" || owesRequesterCompletion(run)) &&
+      (params.purpose === "stop" || run.expectsCompletionMessage === true) &&
       !run.requesterTurnRunId &&
       run.requesterSettleWake?.requesterYieldBatch === true &&
       run.requesterSettleWake.rearmGeneration !== undefined &&
@@ -129,7 +131,6 @@ export function captureYieldedMainSessionContinuation(params: {
   const rearmGeneration = wake?.rearmGeneration;
   return () =>
     listRuns().includes(owner) &&
-    (params.purpose === "stop" || owesRequesterCompletion(owner)) &&
     !owner.requesterTurnRunId &&
     owner.requesterSettleWake === wake &&
     wake?.rearmGeneration === rearmGeneration;

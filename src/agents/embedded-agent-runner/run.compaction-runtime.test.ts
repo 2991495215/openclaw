@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
+import {
+  awaitGateBeforeSettlement,
+  createDeferred,
+  withinTest,
+} from "../../../test/helpers/promise.js";
 import { refreshSessionEntryFromStore } from "../../auto-reply/reply/agent-runner-core.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import type { ContextEngineRuntimeContext } from "../../context-engine/types.js";
@@ -207,9 +211,9 @@ describe("embedded compaction recovery authority", () => {
     },
   );
 
-  it.each(["recovery", "abort"] as const)(
+  it.for(["recovery", "abort", "hook notices"] as const)(
     "does not wait for an optional progress callback during %s",
-    async (outcome) => {
+    async (outcome, { signal }) => {
       await withRecoveryFixture({ oversized: false }, async (fixture) => {
         const callbackRelease = createDeferred();
         const callbackEnd = createDeferred();
@@ -226,9 +230,15 @@ describe("embedded compaction recovery authority", () => {
         });
         fixture.compact.mockImplementationOnce(async (params) => {
           compactEntered.resolve();
-          return outcome === "abort"
-            ? await waitForCompactionAbort(params.abortSignal)
-            : await originalCompact(params);
+          if (outcome === "abort") {
+            return await waitForCompactionAbort(params.abortSignal);
+          }
+          const notify = params.runtimeContext?.onCompactionHookMessages;
+          if (outcome === "hook notices" && typeof notify === "function") {
+            // The notice queues behind the held start callback.
+            await notify({ phase: "before", messages: ["Preparing fixture context"] });
+          }
+          return await originalCompact(params);
         });
         const pending = fixture.recover("overflow");
         const settled = pending.then(
@@ -244,7 +254,7 @@ describe("embedded compaction recovery authority", () => {
           if (outcome === "abort") {
             fixture.stop();
           }
-          expect(await settled).toEqual(
+          expect(await withinTest(settled, signal)).toEqual(
             outcome === "abort" ? { error: fixture.callerError } : { value: { action: "retry" } },
           );
           expect(fixture.onAgentEvent.mock.calls.map(([event]) => event.data.phase)).toEqual([
@@ -254,6 +264,7 @@ describe("embedded compaction recovery authority", () => {
           await callbackEnd.promise;
           expect(fixture.onAgentEvent.mock.calls.map(([event]) => event.data.phase)).toEqual([
             "start",
+            ...(outcome === "hook notices" ? ["notice"] : []),
             "end",
           ]);
         } finally {

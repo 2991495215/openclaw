@@ -143,10 +143,10 @@ describe("yielded requester admission", () => {
     expect(read().restartRecoveryRuns).toEqual([{ runId: "yielded-run", lifecycleGeneration }]);
   });
 
+  // A killed member of a yielded cohort keeps the wake; its continuation reports the cancellation.
   it.each(["live pending", "live dispatching", "killed dispatching"] as const)(
-    "reconciles orphaned delivery custody only when its yielded wake is retired: %s",
+    "leaves orphaned delivery custody with the retained yielded wake: %s",
     async (state) => {
-      const killed = state === "killed dispatching";
       const retained = createSubagentRunRecord({
         ...child,
         requesterSettleWake: {
@@ -155,7 +155,7 @@ describe("yielded requester admission", () => {
           attemptCount: 1,
         },
       });
-      if (killed) {
+      if (state === "killed dispatching") {
         retained.suppressCompletionDelivery = true;
         retained.endedReason = "subagent-killed";
         retained.killReconciliation = { killedAt: 2000, supersededAt: 3000 };
@@ -177,59 +177,10 @@ describe("yielded requester admission", () => {
           expectedSessionId: "session-1",
           cfg: { session: { store: storePath } },
         }),
-      ).resolves.toMatchObject({ marked: killed ? 1 : 0 });
-      if (killed) {
-        expect(read()).toMatchObject({
-          abortedLastRun: true,
-          mainRestartRecovery: { chargedAttempts: 0 },
-          restartRecoveryDeliveryRunId: "older-orphan-claim",
-          restartRecoveryDeliverySourceRunId: "older-orphan-source",
-        });
-      } else {
-        expect(read()).toEqual(before);
-      }
+      ).resolves.toMatchObject({ marked: 0 });
+      expect(read()).toEqual(before);
       expect(subagentRuns.get(retained.runId)).toBe(retained);
       expect(retained).toEqual(childBefore);
     },
   );
-
-  it("rejects a yielded handoff if its live child obligation is killed before commit", async () => {
-    const retained = createSubagentRunRecord({
-      ...child,
-      requesterSettleWake: { ...child.requesterSettleWake! },
-    });
-    subagentRuns.set(retained.runId, retained);
-    await write({
-      ...read(),
-      abortedLastRun: true,
-      mainRestartRecovery: { cycleId: "waiting-yield", revision: 1, chargedAttempts: 0 },
-    });
-    const before = read();
-    const replace = sessionAccessor.applySessionEntryReplacements;
-    let captured = false;
-    vi.spyOn(sessionAccessor, "applySessionEntryReplacements").mockImplementation((params) =>
-      replace({
-        ...params,
-        update: async (entries) => {
-          const result = await params.update(entries);
-          captured = true;
-          retained.suppressCompletionDelivery = true;
-          retained.endedReason = "subagent-killed";
-          retained.killReconciliation = { killedAt: 2000, supersededAt: 3000 };
-          return result;
-        },
-      }),
-    );
-    await expect(
-      markOrphanedMainSessionForRecovery({
-        target: { agentId: "main", sessionKey, storePath },
-        expectedSessionId: "session-1",
-        cfg: { session: { store: storePath } },
-      }),
-    ).rejects.toThrow("Yielded requester continuation changed before recovery handoff");
-    expect(captured).toBe(true);
-    expect(read()).toEqual(before);
-    expect(retained.suppressCompletionDelivery).toBe(true);
-    expect(retained.requesterSettleWake).toBeDefined();
-  });
 });

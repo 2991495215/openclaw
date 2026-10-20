@@ -166,12 +166,18 @@ export async function reserveRestoredSubagentControllerSources(
   };
   const reservations: Array<[number, () => Promise<SessionControllerInput | undefined>]> = [];
   const entriesById = new Map(entries.map((entry) => [entry.runId, entry]));
+  // Matches live dispatch: a yielded cohort still reports its retired members, while
+  // an ordinary wave owes nothing once all of them retire.
+  const selectWakeOwner = (
+    batch: readonly SubagentRunRecord[],
+    wake: NonNullable<SubagentRunRecord["requesterSettleWake"]>,
+  ) =>
+    batch.find((member) => !isSubagentObligationRetired(member)) ??
+    (wake.requesterYieldBatch === true ? batch[0] : undefined);
   for (const entry of entries) {
-    // Retired obligations cannot reserve FIFO ahead of new requester input.
-    if (isSubagentObligationRetired(entry)) {
-      continue;
-    }
+    // A retired child no longer owns its own completion delivery.
     if (
+      !isSubagentObligationRetired(entry) &&
       entry.expectsCompletionMessage === true &&
       !hasRequesterCompletionCohort(entry) &&
       (entry.delivery?.status === "pending" || entry.delivery?.status === "in_progress") &&
@@ -224,8 +230,7 @@ export async function reserveRestoredSubagentControllerSources(
         ? [member]
         : [];
     });
-    // A retired member remains in the frozen identity, but cannot represent its owed siblings.
-    if (entry !== batch.find((member) => !isSubagentObligationRetired(member))) {
+    if (entry !== selectWakeOwner(batch, wake)) {
       continue;
     }
     const identity = buildRequesterSettleWakeIdentity({
@@ -253,25 +258,17 @@ export async function reserveRestoredSubagentControllerSources(
         if (!(await prepareRestoredRequester(requester))) {
           return undefined;
         }
-        const currentBatch = batch.map((member) =>
-          getCurrentSubagentRunOwner(subagentRuns, member),
-        );
         // Recheck after requester recovery preparation; the same frozen cohort still owns FIFO.
-        const current = currentBatch.find(
-          (member) => member && !isSubagentObligationRetired(member),
-        );
-        if (
-          !current ||
-          !current.requesterSettleWake ||
-          current.requesterSettleWake.rearmGeneration !== wake.rearmGeneration ||
-          currentBatch.some((owner) => {
-            return (
-              !owner ||
-              !owner.requesterSettleWake ||
-              owner.requesterSettleWake.rearmGeneration !== wake.rearmGeneration
-            );
-          })
-        ) {
+        const currentBatch = batch
+          .map((member) => getCurrentSubagentRunOwner(subagentRuns, member))
+          .filter(
+            (owner): owner is SubagentRunRecord =>
+              owner?.requesterSettleWake !== undefined &&
+              owner.requesterSettleWake.rearmGeneration === wake.rearmGeneration,
+          );
+        const current =
+          currentBatch.length === batch.length ? selectWakeOwner(currentBatch, wake) : undefined;
+        if (!current) {
           return undefined;
         }
         const caller = Object.freeze({

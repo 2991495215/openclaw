@@ -124,7 +124,7 @@ export function projectReplyToolAuthorityInput(
     : incoming;
 }
 
-export function applyReplyToolAuthorityRequester(
+function applyReplyToolAuthorityRequester(
   snapshot: ReplyToolAuthorityInput,
   requester: ReplyToolAuthorityRequester,
 ): ReplyToolAuthorityInput {
@@ -143,7 +143,7 @@ export function applyReplyToolAuthorityRequester(
   };
 }
 
-export function applyReplyToolAuthorityOverlay(
+function applyReplyToolAuthorityOverlay(
   snapshot: ReplyToolAuthorityInput,
   overlay: ReplyToolAuthorityOverlay,
 ): ReplyToolAuthorityInput {
@@ -287,7 +287,7 @@ export function resolveInboundConversationToolPolicy(params: {
 }
 
 /** Session sharing alone does not establish that two inputs belong to the same conversation. */
-export function isSameReplyToolAuthorityConversation(
+function isSameReplyToolAuthorityConversation(
   snapshot: ReplyToolAuthorityInput,
   caller: ReplyToolAuthorityOverlay,
 ): boolean {
