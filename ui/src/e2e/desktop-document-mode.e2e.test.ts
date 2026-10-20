@@ -561,14 +561,19 @@ suite.define(() => {
     },
   );
 
-  it("returns from an unavailable focused desktop", async () => {
+  it.each([
+    { access: "unadvertised", operatorScopes: ["operator.admin"], featureMethods: [] },
+    { access: "non-admin", operatorScopes: ["operator.read"], featureMethods: desktopMethods },
+  ])("returns from an unavailable focused desktop ($access)", async (scenario) => {
     await suite.withPage({ serviceWorkers: "block" }, async ({ page }) => {
-      await installMockGateway(page);
+      const gateway = await installMockGateway(page, scenario);
       await page.goto(`${suite.server.baseUrl}dashboards`);
       await page.locator("openclaw-app-shell").waitFor();
       await page.goto(`${suite.server.baseUrl}focus/desktop`);
 
       await exactText(page, "Desktop viewing is unavailable for this connection.").waitFor();
+      expect(await button(page, "Enable desktop access in OpenClaw").count()).toBe(0);
+      await expectRequests(gateway, { "config.patch": 0, "desktop.observe": 0 });
       const back = button(page, "Back");
       await back.waitFor();
       await back.click();
