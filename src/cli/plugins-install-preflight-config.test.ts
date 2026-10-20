@@ -24,7 +24,7 @@ vi.mock("../plugins/bundled-sources.js", async (importOriginal) => {
     ...actual,
     findBundledPluginSource: ({ lookup }: Parameters<typeof actual.findBundledPluginSource>[0]) =>
       actual.findBundledPluginSourceInMap({ bundled: mocks.bundled, lookup }),
-    getProcessBundledPluginSources: () => mocks.bundled,
+    resolveBundledPluginSources: () => mocks.bundled,
   };
 });
 vi.mock("../plugins/marketplace.js", () => ({

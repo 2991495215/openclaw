@@ -24,33 +24,27 @@ export async function applySlotSelectionForPlugin(
   if (!plugin) {
     return config;
   }
-  if (!plugin.kind && !isBundledManifestOwner(plugin)) {
+  let selectedKind = plugin.kind;
+  if (!selectedKind && !isBundledManifestOwner(plugin)) {
     // Bundled manifests own slot declarations. Only legacy external plugins need
     // runtime kind inspection; enabling a bundled non-slot plugin must not execute its module.
     const { withPluginDiagnosticsReport } = await import("./status.js");
     // Importing diagnostics yields; recheck the install owner before plugin code executes.
     beforeRuntimeInspection?.();
-    return await withPluginDiagnosticsReport(
+    selectedKind = await withPluginDiagnosticsReport(
       {
         config,
         onlyPluginIds: [plugin.id],
         metadataSnapshot,
         loadMode: "validate",
       },
-      (runtimeReport) => {
-        const runtimePlugin = runtimeReport.plugins.find((entry) => entry.id === plugin.id);
-        return applyExclusiveSlotSelection({
-          config,
-          selectedId: plugin.id,
-          selectedKind: runtimePlugin?.kind ?? plugin.kind,
-        });
-      },
+      (runtimeReport) => runtimeReport.plugins.find((entry) => entry.id === plugin.id)?.kind,
     );
   }
 
   return applyExclusiveSlotSelection({
     config,
     selectedId: plugin.id,
-    selectedKind: plugin.kind,
+    selectedKind,
   });
 }

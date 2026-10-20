@@ -155,29 +155,25 @@ function resolveEffectivePluginIdsWithChannels(
   for (const pluginId of configuredPluginIds) {
     ids.add(pluginId);
   }
-  const bundledOwnerEnv = params.env;
-  const bundledOwnerWorkspaceDir = params.workspaceDir;
-  const bundledOwnerManifestRecords = prepared?.plugins;
-  const bundledPluginsDir = params.bundledPluginsDir ? params.bundledPluginsDir : undefined;
   // Channel state callbacks run before this pass and may update config.
   const bundledOwnerPlugins = normalizePluginsConfig(effectiveConfig.plugins);
   const channelIds = new Set(configuredChannelIds);
   if (channelIds.size > 0) {
-    const env = bundledPluginsDir
+    const env = params.bundledPluginsDir
       ? {
-          ...bundledOwnerEnv,
-          OPENCLAW_BUNDLED_PLUGINS_DIR: bundledPluginsDir,
-          ...(isVitestRuntimeEnv(bundledOwnerEnv) || isVitestRuntimeEnv()
+          ...params.env,
+          OPENCLAW_BUNDLED_PLUGINS_DIR: params.bundledPluginsDir,
+          ...(isVitestRuntimeEnv(params.env) || isVitestRuntimeEnv()
             ? { OPENCLAW_TEST_TRUST_BUNDLED_PLUGINS_DIR: "1" }
             : {}),
         }
-      : bundledOwnerEnv;
+      : params.env;
     const records =
-      bundledOwnerManifestRecords ??
+      prepared?.plugins ??
       loadManifestMetadataSnapshot({
         config: effectiveConfig,
         env,
-        workspaceDir: bundledOwnerWorkspaceDir,
+        workspaceDir: params.workspaceDir,
       }).plugins;
     for (const plugin of records) {
       if (plugin.origin !== "bundled") {

@@ -119,7 +119,6 @@ export function applyExclusiveSlotSelection(params: {
 
   const pluginsConfig = params.config.plugins ?? {};
   let anyChanged = false;
-  const entries = { ...pluginsConfig.entries };
   const slots = { ...pluginsConfig.slots };
 
   for (const slotKey of slotKeys) {
@@ -148,7 +147,7 @@ export function applyExclusiveSlotSelection(params: {
     plugins: {
       ...pluginsWithoutSlots,
       ...(Object.keys(slots).length > 0 ? { slots } : {}),
-      entries,
+      entries: pluginsConfig.entries ?? {},
     },
   };
 }

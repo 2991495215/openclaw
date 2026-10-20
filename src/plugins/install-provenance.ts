@@ -3,7 +3,7 @@ import { sanitizeTerminalText } from "../../packages/terminal-core/src/safe-text
 import { parseRegistryNpmSpec } from "../infra/npm-registry-spec.js";
 import {
   findBundledPluginSourceInMap,
-  getProcessBundledPluginSources,
+  resolveBundledPluginSources,
   type BundledPluginSource,
 } from "./bundled-sources.js";
 import { resolveCatalogOfficialExternalNpmPackageTrust } from "./official-external-install-trust.js";
@@ -20,7 +20,7 @@ export type NonClawHubInstallSourceClass =
 
 export function resolveOpenClawTrustedNpmPackageInstall(
   npmSpec: string,
-  bundledSources: ReadonlyMap<string, BundledPluginSource> = getProcessBundledPluginSources(),
+  bundledSources: ReadonlyMap<string, BundledPluginSource> = resolveBundledPluginSources({}),
 ): {
   pluginId: string;
   expectedIntegrity?: string;
