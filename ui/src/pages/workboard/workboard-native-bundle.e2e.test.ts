@@ -53,6 +53,57 @@ const cardsResponse = (cards: WorkboardCard[]) => ({
 
 suite.define(() => {
   it.each(["chromium", "webkit"] as const)(
+    "retains the list heading and keyboard focus while toggling the native bundle in %s",
+    async (engine) => {
+      const context =
+        engine === "chromium"
+          ? await suite.newBrowserContext({ viewport: views[0].viewport, locale: "en-US" })
+          : await webkitBrowser!.newContext({ viewport: views[0].viewport, locale: "en-US" });
+      const proof = createWorkboardProof(suite, "workboard-native-list-toggle", undefined, {
+        captureMode: engine,
+      });
+      try {
+        const page = await context.newPage();
+        await installMockGateway(page, {
+          ...workboardUi,
+          methodResponses: {
+            "workboard.boards.list": { boards: [board] },
+            "workboard.cards.list": cardsResponse([card]),
+          },
+        });
+        await page.goto(`${suite.server.baseUrl}workboard/ops`);
+        await page.locator(".workboard-card").filter({ hasText: card.title }).waitFor();
+        await button(page, "Filters").click();
+        await button(page, "List").click();
+        await page.keyboard.press("Escape");
+        const group = page.locator(".workboard-column--todo");
+        const toggle = group.locator("h2 button");
+        const retained = expectDefined(await toggle.elementHandle(), "List heading");
+        await toggle.focus();
+        await page.keyboard.press("Enter");
+        await expect.poll(() => toggle.getAttribute("aria-expanded")).toBe("false");
+        await proof.capture(page, `${engine}-collapsed`, page.locator(".workboard-main"), [toggle]);
+        expect(await retained.evaluate((element) => element.isConnected)).toBe(true);
+        await expectFocus(toggle);
+        expect(await group.locator(".workboard-card").count()).toBe(0);
+        await page.keyboard.press("Enter");
+        await expect.poll(() => toggle.getAttribute("aria-expanded")).toBe("true");
+        await group.locator(".workboard-card").filter({ hasText: card.title }).waitFor();
+        await proof.capture(page, `${engine}-expanded`, page.locator(".workboard-main"), [toggle]);
+        expect(await retained.evaluate((element) => element.isConnected)).toBe(true);
+        await expectFocus(toggle);
+      } finally {
+        await proof.writeManifest();
+        if (engine === "chromium") {
+          await suite.closeBrowserContext(context);
+        } else {
+          await context.close();
+        }
+      }
+    },
+  );
+
+  it.each(["chromium", "webkit"] as const)(
     "loads the native bundle and preserves overlay focus and card identity in %s",
     async (engine) => {
       const proof = createWorkboardProof(

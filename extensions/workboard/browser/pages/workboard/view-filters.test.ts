@@ -180,6 +180,36 @@ describe("WorkboardView", () => {
     expect(state.statusFilter).toEqual(new Set(["ready"]));
   });
 
+  it("toggles a retained list group heading without losing keyboard focus", () => {
+    const { state, container, renderView } = createWorkboardView();
+    state.viewMode = "list";
+    state.cards = [createWorkboardCard({ id: "todo-card", title: "Review notes", status: "todo" })];
+    renderView();
+    const group = expectDefined(
+      container.querySelector<HTMLElement>('section[aria-label="Todo, 1"]'),
+      'section[aria-label="Todo, 1"]',
+    );
+    const toggle = expectDefined(
+      group.querySelector<HTMLButtonElement>("h2 button"),
+      "Todo toggle",
+    );
+    toggle.focus();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(group.querySelector('[role="listitem"]')?.textContent).toContain("Review notes");
+    toggle.click();
+    renderView();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(group.querySelector('[role="listitem"]')).toBeNull();
+    expect(group.querySelector("h2 button")).toBe(toggle);
+    expect(document.activeElement).toBe(toggle);
+    toggle.click();
+    renderView();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(group.querySelector('[role="listitem"]')?.textContent).toContain("Review notes");
+    expect(group.querySelector("h2 button")).toBe(toggle);
+    expect(document.activeElement).toBe(toggle);
+  });
+
   it("keeps list group actions independent of its disclosure while collapsed", () => {
     const { state, container, renderView } = createWorkboardView({ canWrite: true });
     state.viewMode = "list";

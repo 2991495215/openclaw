@@ -262,7 +262,7 @@ export function WorkboardColumn(input: {
                     type="button"
                     aria-expanded={collapsed() ? "false" : "true"}
                     aria-controls={`workboard-column-cards-${input.status}`}
-                    onClick={collapsed() ? expandColumn : collapseColumn}
+                    onClick={(event) => (collapsed() ? expandColumn : collapseColumn)(event)}
                   >
                     <span class="workboard-list-group__chevron" aria-hidden="true">
                       {collapsed() ? icons.chevronRight : icons.chevronDown}
