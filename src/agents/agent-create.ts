@@ -37,6 +37,7 @@ import { withExistingOpenClawStateDatabaseCurrentReadOnly } from "../state/openc
 import { isReservedSystemAgentId } from "../system-agent/agent-id.js";
 import { resolveUserPath } from "../utils.js";
 import { DuplicateAgentError } from "./agent-create-error.js";
+import { createExistingAgentResult } from "./agent-create-result.js";
 import { normalizeAgentDirRegistryPath } from "./agent-dir-registry.js";
 import { claimCompletedAgentDeletion } from "./agent-lifecycle-registry.js";
 import { listAgentRoles, loadAgentRole } from "./agent-roles.js";
@@ -130,6 +131,8 @@ type CreateAgentParams = {
   /** Observe published config before post-commit bookkeeping that may still fail. */
   onCommitted?: (result: CreateAgentSuccess & { config: OpenClawConfig }) => void;
   provenance?: { createdVia: AgentCreatedVia; creatorAgentId?: string };
+  /** Retry-safe native callers may reuse a matching entry after lifecycle gates pass. */
+  reuseExisting?: (entry: CreateAgentEntry) => boolean;
 };
 
 class InvalidAgentBindingsError extends Error {}
@@ -427,6 +430,17 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           throw new Error(`agent "${agentId}" deletion tombstone changed during creation`);
         }
         tombstoneClaimed = true;
+      }
+      const existing = listAgentEntries(lockedConfig).find((entry) => entry.id === agentId);
+      if (
+        existing &&
+        !automaticBootstrap &&
+        recoveryPaths.length === 0 &&
+        params.reuseExisting?.(existing)
+      ) {
+        const result = await createExistingAgentResult(lockedConfig, existing, safeName);
+        beforePersistentApply();
+        return result;
       }
       const committed = await transformConfig<CreateAgentSuccess>({
         afterWrite: { mode: "auto" },
