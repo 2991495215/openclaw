@@ -603,7 +603,6 @@ export function activateCodexAttemptTurn(
     // Queue-only calls retain receiver custody after acknowledging acceptance.
     supportsTranscriptCommitWait: true,
     supportsQueueMessageImages: params.model.input.includes("image"),
-    terminalReplyExpectation: params.terminalReplyExpectation,
     sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
     taskSuggestionDeliveryMode: params.taskSuggestionDeliveryMode,
     cancel: () => abortExplicitly("cancelled"),
