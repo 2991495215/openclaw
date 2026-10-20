@@ -13,6 +13,7 @@ import {
   runUntilCompleted,
 } from "./code-mode.test-support.js";
 import { createEditTool, createReadTool, createWriteTool } from "./sessions/index.js";
+import type { ReadToolDetails } from "./sessions/tools/index.js";
 import { createLsTool } from "./sessions/tools/ls.js";
 import { DEFAULT_MAX_BYTES } from "./sessions/tools/truncate.js";
 import { resolveToolResultBudget, toolResultFitsBudget } from "./tool-result-limits.js";
@@ -201,7 +202,7 @@ describe("filesystem tool output contracts", () => {
     for (let page = 0; page < 8; page++) {
       const result = await tool.execute(`read-page-${page}`, args);
       expectContract(tool, result.details);
-      const details = result.details;
+      const details = result.details as ReadToolDetails;
       if (details.kind !== "text" && details.kind !== "truncated") {
         throw new Error("Expected file text");
       }

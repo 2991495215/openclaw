@@ -89,7 +89,7 @@ describe("native pending assignment inventory through registered monitor admissi
       await parent.ready;
       expect(ready).toBe(true);
       expect(restoredWrites).toBe(2);
-      expect(await f.store.readNativeSubagentAssignments?.(f.identity, f.historyOwner())).toEqual(
+      expect(f.store.readNativeSubagentAssignments?.(f.identity, f.historyOwner())).toEqual(
         assignments.map((assignment) => expect.objectContaining(assignment)),
       );
     } finally {

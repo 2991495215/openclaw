@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseWikiMarkdown } from "./markdown.js";
+import { parseWikiMarkdown, renderWikiMarkdown } from "./markdown.js";
 import { importMemoryWikiOkfBundle } from "./okf.js";
 import { searchMemoryWiki } from "./query.js";
 import { createMemoryWikiTestHarness } from "./test-helpers.js";
@@ -23,6 +23,20 @@ function getOnlyPagePath(paths: string[]): string {
     throw new Error("Expected OKF import to produce one page path.");
   }
   return pagePath;
+}
+
+async function writeConcept(file: string, title: string, body: string, type = "BigQuery Table") {
+  await fs.writeFile(file, renderWikiMarkdown({ frontmatter: { type, title }, body }), "utf8");
+}
+
+async function createImport(bundleName: string) {
+  const rootDir = await createTempDir("memory-wiki-okf-");
+  const bundlePath = path.join(rootDir, bundleName);
+  await fs.mkdir(path.join(bundlePath, "tables"), { recursive: true });
+  const { config } = await createVault({ rootDir: path.join(rootDir, "vault") });
+  const run = (nowMs = Date.UTC(2026, 5, 12, 10, 0, 0)) =>
+    importMemoryWikiOkfBundle({ config, bundlePath, nowMs });
+  return { rootDir, bundlePath, config, run };
 }
 
 async function writeOkfBundle(rootDir: string) {

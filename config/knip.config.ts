@@ -751,6 +751,8 @@ const config = {
     // Focused outbox tests seed and recover rows through these kernels; production
     // reaches them only through the agent database worker's command dispatcher.
     "src/agents/harness/context-engine-turn-outbox.ts": ["exports"],
+    // Focused Crabbox tests inspect retained private diagnostics; production consumes them in-module.
+    "extensions/qa-lab/src/mantis/crabbox-runtime.ts": ["exports"],
     // Runtime reason values are exported now so protocol schemas can derive from one tuple later.
     "src/agents/failover/signal.ts": ["exports"],
     "src/context-engine/registry.ts": ["exports", "types"],

@@ -122,7 +122,40 @@ function createPersonalMetadataFixture(
     metadata,
     readChatMetadata,
     request,
+    saveSession(sessionKey: string, fields: Partial<SessionEntry> = {}, ownerId = owner.id) {
+      const agentId = expectDefined(sessionKey.split(":")[1], "session agent");
+      return upsertSessionEntryCore(
+        { agentId, sessionKey },
+        {
+          sessionId: sessionKey.split(":").slice(2).join(":"),
+          updatedAt: 1,
+          createdActor: { type: "human", source: "profile", id: ownerId },
+          ...fields,
+        },
+      );
+    },
+    dispatch(params: Record<string, unknown>, signal?: AbortSignal) {
+      const respond = vi.fn<RespondFn>();
+      const pending = handleGatewayRequest({
+        req: { type: "req", id: "metadata-dispatch", method: "chat.metadata", params },
+        client,
+        context,
+        respond,
+        signal,
+        isWebchatConnect: () => false,
+      });
+      return { pending, respond };
+    },
   };
+}
+
+function withMetadataFixture(
+  run: (fixture: ReturnType<typeof createPersonalMetadataFixture>) => Promise<void>,
+  scopes: GatewayOperatorRoleDefinition["scopes"] = [SESSION_READ_SCOPE],
+) {
+  return withOpenClawTestState({ scenario: "minimal" }, async () => {
+    await run(createPersonalMetadataFixture(scopes));
+  });
 }
 
 function dispatchMetadata(
@@ -174,7 +207,7 @@ describe("chat metadata ownership", () => {
         });
         const abort = () => release.resolve();
         signal.addEventListener("abort", abort, { once: true });
-        let request: ReturnType<typeof fixture.dispatch> | undefined;
+        let request;
         try {
           await harness.runtime.refresh();
           const started = performance.now();

@@ -35,7 +35,7 @@ function activeParams(commandBody?: string): ReturnType<typeof buildParams> {
 }
 
 const run = (params: ReturnType<typeof buildParams>) => handleBtwCommand(params, true);
-const runnerArgs = () => mockFirstObjectArg(runBtwSideQuestionMock);
+const readRunnerArgs = () => mockFirstObjectArg(runBtwSideQuestionMock);
 function expectReply(result: Awaited<ReturnType<typeof run>>, text: string, question?: string) {
   expect(result).toEqual({
     shouldContinue: false,
@@ -311,7 +311,7 @@ describe("handleBtwCommand", () => {
 
       const result = await run(params);
 
-      expect(runnerArgs().question).toBe(question);
+      expect(readRunnerArgs().question).toBe(question);
       expectReply(result, "answer", question);
     },
   );

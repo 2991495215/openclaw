@@ -30,6 +30,15 @@ type ActivationProvenance = Pick<
   "explicitlyEnabled" | "source" | "reason"
 >;
 
+function activation(
+  enabled: boolean,
+  explicitlyEnabled: boolean,
+  source: ActivationProvenance["source"],
+  reason: string | undefined,
+) {
+  return { enabled, activated: enabled, explicitlyEnabled, source, reason };
+}
+
 function expectResolvedEnableState(
   params: Parameters<typeof resolveEnableState>,
   expected: ReturnType<typeof resolveEnableState>,

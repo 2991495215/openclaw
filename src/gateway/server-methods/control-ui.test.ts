@@ -522,18 +522,21 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
       load: vi.fn(),
     });
     try {
-      const { respond, send } = fixture("sessionPullRequests.subscribe");
-      await send(
-        { sessionKeys: ["agent:main:main"] },
-        {
+      const respond = vi.fn<RespondFn>();
+      const handler = expectDefined(
+        createControlUiHandlers(vi.fn())["controlUi.sessionPullRequests.subscribe"],
+        "subscription handler",
+      );
+      await handler(
+        requestOptions({ sessionKeys: ["agent:main:main"] }, respond, {
           client: { connId: "conn-control-ui" },
           context: {
             controlUiSessionPullRequests: subscriptions,
             logGateway: { warn },
           },
-        },
+        }),
       );
-      expectReply(respond, { subscribed: true });
+      expect(respond).toHaveBeenCalledWith(true, { subscribed: true }, undefined);
     } finally {
       await subscriptions.stop();
       await scheduler.stop();
