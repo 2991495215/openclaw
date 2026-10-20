@@ -220,6 +220,21 @@ it("protects an archived owner when an in-process local turn starts after cleanu
   });
 });
 
+it("prepares the fresh cleanup owner rather than reusing the advisory census owner", async () => {
+  const store = placementStore("worktree-owner-fresh-cleanup-");
+  ownerEntry({ sessionId: "census-session", updatedAt: 1, archivedAt: 1 });
+  const census = await policy.prepareOwners([cleanupRecord]);
+  expect(census.readOwnerState?.("session", key)).toBe("retired");
+  const sessionId = "cleanup-session";
+  ownerEntry({ sessionId, updatedAt: 1, archivedAt: 1 });
+
+  await mutateOwner(async () => {
+    expectState("retired");
+    await store.claimTurn(localTurn(sessionId));
+    expectState("active");
+  });
+});
+
 it.each(["canonical-key", "shared-key", "session-id"])(
   "protects a remote placement matched by %s",
   async (match) => {

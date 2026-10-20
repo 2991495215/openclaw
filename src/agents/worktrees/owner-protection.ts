@@ -35,7 +35,6 @@ export function createManagedWorktreeOwnerPolicy(
     context: SessionWorkerPlacementContext;
     current: (target: ResolvedSessionEntryStoreTarget) => Iterable<WorkerSessionPlacementRecord>;
   };
-  let preparedOwners = new Map<string, ResolvedSessionEntryStoreTarget>();
   const cleanupOwner = new AsyncLocalStorage<{
     ownerId: string;
     scope: string;
@@ -130,7 +129,6 @@ export function createManagedWorktreeOwnerPolicy(
   // Census facts are advisory; cleanup retains receipt-invalidated facts through the mutation.
   return {
     prepareOwners: async (records) => {
-      preparedOwners = new Map();
       const ownerIds = [
         ...new Set(
           records.flatMap((record) =>
@@ -150,7 +148,6 @@ export function createManagedWorktreeOwnerPolicy(
           readResolvedSessionStoreTargetsInWorker({ cfg, sessionKeys: ownerIds }, "worktree"),
           context.workerSessionPlacementService.listAsync(),
         ]);
-        preparedOwners = targets;
         const placementsByKey = new Map<string, WorkerSessionPlacementRecord[]>();
         const placementsById = new Map<string, WorkerSessionPlacementRecord>();
         for (const placement of placements) {
@@ -195,8 +192,7 @@ export function createManagedWorktreeOwnerPolicy(
         return await run((mutation) => mutation());
       }
       const ownerId = record.ownerId;
-      const expected = preparedOwners.get(ownerId);
-      let target = expected;
+      let target: ResolvedSessionEntryStoreTarget | undefined;
       let changed = false;
       const stop = sessionChanges.subscribeFacts((change) => {
         if (
@@ -220,9 +216,8 @@ export function createManagedWorktreeOwnerPolicy(
             "worktree owner could not be read for cleanup",
           );
         }
-        const initial = expected ?? target;
-        const scope = resolveSessionStorePathCore(cfg.session?.store, { agentId: initial.agentId });
-        const entry = initial.entry;
+        const scope = resolveSessionStorePathCore(cfg.session?.store, { agentId: target.agentId });
+        const entry = target.entry;
         const owner = {
           ownerId,
           scope,
