@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 90
     env:
       # Temporary controller: pin the reviewed diagnostic candidate independently of this workflow.
-      TARGET_SHA: 6feaf9806c76c129b158d05ee68b38ad458c5d64
+      TARGET_SHA: 9847fbb712f8e219a333f21e6fdaad0e7b356e29
     steps:
       - name: Initialize failure proof and validate target
         shell: bash
@@ -111,72 +111,14 @@ jobs:
           cache-mode: "off"
           install-screenshot-emulators: "true"
 
-      - name: Probe phone emulator console startup without building or installing the app
-        shell: bash
+      - name: Qualify phone and controlled Wear boundary
+        env:
+          OPENCLAW_GRADLE_JAVA_HOME: ${{ steps.android-toolchain.outputs.gradle-java-home }}
         run: |
-          python3 - <<'PY'
-          import json, os, pathlib, signal, subprocess, tempfile, time
-          os.umask(0o077)
-          root = pathlib.Path(tempfile.mkdtemp(prefix="android-console-probe-", dir=os.environ["RUNNER_TEMP"]))
-          sdk = pathlib.Path(os.environ["ANDROID_SDK_ROOT"])
-          env = dict(os.environ, ANDROID_AVD_HOME=str(root / "avd"), ANDROID_USER_HOME=str(root / "android"))
-          pathlib.Path(env["ANDROID_AVD_HOME"]).mkdir()
-          pathlib.Path(env["ANDROID_USER_HOME"]).mkdir()
-          log_filter = "adbd:V libc:F DEBUG:V init:I tombstoned:I lmkd:I *:S"
-          results = []
-          for index, variant in enumerate(["shared-stdio", "private-logcat-file"]):
-              name = "console-probe-" + str(index)
-              serial = "emulator-" + str(5588 + index * 2)
-              subprocess.run([str(sdk / "cmdline-tools/latest/bin/avdmanager"), "create", "avd", "--name", name,
-                  "--package", "system-images;android-36;google_apis;x86_64", "--device", "pixel_6"],
-                  input="no\n", text=True, capture_output=True, env=env, timeout=60, check=True)
-              startup = root / (name + ".private.log")
-              guest = root / (name + "-guest.private.log")
-              args = [str(sdk / "emulator/emulator"), "-avd", name, "-port", str(5588 + index * 2),
-                  "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot", "-gpu", "swiftshader",
-                  "-cores", "2", "-memory", "2048", "-show-kernel", "-logcat", log_filter]
-              if index == 1:
-                  args += ["-logcat-output", str(guest)]
-              def prop(key):
-                  try:
-                      p = subprocess.run([str(sdk / "platform-tools/adb"), "-s", serial, "shell", "getprop", key],
-                          capture_output=True, text=True, env=env, timeout=5)
-                      return p.stdout.strip() if p.returncode == 0 else ""
-                  except subprocess.TimeoutExpired:
-                      return ""
-              result = {"variant": variant, "bootCompleted": False}
-              with startup.open("wb") as out:
-                  process = subprocess.Popen(args, env=env, stdin=subprocess.DEVNULL, stdout=out,
-                      stderr=subprocess.STDOUT, start_new_session=True)
-                  try:
-                      deadline = time.monotonic() + 180
-                      while process.poll() is None and time.monotonic() < deadline:
-                          if prop("sys.boot_completed") == "1":
-                              result["bootCompleted"] = True
-                              result["filterMatches"] = prop("ro.boot.logcat") == log_filter.replace(" ", ",")
-                              result["logServiceRunning"] = prop("init.svc.goldfish-logcat") == "running"
-                              break
-                          time.sleep(1)
-                      result["returnCodeBeforeCleanup"] = process.poll()
-                  finally:
-                      for sig in [signal.SIGTERM, signal.SIGKILL]:
-                          try:
-                              os.killpg(process.pid, sig)
-                          except ProcessLookupError:
-                              pass
-                          if sig == signal.SIGTERM:
-                              time.sleep(2)
-                      process.wait(timeout=10)
-              text = startup.read_text(errors="replace")
-              result.update({"duplicateStdio": "cannot use stdio by multiple character devices" in text,
-                  "serialFailure": "could not connect serial device" in text,
-                  "startupBytes": startup.stat().st_size, "guestLogBytes": guest.stat().st_size if guest.exists() else 0})
-              results.append(result)
-              pathlib.Path(os.environ["PROOF_PATH"]).write_text(json.dumps({"kind": "emulator-console-boot-probe", "results": results}, indent=2))
-              print(json.dumps(result))
-          if not all(results[1].get(key) for key in ["bootCompleted", "filterMatches", "logServiceRunning"]):
-              raise SystemExit(1)
-          PY
+          pnpm android:release:validate -- \
+            --target-sha "$TARGET_SHA" --output "$PROOF_PATH" \
+            --selection-dir "$GATEWAY_SELECTION_DIR" \
+            --artifacts-dir "$RUNNER_TEMP/android-release-e2e"
 
       - name: Retain sanitized qualification evidence
         if: always()
