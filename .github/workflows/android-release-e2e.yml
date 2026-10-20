@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       # Temporary controller: pin the reviewed diagnostic candidate independently of this workflow.
-      TARGET_SHA: f8107a89ae5d30b94e142f58f6c513951546f83a
+      TARGET_SHA: d4d3db41b15d1924e6c9553cd5efcea1494f5435
     steps:
       - name: Initialize failure proof and validate target
         shell: bash
@@ -54,6 +54,7 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$TARGET_SHA" ]]
           test -f scripts/android-adb-directory-probe.ts
           test -f scripts/android-adb-bridge-trace.py
+          test -f scripts/android-adbd-socket-inspect.c
 
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
@@ -79,6 +80,13 @@ jobs:
           strace --version
           gdb --version
           sudo -n true
+
+      - name: Build the metadata-only guest socket inspector
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -static -Os -s \
+            scripts/android-adbd-socket-inspect.c \
+            -o "$RUNNER_TEMP/android-adbd-socket-inspect"
+          echo "ANDROID_ADB_SOCKET_INSPECT=$RUNNER_TEMP/android-adbd-socket-inspect" >> "$GITHUB_ENV"
 
       - name: Stress recursive directory pulls on two fresh phone emulators
         run: node scripts/android-adb-directory-probe.ts
