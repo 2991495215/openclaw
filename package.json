@@ -122,6 +122,7 @@
     "!dist/plugin-sdk/expect-runtime.d.ts",
     "!dist/plugin-sdk/fetch-runtime.d.ts",
     "!dist/plugin-sdk/file-access-runtime.d.ts",
+    "!dist/plugin-sdk/path-existence-runtime.d.ts",
     "!dist/plugin-sdk/file-lock.d.ts",
     "!dist/plugin-sdk/gateway-config-runtime.d.ts",
     "!dist/plugin-sdk/global-singleton.d.ts",
@@ -703,6 +704,9 @@
     },
     "./plugin-sdk/file-access-runtime": {
       "default": "./dist/plugin-sdk/file-access-runtime.js"
+    },
+    "./plugin-sdk/path-existence-runtime": {
+      "default": "./dist/plugin-sdk/path-existence-runtime.js"
     },
     "./plugin-sdk/node-selection-runtime": {
       "default": "./dist/plugin-sdk/node-selection-runtime.js"
