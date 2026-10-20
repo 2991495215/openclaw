@@ -23,12 +23,8 @@ export function createMigrationLogger(runtime: RuntimeEnv, opts: { json?: boolea
   };
 }
 
-export function buildMigrationReportDir(
-  providerId: string,
-  stateDir: string,
-  nowMs = Date.now(),
-): string {
-  const stamp = timestampMsToIsoFileStamp(nowMs);
+export function buildMigrationReportDir(providerId: string, stateDir: string): string {
+  const stamp = timestampMsToIsoFileStamp(Date.now());
   return path.join(stateDir, "migration", providerId, stamp);
 }
 

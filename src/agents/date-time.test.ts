@@ -35,8 +35,6 @@ describe("resolveUserTimeFormat", () => {
     );
     expect(current.formattedTime).toBe("Sunday, September 13th, 2026 - 13:05");
     expect(current.timeLine).toContain("Reference UTC: 2026-09-13 13:05 UTC");
-    expect(resolveUserTimeFormat("12")).toBe("12");
-    expect(resolveUserTimeFormat("24")).toBe("24");
   });
 });
 

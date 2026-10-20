@@ -243,8 +243,10 @@ describe("diagnostic support redaction", () => {
     expect(sanitizeSupportSnapshotValue(15555551212, redaction, "chatId")).toBe("<redacted>");
     expect(sanitizeSupportSnapshotValue(15555551212, redaction, "messageId")).toBe("<redacted>");
     expect(sanitizeSupportSnapshotValue(200, redaction, "statusCode")).toBe(200);
-    expect(sanitizeSupportConfigValue(15555551212, redaction, "ownerId")).toBe("<redacted>");
-    expect(sanitizeSupportConfigValue(18789, redaction, "port")).toBe(18789);
+    expect(sanitizeSupportConfigValue({ ownerId: 15555551212, port: 18789 }, redaction)).toEqual({
+      ownerId: "<redacted>",
+      port: 18789,
+    });
   });
 
   it("blocks prototype keys and caps support sanitizer width", () => {

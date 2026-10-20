@@ -213,7 +213,7 @@ it.each([
             expect(getAgentDir()).toBe(overrideDir ?? legacyDir);
             expect(snapshotFiles(state.root)).toEqual(before);
             expect(process.env.SDK_FIXTURE_AGENT_DIR).toBeUndefined();
-            const { ensureTool } = await import("../agents/utils/tools-manager.js");
+            const { ensureFd } = await import("../agents/utils/tools-manager.js");
             const resolution = readCurrentConfigForResolution();
             const { config: cfg, env } = resolution;
             expect(Boolean(resolution.configDiagnostics)).toBe(malformed);
@@ -258,7 +258,7 @@ it.each([
               "SDK settings",
             );
             expect(detected.agentDir.targetDir).toBe(targetDir);
-            await expect(ensureTool("fd")).resolves.toBe(path.join(activeDir, "bin", binary));
+            await expect(ensureFd()).resolves.toBe(path.join(activeDir, "bin", binary));
             expect(fs.readFileSync(path.join(targetDir, "bin", binary), "utf8")).toBe(
               targetDir === legacyDir ? "legacy binary" : "current binary",
             );

@@ -1,11 +1,7 @@
 // Shared policy and messaging for installs outside OpenClaw's trusted plugin sources.
 import { sanitizeTerminalText } from "../../packages/terminal-core/src/safe-text.js";
 import { parseRegistryNpmSpec } from "../infra/npm-registry-spec.js";
-import {
-  findBundledPluginSourceInMap,
-  getProcessBundledPluginSources,
-  type BundledPluginSource,
-} from "./bundled-sources.js";
+import { findBundledPluginSourceInMap, getProcessBundledPluginSources } from "./bundled-sources.js";
 import { resolveCatalogOfficialExternalNpmPackageTrust } from "./official-external-install-trust.js";
 
 export const NON_CLAWHUB_INSTALL_FORCE_FLAG = "--force";
@@ -18,10 +14,7 @@ export type NonClawHubInstallSourceClass =
   | "npm"
   | "npm-pack";
 
-export function resolveOpenClawTrustedNpmPackageInstall(
-  npmSpec: string,
-  bundledSources: ReadonlyMap<string, BundledPluginSource> = getProcessBundledPluginSources(),
-): {
+export function resolveOpenClawTrustedNpmPackageInstall(npmSpec: string): {
   pluginId: string;
   expectedIntegrity?: string;
 } | null {
@@ -30,7 +23,7 @@ export function resolveOpenClawTrustedNpmPackageInstall(
     return null;
   }
   const bundled = findBundledPluginSourceInMap({
-    bundled: bundledSources,
+    bundled: getProcessBundledPluginSources(),
     lookup: { kind: "npmSpec", value: packageName },
   });
   if (bundled) {

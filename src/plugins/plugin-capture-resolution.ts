@@ -48,13 +48,12 @@ function typescriptSibling(source: string, specifier: string, options: JitiOptio
 }
 
 /** Resolution state belongs to one capture, never to evaluated plugin modules. */
-export function createPluginCaptureResolver(options?: JitiOptions) {
+export function createPluginCaptureResolver() {
   let shared: ReturnType<typeof createJiti> | undefined;
   const scoped = new Map<string, ReturnType<typeof createJiti>>();
   const get = (source: string, parentSensitive = false) => {
     if (!shared) {
       shared = createJiti(source, {
-        ...options,
         fsCache: false,
         moduleCache: false,
         tryNative: false,

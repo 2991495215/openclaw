@@ -142,10 +142,7 @@ async function pruneCanvasDocumentsForScope(params: {
   );
 }
 
-export function resolveCanvasHttpPathToLocalPath(
-  requestPath: string,
-  options?: { stateDir?: string },
-): string | null {
+export function resolveCanvasHttpPathToLocalPath(requestPath: string): string | null {
   const trimmed = requestPath.trim();
   const prefix = `${CANVAS_DOCUMENTS_PATH}/`;
   if (!trimmed.startsWith(prefix)) {
@@ -163,7 +160,7 @@ export function resolveCanvasHttpPathToLocalPath(
     }
     const documentId = normalizeCanvasDocumentId(rawDocumentId);
     const normalizedEntrypoint = normalizeLogicalPath(entrySegments.join("/"));
-    const documentsDir = resolveCanvasDocumentsDir(options?.stateDir);
+    const documentsDir = resolveCanvasDocumentsDir();
     const candidatePath = path.resolve(documentsDir, documentId, normalizedEntrypoint);
     if (!candidatePath.startsWith(`${documentsDir}${path.sep}`)) {
       return null;

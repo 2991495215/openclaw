@@ -3,12 +3,9 @@ import type { ToolsGitHubStatusResult } from "../../../packages/gateway-protocol
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult } from "./common.js";
 import { getGatewayToolCallerIdentity } from "./gateway-caller-context.js";
-import { callInProcessGatewayTool, type InProcessGatewayCaller } from "./in-process-gateway.js";
+import { callInProcessGatewayTool as callGateway } from "./in-process-gateway.js";
 
-export function createGitHubIdentityStatusTool(
-  options: { callGateway?: InProcessGatewayCaller } = {},
-): AnyAgentTool {
-  const callGateway = options.callGateway ?? callInProcessGatewayTool;
+export function createGitHubIdentityStatusTool(): AnyAgentTool {
   return {
     label: "GitHub Identity Status",
     name: "github_identity_status",

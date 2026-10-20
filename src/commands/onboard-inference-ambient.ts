@@ -26,16 +26,14 @@ export type InferenceBackendCandidate = {
   credentials?: boolean;
 };
 
-export function detectAmbientInferenceBackends(
-  env: NodeJS.ProcessEnv = process.env,
-): InferenceBackendCandidate[] {
+export function detectAmbientInferenceBackends(): InferenceBackendCandidate[] {
   const candidates: InferenceBackendCandidate[] = [];
   for (const [provider, label, modelRef] of [
     ["openai", "OpenAI", OPENAI_API_DEFAULT_MODEL_REF],
     ["anthropic", "Anthropic", ANTHROPIC_API_DEFAULT_MODEL_REF],
   ] as const) {
     const envVar = `${provider.toUpperCase()}_API_KEY`;
-    if (!env[envVar]?.trim()) {
+    if (!process.env[envVar]?.trim()) {
       continue;
     }
     candidates.push({

@@ -30,8 +30,10 @@ describe("doctor session transcript health", () => {
     root = await fsPromises.realpath(
       await fsPromises.mkdtemp(path.join(os.tmpdir(), "openclaw-doctor-transcripts-")),
     );
+    vi.stubEnv("OPENCLAW_STATE_DIR", root);
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fsPromises.rm(root, { recursive: true, force: true });
   });
   async function writeTranscript(entries: unknown[]): Promise<string> {
@@ -53,9 +55,7 @@ describe("doctor session transcript health", () => {
       .spyOn(fsPromises, "readFile")
       .mockRejectedValueOnce(Object.assign(new Error("unavailable transcript"), { code }));
     try {
-      await expect(
-        detectSessionTranscriptHealthIssues({ sessionDirs: [path.dirname(filePath)] }),
-      ).resolves.toEqual([]);
+      await expect(detectSessionTranscriptHealthIssues()).resolves.toEqual([]);
       expect(readSpy).toHaveBeenCalledExactlyOnceWith(filePath, "utf-8");
     } finally {
       readSpy.mockRestore();
@@ -77,9 +77,7 @@ describe("doctor session transcript health", () => {
         },
       },
     ]);
-    const sessionsDir = path.dirname(filePath);
-
-    const [issue] = await detectSessionTranscriptHealthIssues({ sessionDirs: [sessionsDir] });
+    const [issue] = await detectSessionTranscriptHealthIssues();
 
     if (!issue) {
       throw new Error("expected session transcript health issue");
@@ -105,9 +103,7 @@ describe("doctor session transcript health", () => {
 
     const filePath = await writeTranscript([]);
     await fsPromises.writeFile(filePath, raw);
-    await expect(
-      detectSessionTranscriptHealthIssues({ sessionDirs: [path.dirname(filePath)] }),
-    ).resolves.toEqual([]);
+    await expect(detectSessionTranscriptHealthIssues()).resolves.toEqual([]);
     expect(await fsPromises.readFile(filePath, "utf8")).toBe(raw);
   });
 
@@ -118,9 +114,7 @@ describe("doctor session transcript health", () => {
     const readSpy = vi.spyOn(fs, "readFile");
     const promiseReadSpy = vi.spyOn(fsPromises, "readFile");
     try {
-      const [issue] = await detectSessionTranscriptHealthIssues({
-        sessionDirs: [path.dirname(filePath)],
-      });
+      const [issue] = await detectSessionTranscriptHealthIssues();
       expect(issue).toMatchObject({ filePath, deferred: true, broken: false });
       expect(readSpy).not.toHaveBeenCalled();
       expect(promiseReadSpy).not.toHaveBeenCalled();

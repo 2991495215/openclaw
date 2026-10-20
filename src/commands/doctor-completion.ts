@@ -99,11 +99,8 @@ async function generateCompletionCache(
 
 export type ShellCompletionStatus = Awaited<ReturnType<typeof checkShellCompletionStatus>>;
 
-export async function checkShellCompletionStatus(
-  binName = "openclaw",
-  options: ShellCompletionStatusOptions = {},
-) {
-  const shell = options.shell ?? resolveShellFromEnv();
+export async function checkShellCompletionStatus(binName = "openclaw") {
+  const shell = resolveShellFromEnv();
   const profileInstalled = await isCompletionInstalled(shell, binName);
   const cacheExists = await completionCacheExists(shell, binName);
   const cachePath = resolveCompletionCachePath(shell, binName);

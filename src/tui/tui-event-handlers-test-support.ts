@@ -40,14 +40,13 @@ export const createTuiEventHandlersHarness = (
   params?: Partial<TuiStateAccess> & {
     localMode?: boolean;
     refreshSessionInfo?: () => Promise<void>;
-    streamingWatchdogMs?: number;
   },
   loadHistory = vi.fn<() => Promise<TuiHistoryLoadResult>>(async () => ({
     loaded: true,
     runOutcome: { state: "completed" },
   })),
 ) => {
-  const { localMode, refreshSessionInfo, streamingWatchdogMs, ...overrides } = params ?? {};
+  const { localMode, refreshSessionInfo, ...overrides } = params ?? {};
   const state = makeTuiState({ activeChatRunId: "run-1", ...overrides });
   const programStates: string[] = [];
   const programStatus = createTuiProgramStatusReporter({
@@ -82,7 +81,6 @@ export const createTuiEventHandlersHarness = (
     ...context,
     localMode,
     refreshSessionInfo,
-    streamingWatchdogMs,
   });
   onTestFinished(rawHandlers.dispose);
   const handlers = {

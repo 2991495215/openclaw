@@ -235,7 +235,6 @@ function hasPluginScopedWebToolConfig(
 
 function inferSingleBundledPluginScopedWebToolConfigOwner(
   config: OpenClawConfig,
-  key: "webSearch" | "webFetch",
 ): string | undefined {
   const entries = config.plugins?.entries;
   if (!entries) {
@@ -247,7 +246,7 @@ function inferSingleBundledPluginScopedWebToolConfigOwner(
       continue;
     }
     const pluginConfig = isRecord(entry.config) ? entry.config : undefined;
-    if (!isRecord(pluginConfig?.[key])) {
+    if (!isRecord(pluginConfig?.webSearch)) {
       continue;
     }
     matches.push(pluginId);
@@ -436,7 +435,6 @@ export async function resolveRuntimeWebTools(params: {
       }
       configuredBundledPluginIdHint ??= inferSingleBundledPluginScopedWebToolConfigOwner(
         params.sourceConfig,
-        "webSearch",
       );
     }
     const discoverProviders =

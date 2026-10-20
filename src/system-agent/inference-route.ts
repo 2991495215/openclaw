@@ -385,19 +385,6 @@ export function sameSetupInferenceRoute(
     : isDeepStrictEqual(left, right);
 }
 
-export function sameSetupConfiguredRoute(
-  left: DefaultInferenceRouteProjection["route"],
-  right: DefaultInferenceRouteProjection["route"],
-  ignoreAgentIdentity: boolean,
-): boolean {
-  if (!ignoreAgentIdentity) {
-    return isDeepStrictEqual(left, right);
-  }
-  const normalize = (route: DefaultInferenceRouteProjection["route"]) =>
-    route ? { ...route, agentId: "<agent>", agentDir: "<agent-dir>" } : null;
-  return isDeepStrictEqual(normalize(left), normalize(right));
-}
-
 export function assertSetupTarget(params: {
   config: OpenClawConfig;
   expectedAgentId?: string;

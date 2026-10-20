@@ -8,7 +8,6 @@ import {
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { inspectOpenClawRegisteredAgentDatabases } from "../state/openclaw-agent-db-registry.js";
-import { withArtifactPreservingStateReads } from "../state/openclaw-state-db-readonly.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { ignoreMissingPath } from "./errno.js";
 import { safeStatSync } from "./path-guards.js";
@@ -26,22 +25,19 @@ export function resolveConcreteBindingAccountId(value: unknown): string | undefi
 export async function prepareDoctorAgentDatabaseDiscovery(
   cfg: OpenClawConfig,
   env: NodeJS.ProcessEnv,
-  artifactPreservingReadOnly = false,
 ): Promise<PreparedAgentDatabaseMigrationDiscovery> {
   const registeredAgentDatabases = await inspectOpenClawRegisteredAgentDatabases({
     env,
     includeIncompatibleSchemaVersions: true,
   });
-  const prepare = () =>
-    prepareAgentDatabaseMigrationDiscovery({
+  return prepareAgentDatabaseMigrationDiscovery({
+    env,
+    registeredAgentDatabases,
+    configuredAgentDatabaseTargets: resolveConfiguredAgentDatabaseTargets(cfg, {
       env,
-      registeredAgentDatabases,
-      configuredAgentDatabaseTargets: resolveConfiguredAgentDatabaseTargets(cfg, {
-        env,
-        registeredDatabases: registeredAgentDatabases,
-      }),
-    });
-  return artifactPreservingReadOnly ? withArtifactPreservingStateReads(prepare) : prepare();
+      registeredDatabases: registeredAgentDatabases,
+    }),
+  });
 }
 
 export async function detectManagedWorktreeStateMigration(params: {

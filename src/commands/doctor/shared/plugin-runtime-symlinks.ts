@@ -58,20 +58,16 @@ async function collectStalePluginRuntimeSymlinks(
   return stale.toSorted((left, right) => left.name.localeCompare(right.name));
 }
 
-export async function collectStalePluginRuntimeSymlinkHealthFindings(
-  params: { packageRoot?: string | null } = {},
-): Promise<HealthFinding[]> {
-  return (await collectStalePluginRuntimeSymlinks(params.packageRoot)).map(
-    (item): HealthFinding => ({
-      checkId: "core/doctor/stale-plugin-runtime-symlinks",
-      severity: "warning",
-      message: `Stale plugin-runtime symlink ${item.name} points at ${item.target}.`,
-      path: item.path,
-      target: item.path,
-      requirement: "stale-plugin-runtime-symlink-removed",
-      fixHint: "Run `openclaw doctor --fix` to remove stale plugin-runtime symlinks.",
-    }),
-  );
+export async function collectStalePluginRuntimeSymlinkHealthFindings(): Promise<HealthFinding[]> {
+  return (await collectStalePluginRuntimeSymlinks()).map((item): HealthFinding => ({
+    checkId: "core/doctor/stale-plugin-runtime-symlinks",
+    severity: "warning",
+    message: `Stale plugin-runtime symlink ${item.name} points at ${item.target}.`,
+    path: item.path,
+    target: item.path,
+    requirement: "stale-plugin-runtime-symlink-removed",
+    fixHint: "Run `openclaw doctor --fix` to remove stale plugin-runtime symlinks.",
+  }));
 }
 
 export async function noteStalePluginRuntimeSymlinks(
@@ -97,12 +93,10 @@ export async function noteStalePluginRuntimeSymlinks(
   note(lines.join("\n"), "Plugin-runtime symlinks");
 }
 
-export async function removeStalePluginRuntimeSymlinks(
-  packageRoot?: string | null,
-): Promise<{ changes: string[]; warnings: string[] }> {
+export async function removeStalePluginRuntimeSymlinks() {
   const changes: string[] = [];
   const warnings: string[] = [];
-  for (const item of await collectStalePluginRuntimeSymlinks(packageRoot)) {
+  for (const item of await collectStalePluginRuntimeSymlinks()) {
     try {
       await removePathWithinRoot({
         rootDir: path.dirname(item.path),

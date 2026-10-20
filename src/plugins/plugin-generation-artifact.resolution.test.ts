@@ -102,7 +102,8 @@ it("resolves package alias targets from the importing source", () => {
     fs.writeFileSync(path.join(dependency, "index.js"), "exports.value = 1;");
   }
   const reference = path.join(root, "alias.js");
-  const resolution = createPluginCaptureResolver({ alias: { [reference]: "fixture" } });
+  vi.stubEnv("JITI_ALIAS", JSON.stringify({ [reference]: "fixture" }));
+  const resolution = createPluginCaptureResolver();
   resolution.get(path.join(root, "index.ts"));
   expect(resolution.resolve(path.join(nested, "index.ts"), reference, ["node", "require"])).toBe(
     pathToFileURL(path.join(nested, "node_modules/fixture/index.js")).href,

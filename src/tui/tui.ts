@@ -763,7 +763,7 @@ async function runTuiUnlocked(opts: RunTuiOptions): Promise<TuiResult> {
   };
 
   const autocompleteReady = import("../agents/utils/tools-manager.js")
-    .then(({ ensureTool }) => ensureTool("fd"))
+    .then(({ ensureFd }) => ensureFd())
     .then((fdPath) => {
       if (fdPath && !exitRequested) {
         autocompleteFdPath = fdPath;

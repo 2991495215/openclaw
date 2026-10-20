@@ -448,13 +448,13 @@ export async function fetchClawHubPluginCatalog(
   };
 }
 
-export async function fetchClawHubPluginOverview(
-  options: ClawHubReadOptions = {},
-): Promise<{ items: ClawHubPluginCatalogEntry[]; categories: ClawHubPluginCategory[] }> {
+export async function fetchClawHubPluginOverview(): Promise<{
+  items: ClawHubPluginCatalogEntry[];
+  categories: ClawHubPluginCategory[];
+}> {
   const value = await fetchClawHubJson<unknown>({
-    ...options,
     // This viewer-independent snapshot uses the public CDN; ambient auth bypasses its cache.
-    skipAuth: options.skipAuth ?? (!options.token && isDefaultClawHubBaseUrl(options.baseUrl)),
+    skipAuth: isDefaultClawHubBaseUrl(),
     path: "/api/v1/plugins/overview",
   });
   if (!isRecord(value) || !Array.isArray(value.items)) {
@@ -462,18 +462,15 @@ export async function fetchClawHubPluginOverview(
   }
   return {
     items: value.items.map((item, index) =>
-      parseCatalogPackage(item, `plugin overview item ${index}`, options.baseUrl),
+      parseCatalogPackage(item, `plugin overview item ${index}`),
     ),
     categories: parsePluginCategories(value),
   };
 }
 
-export async function fetchClawHubPluginCategories(
-  options: ClawHubReadOptions = {},
-): Promise<ClawHubPluginCategory[]> {
+export async function fetchClawHubPluginCategories(): Promise<ClawHubPluginCategory[]> {
   const value = await fetchClawHubJson<unknown>({
-    ...options,
-    skipAuth: options.skipAuth ?? (!options.token && isDefaultClawHubBaseUrl(options.baseUrl)),
+    skipAuth: isDefaultClawHubBaseUrl(),
     path: "/api/v1/plugins/categories",
   });
   return parsePluginCategories(value);

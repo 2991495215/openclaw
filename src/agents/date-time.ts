@@ -28,11 +28,8 @@ export function resolveUserTimezone(configured?: string): string {
   return host?.trim() || "UTC";
 }
 
-/** Resolve 12/24-hour display preference, detecting the host for `auto`. */
-export function resolveUserTimeFormat(preference?: "auto" | "12" | "24"): ResolvedTimeFormat {
-  if (preference === "12" || preference === "24") {
-    return preference;
-  }
+/** Detect the host's 12/24-hour display preference. */
+export function resolveUserTimeFormat(): ResolvedTimeFormat {
   if (cachedTimeFormat) {
     return cachedTimeFormat;
   }

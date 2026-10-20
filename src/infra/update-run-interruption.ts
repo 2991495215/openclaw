@@ -8,7 +8,6 @@ import { runExistingOpenClawStateWriteTransaction } from "../state/openclaw-stat
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { inspectUpdateRepairDriverAdmission } from "./update-run-activity.js";
-import type { UpdateRunLedgerOptions } from "./update-run-codec.js";
 import type { InterruptedUpdateGatewayObservation } from "./update-run-interruption-health.js";
 import {
   canSettleInterruptedUpdate,
@@ -36,7 +35,6 @@ export function recordPostCoreUpdateEvidence(
     warnings: string[];
     doctorLint?: UpdateStepResult;
   },
-  options: UpdateRunLedgerOptions = {},
 ): void {
   runExistingOpenClawStateWriteTransaction(
     ({ db }) => {
@@ -70,9 +68,9 @@ export function recordPostCoreUpdateEvidence(
           detail,
         });
       }
-      persistRun(db, run, options);
+      persistRun(db, run, {});
     },
-    options,
+    {},
     { schemaSql: updateRunLedgerSchema, operationLabel: "update.run" },
   );
 }

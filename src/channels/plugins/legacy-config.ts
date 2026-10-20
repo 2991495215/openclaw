@@ -42,14 +42,10 @@ function shouldIncludeLegacyRuleForTouchedPaths(
 function collectRelevantChannelIdsForTouchedPaths(params: {
   raw?: unknown;
   touchedPaths?: ReadonlyArray<ReadonlyArray<string>>;
-  excludedChannelIds?: ReadonlySet<ChannelId>;
 }): ChannelId[] {
   const channelIds = collectConfiguredChannelIds(params.raw);
-  const filteredChannelIds = params.excludedChannelIds?.size
-    ? channelIds.filter((channelId) => !params.excludedChannelIds?.has(channelId))
-    : channelIds;
   if (!params.touchedPaths || params.touchedPaths.length === 0) {
-    return filteredChannelIds;
+    return channelIds;
   }
 
   const touchedChannelIds = new Set<ChannelId>();
@@ -59,7 +55,7 @@ function collectRelevantChannelIdsForTouchedPaths(params: {
       continue;
     }
     if (!second) {
-      return filteredChannelIds;
+      return channelIds;
     }
     const channelId = second.trim();
     if (!channelId || isChannelConfigMetadataKey(channelId)) {
@@ -70,18 +66,16 @@ function collectRelevantChannelIdsForTouchedPaths(params: {
     touchedChannelIds.add(channelId);
   }
 
-  return filteredChannelIds.filter((channelId) => touchedChannelIds.has(channelId));
+  return channelIds.filter((channelId) => touchedChannelIds.has(channelId));
 }
 
 export function collectChannelLegacyConfigRules(
   raw?: unknown,
   touchedPaths?: ReadonlyArray<ReadonlyArray<string>>,
-  excludedChannelIds?: ReadonlySet<ChannelId>,
 ): LegacyConfigRule[] {
   const channelIds = collectRelevantChannelIdsForTouchedPaths({
     raw,
     touchedPaths,
-    excludedChannelIds,
   });
   const rules: LegacyConfigRule[] = [];
   const unresolvedChannelIds: ChannelId[] = [];

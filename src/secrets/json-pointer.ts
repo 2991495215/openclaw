@@ -11,22 +11,11 @@ export function encodeJsonPointerToken(token: string): string {
 
 /**
  * Reads a value from a JSON-like document using an absolute JSON Pointer.
- * Missing segments throw by default; `onMissing: "undefined"` is for optional probes.
+ * Missing segments throw.
  */
-export function readJsonPointer(
-  root: unknown,
-  pointer: string,
-  options: { onMissing?: "throw" | "undefined" } = {},
-): unknown {
-  const onMissing = options.onMissing ?? "throw";
-  const fail = (message: string): undefined => {
-    if (onMissing === "throw") {
-      throw new Error(message);
-    }
-    return undefined;
-  };
+export function readJsonPointer(root: unknown, pointer: string): unknown {
   if (!pointer.startsWith("/")) {
-    return fail(
+    throw new Error(
       'File-backed secret ids must be absolute JSON pointers (for example: "/providers/openai/apiKey").',
     );
   }
@@ -38,13 +27,13 @@ export function readJsonPointer(
       // Array segments must be canonical non-negative indexes, not partial parses like "1abc".
       const index = parseConfigPathArrayIndex(token);
       if (index === undefined || index >= current.length) {
-        return fail(`JSON pointer segment "${token}" is out of bounds.`);
+        throw new Error(`JSON pointer segment "${token}" is out of bounds.`);
       }
       current = current[index];
       continue;
     }
     if (!isJsonObject(current) || !Object.hasOwn(current, token)) {
-      return fail(`JSON pointer segment "${token}" does not exist.`);
+      throw new Error(`JSON pointer segment "${token}" does not exist.`);
     }
     current = current[token];
   }

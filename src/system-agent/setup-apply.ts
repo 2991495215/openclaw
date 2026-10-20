@@ -24,7 +24,6 @@ import type { GatewayServiceSetupOutcome } from "../wizard/setup.finalize.js";
 import {
   assertSetupTarget,
   projectInferenceRoute,
-  sameSetupConfiguredRoute,
   sameSetupInferenceRoute,
   type DefaultInferenceRouteProjection,
 } from "./inference-route.js";
@@ -394,7 +393,7 @@ export async function applySystemAgentSetup(
         verifiedRoute &&
         (!verifiedRoute.route ||
           !expectedSourceRoute?.route ||
-          !sameSetupConfiguredRoute(expectedSourceRoute.route, verifiedRoute.route, false))
+          !isDeepStrictEqual(expectedSourceRoute.route, verifiedRoute.route))
       ) {
         throw new Error(
           "The setup candidate no longer preserves the exact verified inference route, so it was not saved. Retry setup from the current OpenClaw session.",
@@ -453,7 +452,7 @@ export async function applySystemAgentSetup(
     await assertVerifiedRoute(afterSnapshot, expectedPersistedRoute, "after");
     // Plugin defaults are part of the access-tested runtime route. Reject a
     // metadata change that would make the committed config run differently.
-    if (!sameSetupConfiguredRoute(expectedPersistedRoute.route, verifiedRoute.route, false)) {
+    if (!isDeepStrictEqual(expectedPersistedRoute.route, verifiedRoute.route)) {
       throw new Error(
         "The materialized inference route no longer matches the exact verified route, so no further setup effects were applied. Retry setup from the current OpenClaw session.",
       );

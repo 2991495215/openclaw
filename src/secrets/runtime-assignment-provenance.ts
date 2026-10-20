@@ -5,11 +5,8 @@ type SecretAssignmentSource = "auth-store" | "config";
 
 const assignmentSources = new WeakMap<SecretAssignment, SecretAssignmentSource>();
 
-export function setSecretAssignmentSource(
-  assignment: SecretAssignment,
-  source: SecretAssignmentSource,
-): void {
-  assignmentSources.set(assignment, source);
+export function setSecretAssignmentSource(assignment: SecretAssignment): void {
+  assignmentSources.set(assignment, "auth-store");
 }
 
 export function getSecretAssignmentSource(assignment: SecretAssignment): SecretAssignmentSource {

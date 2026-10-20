@@ -97,13 +97,10 @@ export function readTrajectoryPayload(row: TrajectoryPayloadRecord): string {
 }
 
 /** Keep narrow diagnostic projections in SQL instead of transferring expanded event bodies. */
-export function trajectoryEventJsonSql(
-  database: EngineConnection,
-  alias: "trajectory_runtime_events" | "event" | "te" = "trajectory_runtime_events",
-): RawBuilder<string> {
+export function trajectoryEventJsonSql(database: EngineConnection): RawBuilder<string> {
   const identity =
     /* kysely-allow-raw: closed trajectory aliases identify the original event text. */ sql.ref<string>(
-      `${alias}.event_json`,
+      "trajectory_runtime_events.event_json",
     );
   if (isPostgresSqlConnection(database)) {
     return identity;
@@ -114,15 +111,15 @@ export function trajectoryEventJsonSql(
   }
   const payload =
     /* kysely-allow-raw: closed trajectory aliases identify the compressed bytes. */ sql.ref(
-      `${alias}.event_payload`,
+      "trajectory_runtime_events.event_payload",
     );
   const codec =
     /* kysely-allow-raw: closed trajectory aliases identify the per-row codec. */ sql.ref(
-      `${alias}.event_codec`,
+      "trajectory_runtime_events.event_codec",
     );
   const bytes =
     /* kysely-allow-raw: closed trajectory aliases identify the logical byte length. */ sql.ref(
-      `${alias}.event_utf8_bytes`,
+      "trajectory_runtime_events.event_utf8_bytes",
     );
   const decode = getNodeSqliteKysely<Record<string, never>>(database).fn<string>(DECODE_FUNCTION, [
     payload,

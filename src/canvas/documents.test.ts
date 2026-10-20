@@ -11,6 +11,7 @@ import {
 } from "./documents.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+afterEach(() => vi.unstubAllEnvs());
 
 function resolveCanvasDocumentDir(stateDir: string, documentId: string): string {
   return path.join(resolveCanvasDocumentsDir(stateDir), documentId);
@@ -151,10 +152,10 @@ describe("canvas documents", () => {
 
   it("rejects traversal and malformed encoded hosted paths", async () => {
     const stateDir = tempDirs.make("openclaw-canvas-documents-");
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
     expect(
       resolveCanvasHttpPathToLocalPath(
         "/__openclaw__/canvas/documents/../collection.media/index.html",
-        { stateDir },
       ),
     ).toBeNull();
 
@@ -162,15 +163,11 @@ describe("canvas documents", () => {
     await mkdir(documentDir, { recursive: true });
     await writeFile(path.join(documentDir, "%E0%A4%A.html"), "literal-percent-name", "utf8");
     expect(
-      resolveCanvasHttpPathToLocalPath(
-        "/__openclaw__/canvas/documents/cv_malformed/%E0%A4%A.html",
-        { stateDir },
-      ),
+      resolveCanvasHttpPathToLocalPath("/__openclaw__/canvas/documents/cv_malformed/%E0%A4%A.html"),
     ).toBeNull();
     expect(
       resolveCanvasHttpPathToLocalPath(
         "/__openclaw__/canvas/documents/cv_malformed/%25E0%25A4%25A.html",
-        { stateDir },
       ),
     ).toBe(path.join(documentDir, "%E0%A4%A.html"));
   });

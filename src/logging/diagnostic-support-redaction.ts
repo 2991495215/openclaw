@@ -670,19 +670,16 @@ export function sanitizeSupportSnapshotValue(
   value: unknown,
   redaction: SupportRedactionContext,
   key = "",
-  depth = 0,
 ): unknown {
-  return sanitizeSupportValue(value, redaction, key, depth, false);
+  return sanitizeSupportValue(value, redaction, key, 0, false);
 }
 
 /** Sanitizes config-shaped values with stricter private field handling. */
 export function sanitizeSupportConfigValue(
   value: unknown,
   redaction: SupportRedactionContext,
-  key = "",
-  depth = 0,
 ): unknown {
-  return sanitizeSupportValue(value, redaction, key, depth, true);
+  return sanitizeSupportValue(value, redaction, "", 0, true);
 }
 
 function sanitizeSupportValue(

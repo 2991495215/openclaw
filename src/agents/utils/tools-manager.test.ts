@@ -110,7 +110,7 @@ afterEach(() => {
   tempAgentDir = undefined;
 });
 
-describe("ensureTool", () => {
+describe("ensureFd", () => {
   it.each(["fd", "shell"] as const)(
     "keeps %s usable without an ambient agent owner",
     async (tool) => {
@@ -132,11 +132,11 @@ describe("ensureTool", () => {
         const sourceEnv = { PATH: join(home, "system-bin"), EXAMPLE: "preserved" };
         expect(getBashShellEnv(undefined, sourceEnv)).toEqual(sourceEnv);
       } else {
-        const { ensureTool } = await import("./tools-manager.js");
+        const { ensureFd } = await import("./tools-manager.js");
         spawnSyncMock.mockReturnValue({ status: 0 });
-        await expect(ensureTool(tool)).resolves.toBe(tool);
+        await expect(ensureFd()).resolves.toBe(tool);
         spawnSyncMock.mockReturnValue({ status: 1 });
-        await expect(ensureTool(tool)).resolves.toBeUndefined();
+        await expect(ensureFd()).resolves.toBeUndefined();
         expect(fetchWithSsrFGuardMock).not.toHaveBeenCalled();
       }
       expect(snapshotFiles(home)).toEqual(before);
@@ -192,11 +192,11 @@ describe("ensureTool", () => {
 
       const { getAgentDir } = await import("../config.js");
       const { resolveAgentDir } = await import("../agent-scope-config.js");
-      const { ensureTool } = await import("./tools-manager.js");
+      const { ensureFd } = await import("./tools-manager.js");
       const selectedDir = selected === "legacy" ? legacyDir : canonicalDir;
       const selectedContents = selected === "legacy" ? legacy : canonical;
 
-      await expect(ensureTool("fd")).resolves.toBe(
+      await expect(ensureFd()).resolves.toBe(
         selectedContents === "payload" ? join(selectedDir, "bin", binaryName) : undefined,
       );
       expect(getAgentDir()).toBe(selectedDir);
@@ -221,21 +221,21 @@ describe("ensureTool", () => {
     for (const agentDir of [defaultDir, firstDir, secondDir]) {
       writeBinary(join(agentDir, "bin", binary), "managed binary");
     }
-    const { ensureTool } = await import("./tools-manager.js");
+    const { ensureFd } = await import("./tools-manager.js");
     const { getAgentDir } = await import("../config.js");
     const read = vi.spyOn(fs, "readFileSync");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const before = snapshotFiles(root);
     read.mockClear();
     expect(getAgentDir()).toBe(firstDir);
-    await expect(ensureTool("fd")).resolves.toBe(join(firstDir, "bin", binary));
+    await expect(ensureFd()).resolves.toBe(join(firstDir, "bin", binary));
     expect(read.mock.calls.some(([file]) => file === configPath)).toBe(false);
     expect(warn).not.toHaveBeenCalled();
 
     vi.stubEnv("OPENCLAW_AGENT_DIR", "");
     const beforeEnv = { ...process.env };
     expect(getAgentDir()).toBe(defaultDir);
-    await expect(ensureTool("fd")).resolves.toBe(join(defaultDir, "bin", binary));
+    await expect(ensureFd()).resolves.toBe(join(defaultDir, "bin", binary));
     expect(getAgentDir()).toBe(defaultDir);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("default agent directory"));
@@ -245,13 +245,13 @@ describe("ensureTool", () => {
     fs.rmSync(configPath, { recursive: true });
     for (const agentDir of [firstDir, secondDir]) {
       writeFileSync(configPath, JSON.stringify({ agents: { entries: { main: { agentDir } } } }));
-      await expect(ensureTool("fd")).resolves.toBe(join(agentDir, "bin", binary));
+      await expect(ensureFd()).resolves.toBe(join(agentDir, "bin", binary));
     }
   });
 
   it("single-flights concurrent installs until installation settles", async () => {
     const releaseCheckStarted = createDeferred();
-    const { ensureTool } = await import("./tools-manager.js");
+    const { ensureFd } = await import("./tools-manager.js");
     const releaseCheckRelease = vi.fn(async () => {});
     const downloadRelease = vi.fn(async () => {});
     let resolveCheck!: (value: ReturnType<typeof guardedResponse>) => void;
@@ -274,7 +274,7 @@ describe("ensureTool", () => {
       },
     );
 
-    const installs = [ensureTool("fd"), ensureTool("fd")];
+    const installs = [ensureFd(), ensureFd()];
 
     await releaseCheckStarted.promise;
     expect(fetchWithSsrFGuardMock).toHaveBeenCalledOnce();
@@ -303,9 +303,9 @@ describe("ensureTool", () => {
         return fn();
       },
     );
-    const { ensureTool } = await import("./tools-manager.js");
+    const { ensureFd } = await import("./tools-manager.js");
 
-    await expect(ensureTool("fd")).resolves.toBe(binaryPath);
+    await expect(ensureFd()).resolves.toBe(binaryPath);
 
     expect(fetchWithSsrFGuardMock).not.toHaveBeenCalled();
   });
@@ -317,19 +317,19 @@ describe("ensureTool", () => {
       platform: () => "win32",
     }));
 
-    const { ensureTool } = await import("./tools-manager.js");
+    const { ensureFd } = await import("./tools-manager.js");
     extractArchiveMock.mockImplementation(async (params: { destDir: string }) => {
-      writeFileSync(join(params.destDir, "rg.exe"), "binary");
+      writeFileSync(join(params.destDir, "fd.exe"), "binary");
     });
     mockDownload(new Response("zip-bytes", { status: 200 }));
 
-    await expect(ensureTool("rg")).resolves.toBe(join(tempAgentDir!, "bin", "rg.exe"));
+    await expect(ensureFd()).resolves.toBe(join(tempAgentDir!, "bin", "fd.exe"));
 
     expect(extractArchiveMock).toHaveBeenCalledOnce();
     expect(extractArchiveMock).toHaveBeenCalledWith(
       expect.objectContaining({
         archivePath: expect.stringContaining(".zip"),
-        destDir: expect.stringMatching(/install_tmp_rg_.+[\\/]extract$/),
+        destDir: expect.stringMatching(/install_tmp_fd_.+[\\/]extract$/),
         timeoutMs: 60_000,
         limits: {
           maxArchiveBytes: 100 * 1024 * 1024,
@@ -342,7 +342,7 @@ describe("ensureTool", () => {
 
   it("installs decoded downloads when encoded Content-Length exceeds the archive cap", async () => {
     const agentDir = expectDefined(tempAgentDir, "test agent directory");
-    const binaryName = process.platform === "win32" ? "rg.exe" : "rg";
+    const binaryName = process.platform === "win32" ? "fd.exe" : "fd";
     const archive = "decoded archive bytes";
     extractArchiveMock.mockImplementation(
       async (params: { archivePath: string; destDir: string }) => {
@@ -357,10 +357,10 @@ describe("ensureTool", () => {
         headers: { "content-encoding": "gzip", "content-length": "104857601" },
       }),
     );
-    const { ensureTool } = await import("./tools-manager.js");
+    const { ensureFd } = await import("./tools-manager.js");
     const binaryPath = join(agentDir, "bin", binaryName);
 
-    await expect(ensureTool("rg")).resolves.toBe(binaryPath);
+    await expect(ensureFd()).resolves.toBe(binaryPath);
 
     expect(readFileSync(binaryPath, "utf8")).toBe("binary");
     expect(extractArchiveMock).toHaveBeenCalledOnce();
@@ -386,9 +386,9 @@ describe("ensureTool", () => {
           await response.body?.cancel();
         }),
       );
-      const { ensureTool } = await import("./tools-manager.js");
+      const { ensureFd } = await import("./tools-manager.js");
 
-      await expect(ensureTool("rg")).resolves.toBeUndefined();
+      await expect(ensureFd()).resolves.toBeUndefined();
 
       if (readsBody) {
         expect(stream.readCount()).toBeGreaterThanOrEqual(2);
@@ -411,7 +411,7 @@ describe("ensureTool", () => {
     },
   ])("$name and cleans installation staging", async ({ readableBinary }) => {
     const agentDir = expectDefined(tempAgentDir, "test agent directory");
-    const binaryName = process.platform === "win32" ? "rg.exe" : "rg";
+    const binaryName = process.platform === "win32" ? "fd.exe" : "fd";
     let blockedDir: string | undefined;
     let deniedRead = false;
     const readdir = fs.readdirSync.bind(fs);
@@ -433,9 +433,9 @@ describe("ensureTool", () => {
       }
     });
     const releases = mockDownload(new Response("archive bytes", { status: 200 }));
-    const { ensureTool } = await import("./tools-manager.js");
+    const { ensureFd } = await import("./tools-manager.js");
 
-    const installed = await ensureTool("rg");
+    const installed = await ensureFd();
 
     expect(deniedRead).toBe(true);
     if (readableBinary) {
@@ -458,8 +458,8 @@ describe("ensureTool", () => {
     );
     fetchWithSsrFGuardMock.mockResolvedValueOnce(guarded);
 
-    const { ensureTool } = await import("./tools-manager.js");
-    await expect(ensureTool("fd")).resolves.toBeUndefined();
+    const { ensureFd } = await import("./tools-manager.js");
+    await expect(ensureFd()).resolves.toBeUndefined();
 
     expect(stream.readCount()).toBeLessThan(20);
     expect(stream.cancel).toHaveBeenCalledOnce();
@@ -468,7 +468,7 @@ describe("ensureTool", () => {
   it.each(["release", "download"] as const)(
     "cancels and releases %s HTTP errors",
     async (phase) => {
-      const { ensureTool } = await import("./tools-manager.js");
+      const { ensureFd } = await import("./tools-manager.js");
       const response = new Response("unavailable", { status: phase === "release" ? 503 : 404 });
       const cancel = vi.spyOn(response.body!, "cancel").mockResolvedValue(undefined);
       if (phase === "release") {
@@ -476,12 +476,12 @@ describe("ensureTool", () => {
         spawnSyncMock.mockReturnValue({ status: 1 });
         const guarded = guardedResponse(response);
         fetchWithSsrFGuardMock.mockResolvedValueOnce(guarded);
-        await expect(ensureTool("fd")).resolves.toBeUndefined();
+        await expect(ensureFd()).resolves.toBeUndefined();
         expect(fetchWithSsrFGuardMock).toHaveBeenCalledOnce();
         expect(guarded.release).toHaveBeenCalledOnce();
       } else {
         const releases = mockDownload(response);
-        await expect(ensureTool("rg")).resolves.toBeUndefined();
+        await expect(ensureFd()).resolves.toBeUndefined();
         expectReleased(releases);
       }
       expect(cancel).toHaveBeenCalledOnce();

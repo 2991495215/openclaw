@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { hasErrnoCode } from "../../../infra/errno.js";
+import * as packageRoots from "../../../infra/openclaw-root.js";
 import { writePluginJson } from "./missing-configured-plugin-install.fixtures.test-support.js";
 import {
   collectStalePluginRuntimeSymlinkHealthFindings,
@@ -44,6 +45,7 @@ let packageRoot: string;
 beforeEach(async () => {
   tempDir = tempDirs.make("openclaw-plugin-runtime-symlinks-");
   packageRoot = path.join(tempDir, "prefix", "node_modules", "openclaw");
+  vi.spyOn(packageRoots, "resolveOpenClawPackageRootSync").mockReturnValue(packageRoot);
   await fs.mkdir(packageRoot, { recursive: true });
 });
 
@@ -64,8 +66,8 @@ it.runIf(process.platform !== "win32")(
     await fs.symlink(target, link, "dir");
     expect(await readPackage(link)).toBe(contents);
 
-    const findings = await collectStalePluginRuntimeSymlinkHealthFindings({ packageRoot });
-    const repair = await removeStalePluginRuntimeSymlinks(packageRoot);
+    const findings = await collectStalePluginRuntimeSymlinkHealthFindings();
+    const repair = await removeStalePluginRuntimeSymlinks();
     expect({ findings, ...repair }).toEqual({ findings: [], changes: [], warnings: [] });
     await expectSymlinksPresent(link);
     expect(await fs.readlink(link)).toBe(target);
@@ -120,11 +122,11 @@ it.each([
       requirement: "stale-plugin-runtime-symlink-removed",
       fixHint: "Run `openclaw doctor --fix` to remove stale plugin-runtime symlinks.",
     };
-    expect(await collectStalePluginRuntimeSymlinkHealthFindings({ packageRoot })).toEqual(
+    expect(await collectStalePluginRuntimeSymlinkHealthFindings()).toEqual(
       hostOwned ? [] : [finding],
     );
     await expectSymlinksPresent(staleLink, liveLink);
-    expect(await removeStalePluginRuntimeSymlinks(packageRoot)).toEqual({
+    expect(await removeStalePluginRuntimeSymlinks()).toEqual({
       changes: hostOwned ? [] : [`Removed stale plugin-runtime symlink: ${staleLink}`],
       warnings: [],
     });
@@ -171,7 +173,7 @@ it.each(["symlink", "file", "target"] as const)(
       }
       return pending;
     });
-    const result = await removeStalePluginRuntimeSymlinks(packageRoot);
+    const result = await removeStalePluginRuntimeSymlinks();
     expect({ replaced, ...result }).toEqual({
       replaced: true,
       changes: [],

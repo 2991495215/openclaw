@@ -282,7 +282,7 @@ async function resolveFileRefs(params: {
   }
   for (const ref of params.refs) {
     try {
-      resolved.set(ref.id, readJsonPointer(payload, ref.id, { onMissing: "throw" }));
+      resolved.set(ref.id, readJsonPointer(payload, ref.id));
     } catch (err) {
       // File ref ids are validated before provider dispatch, so pointer failures here mean the
       // requested value is absent rather than the SecretRef contract being malformed.

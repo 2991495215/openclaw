@@ -38,7 +38,7 @@ function collectAuthStoreSecretInputAssignment(
   const previousCount = params.context.assignments.length;
   collectSecretInputAssignment(params);
   for (const assignment of params.context.assignments.slice(previousCount)) {
-    setSecretAssignmentSource(assignment, "auth-store");
+    setSecretAssignmentSource(assignment);
   }
 }
 

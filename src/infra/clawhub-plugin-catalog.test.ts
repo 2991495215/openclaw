@@ -60,9 +60,7 @@ async function catalog(
 
 function readCategories(categories: unknown[]) {
   mockResponse({ categories });
-  return fetchClawHubPluginCategories({
-    baseUrl: "https://example.com",
-  });
+  return fetchClawHubPluginCategories();
 }
 
 function readDetail(value: Record<string, unknown>, version?: string) {
@@ -128,7 +126,7 @@ it.each([false, true])(
 it.each([
   ["overview", fetchClawHubPluginOverview],
   ["categories", fetchClawHubPluginCategories],
-])("public %s omits ambient auth unless requested", async (_name, read) => {
+])("public %s omits ambient auth and private registries retain it", async (_name, read) => {
   await withEnvAsync(
     {
       CLAWHUB_TOKEN: "ambient-test-token",
@@ -142,21 +140,13 @@ it.each([
         return jsonResponse({ items: [remotePlugin], categories: [remoteCategory] });
       };
       vi.spyOn(globalThis, "fetch").mockImplementation(fetchImpl);
-      await read({});
-      await read({ skipAuth: false });
-      await read({ token: "explicit-test-token" });
-      await read({ baseUrl: "https://private.example/clawhub" });
-      await read({ baseUrl: "https://private.example/clawhub", skipAuth: true });
+      await read();
       for (const key of ["OPENCLAW_CLAWHUB_URL", "CLAWHUB_URL"]) {
         await withEnvAsync({ [key]: "https://private.example/clawhub" }, async () => {
-          await read({});
+          await read();
         });
       }
       expect(authorization).toEqual([
-        null,
-        "Bearer ambient-test-token",
-        "Bearer explicit-test-token",
-        "Bearer ambient-test-token",
         null,
         "Bearer ambient-test-token",
         "Bearer ambient-test-token",
@@ -172,9 +162,9 @@ it("reads the bounded plugin overview in one request", async () => {
     items: [{ ...remotePlugin, ...ranking }],
   });
 
-  const result = await fetchClawHubPluginOverview({
-    baseUrl: "https://example.com",
-  });
+  const result = await withEnvAsync({ OPENCLAW_CLAWHUB_URL: "https://example.com" }, () =>
+    fetchClawHubPluginOverview(),
+  );
 
   expect(requestedUrl(fetchImpl).pathname).toBe("/api/v1/plugins/overview");
   expect(result.categories).toEqual([remoteCategory]);

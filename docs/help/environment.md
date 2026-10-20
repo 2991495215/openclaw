@@ -373,8 +373,8 @@ shorthand values.
 
 ## Agent helper tool downloads
 
-Set `OPENCLAW_OFFLINE=1` to prevent OpenClaw from downloading its pinned `fd`
-and `ripgrep` helper binaries. Existing helpers under the OpenClaw tools
+Set `OPENCLAW_OFFLINE=1` to prevent OpenClaw from downloading its `fd`
+helper binary. Existing helpers under the OpenClaw tools
 directory and working system binaries remain eligible. A missing helper stays
 unavailable instead of triggering a network request.
 

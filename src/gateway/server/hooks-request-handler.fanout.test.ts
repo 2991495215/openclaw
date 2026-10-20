@@ -30,18 +30,14 @@ vi.mock("../hooks.js", async () => ({
   readJsonBody: readJsonBodyMock,
 }));
 
-function createGmailHooksConfig(mapping?: {
-  config: Parameters<typeof resolveHookMappings>[0];
-  configDir: string;
-}): HooksConfigResolved {
+function createGmailHooksConfig(
+  mapping?: Parameters<typeof resolveHookMappings>[0],
+): HooksConfigResolved {
   const canonical = createHooksConfig();
   const policy = { allowRequestSessionKey: true, allowedSessionKeyPrefixes: ["hook:gmail:"] };
   return {
     ...canonical,
-    mappings: resolveHookMappings(
-      { ...policy, ...(mapping?.config ?? { presets: ["gmail"] }) },
-      mapping ? { configDir: mapping.configDir } : undefined,
-    ),
+    mappings: resolveHookMappings({ ...policy, ...(mapping ?? { presets: ["gmail"] }) }),
     sessionPolicy: { ...canonical.sessionPolicy, ...policy },
   };
 }
@@ -200,6 +196,7 @@ describe("hook fan-out dispatch", () => {
   test("mixed per-item transform kinds dispatch both wakes and agents", async () => {
     const transformsDir = fs.mkdtempSync(path.join(os.tmpdir(), "hook-fanout-transform-"));
     try {
+      vi.stubEnv("OPENCLAW_CONFIG_PATH", path.join(transformsDir, "openclaw.json"));
       fs.mkdirSync(path.join(transformsDir, "hooks", "transforms"), { recursive: true });
       fs.writeFileSync(
         path.join(transformsDir, "hooks", "transforms", "mixed.mjs"),
@@ -212,20 +209,17 @@ describe("hook fan-out dispatch", () => {
         ].join(""),
       );
       const hooksConfig = createGmailHooksConfig({
-        configDir: transformsDir,
-        config: {
-          mappings: [
-            {
-              id: "mixed",
-              match: { path: "gmail" },
-              action: "agent",
-              forEach: "messages",
-              sessionKey: "hook:gmail:{{messages[0].id}}",
-              messageTemplate: "agent:{{messages[0].id}}",
-              transform: { module: "mixed.mjs" },
-            },
-          ],
-        },
+        mappings: [
+          {
+            id: "mixed",
+            match: { path: "gmail" },
+            action: "agent",
+            forEach: "messages",
+            sessionKey: "hook:gmail:{{messages[0].id}}",
+            messageTemplate: "agent:{{messages[0].id}}",
+            transform: { module: "mixed.mjs" },
+          },
+        ],
       });
       let coalesceWakes = false;
       const { handler, dispatchAgentHook, dispatchWakeHook } = createFanOutHandler({
@@ -271,6 +265,7 @@ describe("hook fan-out dispatch", () => {
       expect(dispatchWakeHook).toHaveBeenCalledTimes(5);
       expect(dispatchAgentHook).toHaveBeenCalledTimes(1);
     } finally {
+      vi.unstubAllEnvs();
       fs.rmSync(transformsDir, { recursive: true, force: true });
     }
   });

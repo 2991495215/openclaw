@@ -444,7 +444,7 @@ export function createManagedHandoffLeaseDatabase(
       if (!observeUnadoptable(target)) {
         return;
       }
-      quarantineManagedHandoffStore(target, "unsafe-file");
+      quarantineManagedHandoffStore(target);
       // Readers open read-only and cannot create a store, so removing the blocker
       // without replacing it would move the dead end rather than clear it.
       createMissingDatabaseFile(target, parent);

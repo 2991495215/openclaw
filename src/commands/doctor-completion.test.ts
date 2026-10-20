@@ -62,7 +62,7 @@ describe("shell completion health mapping", () => {
     const { profilePath, stateDir } = await setupBashHome();
     await fs.writeFile(profilePath, "source <(openclaw completion --shell bash)\n");
 
-    await expect(checkShellCompletionStatus("openclaw", { shell: "bash" })).resolves.toEqual({
+    await expect(checkShellCompletionStatus("openclaw")).resolves.toEqual({
       shell: "bash",
       profileInstalled: true,
       cacheExists: false,

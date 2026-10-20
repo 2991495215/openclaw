@@ -66,7 +66,6 @@ function createHarness(
   const handlers = createEventHandlers({
     ...context,
     loadHistory: actions.loadHistory,
-    streamingWatchdogMs: 0,
   });
   cleanups.push(() => {
     handlers.dispose();

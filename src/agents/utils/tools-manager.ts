@@ -1,5 +1,5 @@
 /**
- * Locates or downloads pinned helper binaries such as fd and ripgrep.
+ * Locates or downloads fd for TUI file completion.
  */
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -41,30 +41,6 @@ const TOOL_INSTALL_LOCK_OPTIONS: FileLockOptions = {
   staleRecovery: "remove-if-unchanged",
 };
 
-interface ToolConfig {
-  name: string;
-  repo: string; // GitHub repo (e.g., "sharkdp/fd")
-  binaryName: string; // Name of the binary inside the archive
-  systemBinaryNames?: string[]; // Alternative system command names to try before downloading
-  tagPrefix: string; // Prefix for tags (e.g., "v" for v1.0.0, "" for 1.0.0)
-}
-
-const TOOLS: Record<"fd" | "rg", ToolConfig> = {
-  fd: {
-    name: "fd",
-    repo: "sharkdp/fd",
-    binaryName: "fd",
-    systemBinaryNames: ["fd", "fdfind"],
-    tagPrefix: "v",
-  },
-  rg: {
-    name: "ripgrep",
-    repo: "BurntSushi/ripgrep",
-    binaryName: "rg",
-    tagPrefix: "",
-  },
-};
-
 function commandExists(cmd: string): boolean {
   try {
     const result = spawnSync(cmd, ["--version"], {
@@ -75,25 +51,22 @@ function commandExists(cmd: string): boolean {
     // Require a clean exit, not just a successful spawn. An installed-but-broken
     // binary (e.g. GLIBC mismatch after a system upgrade, missing shared lib)
     // spawns fine but exits non-zero; without the status check it would be
-    // misreported as available and block ensureTool's auto-install fallback.
+    // misreported as available and block ensureFd's auto-install fallback.
     return !result.error && result.status === 0;
   } catch {
     return false;
   }
 }
 
-function getToolPath(tool: "fd" | "rg", toolsDir: string | undefined): string | null {
-  const config = TOOLS[tool];
-
+function getFdPath(toolsDir: string | undefined): string | null {
   if (toolsDir) {
-    const localPath = join(toolsDir, config.binaryName + (platform() === "win32" ? ".exe" : ""));
+    const localPath = join(toolsDir, platform() === "win32" ? "fd.exe" : "fd");
     if (existsSync(localPath)) {
       return localPath;
     }
   }
 
-  const systemBinaryNames = config.systemBinaryNames ?? [config.binaryName];
-  for (const systemBinaryName of systemBinaryNames) {
+  for (const systemBinaryName of ["fd", "fdfind"]) {
     if (commandExists(systemBinaryName)) {
       return systemBinaryName;
     }
@@ -102,9 +75,9 @@ function getToolPath(tool: "fd" | "rg", toolsDir: string | undefined): string | 
   return null;
 }
 
-async function getLatestVersion(repo: string): Promise<string> {
+async function getLatestVersion(): Promise<string> {
   const guarded = await fetchWithSsrFGuard({
-    url: `https://api.github.com/repos/${repo}/releases/latest`,
+    url: "https://api.github.com/repos/sharkdp/fd/releases/latest",
     timeoutMs: NETWORK_TIMEOUT_MS,
     auditContext: "tools-manager-release-check",
     init: {
@@ -175,40 +148,35 @@ async function downloadFile(url: string, destination: Root, assetName: string): 
   }
 }
 
-async function downloadTool(tool: "fd" | "rg", toolsDir: string): Promise<string> {
-  const config = TOOLS[tool];
-
+async function downloadFd(toolsDir: string): Promise<string> {
   const plat = platform();
   const architecture = arch();
 
-  let version = await getLatestVersion(config.repo);
-  if (tool === "fd" && plat === "darwin" && architecture === "x64") {
+  let version = await getLatestVersion();
+  if (plat === "darwin" && architecture === "x64") {
     version = "10.3.0";
   }
 
   const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
   const targets: Partial<Record<NodeJS.Platform, string>> = {
     darwin: "apple-darwin.tar.gz",
-    linux: `unknown-linux-${tool === "rg" && architecture !== "arm64" ? "musl" : "gnu"}.tar.gz`,
+    linux: "unknown-linux-gnu.tar.gz",
     win32: "pc-windows-msvc.zip",
   };
   const target = targets[plat];
   if (!target) {
     throw new Error(`Unsupported platform: ${plat}/${architecture}`);
   }
-  const assetName = `${config.name}-${config.tagPrefix}${version}-${archStr}-${target}`;
+  const assetName = `fd-v${version}-${archStr}-${target}`;
 
   mkdirSync(toolsDir, { recursive: true });
 
-  const downloadUrl = `https://github.com/${config.repo}/releases/download/${config.tagPrefix}${version}/${assetName}`;
+  const downloadUrl = `https://github.com/sharkdp/fd/releases/download/v${version}/${assetName}`;
   const binaryExt = plat === "win32" ? ".exe" : "";
-  const binaryPath = join(toolsDir, config.binaryName + binaryExt);
+  const binaryPath = join(toolsDir, "fd" + binaryExt);
   // Keep every installation's archive and extracted files together so parallel
   // processes cannot remove or overwrite another installation's staging files.
-  const stagingDir = join(
-    toolsDir,
-    `install_tmp_${config.binaryName}_${process.pid}_${randomUUID()}`,
-  );
+  const stagingDir = join(toolsDir, `install_tmp_fd_${process.pid}_${randomUUID()}`);
   const archivePath = join(stagingDir, assetName);
   const extractDir = join(stagingDir, "extract");
   mkdirSync(extractDir, { recursive: true });
@@ -230,7 +198,7 @@ async function downloadTool(tool: "fd" | "rg", toolsDir: string): Promise<string
 
     // Find the binary in extracted files. Some archives contain files directly
     // at root, others nest under a versioned subdirectory.
-    const binaryFileName = config.binaryName + binaryExt;
+    const binaryFileName = "fd" + binaryExt;
     const extractedDir = join(extractDir, assetName.replace(/\.(tar\.gz|zip)$/, ""));
     const extractedBinaryCandidates = [
       join(extractedDir, binaryFileName),
@@ -268,17 +236,16 @@ async function downloadTool(tool: "fd" | "rg", toolsDir: string): Promise<string
   return binaryPath;
 }
 
-function installTool(tool: "fd" | "rg", toolsDir: string): Promise<string> {
-  const config = TOOLS[tool];
-  const binaryPath = join(toolsDir, config.binaryName + (platform() === "win32" ? ".exe" : ""));
+function installFd(toolsDir: string): Promise<string> {
+  const binaryPath = join(toolsDir, platform() === "win32" ? "fd.exe" : "fd");
   return getOrCreatePromise(
     toolInstallations,
     binaryPath,
     () => {
       mkdirSync(toolsDir, { recursive: true });
       return withFileLock(binaryPath, TOOL_INSTALL_LOCK_OPTIONS, async () => {
-        const existingPath = getToolPath(tool, toolsDir);
-        return existingPath ?? downloadTool(tool, toolsDir);
+        const existingPath = getFdPath(toolsDir);
+        return existingPath ?? downloadFd(toolsDir);
       });
     },
     { evictOnSettled: true },
@@ -286,9 +253,9 @@ function installTool(tool: "fd" | "rg", toolsDir: string): Promise<string> {
 }
 
 /** Returns the existing or installed binary path, or undefined when unavailable. */
-export async function ensureTool(tool: "fd" | "rg"): Promise<string | undefined> {
+export async function ensureFd(): Promise<string | undefined> {
   const toolsDir = getBinDir();
-  const existingPath = getToolPath(tool, toolsDir);
+  const existingPath = getFdPath(toolsDir);
   if (existingPath) {
     return existingPath;
   }
@@ -300,7 +267,7 @@ export async function ensureTool(tool: "fd" | "rg"): Promise<string | undefined>
   }
 
   try {
-    return await installTool(tool, toolsDir);
+    return await installFd(toolsDir);
   } catch {
     return undefined;
   }

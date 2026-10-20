@@ -11,6 +11,7 @@ import type {
   ChannelDirectoryEntryKind,
 } from "../channels/plugins/types.core.js";
 import type { ConversationIdentity } from "../config/sessions/conversation-identity.js";
+import * as registry from "../config/sessions/conversation-registry.js";
 import {
   listConversations,
   prepareConversationRegistryScope,
@@ -24,14 +25,19 @@ import {
 import { historyLane } from "../config/sessions/session-transcript-worker-resources.js";
 import * as historyWorker from "../config/sessions/session-transcript-worker-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import * as outboundChannel from "../infra/outbound/channel-resolution.js";
+import * as outboundSession from "../infra/outbound/outbound-session.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
+import { createChannelTestPluginBase } from "../test-utils/channel-plugins.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
 import { runGatewayConversationList } from "./conversation-list.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 function outboundRoute(
   channel: string,
@@ -63,7 +69,7 @@ function directoryFixture(
   let discovered: ConversationIdentity[] = [];
   const deps = {
     resolveOutboundChannelPlugin: vi.fn(() => ({
-      id: channel,
+      ...createChannelTestPluginBase({ id: channel }),
       config: {
         listAccountIds: () => ["default"],
         resolveAccount: () => ({ enabled: true, configured: true }),
@@ -73,21 +79,17 @@ function directoryFixture(
       directory,
     })),
     resolveOutboundSessionRoute: vi.fn(route),
-    registerConversationAddresses: vi.fn(
-      (
-        _scope: unknown,
-        identities: readonly ConversationIdentity[],
-        _at: number,
-        isEligible: (identities: readonly ConversationIdentity[]) => readonly boolean[],
-      ) => {
+    registerConversationAddresses: vi.fn<typeof registry.registerConversationAddresses>(
+      async (_scope, identities, _at, isEligible = (values) => values.map(() => true)) => {
         if (registration === "none") {
-          return;
+          return undefined;
         }
         const eligible = isEligible(identities);
         discovered = identities.filter((_, index) => eligible[index]);
+        return undefined;
       },
     ),
-    listConversations: vi.fn(() =>
+    listConversations: vi.fn(async () =>
       (registration === "project" ? discovered : []).map((identity) => ({
         conversationRef: identity.conversationRef,
         channel: identity.channel,
@@ -101,16 +103,23 @@ function directoryFixture(
       })),
     ),
   };
+  vi.spyOn(registry, "listConversations").mockImplementation(deps.listConversations);
+  vi.spyOn(registry, "registerConversationAddresses").mockImplementation(
+    deps.registerConversationAddresses,
+  );
+  vi.spyOn(outboundChannel, "resolveOutboundChannelPlugin").mockImplementation(
+    deps.resolveOutboundChannelPlugin,
+  );
+  vi.spyOn(outboundSession, "resolveOutboundSessionRoute").mockImplementation(
+    deps.resolveOutboundSessionRoute,
+  );
   return {
     deps,
     get discovered() {
       return discovered;
     },
     run: (options: Partial<Parameters<typeof runGatewayConversationList>[0]> = {}) =>
-      runGatewayConversationList(
-        { config: {}, agentId: "main", channel, limit: 50, ...options },
-        deps as never,
-      ),
+      runGatewayConversationList({ config: {}, agentId: "main", channel, limit: 50, ...options }),
   };
 }
 
@@ -143,30 +152,24 @@ describe("runGatewayConversationList", () => {
       firstSeenAt: 200 - index * 100,
       lastSeenAt: 200 - index * 100,
     }));
-    const listPersisted = vi.fn((_scope, options: { limit?: number }) =>
-      options.limit === undefined ? rows : rows.slice(0, options.limit),
-    );
+    const listPersisted = vi
+      .spyOn(registry, "listConversations")
+      .mockImplementation(async (_scope, options = {}) =>
+        options.limit === undefined ? rows : rows.slice(0, options.limit),
+      );
 
-    const result = await runGatewayConversationList(
-      {
-        config: {
-          agents: { entries: { personal: {}, finance: {} } },
-          bindings: ["personal", "finance"].map((agentId) => ({
-            type: "route" as const,
-            agentId,
-            match: { channel: "reef", accountId: agentId },
-          })),
-        },
-        agentId: "personal",
-        limit: 1,
+    const result = await runGatewayConversationList({
+      config: {
+        agents: { entries: { personal: {}, finance: {} } },
+        bindings: ["personal", "finance"].map((agentId) => ({
+          type: "route" as const,
+          agentId,
+          match: { channel: "reef", accountId: agentId },
+        })),
       },
-      {
-        listConversations: listPersisted,
-        registerConversationAddresses: vi.fn(),
-        resolveOutboundChannelPlugin: vi.fn(),
-        resolveOutboundSessionRoute: vi.fn(),
-      } as never,
-    );
+      agentId: "personal",
+      limit: 1,
+    });
 
     expect(listPersisted).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: "personal" }),
@@ -327,7 +330,6 @@ describe("worker conversation reads", () => {
     openOpenClawAgentDatabase({ agentId: "physical-owner", path: storePath });
     replaceSessionEntrySync(scope(), conversationEntry(sessionId));
   });
-  afterEach(() => vi.restoreAllMocks());
   afterAll(async () => state.cleanup());
 
   it("reads a shared store's list, exact address and primary binding without caller-thread SQLite", async () => {

@@ -10,7 +10,7 @@ import {
   prepareConversationRegistryScope,
 } from "../config/sessions/conversation-registry.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { resolveOutboundSessionRoute } from "../infra/outbound/outbound-session.js";
+import * as outboundChannel from "../infra/outbound/channel-resolution.js";
 import {
   registerSessionBindingAdapter,
   testing as sessionBindingTesting,
@@ -61,6 +61,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  vi.spyOn(outboundChannel, "resolveOutboundChannelPlugin").mockReturnValue(undefined);
   resetPluginRuntimeStateForTest();
   setActivePluginRegistry(
     createTestRegistry(plugins.map((plugin) => ({ pluginId: plugin.id, source: "test", plugin }))),
@@ -79,6 +80,7 @@ beforeEach(() => {
 
 const tempDirs = createTempDirTracker();
 afterEach(async () => {
+  vi.restoreAllMocks();
   resetPluginRuntimeStateForTest();
   sessionBindingTesting.resetSessionBindingAdaptersForTests();
   await closeOpenClawAgentDatabasesAsync();
@@ -100,13 +102,6 @@ async function createConversationStore(channels: OpenClawConfig["channels"]) {
   };
   return { config, scope: await prepareConversationRegistryScope({ config, agentId: "main" }) };
 }
-
-const deps = {
-  listConversations,
-  registerConversationAddresses,
-  resolveOutboundChannelPlugin: () => undefined,
-  resolveOutboundSessionRoute,
-};
 
 describe("conversation listings after removing accounts", () => {
   it("lists live conversations across channels and preserves retired history", async () => {
@@ -135,7 +130,7 @@ describe("conversation listings after removing accounts", () => {
     const before = await listConversations(scope);
     expect(before).toHaveLength(identities.length);
 
-    const result = await runGatewayConversationList({ config, agentId: "main", limit: 10 }, deps);
+    const result = await runGatewayConversationList({ config, agentId: "main", limit: 10 });
 
     expect(
       result.conversations.map((conversation) => ({
@@ -166,10 +161,13 @@ describe("conversation listings after removing accounts", () => {
     await registerConversationAddresses(scope, identities);
     const before = await listConversations(scope);
 
-    const result = await runGatewayConversationList(
-      { config, agentId: "main", channel: "discord", query: "123456789012345678", limit: 10 },
-      deps,
-    );
+    const result = await runGatewayConversationList({
+      config,
+      agentId: "main",
+      channel: "discord",
+      query: "123456789012345678",
+      limit: 10,
+    });
 
     expect(result.conversations).toEqual([
       expect.objectContaining({

@@ -17,10 +17,8 @@ import { listPluginNpmProjectCandidatesSync } from "./npm-project-roots.js";
 const RETAINED_MANAGED_NPM_INSTALL_MARKER_DIR = ".openclaw-retained-npm-installs";
 
 /** A negative result avoids lease admission; markers still need the cleanup owner's checks. */
-export async function hasRetainedManagedNpmInstallCandidates(
-  env?: NodeJS.ProcessEnv,
-): Promise<boolean> {
-  const npmDir = resolveDefaultPluginNpmDir(env);
+export async function hasRetainedManagedNpmInstallCandidates(): Promise<boolean> {
+  const npmDir = resolveDefaultPluginNpmDir();
   for (const projectRoot of [npmDir, ...listPluginNpmProjectCandidatesSync(npmDir)]) {
     try {
       if (
