@@ -116,7 +116,8 @@ export const defaultRuntime: OutputRuntimeEnv = {
       resumeStdinIfPaused: false,
       ...(opts?.resetStream ? { resetStream: opts.resetStream } : {}),
     });
-    throw new ExitError(code);
+    process.exit(code);
+    throw new Error("unreachable"); // satisfies tests when mocked
   },
 };
 
