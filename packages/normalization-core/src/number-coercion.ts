@@ -68,7 +68,9 @@ export function asSafeIntegerInRange(
 }
 
 /** Parses finite numbers from number values or strict numeric string tokens. */
-export { parseStrictFiniteNumber as parseFiniteNumber };
+export function parseFiniteNumber(value: unknown): number | undefined {
+  return parseStrictFiniteNumber(value);
+}
 
 /** Parses only safe integer numbers or base-10 integer strings. */
 export function parseStrictInteger(value: unknown): number | undefined {
