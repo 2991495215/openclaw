@@ -1,6 +1,7 @@
 import {
   getRestartRecoveryTerminalDeliveryEvidence,
   hasMainSessionRecoveryClaim,
+  hasOrphanedMainSessionWork,
   hasRestartRecoverySourceClaim,
   hasRestartRecoveryTerminalRun,
 } from "../../../config/sessions/restart-recovery-state.js";
@@ -131,7 +132,38 @@ export const reserveSubagentCompletionControllerSource = (
 /** Rebuilds process-local mailbox custody from durable completion obligations in owed order. */
 export async function reserveRestoredSubagentControllerSources(
   entries: readonly SubagentRunRecord[],
+  assertCurrent?: () => void,
 ): Promise<SessionControllerInput[]> {
+  const prepareRestoredRequester = async (
+    requester: Awaited<ReturnType<typeof loadRequesterSessionEntry>>,
+  ) => {
+    assertCurrent?.();
+    if (
+      requester.entry &&
+      requester.storePath &&
+      hasOrphanedMainSessionWork(requester.entry, requester.canonicalKey) &&
+      !(requester.entry.abortedLastRun === true && hasMainSessionRecoveryClaim(requester.entry))
+    ) {
+      // The early startup scan may precede database preparation. Mark the
+      // predecessor before child reservations can block its recovery in FIFO.
+      const { markOrphanedMainSessionForRecovery } =
+        await import("../../main-session-recovery/main-session-restart-recovery-marking.js");
+      const result = await markOrphanedMainSessionForRecovery({
+        target: {
+          agentId: requester.agentId,
+          storePath: requester.storePath,
+          sessionKey: requester.canonicalKey,
+        },
+        expectedSessionId: requester.entry.sessionId,
+        expectedLifecycleRevision: requester.entry.lifecycleRevision,
+        cfg: requester.cfg,
+        assertCommitAllowed: assertCurrent,
+      });
+      assertCurrent?.();
+      return result.marked === 0;
+    }
+    return true;
+  };
   const reservations: Array<[number, () => Promise<SessionControllerInput | undefined>]> = [];
   const entriesById = new Map(entries.map((entry) => [entry.runId, entry]));
   for (const entry of entries) {
@@ -152,6 +184,9 @@ export async function reserveRestoredSubagentControllerSources(
             entry.requesterSessionKey,
             entry.requesterAgentId,
           );
+          if (!(await prepareRestoredRequester(requester))) {
+            return undefined;
+          }
           // A live finalizer can settle this obligation while restore reads its requester.
           const current = getCurrentSubagentRunOwner(subagentRuns, entry);
           if (
@@ -209,10 +244,19 @@ export async function reserveRestoredSubagentControllerSources(
           entry.requesterSessionKey,
           entry.requesterAgentId,
         );
+        if (
+          !(wake.status === "pending" && wake.nextAttemptAt !== undefined) &&
+          resolveRequesterSettleRecoveryCustody(requester.entry, identity)
+        ) {
+          return undefined;
+        }
+        if (!(await prepareRestoredRequester(requester))) {
+          return undefined;
+        }
         const currentBatch = batch.map((member) =>
           getCurrentSubagentRunOwner(subagentRuns, member),
         );
-        // Retirement can publish during requester lookup; the same frozen cohort still owns FIFO.
+        // Recheck after requester recovery preparation; the same frozen cohort still owns FIFO.
         const current = currentBatch.find(
           (member) => member && !isSubagentObligationRetired(member),
         );
@@ -226,9 +270,7 @@ export async function reserveRestoredSubagentControllerSources(
               !owner.requesterSettleWake ||
               owner.requesterSettleWake.rearmGeneration !== wake.rearmGeneration
             );
-          }) ||
-          (!(wake.status === "pending" && wake.nextAttemptAt !== undefined) &&
-            resolveRequesterSettleRecoveryCustody(requester.entry, identity))
+          })
         ) {
           return undefined;
         }
