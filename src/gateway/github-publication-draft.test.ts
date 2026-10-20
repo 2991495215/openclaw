@@ -7,6 +7,11 @@ import {
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { retireSqliteDatabaseAdmissionForPath } from "../infra/sqlite-database-admission.js";
+import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import {
+  addPreCutoverClientCredentialTablesForTest,
+  withStateMigrationBackupForTest,
+} from "../state/openclaw-state-schema.test-support.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { digestGitHubPublicationRequest } from "./github-publication-receipt.js";
 import {
@@ -94,6 +99,7 @@ describe("publication draft choice", () => {
       // The state migration suite owns historical DDL; recovery consumes its current-schema row.
       {
         using db = new DatabaseSync(f.database.path);
+        addPreCutoverClientCredentialTablesForTest(db);
         const table =
           backend === "local"
             ? "github_publication_requests"
@@ -104,6 +110,10 @@ describe("publication draft choice", () => {
         );
       }
       retireSqliteDatabaseAdmissionForPath(f.database.path);
+      await withStateMigrationBackupForTest({ path: f.database.path }, async () => {
+        openOpenClawStateDatabase();
+        await closeStateDatabaseForTest();
+      });
       const restarted = f.restart();
       expect(f.readReceipt(accepted.requestId)).toMatchObject({
         draft: null,
