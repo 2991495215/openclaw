@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       # Temporary controller: pin the reviewed diagnostic candidate independently of this workflow.
-      TARGET_SHA: 95d7a888df3ccc7eb02b5543f6fb86e1a72ad631
+      TARGET_SHA: 516e5bf6dcaec55cc4fe95d1f736e2835a09bf21
     steps:
       - name: Initialize failure proof and validate target
         shell: bash
@@ -68,6 +68,15 @@ jobs:
         with:
           cache-mode: "off"
           install-screenshot-emulators: "true"
+
+      - name: Ensure syscall tracer is available
+        run: |
+          if ! command -v strace >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends strace
+          fi
+          strace --version
+          sudo -n true
 
       - name: Stress recursive directory pulls on two fresh phone emulators
         run: node scripts/android-adb-directory-probe.ts
