@@ -21,7 +21,6 @@ import {
   type WorkerTranscriptCommitBeginResult,
   type WorkerTranscriptCommitOperations,
 } from "./transcript-commit-store.worker-contract.js";
-import { createWorkerLedgerInputValidation } from "./worker-ledger-validation.js";
 
 type TranscriptCommitDb = Pick<
   StateDatabase,
@@ -30,15 +29,10 @@ type TranscriptCommitDb = Pick<
 type HeadRow = Selectable<WorkerTranscriptCommitHeads>;
 type CommitRow = Selectable<WorkerTranscriptCommits>;
 
-type NormalizedCommitInput = WorkerTranscriptCommitInput & { nowMs: number };
 type ExistingCommitResult = Extract<
   WorkerTranscriptCommitBeginResult,
   { kind: "recover" | "replay" | "rejected" }
 >;
-
-const { required, integer, requestHash } = createWorkerLedgerInputValidation(
-  "Worker transcript commit",
-);
 
 function parseOutcomeJson(value: string): WorkerTranscriptCommitOutcome {
   let parsed: unknown;
@@ -53,20 +47,9 @@ function parseOutcomeJson(value: string): WorkerTranscriptCommitOutcome {
   throw new Error("Worker transcript commit cached outcome is invalid");
 }
 
-function normalizeInput(input: WorkerTranscriptCommitInput, nowMs: number): NormalizedCommitInput {
-  return {
-    environmentId: required(input.environmentId, "environment id"),
-    sessionId: required(input.sessionId, "session id"),
-    runEpoch: integer(input.runEpoch, "run epoch"),
-    seq: integer(input.seq, "sequence", 1),
-    requestHash: requestHash(input.requestHash),
-    nowMs: integer(nowMs, "timestamp"),
-  };
-}
-
 const query = (db: EngineConnection) => getNodeSqliteKysely<TranscriptCommitDb>(db);
 
-function findHead(db: EngineConnection, input: NormalizedCommitInput): HeadRow | undefined {
+function findHead(db: EngineConnection, input: WorkerTranscriptCommitInput): HeadRow | undefined {
   return executeSqliteQueryTakeFirstSync(
     db,
     query(db)
@@ -77,7 +60,10 @@ function findHead(db: EngineConnection, input: NormalizedCommitInput): HeadRow |
   );
 }
 
-function findCommit(db: EngineConnection, input: NormalizedCommitInput): CommitRow | undefined {
+function findCommit(
+  db: EngineConnection,
+  input: WorkerTranscriptCommitInput,
+): CommitRow | undefined {
   return executeSqliteQueryTakeFirstSync(
     db,
     query(db)
@@ -92,7 +78,7 @@ function findCommit(db: EngineConnection, input: NormalizedCommitInput): CommitR
 function classifyExistingCommit(params: {
   head: HeadRow | undefined;
   commit: CommitRow | undefined;
-  input: NormalizedCommitInput;
+  input: WorkerTranscriptCommitInput;
 }): ExistingCommitResult | undefined {
   if (!params.commit) {
     return undefined;
@@ -117,10 +103,9 @@ function classifyExistingCommit(params: {
 
 export const workerTranscriptCommitOperations = {
   "placementTranscript.begin": (
-    rawInput: WorkerTranscriptCommitOperations["placementTranscript.begin"]["input"],
+    input: WorkerTranscriptCommitOperations["placementTranscript.begin"]["input"],
     { writeAdmitted },
   ): WorkerTranscriptCommitBeginResult => {
-    const input = normalizeInput(rawInput, rawInput.nowMs);
     return writeAdmitted<WorkerTranscriptCommitBeginResult>(
       ({ db }) => {
         const head = findHead(db, input);
@@ -171,11 +156,10 @@ export const workerTranscriptCommitOperations = {
   },
 
   "placementTranscript.complete": (
-    rawInput: WorkerTranscriptCommitOperations["placementTranscript.complete"]["input"],
+    input: WorkerTranscriptCommitOperations["placementTranscript.complete"]["input"],
     { writeAdmitted },
   ): WorkerTranscriptCommitOutcome => {
-    const input = normalizeInput(rawInput, rawInput.nowMs);
-    const resultJson = JSON.stringify(rawInput.outcome);
+    const resultJson = JSON.stringify(input.outcome);
     return writeAdmitted<WorkerTranscriptCommitOutcome>(
       ({ db }) => {
         const head = findHead(db, input);
@@ -228,7 +212,7 @@ export const workerTranscriptCommitOperations = {
         if (headUpdate.numAffectedRows !== 1n) {
           throw new Error("Worker transcript commit sequence changed during terminal completion");
         }
-        return rawInput.outcome;
+        return input.outcome;
       },
       {
         operationLabel: "placementTranscript.complete",
@@ -241,10 +225,9 @@ export const workerTranscriptCommitOperations = {
   // Only the invocation that freshly claimed this row may discard it after a
   // known rollback. Recovered reservations can describe an already committed batch.
   "placementTranscript.discard": (
-    rawInput: WorkerTranscriptCommitOperations["placementTranscript.discard"]["input"],
+    input: WorkerTranscriptCommitOperations["placementTranscript.discard"]["input"],
     { writeAdmitted },
   ): true => {
-    const input = normalizeInput(rawInput, rawInput.nowMs);
     return writeAdmitted<true>(
       ({ db }) => {
         executeSqliteQuerySync(

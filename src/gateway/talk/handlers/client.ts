@@ -30,7 +30,6 @@ import { withOpenClawAgentDatabaseRuntime } from "../../../state/openclaw-agent-
 import { runOpenClawAgentWriteAdmission } from "../../../state/openclaw-agent-write-admission.js";
 import {
   REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME,
-  parseRealtimeVoiceAgentConsultArgs,
   buildRealtimeVoiceAgentConsultChatMessage,
 } from "../../../talk/agent-consult-tool.js";
 import { controlRealtimeVoiceAgentRun } from "../../../talk/agent-run-control.js";
@@ -256,7 +255,7 @@ export const talkClientHandlers: GatewayRequestHandlers = {
           }
           assertStoreCurrent?.();
           request.sessionMutationAuthorization?.assertCurrent();
-          parseRealtimeVoiceAgentConsultArgs(params.args ?? {});
+          const message = buildRealtimeVoiceAgentConsultChatMessage(params.args ?? {});
           const origin = assertClientVoiceSessionOpen(
             { agentId, sessionKey: params.sessionKey, voiceSessionId },
             physicalSource,
@@ -271,7 +270,7 @@ export const talkClientHandlers: GatewayRequestHandlers = {
             physicalSource.assertCurrent();
             rememberLegacyVoiceBinding({ connId, sessionKey: params.sessionKey, voiceSessionId });
           }
-          return { voiceSessionId, physicalSource };
+          return { voiceSessionId, physicalSource, message };
         } catch (error) {
           errors.push(error);
           throw error;
@@ -291,7 +290,7 @@ export const talkClientHandlers: GatewayRequestHandlers = {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, formatForLog(err)));
         return;
       }
-      const { voiceSessionId } = preparedVoiceSession;
+      const { voiceSessionId, message } = preparedVoiceSession;
 
       const onRunStarted = async (
         runId: string,
@@ -338,12 +337,6 @@ export const talkClientHandlers: GatewayRequestHandlers = {
       const result = await (async (): Promise<
         { ok: true; runId: string; idempotencyKey: string } | { ok: false; error: ErrorShape }
       > => {
-        let message: string;
-        try {
-          message = buildRealtimeVoiceAgentConsultChatMessage(params.args ?? {});
-        } catch (err) {
-          return { ok: false, error: errorShape(ErrorCodes.INVALID_REQUEST, formatForLog(err)) };
-        }
         const normalizedTalk = request.context.getRuntimeConfig().talk;
         const authority = resolveTalkAgentConsultAuthority(
           request.client?.connect?.scopes,

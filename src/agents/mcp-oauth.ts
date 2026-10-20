@@ -232,11 +232,6 @@ export async function recordMcpOAuthAuthorizationRequired(params: {
   return await withMcpOAuthLease(
     storeKey,
     async (lease, context) => {
-      const store = await readMcpOAuthStore(storeKey, context);
-      await lease.assertOwned();
-      if (store.tokens?.access_token !== params.rejectedAccessToken) {
-        return false;
-      }
       const result = await mutateMcpOAuthStore(
         { storeKey, lease, context },
         {

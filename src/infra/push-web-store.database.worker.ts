@@ -13,7 +13,6 @@ import {
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "./kysely-sync.js";
-import { normalizeWebPushDevicePreferences } from "./push-web-preferences.js";
 import { boundWebPushSubscriptionsAdmission } from "./push-web-store.cache.js";
 import {
   WEB_PUSH_VAPID_STATE_KEY,
@@ -164,7 +163,7 @@ export function setWebPushSubscriptionPreferencesInDatabase(
       getNodeSqliteKysely<WebPushDatabase>(db)
         .updateTable("web_push_subscriptions")
         .set({
-          preferences_json: JSON.stringify(normalizeWebPushDevicePreferences(params.preferences)),
+          preferences_json: JSON.stringify(params.preferences),
           updated_at_ms: Date.now(),
         })
         .where("endpoint_hash", "=", hashWebPushEndpoint(params.endpoint))

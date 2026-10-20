@@ -124,7 +124,7 @@ function candidateDirsFromArgv1(argv1: string): string[] {
   const cacheKey = path.resolve(argv1);
   const cached = argv1CandidateCache.get(cacheKey);
   if (cached) {
-    return [...cached];
+    return cached;
   }
   const normalized = cacheKey;
   const candidates: string[] = [];
@@ -151,7 +151,7 @@ function candidateDirsFromArgv1(argv1: string): string[] {
   }
   const deduped = dedupeCandidates(candidates);
   argv1CandidateCache.set(cacheKey, deduped);
-  return [...deduped];
+  return deduped;
 }
 
 function preparePackageRootSearch(opts: PackageRootOptions, preserveInventory: boolean) {

@@ -40,7 +40,7 @@ export async function resolveNodeBootstrapRuntimeChunks(
         : [];
     }),
   );
-  const sourceFacts = new Map<string, { sha256: string; imports: PackageDistImport[] }>();
+  const sourceFacts = new Map<string, { imports: PackageDistImport[] }>();
   if (privateChunks.size === 0) {
     return { files, sourceFacts };
   }
@@ -67,7 +67,7 @@ export async function resolveNodeBootstrapRuntimeChunks(
       files: [file],
       readText: () => source,
     });
-    sourceFacts.set(file, { sha256, imports: fileImports });
+    sourceFacts.set(file, { imports: fileImports });
     const dependencies = new Set(fileImports.map(({ importedPath }) => importedPath));
     const resolveImport = createRequire(path.join(packageRoot, file)).resolve;
     for (const specifier of collectPackageRootImports(source)) {

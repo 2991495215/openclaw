@@ -427,6 +427,7 @@ export function updateCurrentConversationBindingRecordInDatabase(
   return { previous, current };
 }
 
+/** One statement selects higher-priority absences and fallback rows from the same snapshot. */
 export function inspectCurrentConversationBindingRecordsInDatabase(
   db: EngineConnection,
   conversations: readonly ConversationRef[],
@@ -444,14 +445,6 @@ export function inspectCurrentConversationBindingRecordInDatabase(
   now = Date.now(),
 ): SessionBindingRecord | null {
   return inspectCurrentConversationBindingRecordsInDatabase(db, [conversation], now)[0] ?? null;
-}
-
-/** One statement selects higher-priority absences and fallback rows from the same snapshot. */
-export function readCurrentConversationBindingSelectionInDatabase(
-  db: EngineConnection,
-  conversations: readonly ConversationRef[],
-): Array<SessionBindingRecord | null> {
-  return inspectCurrentConversationBindingRecordsInDatabase(db, conversations);
 }
 
 export function readCurrentConversationBindingResolutionInDatabase(

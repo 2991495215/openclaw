@@ -406,12 +406,6 @@ export async function runBeforeToolCallHook(args: {
       params,
     };
   } finally {
-    try {
-      releaseArgumentChurnPolicyWait?.();
-    } catch (err) {
-      log.warn(
-        `before_tool_call policy-wait release failed: tool=${toolName} error=${String(err)}`,
-      );
-    }
+    releaseArgumentChurnPolicyWait?.();
   }
 }

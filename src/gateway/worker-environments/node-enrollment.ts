@@ -77,8 +77,6 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
     WorkerNodeRuntimePreparation | WorkerNodeEnrollment,
     () => void
   >();
-  const commandRunner = async (argv: string[], runOptions: { timeoutMs: number }) =>
-    await runCommandWithTimeout(argv, { timeoutMs: runOptions.timeoutMs });
 
   const prepare = async (record: WorkerEnvironmentRecord, enrollmentSignal?: AbortSignal) => {
     const preparationSignal = enrollmentSignal ?? signal;
@@ -90,7 +88,7 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
       publicUrl: resolveConfiguredPairingPublicUrl(config),
       publicOriginPreference: "prefer",
       networkInterfaces: os.networkInterfaces,
-      runCommandWithTimeout: commandRunner,
+      runCommandWithTimeout,
     });
     if (!url.url) {
       throw new Error(url.error ?? "Cloud node bootstrap cannot resolve the Gateway address");
@@ -288,7 +286,7 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
             bootstrapProfile: CLOUD_WORKER_PAIRING_SETUP_BOOTSTRAP_PROFILE,
             issuedBootstrap: issued,
             localTlsFingerprint: options.getLocalTlsFingerprint?.(),
-            runCommandWithTimeout: commandRunner,
+            runCommandWithTimeout,
           });
           requireCurrent();
           if (!resolved.ok) {

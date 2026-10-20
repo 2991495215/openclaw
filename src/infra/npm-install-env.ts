@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { safeStatSync } from "@openclaw/fs-safe/path";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { resolveRuntimeScriptEnv } from "../../cli-invocation.mjs";
 import { resolveSafeChildProcessInvocation } from "../process/windows-command.js";
@@ -176,17 +175,13 @@ function readNpmGlobalConfigPath(env: NodeJS.ProcessEnv, scope: NpmConfigScope):
 }
 
 function buildNpmGlobalConfigPathCacheKey(env: NodeJS.ProcessEnv, scope: NpmConfigScope): string {
-  const configFiles = resolveNpmConfigFiles(env, scope);
   return JSON.stringify({
     cwd: scope.npmConfigCwd?.trim() || tryProcessCwd() || "",
     prefix: scope.npmConfigPrefix?.trim() ?? "",
     env: Object.fromEntries(
       NPM_GLOBAL_CONFIG_PATH_CACHE_ENV_KEYS.map((key) => [key, env[key] ?? process.env[key] ?? ""]),
     ),
-    configFiles: configFiles.map((filePath) => {
-      const stat = safeStatSync(filePath);
-      return { path: filePath, signature: stat ? `${stat.mtimeMs}:${stat.size}` : "missing" };
-    }),
+    configFiles: resolveNpmConfigFiles(env, scope),
   });
 }
 

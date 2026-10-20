@@ -580,11 +580,9 @@ export async function authorizeGatewayRequestPreDispatch(params: {
       params.markSessionSubscribePhase?.("accessFacts");
       signal?.throwIfAborted();
       if (sessionMutation.error) {
-        workerSessionMutation.authorization?.release?.();
         return { error: sessionMutation.error };
       }
       if (params.consumeSessionTurn) {
-        sessionMutation.authorization?.release?.();
         return { error: null, sessionScope: scopeAuthorization.sessionScope };
       }
       let sessionAccessAuthority: GatewaySessionAccessAuthority | undefined;
@@ -608,7 +606,6 @@ export async function authorizeGatewayRequestPreDispatch(params: {
           params.expectedProfileBinding?.assertCurrent();
           preparedAccess.assertPreparationCurrent();
         } catch (error) {
-          workerSessionMutation.authorization?.release?.();
           sessionAccessAuthority?.release();
           if (error instanceof SessionMutationAuthorizationChangedError) {
             return { error: error.error };
@@ -623,7 +620,6 @@ export async function authorizeGatewayRequestPreDispatch(params: {
             params.client.connId,
           )))
       ) {
-        workerSessionMutation.authorization?.release?.();
         return {
           error: errorShape(
             ErrorCodes.UNAVAILABLE,
@@ -637,7 +633,6 @@ export async function authorizeGatewayRequestPreDispatch(params: {
       }
       const error = authorizeCurrent(assertSessionInvocationCurrent, () => {
         sessionAccessAuthority?.release();
-        workerSessionMutation.authorization?.release?.();
       });
       if (error) {
         return { error };

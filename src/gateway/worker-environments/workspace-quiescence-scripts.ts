@@ -300,10 +300,6 @@ if (validationMode === "final" && !sharedHost) {
   input.processes = [...frozen].map(([pid, start]) => ({ pid, start }));
 }
 refreshLease(input.processes);
-const confirmed = JSON.parse(fs.readFileSync(leasePath, "utf8"));
-if (confirmed.nonce !== nonce || confirmed.expiresAtMs !== input.expiresAtMs) {
-  throw new Error("workspace quiescence renewal was not durable");
-}
 return "renewed " + nonce + "\n";
 }
 function resumeLeaseProcesses(input, ownedWatchdog, waitForExit = false) {

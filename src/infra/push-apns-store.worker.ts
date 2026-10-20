@@ -26,31 +26,6 @@ type ApnsRegistrationDatabase = Pick<
   "apns_registrations" | "apns_registration_tombstones"
 >;
 
-function apnsRegistrationsEqual(left: ApnsRegistration, right: ApnsRegistration): boolean {
-  if (
-    left.nodeId !== right.nodeId ||
-    left.transport !== right.transport ||
-    left.topic !== right.topic ||
-    left.environment !== right.environment ||
-    left.updatedAtMs !== right.updatedAtMs
-  ) {
-    return false;
-  }
-  if (left.transport === "direct" && right.transport === "direct") {
-    return left.token === right.token;
-  }
-  return (
-    left.transport === "relay" &&
-    right.transport === "relay" &&
-    left.relayHandle === right.relayHandle &&
-    left.sendGrant === right.sendGrant &&
-    left.installationId === right.installationId &&
-    left.distribution === right.distribution &&
-    left.relayOrigin === right.relayOrigin &&
-    left.tokenDebugSuffix === right.tokenDebugSuffix
-  );
-}
-
 type RegistrationResult =
   | { status: "pairing-changed" }
   | { status: "registered"; registration: ApnsRegistration };
@@ -118,7 +93,8 @@ export const apnsOperations = {
         const current = readApnsRegistrationFromDatabase(db, nodeId);
         return Boolean(
           current &&
-          apnsRegistrationsEqual(current, registration) &&
+          current.nodeId === registration.nodeId &&
+          current.updatedAtMs === registration.updatedAtMs &&
           clearApnsRegistrationFromDatabase(db, nodeId, nowMs),
         );
       },

@@ -18,12 +18,10 @@ export class SandboxRuntimeRetiredError extends Error {
 /** Model-independent sandbox setup failure that must not consume model fallbacks. */
 class SandboxProvisioningError extends Error {
   readonly code = SANDBOX_PROVISIONING_ERROR_CODE;
-  readonly backendId: string;
 
-  constructor(message: string, params: { backendId: string; cause?: unknown }) {
+  constructor(message: string, params: { cause?: unknown }) {
     super(message, { cause: params.cause });
     this.name = "SandboxProvisioningError";
-    this.backendId = params.backendId;
   }
 }
 
@@ -36,7 +34,7 @@ export function toSandboxProvisioningError(error: unknown, backendId: string) {
   const message = isTrustedSecretSurfaceUnavailableError(error)
     ? `${detail} Fix the referenced secret, run \`${SECRET_DEGRADATION_RETRY_HINT}\`, then retry.`
     : detail;
-  return new SandboxProvisioningError(message, { backendId, cause: error });
+  return new SandboxProvisioningError(message, { cause: error });
 }
 
 /** Recognize the provisioning marker through the shared error-wrapper graph. */

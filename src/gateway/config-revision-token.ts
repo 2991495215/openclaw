@@ -39,9 +39,6 @@ function projectRevision(key: Uint8Array, domain: string, hash: string): string 
 }
 
 function createGatewayConfigRevisionProjector(key: Uint8Array): GatewayConfigRevisionProjector {
-  if (key.byteLength !== CONFIG_REVISION_KEY_BYTES) {
-    throw new Error("config revision key must be 32 bytes");
-  }
   return {
     projectRawHash: (hash) => projectRevision(key, CONFIG_REVISION_RAW_DOMAIN, hash),
     projectResolvedHash: (hash) => projectRevision(key, CONFIG_REVISION_RESOLVED_DOMAIN, hash),
