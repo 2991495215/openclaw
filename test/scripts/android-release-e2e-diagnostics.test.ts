@@ -365,6 +365,14 @@ describe("Android release public failure diagnostics", () => {
     ],
     ["[123.45] Kernel panic - not syncing: private", { event: "kernel-panic" }],
     ["Out of memory: Killed process 540 (adbd) private", { event: "guest-out-of-memory" }],
+    [
+      "adbd: page allocation failure: order:5, mode:0x40cc0(GFP_KERNEL), private",
+      { event: "guest-page-allocation-failure", order: 5, mode: "0x40cc0" },
+    ],
+    [
+      "WARNING: private failed to allocate skb on vsock socket with sk_refcnt == 0",
+      { event: "guest-vsock-owner-failure" },
+    ],
     ["libc: FORTIFY: private", { event: "native-abort-check", reason: "fortify" }],
     ["DEBUG: Abort message: 'fdsan: private'", { event: "native-abort-check", reason: "fdsan" }],
     ["libc: Scudo ERROR: private", { event: "native-abort-check", reason: "scudo" }],

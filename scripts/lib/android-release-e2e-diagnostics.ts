@@ -359,6 +359,17 @@ export function androidReleaseConsoleLineFacts(line: string) {
   if (/\b(?:Out of memory:|Killed process \d+ \(adbd\))/u.test(line)) {
     return { event: "guest-out-of-memory" };
   }
+  const allocation = /\bpage allocation failure: order:(\d+), mode:(0x[a-f0-9]+)/u.exec(line);
+  if (allocation) {
+    return {
+      event: "guest-page-allocation-failure",
+      order: Number(allocation[1]),
+      mode: allocation[2],
+    };
+  }
+  if (line.includes("failed to allocate skb on vsock socket with sk_refcnt == 0")) {
+    return { event: "guest-vsock-owner-failure" };
+  }
   const abortKind = [
     ["fortify", /\bFORTIFY:/u],
     ["fdsan", /\bfdsan:/u],

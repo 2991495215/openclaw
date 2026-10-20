@@ -17,6 +17,10 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
+  androidAdbKernelCapture,
+  androidAdbKernelWrites,
+} from "./lib/android-adb-kernel-diagnostics.ts";
+import {
   androidReleaseAdbBridgeLineFacts,
   androidReleaseAdbGuestSocketFacts,
   androidReleaseAdbServerLineFacts,
@@ -74,9 +78,15 @@ const proof = {
 function record(kind: string, facts: Record<string, unknown>) {
   events.push({ kind, stage, elapsedMs: Date.now() - started, ...facts });
 }
-async function command(bin: string, args: string[], timeout = 20_000, input?: string) {
+async function command(
+  bin: string,
+  args: string[],
+  timeout = 20_000,
+  input?: string,
+  maxBuffer = 1024 * 1024,
+) {
   try {
-    const pending = run(bin, args, { env, timeout, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 });
+    const pending = run(bin, args, { env, timeout, killSignal: "SIGKILL", maxBuffer });
     pending.child.stdin?.end(input);
     return await pending;
   } catch (error) {
@@ -398,8 +408,97 @@ type GuestTrace = {
   started: boolean;
   tracerPid?: number;
 };
-const guestRoot = (serial: string, script: string) =>
-  command(adb, ["-s", serial, "shell", "su", "0", "sh"], 20_000, script);
+type KernelTrace = { guest: GuestTrace; tid: number; fd: number; started: boolean };
+const kernelHelper = "/data/local/tmp/openclaw-adb-kernel-probe.sh";
+async function kernelCommand(trace: KernelTrace, action: "start" | "read" | "stop" | "cleanup") {
+  try {
+    const result = await guestRoot(
+      trace.guest.serial,
+      `sh ${kernelHelper} ${action} ${trace.tid} ${trace.fd}\n`,
+      // The bounded binary trace ring expands when rendered as private text.
+      4 * 1024 * 1024,
+    );
+    return { ...androidAdbKernelCapture(result.stdout, 1), completed: true };
+  } catch (error) {
+    // Preserve sanitized evidence even if a later sampler or cleanup check fails.
+    const failure =
+      error instanceof Error ? (error.cause as { stdout?: string } | undefined) : undefined;
+    return { ...androidAdbKernelCapture(failure?.stdout ?? "", 1), completed: false };
+  }
+}
+async function startKernelTrace(trace: KernelTrace) {
+  await command(adb, [
+    "-s",
+    trace.guest.serial,
+    "push",
+    path.resolve("scripts/android-adb-kernel-probe.sh"),
+    kernelHelper,
+  ]);
+  trace.started = true;
+  const initial = await kernelCommand(trace, "start");
+  record("guest-kernel-start", {
+    cycle: trace.guest.cycle,
+    tid: trace.tid,
+    fd: trace.fd,
+    ...initial,
+  });
+  if (!initial.completed || !initial.ready || initial.identity.arch !== "x86_64") {
+    throw new Error("guest-kernel-prerequisite-failed");
+  }
+  await command(adb, ["-s", trace.guest.serial, "shell", "printf", "kernel-probe-ready"]);
+  const captured = await kernelCommand(trace, "read");
+  const writes = androidAdbKernelWrites(captured.events, trace.tid, trace.fd);
+  const readyWrite = writes.find(
+    (write) =>
+      write.events.some((event) => event.event === "alloc_enter" && event.bytes > 0) &&
+      write.events.some((event) => event.event === "alloc_return" && !event.isNull) &&
+      write.events.some((event) => event.event === "packet_enter" && event.bytes > 0) &&
+      write.events.some((event) => event.event === "packet_return" && !event.isNull) &&
+      write.events.some((event) => event.event === "copy_enter" && event.bytes > 0) &&
+      write.events.some((event) => event.event === "copy_return" && event.copiedBytes > 0) &&
+      write.result > 0,
+  );
+  record("guest-kernel-ready", {
+    cycle: trace.guest.cycle,
+    traced: Boolean(readyWrite),
+    write: readyWrite,
+  });
+  if (!captured.completed || !readyWrite) {
+    throw new Error("guest-kernel-coverage-unavailable");
+  }
+}
+async function stopKernelTrace(trace: KernelTrace) {
+  if (!trace.started) {
+    return;
+  }
+  try {
+    const captured = await kernelCommand(trace, "stop");
+    const writes = androidAdbKernelWrites(captured.events, trace.tid, trace.fd);
+    record("guest-kernel-capture", {
+      cycle: trace.guest.cycle,
+      tid: trace.tid,
+      fd: trace.fd,
+      ...captured,
+      events: undefined,
+      records: captured.events.length,
+      writes: writes.length,
+      failedWrites: writes.filter((write) => write.result < 0),
+      tail: captured.events.slice(-80),
+    });
+    if (!captured.completed) {
+      throw new Error("guest-kernel-capture-incomplete");
+    }
+  } finally {
+    const cleanup = await kernelCommand(trace, "cleanup");
+    const cleaned = cleanup.completed && cleanup.cleaned;
+    record("guest-kernel-cleanup", { cycle: trace.guest.cycle, cleaned });
+    if (!cleaned) {
+      proof.cleanupConfirmed = false;
+    }
+  }
+}
+const guestRoot = (serial: string, script: string, maxBuffer?: number) =>
+  command(adb, ["-s", serial, "shell", "su", "0", "sh"], 20_000, script, maxBuffer);
 async function prepareGuestTrace(serial: string, cycle: number): Promise<GuestTrace> {
   const uid = await command(adb, ["-s", serial, "shell", "su", "0", "id", "-u"]);
   const version = await command(adb, ["-s", serial, "shell", "/system/bin/strace", "-V"]);
@@ -596,6 +695,7 @@ try {
     const logcat = path.join(root, `${cycle}-logcat.private.log`);
     const services: Owned[] = [];
     let guest: GuestTrace | undefined;
+    let kernelTrace: KernelTrace | undefined;
     let sockets: Awaited<ReturnType<typeof transportSockets>> = [];
     const tracePrefix = (side: string) => path.join(root, `${cycle}-${side}-syscalls.private`);
     try {
@@ -835,13 +935,27 @@ try {
       if (!traced) {
         throw new Error("adb-syscall-trace-unavailable");
       }
-      const guestTraced = (await guestSyscallFacts(guest, true)).some(({ facts }) =>
-        facts.some((fact) => fact.result > 0),
-      );
+      const guestSample = await guestSyscallFacts(guest, true);
+      const guestTraced = guestSample.some(({ facts }) => facts.some((fact) => fact.result > 0));
       record("guest-trace-ready", { cycle, traced: guestTraced });
       if (!guestTraced) {
         throw new Error("guest-syscall-trace-unavailable");
       }
+      const writers = guestSample.flatMap(({ fd, facts }) =>
+        [
+          ...new Set(
+            facts
+              .filter((fact) => fact.operation === "write" && fact.result > 0)
+              .map((fact) => fact.tid),
+          ),
+        ].map((tid) => ({ fd, tid })),
+      );
+      if (writers.length !== 1) {
+        throw new Error("guest-kernel-writer-unavailable");
+      }
+      kernelTrace = { guest, ...writers[0]!, started: false };
+      stage = "kernel-trace";
+      await startKernelTrace(kernelTrace);
       stage = "pull";
       for (let iteration = 1; iteration <= 100; iteration++) {
         const destination = path.join(root, "pulled");
@@ -895,6 +1009,9 @@ try {
         "guest-transport-socket-unavailable",
         "guest-trace-attach-failed",
         "guest-syscall-trace-unavailable",
+        "guest-kernel-writer-unavailable",
+        "guest-kernel-prerequisite-failed",
+        "guest-kernel-coverage-unavailable",
       ];
       record("cycle-failed", {
         cycle,
@@ -909,6 +1026,12 @@ try {
       throw new Error("cycle-failed", { cause: error });
     } finally {
       await adbServerFacts(cycle, "before-cleanup");
+      if (kernelTrace) {
+        await stopKernelTrace(kernelTrace).catch(() => {
+          record("guest-kernel-capture-failed", { cycle });
+          proof.cleanupConfirmed = false;
+        });
+      }
       if (guest) {
         await stopGuestTrace(guest).catch(() => {
           record("guest-trace-capture-failed", { cycle });
