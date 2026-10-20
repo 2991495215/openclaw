@@ -6,7 +6,12 @@ import {
   assertNativeUiPolicy,
 } from "../../scripts/e2e/lib/upgrade-survivor/native-plugin-ui.mjs";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
-import { readJson, successSummary, writeJson } from "./upgrade-survivor-shard.test-support.js";
+import {
+  backupRollbackProof,
+  readJson,
+  successSummary,
+  writeJson,
+} from "./upgrade-survivor-shard.test-support.js";
 
 const id = "openclaw-survivor-native-ui";
 const revision = "a".repeat(64);
@@ -65,7 +70,12 @@ function proof(policy: string, eligible: boolean) {
     eligible,
     pluginSettingsPreserved: true,
     operatorDataPreserved: true,
-    installed: { archiveSha256: "b".repeat(64), files: { "index.mjs": "c".repeat(64) } },
+    installed: {
+      archiveSha256: "b".repeat(64),
+      files: { "index.mjs": "c".repeat(64) },
+      packageRoot: "/private/native-ui-fixture/package",
+    },
+    plugin: { config: { label: "private-native-ui-fixture-setting" } },
     assets: eligible
       ? [
           { status: 200, authenticated: true, sha256: "d".repeat(64) },
@@ -93,36 +103,7 @@ function publish(overrides: Record<string, unknown>) {
   writeJson(
     path.join(root, "summary.json"),
     successSummary("2026.10.5", "2026.10.20", {
-      // Independent backup contract prerequisite for the existing operator-state publisher.
-      backupRollback: {
-        status: "passed",
-        baselineVersion: "2026.10.5",
-        candidateVersion: "2026.10.20",
-        runtime: {
-          version: "2026.10.5",
-          schemaVersions: { state: 13, agent: 1 },
-          manifestSha256: "f".repeat(64),
-          entrySha256: "f".repeat(64),
-        },
-        candidateSchemaVersions: { state: 13, agent: 1 },
-        archive: { sha256: "f".repeat(64) },
-        before: {
-          files: [],
-          databases: [
-            {
-              kind: "agent",
-              agentId: "main",
-              present: true,
-              userVersion: 1,
-              contentVersion: 1,
-              sessions: [{ key: "synthetic", sessionId: "synthetic" }],
-              tables: [{ table: "transcript_events", rows: 1, sha256: "f".repeat(64) }],
-            },
-          ],
-        },
-        preflights: [{ agentId: "main", status: "exact", foundVersion: 1, targetVersion: 1 }],
-        sessionReads: [{ agentId: "main", count: 1 }],
-      },
+      backupRollback: backupRollbackProof("2026.10.5", "2026.10.20"),
       phases: [
         {
           phase: "prepare-native-plugin-ui-upgrade",
@@ -137,15 +118,16 @@ function publish(overrides: Record<string, unknown>) {
   return readJson(path.join(output, "summary.json"));
 }
 
-it("publishes both actual baseline-to-candidate policy witnesses without raw plugin state", () => {
+it("projects synthetic policy receipts without publishing raw plugin state", () => {
   const result = publish({
     nativePluginUi: proof("omitted", true),
     nativePluginUiOptOut: proof("false", false),
   });
-  expect(result.nativePluginUi).toMatchObject({
+  expect(result.nativePluginUi).toEqual({
     status: "passed",
     baselineVersion: "2026.10.5",
     candidateVersion: "2026.10.20",
+    fixtureArchiveSha256: "b".repeat(64),
     omittedBecameEligible: true,
     explicitFalsePreserved: true,
     authenticatedAssetsServed: true,
@@ -154,7 +136,7 @@ it("publishes both actual baseline-to-candidate policy witnesses without raw plu
     pluginSettingsPreserved: true,
     operatorDataPreserved: true,
   });
-  expect(JSON.stringify(result.nativePluginUi)).not.toContain("packageRoot");
+  expect(JSON.stringify(result)).not.toContain("private-native-ui-fixture");
 });
 
 it("cannot publish a generic green or an unqualified opt-out as feature upgrade proof", () => {

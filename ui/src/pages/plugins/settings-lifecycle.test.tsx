@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { flush } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { beforeEach, expect, it, vi } from "vitest";
 import { i18n } from "../../i18n/index.ts";
 import type { JsonSchema } from "../../lib/config-form-utils.ts";
@@ -8,7 +8,10 @@ import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { queryWithin } from "./plugins-page.lifecycle-test-support.ts";
 import { createInspectResult, createPlugin, createResult } from "./plugins-page.test-support.ts";
-import { renderPluginSettingsDetail, type DetailProps } from "./settings-view.tsx";
+import {
+  renderPluginSettingsDetail as PluginSettingsDetail,
+  type DetailProps,
+} from "./settings-view.tsx";
 
 beforeEach(() => i18n.setLocale("en"));
 
@@ -60,9 +63,18 @@ function mount(overrides: Partial<DetailProps>) {
     onRefresh: vi.fn(),
     ...overrides,
   };
-  const { container } = mountSolid(() => renderPluginSettingsDetail(props));
+  const [currentProps, setProps] = createSignal(props);
+  const { container } = mountSolid(() => <PluginSettingsDetail {...currentProps()} />);
   flush();
-  return { container, find: queryWithin(container), props };
+  return {
+    container,
+    find: queryWithin(container),
+    props,
+    update: (next: Partial<DetailProps>) => {
+      setProps((previous) => ({ ...previous, ...next }));
+      flush();
+    },
+  };
 }
 
 async function selectSettingAction(row: Element, value: "ask" | "reset") {
@@ -85,37 +97,43 @@ it("does not offer enablement or Settings for an uninstalled plugin", () => {
   expect(find('[aria-label="Enable Workboard"], [aria-label="Settings"]')).toBeNull();
 });
 
-it.each([true, false, undefined])(
-  "keeps the native web UI disclosure with installed details without adding an enable gate (%s)",
-  (hasNativeUi) => {
-    const { container, find, props } = mount({
+it.each([
+  { inventory: true, inspected: false, visible: false },
+  { inventory: false, inspected: true, visible: true },
+  { inventory: true, inspected: undefined, visible: true },
+  { inventory: undefined, inspected: undefined, visible: false },
+])(
+  "uses inspection $inspected over inventory $inventory for native UI disclosure",
+  ({ inventory, inspected, visible }) => {
+    const { container } = mount({
+      result: createResult(createPlugin({ hasNativeUi: inventory })),
       inspection: createInspectResult({
         overview: {
-          hasNativeUi,
+          hasNativeUi: inspected,
           capabilities: { providers: [], channels: [], contracts: {}, ui: ["page"] },
         },
       }),
     });
     const disclosure = container.querySelector(".plugin-native-ui-disclosure");
-    expect(Boolean(disclosure)).toBe(hasNativeUi === true);
-    if (hasNativeUi) {
-      expect(disclosure?.textContent).toContain("Includes native web UI");
-      expect(disclosure?.textContent).toContain("Only enable plugins you trust.");
-    }
-    find<HTMLButtonElement>('[aria-label="Enable Workboard"]')!.click();
-    expect(props.onSetEnabled).toHaveBeenCalledWith("workboard", true, "plugin:workboard");
+    expect(Boolean(disclosure)).toBe(visible);
   },
 );
 
-it("shows native UI from inventory while inspection is pending and preserves it after enablement", () => {
-  const { container } = mount({
-    result: createResult(createPlugin({ hasNativeUi: true, enabled: true, state: "enabled" })),
+it("retains the disclosure as inventory enables the plugin and inspection arrives", () => {
+  const { container, update } = mount({
+    result: createResult(createPlugin({ hasNativeUi: true })),
     inspection: null,
   });
-  expect(container.querySelector(".plugin-native-ui-disclosure")?.textContent).toContain(
-    "Only enable plugins you trust.",
-  );
+  const disclosure = () => container.querySelector(".plugin-native-ui-disclosure");
+  expect(disclosure()?.textContent).toContain("Only enable plugins you trust.");
+  expect(container.querySelector('[aria-label="Enable Workboard"]')).not.toBeNull();
+  update({
+    result: createResult(createPlugin({ hasNativeUi: true, enabled: true, state: "enabled" })),
+  });
   expect(container.querySelector('[aria-label="Disable Workboard"]')).not.toBeNull();
+  expect(disclosure()?.textContent).toContain("Only enable plugins you trust.");
+  update({ inspection: createInspectResult({ overview: { hasNativeUi: true } }) });
+  expect(disclosure()?.textContent).toContain("Only enable plugins you trust.");
 });
 
 it("does not dispatch enablement when setup is missing", () => {

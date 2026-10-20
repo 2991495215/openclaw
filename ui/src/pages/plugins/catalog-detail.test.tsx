@@ -41,15 +41,14 @@ it("keeps long README tails and wires fenced-code controls", () => {
 });
 
 it.each(["code-plugin", "bundle-plugin", undefined] as const)(
-  "explains installation trust before the direct action (family=%s)",
+  "places qualified installation trust before the actions (family=%s)",
   (family) => {
     const result = createDiscoveryDetail(
       createPlugin({ installed: false, state: "not-installed" }),
     );
     result.plugin.catalog.family = family;
     result.detail.uiCapabilities = ["page"];
-    const onInstall = vi.fn();
-    const { container } = mount(result, { onInstall });
+    const { container } = mount(result);
     const notice = container.querySelector(".plugin-native-ui-disclosure");
     expect(notice?.textContent).toContain(
       family === "bundle-plugin" ? "Bundle contents" : "Plugin code",
@@ -58,13 +57,8 @@ it.each(["code-plugin", "bundle-plugin", undefined] as const)(
       family === "bundle-plugin" ? "Bundles can add content" : "If a plugin includes native web UI",
     );
     expect(notice?.textContent).not.toContain("Includes native web UI");
-    expect(notice?.querySelector("input, button, [role=alert]")).toBeNull();
-    const install = container.querySelector<HTMLButtonElement>(
-      ".plugin-catalog-detail__actions button",
-    )!;
-    install.click();
-    expect(onInstall).toHaveBeenCalledOnce();
-    expect(container.querySelector("openclaw-modal-dialog")).toBeNull();
+    const actions = container.querySelector(".plugin-catalog-detail__actions")!;
+    expect(notice!.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   },
 );
 

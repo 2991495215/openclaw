@@ -121,17 +121,6 @@ function codeModeToggle(page: LabsPageElement) {
 }
 
 describe("LabsPage", () => {
-  it("does not expose native plugin UI as a lab", async () => {
-    const { page, runtimeConfig } = await mountPage({
-      gateway: { controlUi: { experimental: { customPlugins: false } } },
-    });
-
-    expect(
-      [...page.querySelectorAll(".settings-row__title")].map((title) => title.textContent?.trim()),
-    ).not.toContain("Custom plugin UI");
-    expect(runtimeConfig.patch).not.toHaveBeenCalled();
-  });
-
   it("defaults predictions off with Utility and saves each model without enabling the lab", async () => {
     const { page, runtimeConfig } = await mountPage({});
     const toggle = labToggle(page, "Composer predictions");

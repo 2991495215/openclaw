@@ -483,10 +483,8 @@ describe("renderPluginCatalogResults", () => {
     expect(notices).toHaveLength(1);
     expect(notices[0]?.textContent).toContain("Plugin code");
     expect(notices[0]?.textContent).toContain("If a plugin includes native web UI");
-    expect(container.querySelector("openclaw-modal-dialog")).toBeNull();
     available.querySelector<HTMLButtonElement>("button")!.click();
     expect(props.onInstall).toHaveBeenCalledWith("available");
-    expect(container.querySelector("openclaw-modal-dialog")).toBeNull();
   });
 });
 

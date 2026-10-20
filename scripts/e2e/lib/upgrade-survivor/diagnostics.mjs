@@ -1774,8 +1774,10 @@ function publishedNativePluginUi(snapshot, sanitize) {
     explicitFalsePreserved: true,
     authenticatedAssetsServed: true,
     unauthenticatedAssetsDenied: true,
+    // Cold-start smoke proof; warm cached-asset policy enforcement has its own Gateway test.
     optedOutAssetsDenied: true,
     pluginSettingsPreserved: true,
+    // The fixture retains a state-directory sentinel, not a plugin storage-API round trip.
     operatorDataPreserved: true,
   };
 }

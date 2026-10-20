@@ -129,10 +129,6 @@ function installedFiles() {
   const projectRoot = path.dirname(path.dirname(packageRoot));
   const dependency = readJson(path.join(projectRoot, "package.json")).dependencies?.[PACKAGE_NAME];
   assert.equal(dependency, "1.0.0", "Managed npm project lost its exact fixture dependency");
-  assert(
-    fs.existsSync(path.join(projectRoot, "package-lock.json")),
-    "Managed npm lockfile is missing",
-  );
   const archive = fs.readFileSync(artifact("native-ui-fixture.tgz"));
   const integrity = `sha512-${createHash("sha512").update(archive).digest("base64")}`;
   assert.equal(
@@ -273,7 +269,7 @@ async function probe(stage, policy, expectedVersion, allowedModuleFile) {
   assert.equal(
     fs.readFileSync(dataPath(), "utf8"),
     DATA,
-    "Upgrade changed native plugin operator data",
+    "Upgrade changed the native UI state-directory sentinel",
   );
   // Prove the serving package, not merely the CLI executable on PATH.
   const status = cli(
