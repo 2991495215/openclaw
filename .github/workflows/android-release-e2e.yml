@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      # Temporary controller: the app and diagnostic harness stay at the first probe's commit.
-      TARGET_SHA: ca2811690e6ff2048e83ade785ddffdc5b011267
+      # Temporary controller: pin the reviewed diagnostic candidate independently of this workflow.
+      TARGET_SHA: 6feaf9806c76c129b158d05ee68b38ad458c5d64
     steps:
       - name: Initialize failure proof and validate target
         shell: bash
@@ -72,7 +72,7 @@ jobs:
           install-bun: "false"
           cache-mode: "off"
 
-      - name: Bind frozen Gateway selection to unchanged diagnostic source
+      - name: Bind frozen Gateway selection to diagnostic source
         shell: bash
         run: |
           set -euo pipefail
