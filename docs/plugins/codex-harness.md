@@ -15,6 +15,15 @@ native compaction, and app-server execution. OpenClaw still owns chat
 channels, session files, model selection, OpenClaw dynamic tools, approvals,
 media delivery, and the visible transcript mirror.
 
+When a remote managed thread has a settled failed turn and cannot unload its old
+configuration, OpenClaw can continue in a full-history native fork. This requires
+unchanged inherited tool and authority fingerprints and verified complete history,
+including recorded tool results, before replacing the exact session binding.
+Current configuration and tool attestation still apply. Ring-zero, native-owned, supervised,
+or unverifiable threads do not use this recovery path. An unconfirmed
+fork preserves the original binding and is never converted into an empty start.
+This lifecycle recovery does not repair missing native inference credentials.
+
 ## Shared output projection
 
 Codex uses the shared native harness projection owners for bounded tool output,

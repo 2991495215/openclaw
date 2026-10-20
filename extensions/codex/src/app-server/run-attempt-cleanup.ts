@@ -8,6 +8,7 @@ import type { CodexAttemptResources } from "./run-attempt-resources.js";
 import type { prepareCodexAttemptTurnRequest } from "./run-attempt-turn-request.js";
 import type { CodexAttemptTurnState } from "./run-attempt-turn-state.js";
 import { clearCodexBindingForClient } from "./session-binding.js";
+import { clearCodexAcceptedTurn } from "./thread-orphan-recovery.js";
 import {
   isSameCodexAppServerThreadOwner,
   withExclusiveCodexAppServerThread,
@@ -43,6 +44,24 @@ export async function cleanupCodexAttempt(
   } = lifecycle;
   const { codexModelCallDiagnostics } = requestRuntime;
   const { activeTurnId, abortListener, handle, freezeRunTerminalOutcome } = activeTurn;
+  // Recovery owns a replacement lease and route until its bounded requests settle.
+  await state.connectionRecovery;
+  for (const controller of turnRuntime.pendingDynamicToolAbortControllers) {
+    controller.abort(new Error("Codex attempt execution finished"));
+  }
+  const nativeTerminal = activeTurn.activeProjector.settlement.terminalReceipt;
+  if (
+    resourceState.thread.turnRecovery?.state === "accepted" &&
+    terminalState.settledTurnStatus &&
+    nativeTerminal?.id === activeTurnId &&
+    nativeTerminal.status === terminalState.settledTurnStatus
+  ) {
+    await runCleanupStep("codex-accepted-turn-receipt", () =>
+      clearCodexAcceptedTurn(resources, activeTurnId),
+    );
+  }
+  // Keep the exact native binding and acceptance receipt after remote failure.
+  // Cold admission can settle that owned turn without losing its history or replaying effects.
   resourceState.releaseInferenceContext?.();
   resourceState.releaseInferenceContext = undefined;
   // Exact-thread cron authority exists only while this creator turn owns the

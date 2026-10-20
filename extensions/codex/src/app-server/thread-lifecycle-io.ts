@@ -1,4 +1,7 @@
-import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
+import {
+  AgentHarnessPreflightError,
+  embeddedAgentLog,
+} from "openclaw/plugin-sdk/agent-harness-runtime";
 import { codexCatalogHomeId } from "../session-catalog-home-id.js";
 import {
   CODEX_APP_SERVER_UNSUBSCRIBE_TIMEOUT_MS,
@@ -45,6 +48,7 @@ import {
   prepareCodexThreadFinalConfigPatch,
   resolveCodexThreadAgentDir,
 } from "./thread-lifecycle-preflight.js";
+import { recordCodexThreadReady } from "./thread-lifecycle-timing.js";
 import type {
   CodexAppServerThreadLifecycleBinding,
   CodexStartOrResumeThreadParams,
@@ -53,35 +57,16 @@ import type {
   CodexThreadResumePreparation,
 } from "./thread-lifecycle-types.js";
 import { resolveCodexAppServerModelProvider } from "./thread-model-selection.js";
+import { recordCodexOrphanTurnOutcome } from "./thread-orphan-recovery.js";
 import { CodexThreadPolicyHandoffError, refreshCodexThreadPolicy } from "./thread-policy.js";
 import { buildThreadResumeParams, buildThreadStartParams } from "./thread-requests.js";
 import { resumeCodexAppServerThread } from "./thread-resume.js";
+import {
+  completeCodexSettledFailureFork,
+  requestCodexSettledFailureFork,
+  prepareCodexSettledFailureFork,
+} from "./thread-settled-failure-fork.js";
 import { hasCodexAppServerSiblingRouteWork } from "./turn-router.js";
-
-function recordCodexThreadReady(
-  params: CodexStartOrResumeThreadParams,
-  context: Pick<CodexResumeThreadContext, "contextEngineBinding" | "lifecycleTiming">,
-  threadId: string,
-  action: "resumed" | "rotated" | "started",
-): void {
-  const { contextEngineBinding, lifecycleTiming } = context;
-  const event = {
-    sessionId: params.params.sessionId,
-    sessionKey: params.params.sessionKey,
-    threadId,
-    action,
-  };
-  if (contextEngineBinding) {
-    embeddedAgentLog.info("codex app-server wrote context-engine thread binding", {
-      ...event,
-      engineId: contextEngineBinding.engineId,
-      epoch: contextEngineBinding.projection?.epoch,
-      fingerprint: contextEngineBinding.projection?.fingerprint,
-    });
-  }
-  lifecycleTiming.mark("thread-ready");
-  lifecycleTiming.logSummary({ runId: params.params.runId, ...event });
-}
 
 export async function resumeExistingCodexThread(
   params: CodexStartOrResumeThreadParams,
@@ -126,6 +111,35 @@ export async function resumeExistingCodexThread(
       resumeBinding.ringZeroConfigFingerprint !== undefined ||
       context.ringZeroActive;
     const sharedEntry = getCurrentSharedClientEntry(params.client);
+    if (
+      configuration.settledSystemError &&
+      params.appServer.start.transport === "websocket" &&
+      !clientBoundThread &&
+      resumeBinding.connectionScope !== "supervision"
+    ) {
+      // Native 0.153.4 cannot unload SystemError for config replacement. A new
+      // socket does not unload a remote writer; retain its complete history in
+      // a checked fork while leaving sibling threads on their existing client.
+      try {
+        return await startFreshCodexThread(params, {
+          ...context,
+          preserveExistingBinding: false,
+          rotatedContextEngineBinding: false,
+          replacementPredecessor: resumeBinding,
+          settledFailureForkSource: resumeBinding,
+        });
+      } catch (error) {
+        if (isCodexAppServerOverloadError(error)) {
+          throw error;
+        }
+        // Neither the stale-binding path nor model fallback may replay an
+        // unconfirmed fork. This existing coordination error stops both owners.
+        throw new AgentHarnessPreflightError(
+          `Codex failed-thread history handoff failed: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
+    }
     if (
       configuration.settledSystemError &&
       !clientBoundThread &&
@@ -259,6 +273,12 @@ export async function resumeExistingCodexThread(
       assertCurrent: assertHandoffCurrent,
       withCurrent: params.authority?.withCurrent,
     });
+    await recordCodexOrphanTurnOutcome(
+      params,
+      resumeBinding,
+      resumeBinding.threadId,
+      assertHandoffCurrent,
+    );
     policyOutcome = "acknowledged";
     assertHandoffCurrent();
     const resumePatch = {
@@ -266,6 +286,7 @@ export async function resumeExistingCodexThread(
       // Keeping its previous client id disables warm reuse after every restart.
       clientId: resolveCodexAppServerClientInstanceId(params.client),
       pendingResumeConfiguration: undefined,
+      ...(resumeBinding.turnRecovery?.state === "settling" ? { turnRecovery: undefined } : {}),
       ...(resumeBinding.agentWorkspaceDeveloperInstructions === undefined &&
       params.agentWorkspaceDeveloperInstructions !== undefined
         ? { agentWorkspaceDeveloperInstructions: params.agentWorkspaceDeveloperInstructions }
@@ -451,6 +472,7 @@ export async function startFreshCodexThread(
     preserveExistingBinding,
     rotatedContextEngineBinding,
     replacementPredecessor,
+    settledFailureForkSource,
   } = context;
   const pluginThreadConfig = params.pluginThreadConfig?.enabled
     ? (prebuiltPluginThreadConfig ??
@@ -458,10 +480,13 @@ export async function startFreshCodexThread(
         params.pluginThreadConfig?.build(),
       )))
     : undefined;
-  const finalConfigPatch = await prepareCodexThreadFinalConfigPatch(
-    params,
-    context.nativeModelInputTools,
-  );
+  const finalConfigPatch =
+    (settledFailureForkSource ? context.prebuiltFinalConfigPatch : undefined) ??
+    (await prepareCodexThreadFinalConfigPatch(
+      params,
+      context.nativeModelInputTools,
+      settledFailureForkSource,
+    ));
   const config = lifecycleTiming.measureSync("merge-thread-config", () =>
     applyCodexNativeSkillIsolation(
       mergeCodexThreadConfigs(
@@ -502,7 +527,26 @@ export async function startFreshCodexThread(
       params.inferenceProviderRoutes,
     );
   };
+  const sourceHistory = settledFailureForkSource
+    ? await prepareCodexSettledFailureFork(
+        params,
+        context,
+        settledFailureForkSource,
+        startParams,
+        pluginThreadConfig,
+        finalConfigPatch,
+        assertInferenceCurrent,
+      )
+    : undefined;
   const threadStartResponse = await lifecycleTiming.measure("thread-start-request", async () => {
+    if (settledFailureForkSource) {
+      return await requestCodexSettledFailureFork(
+        params,
+        settledFailureForkSource.threadId,
+        startParams,
+        assertInferenceCurrent,
+      );
+    }
     try {
       assertCurrent();
       return await params.client.request("thread/start", startParams, {
@@ -547,6 +591,21 @@ export async function startFreshCodexThread(
       assertCurrent,
       withCurrent: params.authority?.withCurrent,
     });
+    await completeCodexSettledFailureFork(
+      params,
+      sourceHistory,
+      response.thread.id,
+      startParams.developerInstructions,
+      assertCurrent,
+    );
+    if (settledFailureForkSource) {
+      await recordCodexOrphanTurnOutcome(
+        params,
+        settledFailureForkSource,
+        response.thread.id,
+        assertCurrent,
+      );
+    }
     assertCurrent();
   } catch (error) {
     return await rejectUncommittedThread(error);
@@ -636,7 +695,7 @@ export async function startFreshCodexThread(
       contextEngineBinding: preserveExistingBinding ? undefined : contextEngineBinding,
     },
     response.thread.id,
-    rotatedContextEngineBinding ? "rotated" : "started",
+    settledFailureForkSource ? "forked" : rotatedContextEngineBinding ? "rotated" : "started",
   );
   return {
     ...startedBinding,
@@ -666,7 +725,7 @@ export async function startFreshCodexThread(
         }
       : {}),
     lifecycle: {
-      action: "started",
+      action: settledFailureForkSource ? "forked" : "started",
       ...(preserveExistingBinding ? { preserveExistingBinding: true as const } : {}),
       ...(rotatedContextEngineBinding ? { rotatedContextEngineBinding: true } : {}),
     },
