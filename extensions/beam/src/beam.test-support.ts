@@ -27,6 +27,8 @@ import {
   type BeamUpload,
 } from "./types.js";
 
+export { listActiveSessionCatalogs as beamTestListActiveSessionCatalogs };
+
 const beamRequestScope = vi.hoisted(() => vi.fn());
 // mock-isolation: HTTP fixtures supply admitted identities at the request-scope boundary.
 vi.mock("openclaw/plugin-sdk/plugin-runtime", () => ({
