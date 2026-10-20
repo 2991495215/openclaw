@@ -441,6 +441,7 @@ export async function handleReplyAgentRunError(
 export async function cleanupReplyAgentRun(context: {
   blockReplyPipeline: BlockReplyPipeline | null;
   clearRestartRecoveryDeliveryClaim: () => Promise<void>;
+  releaseSourceAdmission?: () => Promise<void>;
   isHeartbeat: boolean;
   providedReplyOperation: ReplyOperation | undefined;
   queueKey: string;
@@ -453,6 +454,7 @@ export async function cleanupReplyAgentRun(context: {
   const {
     blockReplyPipeline,
     clearRestartRecoveryDeliveryClaim,
+    releaseSourceAdmission,
     isHeartbeat,
     providedReplyOperation,
     queueKey,
@@ -464,7 +466,11 @@ export async function cleanupReplyAgentRun(context: {
   } = context;
 
   try {
-    await clearRestartRecoveryDeliveryClaim();
+    try {
+      await clearRestartRecoveryDeliveryClaim();
+    } finally {
+      await releaseSourceAdmission?.();
+    }
   } catch (error) {
     logVerbose(
       `failed to clear restart recovery delivery context for ${sessionKey ?? "unknown"}: ${String(

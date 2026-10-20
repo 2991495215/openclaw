@@ -565,7 +565,11 @@ describe("worker turn launcher local placement", () => {
       await releaseFirst.promise;
     });
     await firstStarted.promise;
-    const firstClaimId = placements.get(SESSION_ID)?.turnClaim?.claimId;
+    const firstClaim = placements.get(SESSION_ID)?.turnClaim;
+    if (!firstClaim) {
+      throw new Error("Expected the first local turn claim");
+    }
+    const firstClaimId = firstClaim.claimId;
     expect(settleFirst).toBeTypeOf("function");
     await settleFirst?.();
     expect(placements.get(SESSION_ID)?.turnClaim).toBeNull();
