@@ -1,4 +1,4 @@
-import { isCodexAppServerLiveThreadBackgroundOnly } from "./client-runtime.js";
+import { isCodexAppServerLiveThreadBackgroundOnly } from "./client-runtime-thread-state.js";
 import {
   buildCodexPluginAppsConfigPatchFromPolicyContext,
   type CodexPluginThreadConfig,

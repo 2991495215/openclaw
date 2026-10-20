@@ -34,6 +34,14 @@ export function isThreadBackgroundOnly(
   );
 }
 
+export function isThreadClaimed(runtime: ThreadOwnershipState | undefined, threadId: string) {
+  return Boolean(runtime && !runtime.closed && runtime.claimedThreads.has(threadId));
+}
+
+export function isThreadProtected(runtime: ThreadOwnershipState | undefined, threadId: string) {
+  return Boolean(runtime && !runtime.closed && runtime.protectedThreads.has(threadId));
+}
+
 /**
  * Exact lifecycle inputs a live ephemeral thread was told. The generic policy is
  * creation-owned and cannot be refreshed or cold-resumed; skills, persona, and memory
@@ -87,8 +95,10 @@ export type ThreadOwnershipState = {
 export function createThreadOwnerToken(
   threadId: string,
   onInvalidated?: () => void,
+  configFingerprint?: string,
 ): ThreadOwnerToken {
   const owner: ThreadOwnerToken = {
+    configFingerprint,
     invalidated: false,
     invalidate: () => {
       if (owner.invalidated) {

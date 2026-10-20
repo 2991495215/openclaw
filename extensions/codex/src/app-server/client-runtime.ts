@@ -10,7 +10,8 @@ import {
 } from "./client-fork-settings.js";
 import {
   createThreadOwnerToken,
-  isThreadBackgroundOnly,
+  isThreadClaimed,
+  isThreadProtected,
   releaseThreadProtection,
   forgetThreadOwnership,
   hasSiblingThreadWork,
@@ -513,8 +514,7 @@ function claimCodexAppServerThreadOwnership(
 ): CodexAppServerLiveThreadOwnership {
   const previousClaim = runtime.claimedThreads.get(threadId);
   runtime.retainedThreads.delete(threadId);
-  const claimed = createThreadOwnerToken(threadId, onInvalidated);
-  claimed.configFingerprint = retained.configFingerprint;
+  const claimed = createThreadOwnerToken(threadId, onInvalidated, retained.configFingerprint);
   runtime.claimedThreads.set(threadId, claimed);
   previousClaim?.invalidate();
   retained.ownerToken?.invalidate();
@@ -649,17 +649,13 @@ export function isCodexAppServerLiveThreadClaimed(
   client: CodexAppServerClient,
   threadId: string,
 ): boolean {
-  const runtime = configuredClients.get(client);
-  return runtime !== undefined && !runtime.closed && runtime.claimedThreads.has(threadId);
+  return isThreadClaimed(configuredClients.get(client), threadId);
 }
 
-/** Completed foreground work may leave cleanup custody with native background work. */
-export function isCodexAppServerLiveThreadBackgroundOnly(
+export function readCodexAppServerThreadOwnershipState(
   client: CodexAppServerClient,
-  threadId: string,
-  configFingerprint?: string,
-): boolean {
-  return isThreadBackgroundOnly(configuredClients.get(client), threadId, configFingerprint);
+): ThreadOwnershipState | undefined {
+  return configuredClients.get(client);
 }
 
 /** Native commands and children can still need an otherwise-idle subscription. */
@@ -667,8 +663,7 @@ export function isCodexAppServerLiveThreadProtected(
   client: CodexAppServerClient,
   threadId: string,
 ): boolean {
-  const runtime = configuredClients.get(client);
-  return runtime !== undefined && !runtime.closed && runtime.protectedThreads.has(threadId);
+  return isThreadProtected(configuredClients.get(client), threadId);
 }
 
 export function hasCodexAppServerSiblingThreadWork(

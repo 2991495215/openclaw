@@ -30,7 +30,7 @@ import {
 } from "./desktop-panel-connection.ts";
 import * as desktopAuth from "./desktop-panel-credentials.ts";
 import { desktopPanelLayout } from "./desktop-panel-layout.ts";
-import type { DesktopPanelState } from "./desktop-panel-state.ts";
+import { DesktopPanelSelectionController, type DesktopPanelState } from "./desktop-panel-state.ts";
 import { DesktopPictureInPicture } from "./desktop-picture-in-picture.ts";
 import { DesktopSessionController } from "./desktop-session-controller.ts";
 import { desktopSourceForEnvironment } from "./desktop-source.ts";
@@ -110,13 +110,20 @@ export class DesktopPanelController extends SolidPanelController {
   );
   private controlTakeoverRecoveryUsed = false;
   // Automatic resolution follows the session; an explicit choice owns its pop-out target.
-  private sourceSelection: "pending" | "resolved" | "explicit" | "picker" = "pending";
+  private readonly selection = new DesktopPanelSelectionController({
+    disconnect: () => this.disconnectConnection(),
+    applyPickerState: (state) => Object.assign(this, state),
+    clearHostSetup: () => this.hostSetup.clear(),
+    invalidate: () => this.invalidate(),
+    clearSessionSource: () => this.sessionSource.clearDesktopSource(),
+    closeDock: () => this.dockLayout.setOpen(false),
+  });
   private readonly sessionSource = new DesktopSessionController(
     this,
     () => this.environmentId,
     (target) => {
-      if (this.usesAutomaticSource) {
-        this.returnToPicker("pending");
+      if (this.selection.automatic) {
+        this.selection.reset("pending");
         void this.refreshEnvironments(undefined, target);
       }
     },
@@ -124,7 +131,7 @@ export class DesktopPanelController extends SolidPanelController {
       // Inventory refresh advances operationId; active viewers and credential prompts keep their owner.
       if (
         (this.state === "picker" ||
-          (this.state === "inventory-error" && this.usesAutomaticSource)) &&
+          (this.state === "inventory-error" && this.selection.automatic)) &&
         !this.suppressed &&
         (this.embedded ? this.presented : this.documentMode || this.dockLayout.open)
       ) {
@@ -134,11 +141,11 @@ export class DesktopPanelController extends SolidPanelController {
     () =>
       (this.state === "picker" && !this.loading) || this.state === "inventory-error"
         ? null
-        : (this.environmentId ?? (this.usesAutomaticSource ? this.requestedSource : null)),
+        : (this.environmentId ?? (this.selection.automatic ? this.requestedSource : null)),
     (error) => {
       // Failed refreshes keep an attached viewer, but cannot strand initial target loading.
       if (
-        this.usesAutomaticSource &&
+        this.selection.automatic &&
         (this.state === "picker" || this.state === "inventory-error")
       ) {
         this.sessionSource.invalidate();
@@ -181,8 +188,8 @@ export class DesktopPanelController extends SolidPanelController {
 
   override disconnectedCallback(): void {
     window.removeEventListener(DESKTOP_PANEL_TOGGLE_EVENT, this.handleToggleRequest);
-    if (this.documentMode && this.usesAutomaticSource) {
-      this.returnToPicker("pending");
+    if (this.documentMode && this.selection.automatic) {
+      this.selection.reset("pending");
     } else {
       this.disconnectConnection();
     }
@@ -201,17 +208,17 @@ export class DesktopPanelController extends SolidPanelController {
     if (changed.has("suppressed")) {
       const restored = this.dockLayout.setSuppressed(this.suppressed);
       if (this.suppressed) {
-        this.returnToPicker();
+        this.selection.reset();
       } else if (restored) {
         void this.refreshEnvironments();
       }
     }
     const gatewayAvailabilityChanged = changed.has("client") || changed.has("available");
     // Embedded source props track placement without replacing a picker's explicit choice.
-    const contextChanged = this.sessionSource.targetChanged(changed, this.usesAutomaticSource);
+    const contextChanged = this.sessionSource.targetChanged(changed, this.selection.automatic);
     if ((this.documentMode || this.embedded) && contextChanged) {
       // Release input and invalidate pending work before resolving a different session or machine.
-      this.returnToPicker("pending");
+      this.selection.reset("pending");
       if (this.available && (!this.embedded || (this.presented && this.refreshOnPresentation))) {
         void this.refreshEnvironments();
       }
@@ -227,7 +234,7 @@ export class DesktopPanelController extends SolidPanelController {
         this.audio.retire();
       }
       if (
-        this.connection.setPresented(this.presented, () => this.returnToPicker("pending")) &&
+        this.connection.setPresented(this.presented, () => this.selection.reset("pending")) &&
         this.refreshOnPresentation
       ) {
         void this.refreshEnvironments();
@@ -235,7 +242,7 @@ export class DesktopPanelController extends SolidPanelController {
     } else if (gatewayAvailabilityChanged) {
       if (!this.available && this.dockLayout.open) {
         this.dockLayout.hideWithoutPersisting();
-        this.returnToPicker();
+        this.selection.reset();
       } else if (this.available && this.dockLayout.restoreOpenState()) {
         void this.refreshEnvironments();
       }
@@ -252,9 +259,9 @@ export class DesktopPanelController extends SolidPanelController {
     this.onFocusTargetChange?.({
       kind: "desktop",
       control: this.controlling,
-      ...(this.sourceSelection === "picker"
+      ...(this.selection.value === "picker"
         ? {}
-        : this.sourceSelection === "explicit" || this.sessionKey === null
+        : this.selection.value === "explicit" || this.sessionKey === null
           ? { source: this.environmentId }
           : { session: this.sessionKey }),
     });
@@ -272,7 +279,7 @@ export class DesktopPanelController extends SolidPanelController {
       this.dockLayout.setDock(detail.dock, false);
     }
     if (detail?.open === false) {
-      this.closePanel();
+      this.selection.close(this.embedded);
       return;
     }
     if (!this.available || (this.embedded && !this.client)) {
@@ -287,47 +294,14 @@ export class DesktopPanelController extends SolidPanelController {
     if (environmentId) {
       void this.connectRequestedEnvironment(environmentId, Boolean(detail?.environmentId));
     } else if (this.embedded) {
-      this.returnToPicker(this.sessionKey !== null ? "pending" : "picker");
+      this.selection.reset(this.sessionKey !== null ? "pending" : "picker");
       void this.refreshEnvironments();
     } else if (!wasOpen) {
       void this.refreshEnvironments();
     } else if (detail?.open !== true) {
-      this.closePanel();
+      this.selection.close(this.embedded);
     }
   };
-
-  private closePanel(): void {
-    this.returnToPicker();
-    if (!this.embedded) {
-      this.dockLayout.setOpen(false);
-    }
-  }
-
-  private get usesAutomaticSource(): boolean {
-    return this.sourceSelection === "pending" || this.sourceSelection === "resolved";
-  }
-
-  private get automaticPicker(): boolean {
-    return this.usesAutomaticSource && this.embedded && this.sessionKey !== null;
-  }
-
-  private returnToPicker(sourceSelection: typeof this.sourceSelection = "picker"): void {
-    this.disconnectConnection();
-    this.state = "picker";
-    this.sourceSelection = sourceSelection;
-    this.environmentId = null;
-    this.source = null;
-    this.credentials = undefined;
-    this.credentialAuth = undefined;
-    this.desktopApps = [];
-    this.controlling = false;
-    this.sizingMode = "fit";
-    this.canResize = false;
-    this.disconnectedReason = null;
-    this.hostSetup.clear();
-    this.invalidate();
-    this.sessionSource.clearDesktopSource();
-  }
 
   private disconnectConnection(retainViewer = false): void {
     this.audio.close();
@@ -364,15 +338,15 @@ export class DesktopPanelController extends SolidPanelController {
       const selected = this.environments.find(
         (entry) => entry.id === this.requestedSource && entry.desktop,
       );
-      if (selected && this.sourceSelection === "pending") {
-        this.sourceSelection = "resolved";
+      if (selected && this.selection.value === "pending") {
+        this.selection.value = "resolved";
         this.invalidate();
         await this.connectEnvironment(selected.id, false);
       }
       return true;
     }
     const inventoryRequest = this.sessionSource.loadInventory({
-      automatic: this.sourceSelection === "pending",
+      automatic: this.selection.value === "pending",
       target: resolvedSessionTarget,
       refresh,
       isCurrent: () => operationId === this.operationId && (!this.embedded || this.presented),
@@ -381,7 +355,11 @@ export class DesktopPanelController extends SolidPanelController {
       const inventory = await inventoryRequest.result;
       if (inventory && inventoryRequest.isCurrent()) {
         requestedSource = inventory.selectedSource;
-        this.hostSetup.set(this.automaticPicker ? (inventory.hostSetup ?? null) : null);
+        this.hostSetup.set(
+          this.selection.isAutomaticPicker(this.embedded, this.sessionKey)
+            ? (inventory.hostSetup ?? null)
+            : null,
+        );
         this.environments = inventory.environments;
         this.invalidate();
         refreshed = true;
@@ -400,9 +378,9 @@ export class DesktopPanelController extends SolidPanelController {
         this.invalidate();
       }
     }
-    if (refreshed && inventoryRequest.isCurrent() && this.sourceSelection === "pending") {
+    if (refreshed && inventoryRequest.isCurrent() && this.selection.value === "pending") {
       if (requestedSource !== undefined) {
-        this.sourceSelection = "resolved";
+        this.selection.value = "resolved";
         this.invalidate();
         await this.connectEnvironment(requestedSource, this.documentControl);
       } else if (this.requestedSource !== null || this.sessionKey !== null) {
@@ -420,12 +398,12 @@ export class DesktopPanelController extends SolidPanelController {
       (this.state === "connecting" || this.state === "connected" || this.state === "credentials")
     ) {
       if (explicit) {
-        this.sourceSelection = "explicit";
+        this.selection.value = "explicit";
         this.invalidate();
       }
       return;
     }
-    this.returnToPicker(explicit ? "explicit" : this.sourceSelection);
+    this.selection.reset(explicit ? "explicit" : this.selection.value);
     this.environmentId = environmentId;
     this.state = "connecting";
     this.invalidate();
@@ -669,18 +647,18 @@ export class DesktopPanelController extends SolidPanelController {
       content: {
         state: this.state,
         loading: this.loading,
-        automaticSource: this.usesAutomaticSource,
+        automaticSource: this.selection.automatic,
         hasTarget: this.sessionKey !== null || this.requestedSource !== null,
         errorText: this.fullscreenMode.errorText ?? this.launcher.error ?? this.errorText,
         noticeText: this.noticeText,
         availability: this.sessionSource.desktopAvailability,
         picker: {
-          automatic: this.automaticPicker,
+          automatic: this.selection.isAutomaticPicker(this.embedded, this.sessionKey),
           environments: this.environments,
           hostSetup: this.hostSetup.view(),
           onRefresh: () => void this.refreshEnvironments(undefined, undefined, true),
           onConnect: (environmentId: string) => {
-            this.sourceSelection = "explicit";
+            this.selection.value = "explicit";
             this.invalidate();
             void this.connectEnvironment(environmentId, false);
           },
@@ -694,8 +672,8 @@ export class DesktopPanelController extends SolidPanelController {
           reason: this.disconnectedReason,
           onRetry: () => {
             if ((this.state === "inventory-error" && this.documentMode) || !this.environmentId) {
-              if (this.sourceSelection !== "picker") {
-                this.sourceSelection = "pending";
+              if (this.selection.value !== "picker") {
+                this.selection.value = "pending";
                 this.invalidate();
               }
               this.state = "picker";
@@ -732,7 +710,7 @@ export class DesktopPanelController extends SolidPanelController {
       onControlToggle: () => void this.connectEnvironment(this.environmentId, !this.controlling),
       onTakeControl: () => void this.connectEnvironment(this.environmentId, true),
       onLaunch: (app: WorkerDesktopAppId) => void this.launcher.launch(app),
-      onClose: () => this.closePanel(),
+      onClose: () => this.selection.close(this.embedded),
       onDocumentClose: () => this.onDocumentClose?.(),
       focusTarget: () => ({
         basePath: this.basePath,
@@ -744,7 +722,7 @@ export class DesktopPanelController extends SolidPanelController {
         if (this.embedded && (this.sessionKey !== null || this.suppliedEnvironments !== null)) {
           this.handleDesktopDisconnect(this.environmentId, { clean: true });
         } else {
-          this.returnToPicker();
+          this.selection.reset();
         }
       },
     };

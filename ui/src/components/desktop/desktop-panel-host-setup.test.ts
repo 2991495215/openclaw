@@ -70,7 +70,7 @@ async function mount(
     desktopClientFactory: () => ({ connect }),
     runtimeConfig,
   });
-  await mountPanel(panel);
+  mountPanel(panel);
   const element = panel.element;
   const button = (name: string) =>
     Array.from(element.querySelectorAll("button")).find(
