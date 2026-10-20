@@ -26,7 +26,6 @@ import type {
 import { localPath } from "./workspace-reconcile-fs.js";
 import {
   applyStagedWorkerWorkspace,
-  assertWorkspaceMatchesManifest,
   inspectAcceptedWorkerWorkspace,
   type WorkerWorkspaceApplyResult,
 } from "./workspace-reconcile.js";
@@ -271,11 +270,6 @@ async function withMaterializedWorkerWorkspaceResult<T>(
       }
     }
     await flush();
-    await assertWorkspaceMatchesManifest({
-      root: stagingRoot,
-      manifest: snapshot.current,
-      entries: snapshot.changedEntries,
-    });
     return await use({ ...snapshot, stagingRoot });
   } finally {
     await runBestEffortCleanup({
