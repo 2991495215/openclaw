@@ -85,6 +85,39 @@ it("does not offer enablement or Settings for an uninstalled plugin", () => {
   expect(find('[aria-label="Enable Workboard"], [aria-label="Settings"]')).toBeNull();
 });
 
+it.each([true, false, undefined])(
+  "keeps the native web UI disclosure with installed details without adding an enable gate (%s)",
+  (hasNativeUi) => {
+    const { container, find, props } = mount({
+      inspection: createInspectResult({
+        overview: {
+          hasNativeUi,
+          capabilities: { providers: [], channels: [], contracts: {}, ui: ["page"] },
+        },
+      }),
+    });
+    const disclosure = container.querySelector(".plugin-native-ui-disclosure");
+    expect(Boolean(disclosure)).toBe(hasNativeUi === true);
+    if (hasNativeUi) {
+      expect(disclosure?.textContent).toContain("Includes native web UI");
+      expect(disclosure?.textContent).toContain("Only enable plugins you trust.");
+    }
+    find<HTMLButtonElement>('[aria-label="Enable Workboard"]')!.click();
+    expect(props.onSetEnabled).toHaveBeenCalledWith("workboard", true, "plugin:workboard");
+  },
+);
+
+it("shows native UI from inventory while inspection is pending and preserves it after enablement", () => {
+  const { container } = mount({
+    result: createResult(createPlugin({ hasNativeUi: true, enabled: true, state: "enabled" })),
+    inspection: null,
+  });
+  expect(container.querySelector(".plugin-native-ui-disclosure")?.textContent).toContain(
+    "Only enable plugins you trust.",
+  );
+  expect(container.querySelector('[aria-label="Disable Workboard"]')).not.toBeNull();
+});
+
 it("does not dispatch enablement when setup is missing", () => {
   const { find, props } = mount({
     result: createResult(createPlugin({ state: "needs-setup" })),

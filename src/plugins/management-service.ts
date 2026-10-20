@@ -338,6 +338,7 @@ export const listManagedPlugins = withManagedPluginCache(
               ? "needs-setup"
               : "disabled",
         removable,
+        hasNativeUi: manifest ? Boolean(manifest.controlUi) : undefined,
       };
       Object.assign(plugin, projectPluginCatalogCategoryFacts(manifest, enabled));
       if (record.packageName) {

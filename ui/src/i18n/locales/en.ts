@@ -221,8 +221,8 @@ export const en: TranslationMap & {
     dashboardTitle: "Session dashboard",
     dashboardEmpty: "This session has no dashboard widgets yet.",
     customPluginsDisabled: "Custom plugin UI is off",
-    customPluginsEnableHint: "Enable Custom plugin UI in Labs.",
-    openLabs: "Open Labs",
+    customPluginsEnableHint:
+      "Disabled by the Gateway configuration. An administrator can enable native plugin UI.",
     surface: {
       "session-list": "Session list",
       composer: "Composer",
@@ -1565,8 +1565,6 @@ export const en: TranslationMap & {
       otherGroups: "{count} more active groups",
     },
     toolSearch: {},
-
-    customPluginUi: {},
 
     hostDesktop: {},
     workerDesktop: {},

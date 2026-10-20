@@ -109,12 +109,6 @@ export const LAB_FEATURES = (
     },
     {
       ...BOOLEAN_GATE,
-      id: "customPluginUi",
-      docsUrl: "https://docs.openclaw.ai/plugins/feature-plugins",
-      configPath: ["gateway", "controlUi", "experimental", "customPlugins"],
-    },
-    {
-      ...BOOLEAN_GATE,
       id: "claws",
       docsUrl: "https://docs.openclaw.ai/cli/claws",
       configPath: ["gateway", "controlUi", "experimental", "claws"],

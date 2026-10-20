@@ -38,7 +38,7 @@ it("renders customization inline and retains pending reload state", async () => 
   const diagnostics: PluginControlUiDiagnostic[] = [
     {
       pluginId: "custom-review",
-      message: "Disabled by Labs",
+      message: "Disabled by Gateway configuration",
       code: "custom-plugin-ui-disabled",
     },
   ];
@@ -81,10 +81,11 @@ it("renders customization inline and retains pending reload state", async () => 
     await vi.waitFor(() => expect(manager.querySelector("select")).not.toBeNull());
     expect(manager.querySelector('[role="alert"]')).toBeNull();
     expect(manager.querySelector('[role="status"]')?.textContent).toContain("custom-review");
-    const labs = manager.querySelector<HTMLAnchorElement>('a[href="/console/settings/labs"]');
-    expect(labs?.textContent?.trim()).toBe("Open Labs");
-    labs?.click();
-    expect(navigate).toHaveBeenCalledExactlyOnceWith("labs");
+    expect(manager.querySelector('a[href="/console/settings/labs"]')).toBeNull();
+    expect(manager.querySelector('[role="status"]')?.textContent).toContain(
+      "Disabled by the Gateway configuration",
+    );
+    expect(navigate).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(manager.querySelector("select")).not.toBeNull());
 
     const select = manager.querySelector<HTMLSelectElement>("select");

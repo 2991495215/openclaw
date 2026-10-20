@@ -11,6 +11,7 @@ import { PluginCatalogSkeleton, renderCatalogGridSkeleton } from "./catalog-skel
 import { PluginArtTile } from "./consent-dialog.tsx";
 import { PluginInstallAction, type PluginInstallActionProps } from "./install-action.tsx";
 import type { PluginInstallProgress } from "./install-progress.ts";
+import { PluginNativeUiDisclosure } from "./native-ui-disclosure.tsx";
 import {
   renderPluginAuthor,
   PluginCardSummary,
@@ -587,6 +588,7 @@ export function renderPluginCatalogResults(props: PluginCatalogResultsProps): JS
         />
       </label>
       <CategoryChips {...props} />
+      <PluginNativeUiDisclosure variant="install" />
       {props.categoriesError
         ? renderError(props.categoriesError, props.onRetryCategories)
         : undefined}

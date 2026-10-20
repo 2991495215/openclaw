@@ -121,6 +121,17 @@ function codeModeToggle(page: LabsPageElement) {
 }
 
 describe("LabsPage", () => {
+  it("does not expose native plugin UI as a lab", async () => {
+    const { page, runtimeConfig } = await mountPage({
+      gateway: { controlUi: { experimental: { customPlugins: false } } },
+    });
+
+    expect(
+      [...page.querySelectorAll(".settings-row__title")].map((title) => title.textContent?.trim()),
+    ).not.toContain("Custom plugin UI");
+    expect(runtimeConfig.patch).not.toHaveBeenCalled();
+  });
+
   it("defaults predictions off with Utility and saves each model without enabling the lab", async () => {
     const { page, runtimeConfig } = await mountPage({});
     const toggle = labToggle(page, "Composer predictions");
@@ -199,12 +210,6 @@ describe("LabsPage", () => {
       sourceConfig: { tools: { codeMode: { enabled: true } } },
       expectedPatch: { tools: { codeMode: { enabled: null } } },
       note: "labs: update codeMode",
-    },
-    {
-      label: "Custom plugin UI",
-      sourceConfig: { gateway: { controlUi: { experimental: { customPlugins: true } } } },
-      expectedPatch: { gateway: { controlUi: { experimental: { customPlugins: null } } } },
-      note: "labs: update customPluginUi",
     },
     {
       label: "Claws",
@@ -291,12 +296,6 @@ describe("LabsPage", () => {
       sourceConfig: {},
       expectedPatch: { gateway: { controlUi: { experimental: { chatBubbles: true } } } },
       note: "labs: update chatBubbles",
-    },
-    {
-      label: "Custom plugin UI",
-      sourceConfig: {},
-      expectedPatch: { gateway: { controlUi: { experimental: { customPlugins: true } } } },
-      note: "labs: update customPluginUi",
     },
     {
       label: "Claws",
