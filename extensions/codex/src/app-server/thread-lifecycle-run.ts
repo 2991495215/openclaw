@@ -4,7 +4,6 @@ import { isIncognitoSessionKey } from "openclaw/plugin-sdk/session-key-runtime";
 import { closeCodexStartupClientBestEffort } from "./attempt-client-cleanup.js";
 import { isCodexAppServerLiveThreadBackgroundOnly } from "./client-runtime.js";
 import { resolveCodexAppServerClientInstanceId } from "./client.js";
-import { injectCodexHistoryDelta } from "./context-engine-history.js";
 import { hasCodexNativeToolCatalog, loadCodexNativeToolCatalog } from "./native-tool-catalog.js";
 import { buildCodexAppServerConnectionFingerprint } from "./plugin-app-cache-key.js";
 import {

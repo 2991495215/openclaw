@@ -71,13 +71,14 @@ async function mount(
     runtimeConfig,
   });
   await mountPanel(panel);
+  const element = panel.element;
   const button = (name: string) =>
-    Array.from(panel.querySelectorAll("button")).find(
+    Array.from(element.querySelectorAll("button")).find(
       (entry) => (entry.getAttribute("aria-label") ?? entry.textContent)?.trim() === name,
     );
   return {
     runtimeConfig,
-    panel,
+    panel: element,
     request,
     connect,
     button,
