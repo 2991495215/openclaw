@@ -28,12 +28,6 @@ import { BEAM_MAX_ITEMS, parseBeamUpload, type BeamUpload } from "./types.js";
 
 afterEach(() => vi.useRealTimers());
 
-vi.mock("openclaw/plugin-sdk/session-catalog-runtime", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("openclaw/plugin-sdk/session-catalog-runtime")>();
-  return { ...actual, listActiveSessionCatalogs: vi.fn(actual.listActiveSessionCatalogs) };
-});
-
 async function readRequestBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -523,6 +517,7 @@ describe("createBeamMirrorRunner", () => {
       async (origin) => {
         const warnings: string[] = [];
         let signal: AbortSignal | undefined;
+        const fetch = globalThis.fetch;
         const fetchFn = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
           signal = init?.signal ?? undefined;
           return fetch(input, init);
