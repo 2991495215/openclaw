@@ -18,6 +18,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
   androidReleaseAdbServerLineFacts,
+  androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
   androidReleaseCommandFacts,
   androidReleaseConsoleLineFacts,
@@ -249,7 +250,25 @@ async function adbServerFacts(cycle: number, moment: string) {
   adbLogLines = lines.length;
   return true;
 }
-async function transportSocket(port: number) {
+async function processSockets(pid: number) {
+  const sockets = [];
+  // The emulator also launches short-lived ADB clients in its process group.
+  const files = await readdir(`/proc/${pid}/fd`).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  });
+  for (const file of files) {
+    const target = await readlink(`/proc/${pid}/fd/${file}`).catch(() => "");
+    const inode = /^socket:\[(\d+)\]$/u.exec(target)?.[1];
+    if (inode) {
+      sockets.push({ pid, fd: Number(file), inode });
+    }
+  }
+  return sockets;
+}
+async function transportSockets(port: number, phone: Owned) {
   const processes = await command("ps", ["-A", "-o", "pid=,ppid=,rss=,comm="]);
   const servers = androidReleaseHostFacts(processes.stdout, "", "").adbProcesses.filter(
     (process) => process.parentPid === 1,
@@ -261,36 +280,41 @@ async function transportSocket(port: number) {
   if ((await readlink(`/proc/${pid}/exe`)) !== (await realpath(adb))) {
     throw new Error("adb-server-identity-unavailable");
   }
-  const sockets = new Set<string>();
+  const hostSockets = await processSockets(pid);
+  const pairs = [];
   for (const family of ["tcp", "tcp6"]) {
     const table = await readFile(`/proc/${pid}/net/${family}`, "utf8");
-    for (const line of table.trim().split("\n").slice(1)) {
-      const fields = line.trim().split(/\s+/u);
-      const [address, remotePort] = fields[2]!.split(":");
-      if (
-        fields[3] === "01" &&
-        Number.parseInt(remotePort!, 16) === port &&
-        [
-          "0100007F",
-          "00000000000000000000000001000000",
-          "0000000000000000FFFF00000100007F",
-        ].includes(address!)
-      ) {
-        sockets.add(`socket:[${fields[9]}]`);
-      }
+    const pair = androidReleaseAdbSocketPair(
+      table,
+      hostSockets.map((socket) => socket.inode),
+      port,
+    );
+    if (pair) {
+      pairs.push(pair);
     }
   }
-  const descriptors: number[] = [];
-  for (const file of await readdir(`/proc/${pid}/fd`)) {
-    const target = await readlink(`/proc/${pid}/fd/${file}`).catch(() => "");
-    if (sockets.has(target)) {
-      descriptors.push(Number(file));
-    }
-  }
-  if (descriptors.length !== 1) {
+  if (pairs.length !== 1) {
     throw new Error("adb-transport-socket-unavailable");
   }
-  return { pid, fd: descriptors[0]!, port };
+  const pair = pairs[0]!;
+  const hosts = hostSockets.filter((socket) => socket.inode === pair.hostInode);
+  const groups = await command("ps", ["-A", "-o", "pid=,pgid="]);
+  const peers = [];
+  for (const line of groups.stdout.trim().split("\n")) {
+    const [processId, groupId] = line.trim().split(/\s+/u).map(Number);
+    if (groupId === phone.child.pid) {
+      peers.push(
+        ...(await processSockets(processId!)).filter((socket) => socket.inode === pair.peerInode),
+      );
+    }
+  }
+  if (hosts.length !== 1 || peers.length !== 1) {
+    throw new Error("adb-transport-peer-unavailable");
+  }
+  return [
+    { side: "adb-server", ...hosts[0]!, port, clientPort: pair.clientPort },
+    { side: "emulator", ...peers[0]!, port, clientPort: pair.clientPort },
+  ];
 }
 async function syscallFacts(prefix: string, fd: number) {
   const facts = [];
@@ -341,8 +365,8 @@ try {
     const kernel = path.join(root, `${cycle}-kernel.private.log`);
     const logcat = path.join(root, `${cycle}-logcat.private.log`);
     const services: Owned[] = [];
-    const tracePrefix = path.join(root, `${cycle}-syscalls.private`);
-    let socket: Awaited<ReturnType<typeof transportSocket>> | undefined;
+    let sockets: Awaited<ReturnType<typeof transportSockets>> = [];
+    const tracePrefix = (side: string) => path.join(root, `${cycle}-${side}-syscalls.private`);
     try {
       stage = "avd-create";
       await command(
@@ -479,49 +503,56 @@ try {
         throw new Error("host-adb-log-unavailable");
       }
       stage = "syscall-trace";
-      socket = await transportSocket(port + 1);
-      record("transport-socket", { cycle, ...socket });
-      // Attach only to this probe's server; raw mode never dereferences buffer pointers.
-      const tracer = service(
-        "adb-syscalls",
-        "sudo",
-        [
-          "-n",
-          "strace",
-          "-ff",
-          "-ttt",
-          "-T",
-          "-e",
-          "trace=read,write,writev,close,shutdown",
-          "-e",
-          "raw=all",
-          "-e",
-          "signal=none",
-          "-o",
-          tracePrefix,
-          "-p",
-          String(socket.pid),
-        ],
-        path.join(root, `${cycle}-strace.private.log`),
-        true,
-      );
-      services.push(tracer);
+      sockets = await transportSockets(port + 1, phone);
+      const tracers = [];
+      for (const socket of sockets) {
+        record("transport-socket", { cycle, ...socket });
+        // Both endpoints belong to this probe; raw mode never dereferences buffer pointers.
+        const tracer = service(
+          `${socket.side}-syscalls`,
+          "sudo",
+          [
+            "-n",
+            "strace",
+            "-ff",
+            "-ttt",
+            "-T",
+            "-e",
+            "trace=read,write,writev,recvfrom,sendto,close,shutdown",
+            "-e",
+            "raw=all",
+            "-e",
+            "signal=none",
+            "-o",
+            tracePrefix(socket.side),
+            "-p",
+            String(socket.pid),
+          ],
+          path.join(root, `${cycle}-${socket.side}-strace.private.log`),
+          true,
+        );
+        tracers.push(tracer);
+        services.push(tracer);
+      }
       const traceDeadline = Date.now() + 5000;
       let traced = false;
-      while (running(tracer) && Date.now() < traceDeadline) {
-        // This harmless shell command proves reads on the identified emulator socket are captured.
+      while (tracers.every(running) && Date.now() < traceDeadline) {
+        // Prove that both mapped endpoints carry data before starting the stress loop.
         await command(adb, ["-s", serial, "shell", "true"]);
-        if (
-          (await syscallFacts(tracePrefix, socket.fd)).some(
-            (fact) => fact.operation === "read" && fact.result > 0,
-          )
-        ) {
+        const coverage = await Promise.all(
+          sockets.map(async (socket) =>
+            (await syscallFacts(tracePrefix(socket.side), socket.fd)).some(
+              (fact) => fact.result > 0,
+            ),
+          ),
+        );
+        if (coverage.every(Boolean)) {
           traced = true;
           break;
         }
         await sleep(100);
       }
-      record("syscall-trace-ready", { cycle, traced });
+      record("syscall-trace-ready", { cycle, traced, endpoints: sockets.length });
       if (!traced) {
         throw new Error("adb-syscall-trace-unavailable");
       }
@@ -531,7 +562,7 @@ try {
         await mkdir(destination);
         const pullStarted = Date.now();
         await command(adb, ["-s", serial, "pull", `${remote}/.`, destination]);
-        if (!running(phone) || !running(idle) || !running(tracer)) {
+        if (!running(phone) || !running(idle) || !tracers.every(running)) {
           throw new Error("concurrent-service-exit");
         }
         const files = await readdir(destination);
@@ -570,6 +601,7 @@ try {
         "host-adb-log-unavailable",
         "adb-server-identity-unavailable",
         "adb-transport-socket-unavailable",
+        "adb-transport-peer-unavailable",
         "adb-syscall-trace-unavailable",
       ];
       record("cycle-failed", {
@@ -585,15 +617,17 @@ try {
       throw new Error("cycle-failed", { cause: error });
     } finally {
       await adbServerFacts(cycle, "before-cleanup");
-      if (socket) {
-        const facts = await syscallFacts(tracePrefix, socket.fd).catch(() => null);
+      for (const socket of sockets) {
+        const facts = await syscallFacts(tracePrefix(socket.side), socket.fd).catch(() => null);
         record("transport-syscalls", {
           cycle,
           ...socket,
           available: facts !== null,
           records: facts?.length,
           // Keep every error/EOF plus the final operations leading to teardown.
-          terminal: facts?.filter((fact) => fact.eof || fact.result < 0),
+          terminal: facts?.filter(
+            (fact) => fact.eof || fact.result < 0 || ["shutdown", "close"].includes(fact.operation),
+          ),
           tail: facts?.slice(-24),
         });
       }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   androidReleaseAdbServerLineFacts,
+  androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
   androidReleaseCommandFacts,
   androidReleaseConsoleLineFacts,
@@ -11,6 +12,38 @@ import {
 } from "../../scripts/lib/android-release-e2e-diagnostics.js";
 
 describe("Android release public failure diagnostics", () => {
+  const tcpHeader = "sl local_address rem_address st tx_queue tr retrnsmt uid timeout inode";
+  const hostSocket = "0: 0100007F:C001 0100007F:15CD 01 0:0 00:0 0 1001 0 111";
+  const peerSocket = "1: 0100007F:15CD 0100007F:C001 01 0:0 00:0 0 1001 0 222";
+
+  it("matches the full reversed tuple for the owned ADB socket", () => {
+    const table = [
+      tcpHeader,
+      hostSocket,
+      peerSocket,
+      "2: 0100007F:C002 0100007F:15CD 01 0:0 00:0 0 1001 0 333",
+      "3: 0100007F:15CD 0100007F:C002 01 0:0 00:0 0 1001 0 444",
+    ].join("\n");
+    expect(androidReleaseAdbSocketPair(table, ["111"], 5581)).toEqual({
+      hostInode: "111",
+      peerInode: "222",
+      clientPort: 49153,
+    });
+    expect(androidReleaseAdbSocketPair(table, ["999"], 5581)).toBeUndefined();
+  });
+
+  it.each([
+    ["missing peer", [hostSocket]],
+    ["ambiguous peer", [hostSocket, peerSocket, peerSocket]],
+    ["ambiguous host", [hostSocket, hostSocket, peerSocket]],
+    ["non-loopback peer", [hostSocket.replace("0100007F:15CD", "0100000A:15CD"), peerSocket]],
+    ["closed host", [hostSocket.replace(" 01 ", " 08 "), peerSocket]],
+  ])("rejects %s socket pairs", (_name, rows) => {
+    expect(
+      androidReleaseAdbSocketPair([tcpHeader, ...rows].join("\n"), ["111"], 5581),
+    ).toBeUndefined();
+  });
+
   it.each([
     [
       "read(0xd, 0x7fffeed, 0x18) = 0 <0.002000>",
@@ -40,6 +73,20 @@ describe("Android release public failure diagnostics", () => {
     ],
     ["shutdown(0xd, 0x2) = 0 <0.000020>", { operation: "shutdown", fd: 13, result: 0, eof: false }],
     ["close(0xd) = 0 <0.000020>", { operation: "close", fd: 13, result: 0, eof: false }],
+    [
+      "recvfrom(0xd, 0x7fffeed, 0x100, 0, 0, 0) = 0 <0.000020>",
+      { operation: "recvfrom", requestedBytes: 256, result: 0, eof: true },
+    ],
+    ["recvfrom(0xd, 0x7fffeed, 0, 0, 0, 0) = 0 <0.000020>", { requestedBytes: 0, eof: false }],
+    [
+      "sendto(0xd, 0x7fffeed, 0x100, 0x4000, 0, 0) = -1 EAGAIN (Resource temporarily unavailable) <0.000020>",
+      { operation: "sendto", requestedBytes: 256, result: -1, errno: "EAGAIN", eof: false },
+    ],
+
+    [
+      "shutdown(0xd, 0x1) = 0 <0.000020>",
+      { operation: "shutdown", shutdownHow: 1, result: 0, eof: false },
+    ],
   ])("exports only numeric syscall metadata for %s", (line, expected) => {
     const facts = androidReleaseAdbSyscallLineFacts(`1792466410.334000 ${line}`);
     expect(facts).toMatchObject({ startedAtSeconds: 1792466410.334, ...expected });

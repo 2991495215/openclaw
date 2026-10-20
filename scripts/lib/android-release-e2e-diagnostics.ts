@@ -1,9 +1,46 @@
 import path from "node:path";
 
+/** Match both kernel socket rows, including the client's ephemeral port. */
+export function androidReleaseAdbSocketPair(table: string, adbInodes: string[], port: number) {
+  const rows = table
+    .trim()
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/u))
+    .filter((fields) => fields[3] === "01");
+  const loopback = new Set([
+    "0100007F",
+    "00000000000000000000000001000000",
+    "0000000000000000FFFF00000100007F",
+  ]);
+  const hosts = rows.filter((fields) => {
+    const [address, remotePort] = fields[2]!.split(":");
+    return (
+      adbInodes.includes(fields[9]!) &&
+      loopback.has(address!) &&
+      loopback.has(fields[1]!.split(":")[0]!) &&
+      Number.parseInt(remotePort!, 16) === port
+    );
+  });
+  if (hosts.length !== 1) {
+    return undefined;
+  }
+  const host = hosts[0]!;
+  const peers = rows.filter((fields) => fields[1] === host[2] && fields[2] === host[1]);
+  if (peers.length !== 1) {
+    return undefined;
+  }
+  return {
+    hostInode: host[9]!,
+    peerInode: peers[0]![9]!,
+    clientPort: Number.parseInt(host[1]!.split(":")[1]!, 16),
+  };
+}
+
 /** strace raw mode prints pointers, never buffers; export only syscall metadata. */
 export function androidReleaseAdbSyscallLineFacts(line: string) {
   const match =
-    /^(\d+\.\d+) (read|write|writev|close|shutdown)\((0x[\da-f]+|\d+)((?:, (?:0x[\da-f]+|\d+))*)\)\s+= (-1|0x[\da-f]+|\d+)(?: ([A-Z][A-Z\d]+) \([^\r\n]*\))? <(\d+\.\d+)>$/u.exec(
+    /^(\d+\.\d+) (read|write|writev|recvfrom|sendto|close|shutdown)\((0x[\da-f]+|\d+)((?:, (?:0x[\da-f]+|\d+))*)\)\s+= (-1|0x[\da-f]+|\d+)(?: ([A-Z][A-Z\d]+) \([^\r\n]*\))? <(\d+\.\d+)>$/u.exec(
       line,
     );
   if (!match) {
@@ -17,7 +54,10 @@ export function androidReleaseAdbSyscallLineFacts(line: string) {
     durationSeconds: Number(match[7]),
     operation,
     fd: Number(match[3]),
-    requestedBytes: operation === "read" || operation === "write" ? args[1] : undefined,
+    requestedBytes: ["read", "write", "recvfrom", "sendto"].includes(operation)
+      ? args[1]
+      : undefined,
+    shutdownHow: operation === "shutdown" ? args[0] : undefined,
     result,
     errno:
       match[6] &&
@@ -31,10 +71,12 @@ export function androidReleaseAdbSyscallLineFacts(line: string) {
         "ETIMEDOUT",
         "EINTR",
         "EAGAIN",
+        "ENOTCONN",
+        "ENOBUFS",
       ].includes(match[6])
         ? match[6]
         : undefined,
-    eof: operation === "read" && args[1]! > 0 && result === 0,
+    eof: ["read", "recvfrom"].includes(operation) && args[1]! > 0 && result === 0,
   };
 }
 
