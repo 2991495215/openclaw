@@ -784,13 +784,10 @@ try {
       if (!identity.stdout.split(/\r?\n/u).includes(name)) {
         throw new Error("emulator-identity-mismatch");
       }
-      const packetLimit = await command(adb, [
-        "-s",
+      const packetLimit = await guestRoot(
         serial,
-        "shell",
-        "cat",
-        "/sys/module/vmw_vsock_virtio_transport_common/parameters/virtio_transport_max_vsock_pkt_buf_size",
-      ]);
+        "cat /sys/module/vmw_vsock_virtio_transport_common/parameters/virtio_transport_max_vsock_pkt_buf_size\n",
+      );
       const actualPacketBytes = /^\d+\s*$/u.test(packetLimit.stdout)
         ? Number(packetLimit.stdout.trim())
         : null;
