@@ -13,7 +13,10 @@
 }
 
 .logbook__daynav,
-.logbook__actions {
+.logbook__actions,
+.logbook__chips,
+.logbook-card__meta,
+.logbook-card__distractions {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -26,9 +29,6 @@
 }
 
 .logbook__chips {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
   flex: 1;
   min-width: 0;
@@ -184,9 +184,6 @@
 }
 
 .logbook-card__meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   white-space: nowrap;
 }
 
@@ -242,9 +239,6 @@
 }
 
 .logbook-card__distractions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex-wrap: wrap;
 }
 

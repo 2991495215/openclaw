@@ -86,11 +86,6 @@ export const EMPTY_SESSION_MENU_DATA: SessionMenuData = {
   categoryClearReturnsToGroups: false,
 };
 
-type SessionMenuActionsHost = {
-  readonly updateComplete: Promise<boolean>;
-  focusCurrentView(): void;
-};
-
 export type SessionMenuActionsState = {
   involvingMeContext?: boolean;
   session: SessionMenuData;
@@ -126,7 +121,8 @@ export class SessionMenuActions {
   }
 
   constructor(
-    private readonly host: SessionMenuActionsHost,
+    private readonly host: { readonly updateComplete: Promise<boolean> },
+    private readonly focusTarget: () => { focusFirst(): void } | undefined,
     private readonly readState: () => SessionMenuActionsState,
     private readonly onAction: (action: SessionManagementAction) => void,
     private readonly onClose: () => void,
@@ -299,7 +295,7 @@ export class SessionMenuActions {
   }
 
   focusCurrentView(): void {
-    void this.host.updateComplete.then(() => this.host.focusCurrentView());
+    void this.host.updateComplete.then(() => this.focusTarget()?.focusFirst());
   }
 
   handleKeydown(event: KeyboardEvent, appearancePicker: { showIconGrid: () => void }): boolean {

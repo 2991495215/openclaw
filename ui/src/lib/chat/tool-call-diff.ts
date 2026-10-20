@@ -1,3 +1,4 @@
+import { asNonNegativeInteger } from "@openclaw/normalization-core/number-coercion";
 import { asNullableObjectRecord as readRecord } from "@openclaw/normalization-core/record-coerce";
 
 /**
@@ -33,16 +34,9 @@ export type DiffStat = { added: number; removed: number };
 
 export function readLiveDiffStat(value: unknown): DiffStat | undefined {
   const diff = readRecord(value);
-  const added = diff?.added;
-  const removed = diff?.removed;
-  return typeof added === "number" &&
-    Number.isInteger(added) &&
-    added >= 0 &&
-    typeof removed === "number" &&
-    Number.isInteger(removed) &&
-    removed >= 0
-    ? { added, removed }
-    : undefined;
+  const added = asNonNegativeInteger(diff?.added);
+  const removed = asNonNegativeInteger(diff?.removed);
+  return added !== undefined && removed !== undefined ? { added, removed } : undefined;
 }
 
 type LineDiffResult =

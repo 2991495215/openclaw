@@ -128,18 +128,8 @@ function ChatHeaderSessionMenuContent(
     menu?.close();
   };
   const actions = new SessionMenuActions(
-    {
-      get updateComplete() {
-        return host.updateComplete;
-      },
-      focusCurrentView() {
-        if (compactView() === "icon") {
-          view.appearance.focusFirst();
-        } else {
-          menu?.focusFirst();
-        }
-      },
-    },
+    host,
+    () => (compactView() === "icon" ? view.appearance : menu),
     readState,
     (action) => props.onAction(action),
     close,
