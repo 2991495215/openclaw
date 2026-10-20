@@ -4,6 +4,7 @@ import type { JSX } from "@solidjs/web";
 import { createSignal, flush } from "solid-js";
 import { afterEach, expect, it, vi } from "vitest";
 import { t } from "../../i18n/index.ts";
+import { installDialogPolyfill } from "../../test-helpers/modal-dialog.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { renderChatComposerNotices, renderChatTopbarNotices } from "./chat-view-notices.tsx";
 
@@ -210,3 +211,38 @@ it.each([
   expect(container.querySelector(".chat-composer-neighbor-card__copy")).toBeNull();
   expect(container.textContent).toContain("Ordinary failure");
 });
+
+it.each(["chatgpt_business_usage_limit", "chatgpt_consumer_usage_limit"] as const)(
+  "keeps %s recovery beside a transcript error and resets dismissal for a new run",
+  (kind) => {
+    const restoreDialog = installDialogPolyfill();
+    const initial: ComposerProps = {
+      sessionKey: "agent:main:business-limit",
+      messages: [{ openclawRunError: { runId: "run-1", summary: "Usage limit reached" } }],
+      runError: {
+        kind,
+        runId: "run-1",
+        summary: "Usage limit reached",
+      },
+    };
+    const view = publishedNotices(renderChatComposerNotices, initial);
+    try {
+      flush();
+      expect(view.container.querySelector("dialog")?.open).toBe(true);
+      view.getByRole("button", { name: "Close" }).click();
+      flush();
+      publishHistory(view.publish, initial, () => {
+        expect(view.container.querySelector("dialog")?.open).toBe(false);
+      });
+      view.publish({ ...initial, runError: { ...initial.runError!, runId: "run-2" } });
+      flush();
+      expect(view.container.querySelector("dialog")?.open).toBe(true);
+      view.publish({ messages: [] });
+      flush();
+      expect(view.container.querySelector("dialog")).toBeNull();
+    } finally {
+      view.unmount();
+      restoreDialog();
+    }
+  },
+);
