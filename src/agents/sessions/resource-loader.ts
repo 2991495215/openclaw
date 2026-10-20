@@ -22,15 +22,6 @@ export interface ResourceExtensionPaths {
   themePaths?: Array<{ path: string; metadata: PathMetadata }>;
 }
 
-export interface ResourceLoader {
-  getExtensions(): LoadExtensionsResult;
-  getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
-  getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
-  getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
-  extendResources(paths: ResourceExtensionPaths): void;
-  reload(): Promise<void>;
-}
-
 interface DefaultResourceLoaderOptions {
   cwd: string;
   agentDir: string;
@@ -68,7 +59,7 @@ class ResourceCollection<T> {
   }
 }
 
-export class DefaultResourceLoader implements ResourceLoader {
+export class DefaultResourceLoader {
   private cwd: string;
   private agentDir: string;
   private eventBus: EventBus;

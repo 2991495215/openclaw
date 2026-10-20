@@ -427,21 +427,14 @@ describe("native completion final-effect authority", () => {
       const { session } = await createTestSession({
         sessionManager,
         settingsManager: createAutoCompactionSettings(),
-        resourceLoader: createResourceLoader(
-          new Map([
-            [
-              "session_before_compact",
-              [
-                async () => {
-                  compacting.resolve();
-                  await resumeCompaction.promise;
-                  // Keep the prompt in automatic compaction while completion authority changes.
-                  return { cancel: true };
-                },
-              ],
-            ],
-          ]),
-        ),
+        resourceLoader: await createResourceLoader((api) => {
+          api.on("session_before_compact", async () => {
+            compacting.resolve();
+            await resumeCompaction.promise;
+            // Keep the prompt in automatic compaction while completion authority changes.
+            return { cancel: true };
+          });
+        }),
       });
       streamMocks.streamSimple.mockImplementation(() => {
         if (finishModel || closing) {

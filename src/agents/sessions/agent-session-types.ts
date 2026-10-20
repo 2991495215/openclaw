@@ -11,7 +11,7 @@ import type {
   ToolDefinition,
 } from "./extensions/index.js";
 import type { ModelRegistry } from "./model-registry.js";
-import type { ResourceLoader } from "./resource-loader.js";
+import type { DefaultResourceLoader } from "./resource-loader.js";
 import type { SessionManager } from "./session-manager.js";
 import type { SettingsManager } from "./settings-manager.js";
 
@@ -84,7 +84,7 @@ export interface AgentSessionConfig {
   sessionManager: SessionManager;
   settingsManager: SettingsManager;
   cwd: string;
-  resourceLoader: ResourceLoader;
+  resourceLoader: DefaultResourceLoader;
   /** SDK custom tools registered outside extensions. */
   customTools?: ToolDefinition[];
   modelRegistry: ModelRegistry;
