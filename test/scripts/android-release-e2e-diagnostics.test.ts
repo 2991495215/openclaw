@@ -149,6 +149,14 @@ describe("Android release public failure diagnostics", () => {
       { operation: "write", errno: "EPIPE", eof: false },
     ],
     [
+      "write(0x11, 0x7fffeed, 0x10008) = -1 EMSGSIZE (Message too long) <0.001456>",
+      { operation: "write", requestedBytes: 65544, result: -1, errno: "EMSGSIZE" },
+    ],
+    [
+      "write(0x11, 0x7fffeed, 0x10008) = -1 ENOMEM (Out of memory) <0.001456>",
+      { operation: "write", requestedBytes: 65544, result: -1, errno: "ENOMEM" },
+    ],
+    [
       "writev(0xd, 0x7fffeed, 0x2) = 0x100 <0.000020>",
       { operation: "writev", requestedBytes: undefined, result: 256, eof: false },
     ],

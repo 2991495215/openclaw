@@ -1,4 +1,7 @@
+import { constants as osConstants } from "node:os";
 import path from "node:path";
+
+const syscallErrnos = new Set(Object.keys(osConstants.errno));
 
 /** Only the debugger's metadata protocol may leave its private output stream. */
 export function androidReleaseAdbBridgeLineFacts(line: string) {
@@ -157,23 +160,7 @@ export function androidReleaseAdbSyscallLineFacts(line: string) {
       : undefined,
     shutdownHow: operation === "shutdown" ? args[0] : undefined,
     result,
-    errno:
-      match[6] &&
-      [
-        "ECONNRESET",
-        "ECONNABORTED",
-        "EPIPE",
-        "EIO",
-        "EBADF",
-        "EINVAL",
-        "ETIMEDOUT",
-        "EINTR",
-        "EAGAIN",
-        "ENOTCONN",
-        "ENOBUFS",
-      ].includes(match[6])
-        ? match[6]
-        : undefined,
+    errno: match[6] && syscallErrnos.has(match[6]) ? match[6] : undefined,
     eof: ["read", "readv", "recvfrom"].includes(operation) && args[1]! > 0 && result === 0,
   };
 }
