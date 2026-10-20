@@ -158,7 +158,7 @@ it("refuses a worker sharing result whose captured birthtime differs from its re
   ]);
 });
 
-it.for(["unknown", "rollback"] as const)(
+it.for(["unknown", "rollback", "registration", "removal"] as const)(
   "applies %s topology publications to retained sharing facts",
   async (change, { state }) => {
     const storePath = state.statePath("shared.sqlite");
@@ -178,6 +178,10 @@ it.for(["unknown", "rollback"] as const)(
     using prepared = releasing(await prepareSessionMutationFacts({ cfg, ...target }));
     if (change === "unknown") {
       sessionChanges.emit({ all: true, scope: "stores" });
+    } else if (change === "registration") {
+      registerOpenClawAgentDatabase(registration);
+    } else if (change === "removal") {
+      unregisterOpenClawAgentDatabase(registration);
     } else {
       expect(() =>
         runOpenClawStateWriteTransaction(
@@ -189,7 +193,7 @@ it.for(["unknown", "rollback"] as const)(
         ),
       ).toThrow("Synthetic registry rollback");
     }
-    if (change === "rollback") {
+    if (change !== "unknown") {
       expect(prepared.readCurrent(cfg).target.entry.sessionId).toBe("registry-sharing");
     } else {
       expect(() => prepared.readCurrent(cfg)).toThrow(unavailableMessage);

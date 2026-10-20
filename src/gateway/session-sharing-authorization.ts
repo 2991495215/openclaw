@@ -70,9 +70,6 @@ export type SessionMutationAuthorizationParams = {
     readSource?: import("../config/sessions/session-entry-read-source.types.js").CapturedSessionEntryReadSource;
     prepareRead: () => Promise<void> | undefined;
     read: () => PreparedMutationSharing;
-    followRegistration?: (
-      change: import("../state/openclaw-agent-db-contract.js").AgentDatabaseRegistryChange,
-    ) => void;
     bindCreation: (
       operation: import("../config/sessions/session-accessor.sqlite-entry-cache.types.js").SessionEntryCreationOperation,
     ) => void;

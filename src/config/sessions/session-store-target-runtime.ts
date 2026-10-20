@@ -97,22 +97,14 @@ function captureSelectionMemo<Value extends PreparedSelection>(
 
 export function prepareSessionStoreTargetInventoryRead(
   request: Omit<SessionStoreTargetInventoryRequest, "registeredDatabases">,
-  unchangedBy?: Parameters<typeof prepareOpenClawAgentDatabaseRegistrySnapshotRead>[1],
   registeredDatabases?: SessionStoreRegistryRead,
 ) {
   const { candidates, ...prepared } = request;
-  // Security-scoped inventories can supply a stricter witness. Ordinary discovery
-  // keeps its selected registry snapshot; later registrations affect the next read.
-  const registry = prepareOpenClawAgentDatabaseRegistrySnapshotRead(
-    { env: request.env },
-    unchangedBy,
-  );
-  const assertRegistryCurrent = unchangedBy
-    ? registry.assertCurrent
-    : registry.assertAdmissionCurrent;
+  // Discovery keeps its selected snapshot; later registrations affect the next read.
+  const registry = prepareOpenClawAgentDatabaseRegistrySnapshotRead({ env: request.env });
+  const assertRegistryCurrent = registry.assertAdmissionCurrent;
   return {
     assertRegistryCurrent,
-    followRegistration: registry.followRegistration,
     withRead<T>(
       operation: (
         inventory: Extract<SessionStoreTargetInventoryResult, { kind: "session-target-inventory" }>,

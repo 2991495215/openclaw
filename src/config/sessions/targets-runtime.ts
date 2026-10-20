@@ -16,12 +16,9 @@ export async function resolveAllAgentSessionStoreTargetsAsync(
     options.env,
     "recovery",
   );
-  return prepareSessionStoreTargetInventoryRead(
-    request,
-    undefined,
-    options.registeredDatabases,
-  ).withRead(async (inventory) =>
-    inventory.agents.flatMap(({ result }) => (result.available ? result.targets : [])),
+  return prepareSessionStoreTargetInventoryRead(request, options.registeredDatabases).withRead(
+    async (inventory) =>
+      inventory.agents.flatMap(({ result }) => (result.available ? result.targets : [])),
   );
 }
 

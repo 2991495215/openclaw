@@ -15,10 +15,7 @@ import type {
 } from "../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import { SessionCanonicalKeyMigrationRequiredError } from "../config/sessions/session-canonical-key-error.js";
 import type { SessionStoreReadCandidate } from "../config/sessions/session-store-read-candidates.js";
-import {
-  createSessionStoreRegistryMutationFilter,
-  prepareSessionStoreTargetInventory,
-} from "../config/sessions/session-store-target-inventory.js";
+import { prepareSessionStoreTargetInventory } from "../config/sessions/session-store-target-inventory.js";
 import { prepareSessionStoreTargetInventoryRead } from "../config/sessions/session-store-target-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
@@ -32,7 +29,6 @@ import {
   sessionChanges,
   type SessionRowChange,
 } from "../sessions/session-row-changes.js";
-import type { AgentDatabaseRegistryChange } from "../state/openclaw-agent-db-contract.js";
 import { isOpenClawAgentDatabaseRegistryChange } from "../state/openclaw-agent-db-registry-listing.js";
 import {
   matchesAgentDatabaseReadCandidatePath,
@@ -84,8 +80,7 @@ export async function prepareSessionMutationFacts(
   let waitingForStorage = false;
   let invalidated = false;
   let facts: PreparedSessionSourceFacts | undefined;
-  let assertRegistryPublication: (() => void) | undefined;
-  let followRegistration: ((change: AgentDatabaseRegistryChange) => void) | undefined;
+  let assertPhysicalSources: (() => void) | undefined;
   let creation: SessionEntryCreationOperation | undefined;
   let expectedPlaceholder: SessionEntryPlaceholder | undefined;
   let adoptCreatedEntry: ((entry: SessionSharingEntry) => void) | undefined;
@@ -149,15 +144,16 @@ export async function prepareSessionMutationFacts(
         if (beforeDiscovery) {
           return;
         }
-        if (isOpenClawAgentDatabaseRegistryChange(change) && assertRegistryPublication) {
+        if (isOpenClawAgentDatabaseRegistryChange(change)) {
+          // Catalog churn is harmless, but it may expose a replaced physical source.
           try {
-            assertRegistryPublication();
+            assertPhysicalSources?.();
           } catch {
             invalidate();
           }
-        } else {
-          invalidate();
+          return;
         }
+        invalidate();
         return;
       }
       if (
@@ -271,6 +267,22 @@ export async function prepareSessionMutationFacts(
       candidate,
       identity: readDatabasePathIdentitySync(candidate.path),
     }));
+    assertPhysicalSources = () => {
+      const source = facts?.readSource;
+      if (source) {
+        assertExistingDatabaseIdentity(
+          source.path,
+          `file:${source.databaseIdentity}`,
+          source.databaseBirthtime,
+        );
+      } else {
+        for (const { candidate, identity } of candidateIdentities) {
+          if (identity.birthtime !== undefined) {
+            assertExistingDatabaseIdentity(candidate.path, identity.key, identity.birthtime);
+          }
+        }
+      }
+    };
     const missingCandidates = candidateIdentities.filter(
       ({ identity }) => identity.birthtime === undefined,
     );
@@ -299,28 +311,7 @@ export async function prepareSessionMutationFacts(
     }
     let readFacts = () => facts!;
     const { candidates: discoveryCandidates, ...inventory } = discoveryInventory;
-    const preparedSources: Array<{
-      agentId: string;
-      path: string;
-      identity: string;
-      birthtime: string;
-    }> = [];
-    const inventoryRead = prepareSessionStoreTargetInventoryRead(
-      discoveryInventory,
-      createSessionStoreRegistryMutationFilter({
-        captured: candidateIdentities.map(({ candidate, identity }) => ({
-          candidate,
-          identity: identity.key,
-          birthtime: identity.birthtime,
-        })),
-        preparedSources,
-        registryDiscovery: inventory.registryDiscovery,
-      }),
-    );
-    followRegistration = inventoryRead.followRegistration;
-    assertRegistryPublication = () => {
-      inventoryRead.assertRegistryCurrent();
-    };
+    const inventoryRead = prepareSessionStoreTargetInventoryRead(discoveryInventory);
     const members = new Map<string, PreparedSessionSharingSource>();
     const retainedReads = new Map<string, ReturnType<typeof retainPreparedSessionSharingFacts>>();
     const selected = await inventoryRead.withRead(async (sources, assertDiscoveryCurrent) => {
@@ -384,11 +375,6 @@ export async function prepareSessionMutationFacts(
                 loaded.sharing.databaseIdentity,
                 source.birthtime,
               );
-              preparedSources.push({
-                ...loaded.sharing.source,
-                identity: loaded.sharing.databaseIdentity,
-                birthtime: source.birthtime,
-              });
               read.readSource = loaded.sharing.source;
               members.set(read.storePath, {
                 facts: loaded.sharing,
@@ -587,7 +573,7 @@ export async function prepareSessionMutationFacts(
     if (pending) {
       await pending;
     }
-    return { storageTarget, bindCreation, prepareRead, readCurrent, release, followRegistration };
+    return { storageTarget, bindCreation, prepareRead, readCurrent, release };
   } catch (error) {
     release();
     throw waitingForStorage ||

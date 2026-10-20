@@ -2,21 +2,12 @@ import { statSync } from "node:fs";
 import path from "node:path";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import { resolveAgentSessionDirsFromAgentsDirSync } from "../../agents/session-dirs.js";
-import {
-  assertDatabasePathIdentity,
-  assertExistingDatabaseIdentity,
-} from "../../infra/sqlite-worker-identity.js";
+import { assertDatabasePathIdentity } from "../../infra/sqlite-worker-identity.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import {
   listAgentDatabaseAdmissionRefusals,
   readAgentDatabaseAdmissionRefusal,
 } from "../../state/agent-database-admission.js";
-import {
-  OPENCLAW_AGENT_SCHEMA_VERSION,
-  type OpenClawRegisteredAgentDatabase,
-} from "../../state/openclaw-agent-db-contract.js";
-import type { AgentDatabaseRegistryMutation } from "../../state/openclaw-agent-db-registry-listing.js";
-import { matchesAgentDatabaseReadCandidatePath } from "../../state/openclaw-agent-db-resources.js";
 import { isIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import {
   cloneEnvWithPlatformSemantics,
@@ -52,10 +43,7 @@ import {
   type SessionStoreTarget,
 } from "./targets-collision.js";
 import { listKnownSessionStoreAgentIds } from "./targets-discovery.native.js";
-import {
-  shouldSkipDiscoveryError,
-  toDiscoveredSessionStoreTarget,
-} from "./targets-path-validation.js";
+import { shouldSkipDiscoveryError } from "./targets-path-validation.js";
 import {
   resolveExistingAgentSessionStoreTargetsReadOnlyResult,
   type SessionStoreTargetsReadCache,
@@ -202,10 +190,7 @@ export type SessionStoreTargetInventoryRequest = {
   paths: CapturedSessionStorePaths;
   candidates: SessionStoreReadCandidate[];
   recoveryExclusions?: { agentIds: string[]; storePaths: string[] };
-  registryDiscovery?: {
-    agentIds: string[];
-    roots: Array<{ path: string; physicalPath: string }>;
-  };
+  registryDiscovery?: true;
   registeredDatabases: SessionStoreRegistryRead;
 };
 
@@ -219,103 +204,6 @@ export type SessionStoreTargetInventoryResult =
         reads: Array<{ target: SessionStoreTarget; database: { agentId: string; path: string } }>;
       }>;
     };
-
-/** Scope registry publications to the paths that can change the original selection. */
-export function createSessionStoreRegistryMutationFilter(params: {
-  captured: readonly {
-    candidate: SessionStoreReadCandidate;
-    identity: string;
-    birthtime?: string;
-  }[];
-  preparedSources: readonly {
-    agentId: string;
-    path: string;
-    identity: string;
-    birthtime: string;
-  }[];
-  registryDiscovery?: SessionStoreTargetInventoryRequest["registryDiscovery"];
-}) {
-  const registryCandidates = params.captured.filter(
-    ({ candidate }) => !resolveUnsuffixedSqliteTargetFromSessionStorePath(candidate.path).agentId,
-  );
-  return (
-    mutation: AgentDatabaseRegistryMutation,
-    entries: readonly OpenClawRegisteredAgentDatabase[] | undefined,
-  ) =>
-    mutation.sources.every((source) => {
-      const sameCapturedRegistration = params.captured.some(
-        ({ candidate, identity, birthtime }) =>
-          identity.startsWith("file:") &&
-          identity === source.identity &&
-          (source.path === candidate.path || source.path === candidate.physicalPath) &&
-          isCurrentRegistrySourceGeneration(
-            { path: candidate.path, identity, birthtime },
-            source,
-          ) &&
-          entries?.some(
-            (entry) =>
-              entry.agentId === source.agentId &&
-              entry.schemaVersion === source.schemaVersion &&
-              (entry.path === candidate.path || entry.path === candidate.physicalPath),
-          ),
-      );
-      if (
-        mutation.kind === "upsert" &&
-        source.schemaVersion === OPENCLAW_AGENT_SCHEMA_VERSION &&
-        (sameCapturedRegistration ||
-          params.preparedSources.some(
-            (prepared) =>
-              prepared.agentId === source.agentId &&
-              (prepared.identity === source.identity ||
-                // A creator's COMMIT promotes its captured absent locator to this file.
-                params.captured.some(
-                  ({ candidate, identity, birthtime }) =>
-                    birthtime === undefined &&
-                    identity === source.identity &&
-                    (candidate.path === prepared.path || candidate.physicalPath === prepared.path),
-                )) &&
-              isCurrentRegistrySourceGeneration(prepared, source),
-          ))
-      ) {
-        return true;
-      }
-      return (
-        !params.preparedSources.some(
-          (prepared) =>
-            prepared.path === source.path ||
-            prepared.path === source.physicalPath ||
-            prepared.identity === source.identity,
-        ) &&
-        !isSessionStoreRegistryDiscoveryPath(params.registryDiscovery, source) &&
-        !registryCandidates.some(
-          ({ candidate, identity }) =>
-            (identity.startsWith("file:") && source.identity === identity) ||
-            matchesAgentDatabaseReadCandidatePath(candidate, source.path) ||
-            matchesAgentDatabaseReadCandidatePath(
-              { ...candidate, path: candidate.physicalPath },
-              source.physicalPath,
-            ),
-        )
-      );
-    });
-}
-
-function isCurrentRegistrySourceGeneration(
-  captured: { path: string; identity: string; birthtime?: string },
-  source: { path: string; physicalPath: string },
-): boolean {
-  if (captured.birthtime === undefined) {
-    return false;
-  }
-  try {
-    for (const pathname of new Set([captured.path, source.path, source.physicalPath])) {
-      assertExistingDatabaseIdentity(pathname, captured.identity, captured.birthtime);
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 type InventoryEnvironment = {
   env: NodeJS.ProcessEnv;
@@ -480,46 +368,8 @@ export function prepareSessionStoreTargetInventory(
           },
         }
       : {}),
-    ...(perAgent && retired.size > 0
-      ? {
-          registryDiscovery: {
-            agentIds: [...retired],
-            roots: [...roots].map((root) => captureSessionStoreReadCandidate(root)),
-          },
-        }
-      : {}),
+    ...(perAgent && retired.size > 0 ? { registryDiscovery: true as const } : {}),
   };
-}
-
-/** Future retired directories follow the same root and directory-name rules as discovery. */
-function isSessionStoreRegistryDiscoveryPath(
-  scope: SessionStoreTargetInventoryRequest["registryDiscovery"],
-  source: { path: string; physicalPath: string },
-): boolean {
-  if (!scope) {
-    return false;
-  }
-  return scope.roots.some((root) =>
-    [root.path, root.physicalPath].some((rootPath) =>
-      [source.path, source.physicalPath].some((sourcePath) => {
-        const relative = path.relative(rootPath, sourcePath);
-        const directoryName = relative.split(path.sep)[0];
-        if (path.isAbsolute(relative) || !directoryName || directoryName === "..") {
-          return false;
-        }
-        const sessionsDir = path.join(rootPath, directoryName, "sessions");
-        const target = toDiscoveredSessionStoreTarget(
-          sessionsDir,
-          path.join(sessionsDir, "sessions.json"),
-        );
-        return (
-          target !== undefined &&
-          scope.agentIds.includes(target.agentId) &&
-          resolveUnsuffixedSqliteTargetFromSessionStorePath(target.storePath).path === sourcePath
-        );
-      }),
-    ),
-  );
 }
 
 /** Worker-only native discovery; registry facts come from the canonical host memo. */

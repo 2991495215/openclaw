@@ -161,7 +161,6 @@ export async function resolveSessionMutationAuthorizationAsync(
         storageTarget: retained.storageTarget,
         readSource,
         bindCreation: retained.bindCreation,
-        followRegistration: retained.followRegistration,
         prepareRead: retained.prepareRead,
         read: () => {
           const facts = readCurrent();
@@ -231,12 +230,6 @@ export async function resolveSessionMutationAuthorizationAsync(
       ...result,
       authorization: {
         ...authorization,
-        followRegistration: (_target, change) => {
-          // The parent's retained discovery also follows its own child-store registration.
-          for (const prepared of preparedTargets) {
-            prepared.followRegistration?.(change);
-          }
-        },
         retain,
         release: () => {
           if (!transferred) {
