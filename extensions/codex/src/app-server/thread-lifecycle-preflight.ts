@@ -75,6 +75,7 @@ import {
   CODEX_RING_ZERO_BASE_INSTRUCTIONS,
   readCodexInheritedMcpServerNames,
 } from "./thread-requests.js";
+import { prepareCodexNoRetryPolicy } from "./thread-retry-policy.js";
 import { mergeCodexNativeShellEnvironment } from "./thread-shell-environment.js";
 import { resolveCodexWebSearchPlan } from "./web-search.js";
 
@@ -136,6 +137,18 @@ export async function prepareCodexThreadRequestContext(
     agentDir: params.params.agentDir,
     config: params.params.config,
   });
+  if (params.params.retryTransientErrors === false) {
+    const policy = await prepareCodexNoRetryPolicy({
+      client: params.client,
+      config: options.config,
+      effectiveConfig: options.preflight.effectiveConfig,
+      modelProvider: startModelSelection.modelProvider,
+      signal: params.signal,
+      assertCurrent: options.assertCurrent,
+    });
+    options.config = policy.config;
+    startModelSelection.modelProvider = policy.modelProvider;
+  }
   const startModelProvider = startModelSelection.modelProvider;
   const nativeProvider = options.preflight.effectiveConfig.config.model_provider;
   const fastMode =
@@ -195,6 +208,7 @@ export async function prepareCodexThreadRequestContext(
       clientId: options.clientId,
       operatorBacked: source !== undefined,
       modelPolicyEnforced,
+      retryTransientErrors: params.params.retryTransientErrors,
       modelProvider:
         options.binding?.preserveNativeModel || options.binding?.connectionScope === "supervision"
           ? options.binding.modelProvider

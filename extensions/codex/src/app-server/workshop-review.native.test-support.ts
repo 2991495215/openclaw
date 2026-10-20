@@ -6,7 +6,15 @@ import {
   closeOwnedStdioProcess,
   createOwnedStdioProcess,
 } from "openclaw/plugin-sdk/process-runtime";
+import { CodexAppServerClient } from "./client.js";
 import { createCodexNativeTestState } from "./native-app-server.test-support.js";
+import {
+  CODEX_APP_SERVER_BINDING_NAMESPACE,
+  CODEX_APP_SERVER_BINDING_MAX_ENTRIES,
+} from "./session-binding-meta.js";
+import { createCodexAppServerBindingStore } from "./session-binding.js";
+import { createCodexSqliteTestBindingStateStore } from "./session-binding.sqlite.test-helpers.js";
+import { getSharedCodexAppServerClientState } from "./shared-client-lifecycle.js";
 import { clearSharedCodexAppServerClientAndWait } from "./shared-client.js";
 
 async function waitForSocket(socketPath: string, signal: AbortSignal): Promise<void> {
@@ -47,12 +55,13 @@ async function waitForSocket(socketPath: string, signal: AbortSignal): Promise<v
   });
 }
 
-/** Real pinned Codex with a private home, no credentials, and a caller-owned Responses server. */
+/** Real pinned Codex with private native credentials and a caller-owned Responses server. */
 export async function createWorkshopReviewNativeFixture(options: {
   root: string;
   baseUrl: string;
   modelId: string;
   signal: AbortSignal;
+  apiKey: string;
 }) {
   const native = await createCodexNativeTestState(options.root);
   // Keep this directly below the caller's short temp root: macOS limits Unix socket paths.
@@ -87,20 +96,13 @@ export async function createWorkshopReviewNativeFixture(options: {
     path.join(native.codexHome, "config.toml"),
     [
       `model=${JSON.stringify(options.modelId)}`,
-      'model_provider="workshop-fixture"',
+      'model_provider="openai"',
+      `openai_base_url=${JSON.stringify(options.baseUrl)}`,
       `model_catalog_json=${JSON.stringify(catalogPath)}`,
       'cli_auth_credentials_store="ephemeral"',
       'web_search="disabled"',
       'approval_policy="never"',
       'sandbox_mode="read-only"',
-      "[model_providers.workshop-fixture]",
-      'name="Synthetic Workshop provider"',
-      `base_url=${JSON.stringify(options.baseUrl)}`,
-      'wire_api="responses"',
-      "requires_openai_auth=false",
-      "supports_websockets=false",
-      "request_max_retries=0",
-      "stream_max_retries=0",
       "[analytics]",
       "enabled=false",
       "[feedback]",
@@ -122,11 +124,13 @@ export async function createWorkshopReviewNativeFixture(options: {
       },
     }),
   });
+  let control: CodexAppServerClient | undefined;
   let closing: Promise<void> | undefined;
   const close = () =>
     (closing ??= (async () => {
       try {
         await clearSharedCodexAppServerClientAndWait();
+        await control?.closeAndWait();
       } finally {
         child.kill("SIGTERM");
         await closeOwnedStdioProcess(child);
@@ -147,9 +151,96 @@ export async function createWorkshopReviewNativeFixture(options: {
     startup.abort();
   }
 
+  try {
+    control = await CodexAppServerClient.start({
+      transport: "unix",
+      command: native.command,
+      args: [],
+      headers: {},
+      url: appServerUrl,
+    });
+    await control.initialize();
+    await control.request("account/login/start", { type: "apiKey", apiKey: options.apiKey });
+    const { account } = await control.request("account/read", { refreshToken: false });
+    if (account?.type !== "apiKey") {
+      throw new Error("Native fixture did not select its private API account");
+    }
+  } catch (error) {
+    await close();
+    throw error;
+  }
   return {
-    // Socket connections cannot borrow an operator login. "user" preserves the fixture's
-    // custom provider; WebSocket agent scope would force the built-in OpenAI provider.
+    control,
+    beforeNextTurn(beforeDispatch: () => Promise<void>) {
+      // Plugin module copies share their client owner, not necessarily class prototypes.
+      const clients = getSharedCodexAppServerClientState().liveClients;
+      const restores: (() => void)[] = [];
+      let pending = true;
+      const observe = (client: CodexAppServerClient) => {
+        const request = client.request.bind(client);
+        client.request = new Proxy(request, {
+          async apply(target, receiver, args) {
+            if (pending && args[0] === "turn/start") {
+              pending = false;
+              await beforeDispatch();
+            }
+            return Reflect.apply(target, receiver, args);
+          },
+        });
+        restores.push(() => {
+          client.request = request;
+        });
+      };
+      for (const client of clients) {
+        observe(client);
+      }
+      const add = clients.add.bind(clients);
+      clients.add = (client) => {
+        observe(client);
+        return add(client);
+      };
+      return () => {
+        clients.add = add;
+        for (const restore of restores) {
+          restore();
+        }
+      };
+    },
+    async bindAttachedSource(source: { agentId: string; sessionId: string; sessionKey: string }) {
+      const { thread } = await control!.request("thread/start", {
+        model: options.modelId,
+        ephemeral: true,
+        cwd: native.cwd,
+        approvalPolicy: "never",
+        sandbox: "read-only",
+      });
+      const store = createCodexAppServerBindingStore(
+        createCodexSqliteTestBindingStateStore({
+          env: process.env,
+          namespace: CODEX_APP_SERVER_BINDING_NAMESPACE,
+          maxEntries: CODEX_APP_SERVER_BINDING_MAX_ENTRIES,
+          overflowPolicy: "reject-new",
+        }),
+      );
+      await store.mutate(
+        { kind: "session", ...source },
+        {
+          kind: "set",
+          binding: {
+            threadId: thread.id,
+            cwd: native.cwd,
+            model: options.modelId,
+            modelProvider: "openai",
+            preserveNativeModel: true,
+            connectionScope: "supervision",
+            conversationSourceTransferComplete: true,
+            supervisionSourceThreadId: thread.id,
+            appServerRuntimeFingerprint: appServerUrl,
+          },
+        },
+      );
+    },
+    // The private Unix server owns its account; it cannot borrow an operator login.
     appServer: { transport: "unix" as const, homeScope: "user" as const, url: appServerUrl },
     codexHome: native.codexHome,
     close,

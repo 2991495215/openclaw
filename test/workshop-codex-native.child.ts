@@ -8,15 +8,21 @@ import { setRuntimeConfigSnapshot } from "../src/config/runtime-snapshot.js";
 import {
   listSessionEntriesReadOnly,
   loadTranscriptEvents,
+  upsertSessionEntryCore,
 } from "../src/config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import type { Message } from "../src/llm/types.js";
 import { withServer } from "../src/plugin-sdk/test-helpers/http-test-server.js";
+import { acquirePluginRegistryForInspection } from "../src/plugins/loader.js";
+import { withPluginRuntimeRegistryScope } from "../src/plugins/runtime/gateway-request-scope.js";
 import { runSkillExperienceReview } from "../src/skills/workshop/experience-review.js";
 import { createExperienceReviewCandidate } from "../src/skills/workshop/experience-review.test-support.js";
 import { listWorkshopChanges } from "../src/skills/workshop/library.js";
 import { withOpenClawTestState } from "../src/test-utils/openclaw-test-state.js";
-import { writeOpenAiResponsesText } from "./helpers/openai-responses-sse.js";
+import {
+  writeOpenAiResponsesText,
+  writeOpenAiResponsesSse,
+} from "./helpers/openai-responses-sse.js";
 import { withinTest } from "./helpers/promise.js";
 
 // Exercise a declared first-party route while the private native home owns the synthetic transport.
@@ -86,6 +92,8 @@ await withOpenClawTestState(
   },
   async (state) => {
     const requests: string[] = [];
+    const authHeaders: Array<string | undefined> = [];
+    let responseMode: "success" | "http-failure" | "stream-failure" = "success";
     const providerErrors: unknown[] = [];
     await fs.writeFile(path.join(state.workspaceDir, "AGENTS.md"), WORKSPACE);
     await withServer(
@@ -97,6 +105,17 @@ await withOpenClawTestState(
         void readText(request)
           .then((body) => {
             requests.push(body);
+            authHeaders.push(request.headers.authorization);
+            if (responseMode === "http-failure") {
+              response.writeHead(503).end("Synthetic transient failure");
+              return;
+            }
+            if (responseMode === "stream-failure") {
+              writeOpenAiResponsesSse(response, [
+                { type: "response.created", response: { id: "incomplete" } },
+              ]);
+              return;
+            }
             writeOpenAiResponsesText(response, {
               text: "NO_REPLY",
               messageId: "workshop-noop-message",
@@ -116,6 +135,7 @@ await withOpenClawTestState(
           baseUrl: `${baseUrl}/v1`,
           modelId: MODEL,
           signal,
+          apiKey: "synthetic-configured-workshop-account",
         });
         let review: Promise<void> | undefined;
         try {
@@ -183,6 +203,7 @@ await withOpenClawTestState(
 
           assert.deepEqual(providerErrors, []);
           assert.equal(requests.length, 1);
+          assert.deepEqual(authHeaders, ["Bearer synthetic-configured-workshop-account"]);
           const serialized = requests[0]!;
           // These sentinels occur only in their respective source message types.
           for (const evidence of [USER, TOOL, ASSISTANT]) {
@@ -202,6 +223,79 @@ await withOpenClawTestState(
           assert.deepEqual(await loadTranscriptEvents(candidate.source), sourceBefore);
           // A detached review must not create a second durable OpenClaw session either.
           assert.deepEqual(listSessionEntriesReadOnly(scope), entriesBefore);
+
+          for (const mode of ["http-failure", "stream-failure"] as const) {
+            responseMode = mode;
+            requests.length = 0;
+            await assert.rejects(runSkillExperienceReview(candidate));
+            assert.equal(requests.length, 1, `${mode} bought another inference request`);
+          }
+          responseMode = "success";
+          requests.length = 0;
+          let revoked = false;
+          const restoreRequest = native.beforeNextTurn(async () => {
+            const updated = await upsertSessionEntryCore(candidate.source, {
+              lifecycleRevision: "revoked-before-dispatch",
+            });
+            assert.equal(updated?.lifecycleRevision, "revoked-before-dispatch");
+            revoked = true;
+          });
+          try {
+            const outcome = await runSkillExperienceReview(candidate).then(
+              () => undefined,
+              (error: unknown) => error,
+            );
+            assert.ok(revoked, "The test never reached the native turn-dispatch boundary");
+            assert.equal(requests.length, 0, "Revoked source reached provider I/O");
+            assert.ok(outcome instanceof Error, "Revoked source review unexpectedly succeeded");
+          } finally {
+            restoreRequest();
+          }
+          const attachedCandidate = await createExperienceReviewCandidate(
+            "codex-native-attached",
+            reviewMessages(),
+            {
+              workspaceDir: state.workspaceDir,
+              modelId: MODEL,
+            },
+          );
+          attachedCandidate.config = config;
+          attachedCandidate.ctx.foregroundPromptContext.agentHarnessId = "codex";
+          const attachedRoot = path.join(state.root, "attached");
+          await fs.mkdir(attachedRoot);
+          const attached = await createWorkshopReviewNativeFixture({
+            root: attachedRoot,
+            baseUrl: `${baseUrl}/v1`,
+            modelId: MODEL,
+            signal,
+            apiKey: "synthetic-separate-attached-account",
+          });
+          try {
+            await upsertSessionEntryCore(attachedCandidate.source, {
+              agentHarnessId: "codex",
+              modelSelectionLocked: true,
+            });
+            await attached.bindAttachedSource(attachedCandidate.source);
+            const registry = await acquirePluginRegistryForInspection({
+              config,
+              workspaceDir: state.workspaceDir,
+              onlyPluginIds: ["codex", "openai"],
+              preferBuiltPluginArtifacts: false,
+            });
+            try {
+              await withPluginRuntimeRegistryScope(registry.registry, () =>
+                assert.rejects(
+                  runSkillExperienceReview(attachedCandidate),
+                  /credential-owning connection/,
+                ),
+              );
+            } finally {
+              await registry.release();
+            }
+            assert.equal(requests.length, 0, "Attached account review reached provider I/O");
+          } finally {
+            await attached.close();
+          }
         } finally {
           try {
             await native.close();
