@@ -31,6 +31,7 @@ extension ControlUIDocumentHost {
         :root {
           --openclaw-native-titlebar-height: \(String(format: "%.8g", 52 / zoom))px;
           --openclaw-native-controls-inset: \(String(format: "%.8g", 92 / zoom))px;
+          --openclaw-native-chrome-scale: \(String(format: "%.8g", 1 / zoom));
         }
         """
         // Start before the web header measures its band; document.head may not

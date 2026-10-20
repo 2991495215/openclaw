@@ -134,8 +134,11 @@ struct ContentZoomShortcutTests {
                 "document.getElementById('titlebar').getBoundingClientRect().height") as? Double
             let inset = try await webView.evaluateJavaScript(
                 "parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--openclaw-native-controls-inset'))") as? Double
+            let chromeScale = try await webView.evaluateJavaScript(
+                "parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--openclaw-native-chrome-scale'))") as? Double
             return height.map { abs($0 * webView.pageZoom - 52) < 0.1 } == true &&
-                inset.map { abs($0 * webView.pageZoom - 92) < 0.1 } == true
+                inset.map { abs($0 * webView.pageZoom - 92) < 0.1 } == true &&
+                chromeScale.map { abs($0 * webView.pageZoom - 1) < 0.001 } == true
         }
     }
 
