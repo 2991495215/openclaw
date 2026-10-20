@@ -34,7 +34,6 @@ export function createSyntheticSourceInfo(
   options: {
     source: string;
     scope?: SourceScope;
-    origin?: SourceOrigin;
     baseDir?: string;
   },
 ): SourceInfo {
@@ -42,7 +41,7 @@ export function createSyntheticSourceInfo(
     path,
     source: options.source,
     scope: options.scope ?? "temporary",
-    origin: options.origin ?? "top-level",
+    origin: "top-level",
     baseDir: options.baseDir,
   };
 }
