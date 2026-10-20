@@ -1,3 +1,4 @@
+import { sqliteSchemaFixture } from "../../src/infra/sqlite-schema-contract.test-support.js";
 import type { runReliabilityStress } from "./sqlite-reliability-runner.js";
 
 type ProfileId = "smoke" | "default" | "large";
@@ -5,7 +6,7 @@ type ProfileId = "smoke" | "default" | "large";
 export type IndexRepairJournalMode = "delete" | "wal";
 
 export const INDEX_REPAIR_INDEX_NAME = "idx_openclaw_reliability_records_identity";
-export const INDEX_REPAIR_SCHEMA_SQL = `
+const INDEX_REPAIR_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS openclaw_reliability_index_records (
     id INTEGER PRIMARY KEY,
     identity TEXT NOT NULL,
@@ -14,6 +15,11 @@ export const INDEX_REPAIR_SCHEMA_SQL = `
   CREATE UNIQUE INDEX IF NOT EXISTS ${INDEX_REPAIR_INDEX_NAME}
     ON openclaw_reliability_index_records(identity);
 `;
+
+// Build expected facts from pristine fixture DDL, never from the interrupted database.
+export function getIndexRepairSchema() {
+  return sqliteSchemaFixture(INDEX_REPAIR_SCHEMA_SQL);
+}
 
 export type ProfileConfig = {
   iterations: number;

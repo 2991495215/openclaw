@@ -7,6 +7,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { GatewayServiceCommandConfig } from "../daemon/service-types.js";
 import { acquireGatewayStateOwner } from "../infra/gateway-state-owner.js";
 import type { inspectOtherOpenClawProcesses } from "../infra/openclaw-process-census.js";
+import type { readDarwinBunProcessCensus } from "../process/supervisor/darwin-bun-process-census.js";
 import { createOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import { mockProcessPlatform } from "../test-utils/vitest-spies.js";
 import {
@@ -15,13 +16,19 @@ import {
   runDoctorHealthContributionList,
 } from "./doctor-health-contributions.test-support.js";
 
-const { note, readCommand, census, processMembers, ps, readProcessCommand } = vi.hoisted(() => ({
-  note: vi.fn(),
-  readCommand: vi.fn<() => Promise<GatewayServiceCommandConfig | null>>(),
-  census: vi.fn<typeof inspectOtherOpenClawProcesses>(),
-  processMembers: vi.fn(),
-  ps: vi.fn(),
-  readProcessCommand: vi.fn(),
+const { note, readCommand, census, processMembers, ps, readProcessCommand, darwinBunCensus } =
+  vi.hoisted(() => ({
+    note: vi.fn(),
+    readCommand: vi.fn<() => Promise<GatewayServiceCommandConfig | null>>(),
+    census: vi.fn<typeof inspectOtherOpenClawProcesses>(),
+    processMembers: vi.fn(),
+    ps: vi.fn(),
+    readProcessCommand: vi.fn(),
+    darwinBunCensus: vi.fn<typeof readDarwinBunProcessCensus>(),
+  }));
+vi.mock("../process/supervisor/darwin-bun-process-census.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../process/supervisor/darwin-bun-process-census.js")>()),
+  readDarwinBunProcessCensus: darwinBunCensus,
 }));
 vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
@@ -103,6 +110,7 @@ afterEach(() => {
   processMembers.mockReset();
   ps.mockReset();
   readProcessCommand.mockReset();
+  darwinBunCensus.mockReset();
 });
 
 async function runCaptureReport(repair = false, update = false) {
@@ -183,6 +191,10 @@ it.each([
     ps.mockReturnValue({
       status: 0,
       stdout: `${process.pid} ${process.pid} S 0 ${uid}\n${peer} ${peer} S 0 ${sameUid ? uid : uid + 1}\n`,
+    });
+    darwinBunCensus.mockImplementation(function* () {
+      yield { pid: process.pid, ppid: 0, pgid: process.pid, state: "S", uid };
+      yield { pid: peer, ppid: 0, pgid: peer, state: "S", uid: sameUid ? uid : uid + 1 };
     });
     readProcessCommand.mockImplementation((pid: number) => {
       if (pid === peer) {

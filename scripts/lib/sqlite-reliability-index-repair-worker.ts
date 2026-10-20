@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 import { openNodeSqliteDatabase } from "../../src/infra/node-sqlite.js";
 import { repairCanonicalSqliteIndexes } from "../../src/infra/sqlite-index-schema.js";
 import {
-  INDEX_REPAIR_SCHEMA_SQL,
+  getIndexRepairSchema,
   type IndexRepairJournalMode,
 } from "./sqlite-reliability-contract.js";
 
@@ -48,7 +48,7 @@ async function main(argv: string[]): Promise<void> {
     `);
     process.send?.({ kind: "ready" });
     await waitForStart();
-    repairCanonicalSqliteIndexes(database, databasePath, INDEX_REPAIR_SCHEMA_SQL, {
+    repairCanonicalSqliteIndexes(database, databasePath, getIndexRepairSchema(), {
       validateAfterRepair: () => {
         // All repaired indexes remain inside the owner's unreleased savepoint.
         process.send?.({ kind: "crash-point" });
