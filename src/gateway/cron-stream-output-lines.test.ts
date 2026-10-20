@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { remainingCronStreamLines, type BufferedOutput } from "./cron-stream-output-lines.js";
+import { readCronStreamChunk, type BufferedOutput } from "./cron-stream-output-lines.js";
 
 function chunk(text: string, overrides: Partial<BufferedOutput> = {}): BufferedOutput {
   return {
@@ -12,7 +12,7 @@ function chunk(text: string, overrides: Partial<BufferedOutput> = {}): BufferedO
   };
 }
 
-describe("remaining cron stream lines", () => {
+describe("cron stream line intake", () => {
   it.each([
     {
       name: "complete lines before a later drop",
@@ -49,17 +49,15 @@ describe("remaining cron stream lines", () => {
       includeTruncated: true,
     },
   ])("preserves intake boundaries for $name", ({ entries, lines, includeTruncated }) => {
+    const state = {
+      partialLines: { stdout: "", stderr: "" },
+      discardUntilNewline: { stdout: false, stderr: false },
+    };
     expect(
-      Array.from(
-        remainingCronStreamLines({
-          partialLines: { stdout: "", stderr: "" },
-          discardUntilNewline: { stdout: false, stderr: false },
-          droppedChunkTail: { stdout: false, stderr: false },
-          bufferedOutput: entries,
-          maxLineBytes: 8,
-          includeTruncated: includeTruncated ?? false,
-        }),
-      ),
+      entries
+        .flatMap((entry) => Array.from(readCronStreamChunk(state, entry, 8)))
+        .filter(({ truncated }) => includeTruncated || !truncated)
+        .map(({ line }) => line),
     ).toEqual(lines);
   });
 });

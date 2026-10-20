@@ -174,7 +174,6 @@ export function parseStateLeaseProcessOwner(
 
 export function readStateLeaseProcessOwnerStatus(
   owner: StateLeaseProcessOwner | null,
-  _heartbeatAt?: number,
 ): "live" | "dead" | "unknown" {
   if (!owner) {
     return "unknown";

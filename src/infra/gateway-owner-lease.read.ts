@@ -80,7 +80,7 @@ export function decodeGatewayOwnerLease(
     supervisor,
     ...(typeof payload.listeningAt === "number" ? { listeningAt: payload.listeningAt } : {}),
     // Expiry cannot revoke the separate physical Gateway coordinator.
-    state: readStateLeaseProcessOwnerStatus(processOwner, row.heartbeatAt ?? row.createdAt),
+    state: readStateLeaseProcessOwnerStatus(processOwner),
     expired: row.expiresAt === null || row.expiresAt <= Date.now(),
   };
 }

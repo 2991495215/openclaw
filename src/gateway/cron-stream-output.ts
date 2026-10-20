@@ -13,7 +13,6 @@ import { truncateUtf8Prefix } from "../utils/utf8-truncate.js";
 import { matchCronStreamLines } from "./cron-stream-matcher.js";
 import {
   readCronStreamChunk,
-  remainingCronStreamLines,
   type BufferedOutput,
   type DroppedTail,
   type StreamOutputChannel,
@@ -103,11 +102,9 @@ export class CronStreamOutput {
   private scheduler: GatewaySchedulerScope;
   private matcher?: RegExp;
   private matching = new AbortController();
-  private matchFailed = false;
   private quietTimer?: GatewayScheduledJob;
   private rateTimer?: GatewayScheduledJob;
   private bufferedOutput: BufferedOutput[] = [];
-  private interruptedOutput: BufferedOutput[] = [];
   private bufferedOutputBytes = 0;
   private outputDrainQueued = false;
   private outputOverflowed = false;
@@ -205,7 +202,6 @@ export class CronStreamOutput {
     this.outputOverflowed = false;
     for (const entry of buffered) {
       if (!this.params.isDesiredRunning()) {
-        this.interruptedOutput.push(entry);
         continue;
       }
       if (this.params.getState() !== "running") {
@@ -242,13 +238,12 @@ export class CronStreamOutput {
     await this.flushBatch();
   }
 
-  async beginStop(): Promise<CronStreamOutputStopState> {
+  beginStop(): CronStreamOutputStopState {
     this.rateTimer?.cancel();
     this.rateTimer = undefined;
     const state = {
-      sourceBatchLost: this.matchFailed
-        ? this.batch !== undefined
-        : await this.hasAcceptedSourceInput(),
+      // Stop counters cover accepted batches, not raw input discarded before matching.
+      sourceBatchLost: this.batch !== undefined,
       pendingBatchLost: this.pendingBatch !== undefined,
     };
     this.pendingBatch = undefined;
@@ -294,7 +289,6 @@ export class CronStreamOutput {
     this.scheduler = scheduler;
     this.matching.abort();
     this.matching = new AbortController();
-    this.matchFailed = false;
     this.resetSourceBuffers();
     return this.matching.signal;
   }
@@ -307,7 +301,6 @@ export class CronStreamOutput {
     this.droppedChunkTail = { stdout: false, stderr: false };
     this.batch = undefined;
     this.bufferedOutput = [];
-    this.interruptedOutput = [];
     this.bufferedOutputBytes = 0;
     this.outputOverflowed = false;
   }
@@ -345,14 +338,8 @@ export class CronStreamOutput {
       entry,
       maxBatchBytes * INTAKE_CAP_MULTIPLIER,
     );
-    for (const { line, truncated, replay } of lines) {
-      const processed = await this.acceptLine(line, truncated);
-      if (replay && !this.params.isDesiredRunning()) {
-        this.interruptedOutput.push({
-          ...entry,
-          chunk: processed ? replay.remaining : `${replay.rawLine}\n${replay.remaining}`,
-          precededByDrop: false,
-        });
+    for (const { line, truncated } of lines) {
+      if (!(await this.acceptLine(line, truncated)) || !this.params.isDesiredRunning()) {
         return;
       }
     }
@@ -373,7 +360,6 @@ export class CronStreamOutput {
       if (signal.aborted) {
         return false;
       }
-      this.matchFailed = true;
       this.params.requestMatchFailureStop(
         `stream source match failed: ${formatErrorMessage(error)}; check the match expression and Gateway load, then re-enable the job`,
       );
@@ -582,36 +568,5 @@ export class CronStreamOutput {
     return (schedule.mode ?? "line") === "match"
       ? (compileSafeRegex(schedule.match ?? "") ?? undefined)
       : undefined;
-  }
-
-  private async hasAcceptedSourceInput(): Promise<boolean> {
-    if (this.batch !== undefined) {
-      return true;
-    }
-    const { maxBatchBytes } = resolveCronStreamBatching(this.job.schedule);
-    const remaining = remainingCronStreamLines({
-      partialLines: this.partialLines,
-      discardUntilNewline: this.discardUntilNewline,
-      droppedChunkTail: this.droppedChunkTail,
-      bufferedOutput: [...this.interruptedOutput, ...this.bufferedOutput],
-      maxLineBytes: maxBatchBytes * INTAKE_CAP_MULTIPLIER,
-      includeTruncated: !this.matcher,
-    });
-    if (!this.matcher) {
-      return !remaining.next().done;
-    }
-    const lines = Array.from(remaining);
-    if (lines.length === 0) {
-      return false;
-    }
-    try {
-      return await matchCronStreamLines(this.matcher.source, lines);
-    } catch (error) {
-      this.params.logger.warn(
-        { jobId: this.job.id, err: formatErrorMessage(error) },
-        "cron-stream: stopped output could not be classified; counting it as dropped",
-      );
-      return true;
-    }
   }
 }

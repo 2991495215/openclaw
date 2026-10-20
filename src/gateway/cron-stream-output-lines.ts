@@ -22,7 +22,6 @@ type LineState = {
 type StreamLine = {
   line: string;
   truncated: boolean;
-  replay?: { rawLine: string; remaining: string };
 };
 
 export function* readCronStreamChunk(
@@ -54,7 +53,6 @@ export function* readCronStreamChunk(
     yield {
       line: line.endsWith("\r") ? line.slice(0, -1) : line,
       truncated,
-      replay: { rawLine, remaining: text },
     };
   }
   if (state.discardUntilNewline[channel]) {
@@ -72,42 +70,4 @@ export function* readCronStreamChunk(
     return;
   }
   state.partialLines[channel] = text;
-}
-
-export function* remainingCronStreamLines(
-  params: LineState & {
-    droppedChunkTail: Record<StreamOutputChannel, DroppedTail>;
-    bufferedOutput: BufferedOutput[];
-    maxLineBytes: number;
-    includeTruncated: boolean;
-  },
-): Generator<string> {
-  const state = {
-    partialLines: { ...params.partialLines },
-    discardUntilNewline: { ...params.discardUntilNewline },
-  };
-  for (const channel of ["stdout", "stderr"] as const) {
-    for (const entry of params.bufferedOutput) {
-      if (entry.channel !== channel) {
-        continue;
-      }
-      for (const { line, truncated } of readCronStreamChunk(state, entry, params.maxLineBytes)) {
-        if (params.includeTruncated || !truncated) {
-          yield line;
-        }
-      }
-    }
-    const text = state.partialLines[channel];
-    if (state.discardUntilNewline[channel] || !text) {
-      continue;
-    }
-    // A dropped continuation leaves the final line indeterminate in both modes.
-    if (
-      params.droppedChunkTail[channel] ||
-      (!params.includeTruncated && Buffer.byteLength(text, "utf8") > params.maxLineBytes)
-    ) {
-      continue;
-    }
-    yield text.endsWith("\r") ? text.slice(0, -1) : text;
-  }
 }

@@ -51,7 +51,7 @@ export function validateSafeBinArgv(
     return value && isSafeLiteralToken(value) ? index + 2 : -1;
   }
 
-  const positional: string[] = [];
+  let positionalCount = 0;
   let optionsEnded = false;
   let i = 0;
   while (i < args.length) {
@@ -64,7 +64,7 @@ export function validateSafeBinArgv(
       if (!isSafeLiteralToken(token.raw)) {
         return false;
       }
-      positional.push(token.raw);
+      positionalCount += 1;
       i += 1;
       continue;
     }
@@ -111,10 +111,10 @@ export function validateSafeBinArgv(
   }
 
   if (
-    positional.length < (profile.minPositional ?? 0) ||
-    (typeof profile.maxPositional === "number" && positional.length > profile.maxPositional)
+    positionalCount < (profile.minPositional ?? 0) ||
+    (typeof profile.maxPositional === "number" && positionalCount > profile.maxPositional)
   ) {
     return false;
   }
-  return validateSafeBinSemantics({ binName: options?.binName, positional });
+  return validateSafeBinSemantics(options?.binName);
 }

@@ -99,9 +99,9 @@ describe("tool image sanitizing", () => {
   });
 
   it.each([
-    { name: "nonempty text", block: { type: "text", text: "hello" }, admitted: true },
-    { name: "nonstring text", block: { type: "text", text: 42 }, admitted: false },
-  ])("preserves text-only admission and identity for $name", async ({ block, admitted }) => {
+    { name: "nonempty text", block: { type: "text", text: "hello" } },
+    { name: "nonstring text", block: { type: "text", text: 42 } },
+  ])("preserves text-only content for $name", async ({ block }) => {
     const content = [block] as Parameters<typeof sanitizeToolResultImages>[0]["content"];
     const details = { marker: "retained" };
     const result = { content, details };
@@ -109,7 +109,6 @@ describe("tool image sanitizing", () => {
 
     const sanitized = await sanitizeToolResultImages(result, "test:text");
 
-    expect([sanitized === result, sanitized.content === content]).toEqual([!admitted, !admitted]);
     expect(sanitized.content).toHaveLength(1);
     expect(sanitized.content[0]).toBe(block);
     expect(sanitized.details).toBe(details);

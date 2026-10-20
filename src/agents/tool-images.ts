@@ -14,7 +14,6 @@ import {
   resizeToJpeg,
   type ImageMetadata,
 } from "../media/media-services.js";
-import { isTextContentBlock } from "./content-blocks.js";
 import {
   DEFAULT_IMAGE_MAX_BYTES,
   DEFAULT_IMAGE_MAX_DIMENSION_PX,
@@ -335,7 +334,7 @@ export async function sanitizeToolResultImages(
   opts: ImageSanitizationLimits = {},
 ): Promise<AgentToolResult<unknown>> {
   const content = result.content;
-  if (!content.some((block) => isImageTypeBlock(block) || isTextContentBlock(block))) {
+  if (!content.some(isImageTypeBlock)) {
     return result;
   }
 

@@ -7,45 +7,15 @@ import {
 
 describe("exec safe-bin semantics", () => {
   it("rejects jq programs even when configured via path-like entries", () => {
-    expect(
-      validateSafeBinSemantics({
-        binName: "jq",
-        positional: [".foo"],
-      }),
-    ).toBe(false);
-    expect(
-      validateSafeBinSemantics({
-        binName: "/usr/local/bin/jq",
-        positional: ["{include: .foo, import : .bar}"],
-      }),
-    ).toBe(false);
+    expect(validateSafeBinSemantics("jq")).toBe(false);
+    expect(validateSafeBinSemantics("/usr/local/bin/jq")).toBe(false);
   });
 
   it("rejects awk and sed variants even when configured via path-like entries", () => {
-    expect(
-      validateSafeBinSemantics({
-        binName: "/opt/homebrew/bin/gawk",
-        positional: ['BEGIN { system("id") }'],
-      }),
-    ).toBe(false);
-    expect(
-      validateSafeBinSemantics({
-        binName: "C:\\Tools\\mawk.exe",
-        positional: ['BEGIN { print ENVIRON["HOME"] }'],
-      }),
-    ).toBe(false);
-    expect(
-      validateSafeBinSemantics({
-        binName: "nawk",
-        positional: ['BEGIN { print "hi" > "/tmp/out" }'],
-      }),
-    ).toBe(false);
-    expect(
-      validateSafeBinSemantics({
-        binName: "/usr/local/bin/gsed",
-        positional: ["e"],
-      }),
-    ).toBe(false);
+    expect(validateSafeBinSemantics("/opt/homebrew/bin/gawk")).toBe(false);
+    expect(validateSafeBinSemantics("C:\\Tools\\mawk.exe")).toBe(false);
+    expect(validateSafeBinSemantics("nawk")).toBe(false);
+    expect(validateSafeBinSemantics("/usr/local/bin/gsed")).toBe(false);
   });
 
   it("reports normalized risky configured safe bins once per executable family member", () => {

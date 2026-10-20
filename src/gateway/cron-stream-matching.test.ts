@@ -52,16 +52,15 @@ describe("cron stream matching lifecycle", () => {
   });
 
   it.each([
-    { mode: "line", text: "ready\n", dropped: 1 },
-    { mode: "match", text: "ready\n", dropped: 1 },
-    { mode: "match", text: "pending\n", dropped: 0 },
-  ])("accounts for queued $mode input when disable wins", async ({ mode, text, dropped }) => {
+    { mode: "line", text: "ready\n" },
+    { mode: "match", text: "ready\n" },
+    { mode: "match", text: "pending\n" },
+  ])("does not dispatch queued $mode input after disable", async ({ mode, text }) => {
     const { fake, fireBatch, watchers } = createCronStreamWatcherFixture();
     try {
       await watchers.start(mode === "line" ? job() : createCronStreamMatchingJob("^ready$"));
       fake.inputs[0]?.onStdout?.(text);
       await watchers.stop("stream-job", "disabled");
-      expect(watchers.inspect("stream-job")?.droppedBatches).toBe(dropped);
       expect(fireBatch).not.toHaveBeenCalled();
     } finally {
       await watchers.stopAll("shutdown");
@@ -96,7 +95,6 @@ describe("cron stream matching lifecycle", () => {
         await stop;
         expect(fireBatch).not.toHaveBeenCalled();
         expect(recordFailure).not.toHaveBeenCalled();
-        expect(watchers.inspect("stream-job")?.droppedBatches).toBe(1);
         expect(watchers.activeJobIds()).toEqual([]);
       } finally {
         result.resolve(false);

@@ -178,7 +178,7 @@ export async function assertGatewayOwnerLeaseStopped(
         reply.lease
           ? {
               ...reply.lease,
-              state: readStateLeaseProcessOwnerStatus(reply.lease, reply.lease.heartbeatAt),
+              state: readStateLeaseProcessOwnerStatus(reply.lease),
             }
           : undefined,
       );

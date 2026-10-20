@@ -589,7 +589,7 @@ export class CronStreamJobOwner {
         stopError = error;
       }
     }
-    await this.output.finishStop(await outputStopState);
+    await this.output.finishStop(outputStopState);
 
     if (stopError !== undefined) {
       // Keep ownership while the child is still retryable; do not claim stopped.

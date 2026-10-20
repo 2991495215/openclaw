@@ -153,7 +153,6 @@ export const sessionReactionHandlers: GatewayRequestHandlers = {
           }
           let write: SessionReactionWrite;
           try {
-            assertCurrent();
             write = await commitSessionReaction({
               scope,
               sessionKey: target.canonicalKey,
