@@ -231,7 +231,6 @@ export function mergeRemoteNodeSkillEntries(
         sourceInfo: createSyntheticSourceInfo(filePath, {
           source: "openclaw-node",
           scope: "temporary",
-          origin: "top-level",
           baseDir: filePath.slice(0, -"/SKILL.md".length),
         }),
         disableModelInvocation: invocation.disableModelInvocation,
