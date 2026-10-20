@@ -47,6 +47,30 @@ function successfullyRepairedCheck(): DoctorHealthCheck {
 }
 
 describe("runDoctorHealthRepairs", () => {
+  it("preserves the check receiver and arguments through repair progress", async () => {
+    const context = ctx({});
+    const finding = warningFinding("test/receiver");
+    const check: DoctorHealthCheck = {
+      id: finding.checkId,
+      kind: "core",
+      description: "receiver-dependent repair",
+      async detect(_context, scope) {
+        return scope ? [] : [finding];
+      },
+      async repair(repairContext, findings) {
+        expect(repairContext).toEqual({ ...context, dryRun: false, diff: true });
+        expect(findings).toEqual([finding]);
+        return { changes: [this.id] };
+      },
+    };
+
+    const result = await runDoctorHealthRepairs(context, { checks: [check], diff: true });
+
+    expect(result.changes).toEqual([check.id]);
+    expect(result.warnings).toEqual([]);
+    expect(result.remainingFindings).toEqual([]);
+  });
+
   it("reports repair validation findings that remain after repair", async () => {
     const checks: DoctorHealthCheck[] = [
       normalizeHealthCheck({
