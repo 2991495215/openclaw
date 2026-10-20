@@ -258,11 +258,14 @@ const defaultSleep = async (ms: number): Promise<void> => {
   } while (remainingMs > 0);
 };
 
-function clampNumber(value: unknown, fallback: number, min?: number): number {
+function clampNumber(value: unknown, fallback: number, min?: number, max?: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
-  return Math.max(value, min ?? Number.NEGATIVE_INFINITY);
+  return Math.min(
+    Math.max(value, min ?? Number.NEGATIVE_INFINITY),
+    max ?? Number.POSITIVE_INFINITY,
+  );
 }
 
 function resolveAttemptCount(value: unknown, fallback: number): number {
