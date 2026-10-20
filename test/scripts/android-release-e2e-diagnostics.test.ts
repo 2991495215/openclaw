@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   androidReleaseAdbBridgeLineFacts,
+  androidReleaseAdbGuestSocketFacts,
   androidReleaseAdbServerLineFacts,
   androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
@@ -71,6 +72,26 @@ describe("Android release public failure diagnostics", () => {
   const hostSocket = "0: 0100007F:C001 0100007F:15CD 01 0:0 00:0 0 1001 0 111";
   const peerSocket = "1: 0100007F:15CD 0100007F:C001 01 0:0 00:0 0 1001 0 222";
 
+  it("accepts only numeric guest socket identity records", () => {
+    expect(androidReleaseAdbGuestSocketFacts("OPENCLAW_ADB_VSOCK 14 12345 3 5555 2 5000")).toEqual({
+      fd: 14,
+      inode: 12345,
+      localCid: 3,
+      localPort: 5555,
+      peerCid: 2,
+      peerPort: 5000,
+    });
+    for (const line of [
+      "OPENCLAW_ADB_VSOCK 14 12345 3 5555 2 5000 private-token",
+      "OPENCLAW_ADB_VSOCK 14 12345 3 5555 2 5000\nprivate-token",
+      "OPENCLAW_ADB_VSOCK -1 12345 3 5555 2 5000",
+      "OPENCLAW_ADB_VSOCK 14 999999999999999999999 3 5555 2 5000",
+      "private-token",
+    ]) {
+      expect(androidReleaseAdbGuestSocketFacts(line)).toBeUndefined();
+    }
+  });
+
   it("matches the full reversed tuple for the owned ADB socket", () => {
     const table = [
       tcpHeader,
@@ -125,6 +146,18 @@ describe("Android release public failure diagnostics", () => {
     [
       "writev(0xd, 0x7fffeed, 0x2) = 0x100 <0.000020>",
       { operation: "writev", requestedBytes: undefined, result: 256, eof: false },
+    ],
+    [
+      "readv(0xd, 0x7fffeed, 0x2) = 0 <0.000020>",
+      { operation: "readv", requestedBytes: undefined, eof: true },
+    ],
+    [
+      "recvmsg(0xd, 0x7fffeed, 0) = -1 ECONNRESET (Connection reset by peer) <0.000020>",
+      { operation: "recvmsg", errno: "ECONNRESET" },
+    ],
+    [
+      "sendmsg(0xd, 0x7fffeed, 0) = 0x20 <0.000020>",
+      { operation: "sendmsg", result: 32, requestedBytes: undefined },
     ],
     ["shutdown(0xd, 0x2) = 0 <0.000020>", { operation: "shutdown", fd: 13, result: 0, eof: false }],
     ["close(0xd) = 0 <0.000020>", { operation: "close", fd: 13, result: 0, eof: false }],

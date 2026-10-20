@@ -18,6 +18,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
   androidReleaseAdbBridgeLineFacts,
+  androidReleaseAdbGuestSocketFacts,
   androidReleaseAdbServerLineFacts,
   androidReleaseAdbSocketPair,
   androidReleaseAdbSyscallLineFacts,
@@ -376,6 +377,179 @@ async function syscallFacts(prefix: string, fd: number) {
   const closed = facts.find((fact) => fact.operation === "close" && fact.result === 0);
   return closed ? facts.filter((fact) => fact.startedAtSeconds <= closed.startedAtSeconds) : facts;
 }
+type GuestTrace = NonNullable<ReturnType<typeof androidReleaseAdbGuestSocketFacts>> & {
+  serial: string;
+  pid: number;
+  cycle: number;
+  directory: string;
+  prefix: string;
+  tids: number[];
+  started: boolean;
+  tracerPid?: number;
+};
+const guestRoot = (serial: string, script: string) =>
+  command(adb, ["-s", serial, "shell", "su", "0", "sh"], 20_000, script);
+async function prepareGuestTrace(serial: string, cycle: number): Promise<GuestTrace> {
+  const uid = await command(adb, ["-s", serial, "shell", "su", "0", "id", "-u"]);
+  const version = await command(adb, ["-s", serial, "shell", "/system/bin/strace", "-V"]);
+  const daemon = await command(adb, ["-s", serial, "shell", "pidof", "adbd"]);
+  const pid = /^\d+\s*$/u.test(daemon.stdout) ? Number(daemon.stdout.trim()) : 0;
+  record("guest-trace-prerequisites", {
+    cycle,
+    root: uid.stdout.trim() === "0",
+    version: /strace -- version ([\d.]+)/u.exec(version.stdout + version.stderr)?.[1],
+    pid,
+  });
+  if (uid.stdout.trim() !== "0" || !Number.isSafeInteger(pid) || pid <= 1) {
+    throw new Error("guest-trace-prerequisite-failed");
+  }
+  const status = await guestRoot(serial, `cat /proc/${pid}/status\n`);
+  if (!/^TracerPid:\s+0$/mu.test(status.stdout)) {
+    throw new Error("guest-trace-already-attached");
+  }
+  const helper = process.env.ANDROID_ADB_SOCKET_INSPECT;
+  if (!helper) {
+    throw new Error("guest-socket-helper-unavailable");
+  }
+  const remoteHelper = "/data/local/tmp/openclaw-adbd-socket-inspect";
+  await command(adb, ["-s", serial, "push", helper, remoteHelper]);
+  await command(adb, ["-s", serial, "shell", "chmod", "700", remoteHelper]);
+  const inspected = await guestRoot(serial, `${remoteHelper} ${pid} || true\n`);
+  const sockets = inspected.stdout.split(/\r?\n/u).flatMap((line) => {
+    const socket = androidReleaseAdbGuestSocketFacts(line);
+    return socket ? [socket] : [];
+  });
+  // adbd's emulator transport listens on vsock port 5555; exclude unrelated sockets.
+  const candidates = sockets.filter((socket) => socket.localPort === 5555 && socket.peerCid === 2);
+  record("guest-socket-discovery", {
+    cycle,
+    connectedSockets: sockets,
+    candidates: candidates.length,
+    helperErrno:
+      Number(/^OPENCLAW_ADB_VSOCK_ERROR (\d+)$/mu.exec(inspected.stderr)?.[1]) || undefined,
+  });
+  if (candidates.length !== 1) {
+    throw new Error("guest-transport-socket-unavailable");
+  }
+  const tasks = await guestRoot(serial, `ls /proc/${pid}/task\n`);
+  const tids = tasks.stdout.trim().split(/\s+/u).map(Number);
+  if (!tids.length || !tids.every((tid) => Number.isSafeInteger(tid) && tid > 1)) {
+    throw new Error("guest-trace-prerequisite-failed");
+  }
+  return {
+    ...candidates[0]!,
+    serial,
+    pid,
+    cycle,
+    tids,
+    directory: `/data/local/tmp/openclaw-adbd-trace-${cycle}`,
+    prefix: path.join(root, `${cycle}-guest-syscalls.private`),
+    started: false,
+  };
+}
+async function startGuestTrace(guest: GuestTrace) {
+  guest.started = true;
+  await guestRoot(
+    guest.serial,
+    `
+set -eu
+umask 077
+mkdir ${guest.directory}
+setsid /system/bin/strace -ff -ttt -T -I 2 \\
+  -e trace=read,readv,write,writev,recvfrom,recvmsg,sendto,sendmsg,shutdown,close \\
+  -e raw=all -e signal=none -p ${guest.pid} -o ${guest.directory}/syscalls \\
+  </dev/null >${guest.directory}/tracer.log 2>&1 &
+echo $! >${guest.directory}/tracer.pid
+`,
+  );
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const status = await guestRoot(guest.serial, `cat /proc/${guest.pid}/status\n`);
+    const tracer = Number(/^TracerPid:\s+(\d+)$/mu.exec(status.stdout)?.[1]);
+    const launched = await guestRoot(guest.serial, `cat ${guest.directory}/tracer.pid\n`);
+    if (tracer > 1 && tracer === Number(launched.stdout.trim())) {
+      guest.tracerPid = tracer;
+      record("guest-trace-attached", {
+        cycle: guest.cycle,
+        pid: guest.pid,
+        tracerPid: tracer,
+        tids: guest.tids,
+        fd: guest.fd,
+      });
+      return;
+    }
+    await sleep(100);
+  }
+  const diagnostic = await guestRoot(guest.serial, `cat ${guest.directory}/tracer.log\n`);
+  record("guest-trace-attach-error", {
+    cycle: guest.cycle,
+    permissionDenied: /Operation not permitted|Permission denied/u.test(diagnostic.stdout),
+    unsupportedOption: /invalid option|invalid argument|unrecognized option/u.test(
+      diagnostic.stdout,
+    ),
+  });
+  throw new Error("guest-trace-attach-failed");
+}
+async function guestSyscallFacts(guest: GuestTrace, sample = false) {
+  // Only the original daemon threads own this transport. Followed shell children
+  // have independent descriptor tables and can reuse the same descriptor number.
+  for (const tid of guest.tids) {
+    const captured = await guestRoot(
+      guest.serial,
+      `${sample ? "head -n 40" : "cat"} ${guest.directory}/syscalls.${tid}\n`,
+    );
+    await writeFile(`${guest.prefix}.${tid}`, captured.stdout, { mode: 0o600 });
+  }
+  return syscallFacts(guest.prefix, guest.fd);
+}
+async function stopGuestTrace(guest: GuestTrace) {
+  if (!guest.started) {
+    return;
+  }
+  // The tracer has its own session and guest-local output, surviving ADB loss.
+  // Verify its task-owned PID and executable before sending the detach signal.
+  const stopped = await guestRoot(
+    guest.serial,
+    `
+set -eu
+tracer=$(cat ${guest.directory}/tracer.pid)
+case "$tracer" in ''|*[!0-9]*) exit 1;; esac
+if [ -e /proc/$tracer/exe ]; then
+  [ "$(readlink /proc/$tracer/exe)" = /system/bin/strace ]
+  kill -INT "$tracer"
+fi
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  attached=0
+  for task in /proc/${guest.pid}/task/*; do
+    if ! grep -q '^TracerPid:[[:space:]]*0$' "$task/status"; then attached=1; fi
+  done
+  if [ "$attached" = 0 ]; then echo detached; break; fi
+  sleep 0.1
+done
+pidof adbd
+`,
+  );
+  const detached = stopped.stdout.split(/\r?\n/u).includes("detached");
+  const sameDaemon = stopped.stdout.trim().split(/\s+/u).at(-1) === String(guest.pid);
+  record("guest-trace-detach", { cycle: guest.cycle, detached, sameDaemon });
+  if (!detached || !sameDaemon) {
+    throw new Error("guest-trace-detach-failed");
+  }
+  const facts = await guestSyscallFacts(guest);
+  record("transport-syscalls", {
+    cycle: guest.cycle,
+    side: "guest-adbd",
+    pid: guest.pid,
+    fd: guest.fd,
+    inode: guest.inode,
+    available: true,
+    records: facts.length,
+    terminal: facts.filter(
+      (fact) => fact.eof || fact.result < 0 || ["shutdown", "close"].includes(fact.operation),
+    ),
+    tail: facts.slice(-32),
+  });
+}
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 try {
   for (const [label, bin, args, pattern] of [
@@ -404,6 +578,7 @@ try {
     const kernel = path.join(root, `${cycle}-kernel.private.log`);
     const logcat = path.join(root, `${cycle}-logcat.private.log`);
     const services: Owned[] = [];
+    let guest: GuestTrace | undefined;
     let sockets: Awaited<ReturnType<typeof transportSockets>> = [];
     const tracePrefix = (side: string) => path.join(root, `${cycle}-${side}-syscalls.private`);
     try {
@@ -542,6 +717,18 @@ try {
         throw new Error("host-adb-log-unavailable");
       }
       stage = "syscall-trace";
+      guest = await prepareGuestTrace(serial, cycle);
+      await startGuestTrace(guest);
+      const beforeGuestClock = Date.now();
+      const guestClock = await guestRoot(serial, "date +%s.%N\n");
+      record("guest-clock", {
+        cycle,
+        beforeHostSeconds: beforeGuestClock / 1000,
+        afterHostSeconds: Date.now() / 1000,
+        guestSeconds: /^\d+\.\d+\s*$/u.test(guestClock.stdout)
+          ? Number(guestClock.stdout.trim())
+          : null,
+      });
       sockets = await transportSockets(port + 1, phone);
       const tracers = [];
       for (const socket of sockets) {
@@ -631,6 +818,11 @@ try {
       if (!traced) {
         throw new Error("adb-syscall-trace-unavailable");
       }
+      const guestTraced = (await guestSyscallFacts(guest, true)).some((fact) => fact.result > 0);
+      record("guest-trace-ready", { cycle, traced: guestTraced });
+      if (!guestTraced) {
+        throw new Error("guest-syscall-trace-unavailable");
+      }
       stage = "pull";
       for (let iteration = 1; iteration <= 100; iteration++) {
         const destination = path.join(root, "pulled");
@@ -678,6 +870,12 @@ try {
         "adb-transport-socket-unavailable",
         "adb-transport-peer-unavailable",
         "adb-syscall-trace-unavailable",
+        "guest-trace-prerequisite-failed",
+        "guest-trace-already-attached",
+        "guest-socket-helper-unavailable",
+        "guest-transport-socket-unavailable",
+        "guest-trace-attach-failed",
+        "guest-syscall-trace-unavailable",
       ];
       record("cycle-failed", {
         cycle,
@@ -692,6 +890,12 @@ try {
       throw new Error("cycle-failed", { cause: error });
     } finally {
       await adbServerFacts(cycle, "before-cleanup");
+      if (guest) {
+        await stopGuestTrace(guest).catch(() => {
+          record("guest-trace-capture-failed", { cycle });
+          proof.cleanupConfirmed = false;
+        });
+      }
       for (const socket of sockets) {
         if (socket.side !== "adb-server") {
           continue;

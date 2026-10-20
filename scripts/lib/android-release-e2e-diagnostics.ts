@@ -126,7 +126,7 @@ export function androidReleaseAdbSocketPair(table: string, adbInodes: string[], 
 /** strace raw mode prints pointers, never buffers; export only syscall metadata. */
 export function androidReleaseAdbSyscallLineFacts(line: string) {
   const match =
-    /^(\d+\.\d+) (read|write|writev|recvfrom|sendto|close|shutdown)\((0x[\da-f]+|\d+)((?:, (?:0x[\da-f]+|\d+))*)\)\s+= (-1|0x[\da-f]+|\d+)(?: ([A-Z][A-Z\d]+) \([^\r\n]*\))? <(\d+\.\d+)>$/u.exec(
+    /^(\d+\.\d+) (read|readv|write|writev|recvfrom|recvmsg|sendto|sendmsg|close|shutdown)\((0x[\da-f]+|\d+)((?:, (?:0x[\da-f]+|\d+))*)\)\s+= (-1|0x[\da-f]+|\d+)(?: ([A-Z][A-Z\d]+) \([^\r\n]*\))? <(\d+\.\d+)>$/u.exec(
       line,
     );
   if (!match) {
@@ -162,7 +162,28 @@ export function androidReleaseAdbSyscallLineFacts(line: string) {
       ].includes(match[6])
         ? match[6]
         : undefined,
-    eof: ["read", "recvfrom"].includes(operation) && args[1]! > 0 && result === 0,
+    eof: ["read", "readv", "recvfrom"].includes(operation) && args[1]! > 0 && result === 0,
+  };
+}
+
+/** The guest helper reports only the connected socket's numeric identity. */
+export function androidReleaseAdbGuestSocketFacts(line: string) {
+  const match = /^OPENCLAW_ADB_VSOCK (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)$/u.exec(line);
+  if (!match) {
+    return undefined;
+  }
+  const values = match.slice(1).map(Number);
+  if (!values.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    return undefined;
+  }
+  const [fd, inode, localCid, localPort, peerCid, peerPort] = values;
+  return {
+    fd: fd!,
+    inode: inode!,
+    localCid: localCid!,
+    localPort: localPort!,
+    peerCid: peerCid!,
+    peerPort: peerPort!,
   };
 }
 
