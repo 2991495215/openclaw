@@ -4,7 +4,7 @@ import type { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { ChannelType } from "../internal/discord.js";
 import type { VoiceCaptureState } from "./capture-state.js";
-import type { DiscordRealtimeRecordingInput } from "./realtime-recording.js";
+import type { DiscordRealtimeVoiceSession } from "./realtime-session.runtime.js";
 import type { VoiceReceiveRecoveryState } from "./receive-recovery.js";
 import type { DiscordVoiceAudioReceipt, DiscordVoiceTranscriptCapture } from "./recording-types.js";
 
@@ -66,21 +66,10 @@ export type VoiceRealtimeSpeakerTurn = {
   sendInputAudio: (discordPcm48kStereo: Buffer, receipt?: DiscordVoiceAudioReceipt) => void;
 };
 
-export type VoiceRealtimeSession = {
-  beginSpeakerTurn: (
-    context: VoiceRealtimeSpeakerContext,
-    userId: string,
-    recordingInput?: DiscordRealtimeRecordingInput,
-  ) => VoiceRealtimeSpeakerTurn;
-  close: (disposition?: "abort" | "text-fallback") => void | Promise<void>;
-  connect: () => Promise<void>;
-  canReceiveDuringPlayback: () => boolean;
-};
-
 type VoiceRealtimeLifecycle =
   | { status: "inactive" }
-  | { status: "starting"; instance: VoiceRealtimeSession }
-  | { status: "active"; instance: VoiceRealtimeSession }
+  | { status: "starting"; instance: DiscordRealtimeVoiceSession }
+  | { status: "active"; instance: DiscordRealtimeVoiceSession }
   | { status: "stopped"; reason: string };
 
 export type VoiceGuildLifecycle =

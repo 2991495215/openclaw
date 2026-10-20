@@ -19,7 +19,6 @@ import {
   type DiscordRealtimeSessionParams,
 } from "./realtime-speaker-session.js";
 import type {
-  VoiceRealtimeSession,
   VoiceRealtimeAgentTurnParams,
   VoiceRealtimeSpeakerContext,
   VoiceRealtimeSpeakerTurn,
@@ -38,7 +37,7 @@ type SpeakerSession = {
 };
 
 /** The room shares its agent and player; each provider connection has one immutable speaker. */
-export class DiscordRealtimeVoiceSession implements VoiceRealtimeSession {
+export class DiscordRealtimeVoiceSession {
   private readonly player: DiscordRealtimePlayer;
   private readonly speakers = new Map<string, SpeakerSession>();
   private readonly sessions = new Set<SpeakerSession>();
