@@ -490,7 +490,6 @@ const subagentRestorer = createSubagentRegistryRestorer({
   settleFailedQueuedSubagentLaunch: (runId, error) =>
     subagentRunManager.settleFailedQueuedSubagentLaunch(runId, error),
   completeCollectorLaunchCleanup: (runId) => publicApi.completeCollectorLaunchCleanup(runId),
-  warn,
 });
 
 function retireSupersededSubagentRun(

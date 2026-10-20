@@ -54,6 +54,7 @@ import { materializePersonalAuthProfile } from "./personal-profiles.js";
 import {
   createAuthProfileStoreRuntimeReader,
   resolveExternalCliOverlayOptions,
+  resolvePersistedLoadOptions,
   resolveRuntimeAuthProfileLoadOptions,
   type AuthProfileReadOwner,
   type LoadAuthProfileStoreOptions,
@@ -192,17 +193,6 @@ export function applyScopedAuthReadThrough(store: AuthProfileStore): AuthProfile
     runtimeStoreInheritsMainState(merged, store),
     store,
   );
-}
-
-function resolvePersistedLoadOptions(
-  options: Pick<LoadAuthProfileStoreOptions, "allowKeychainPrompt" | "database"> | undefined,
-): { allowKeychainPrompt?: boolean; database?: AuthProfileDatabase } {
-  return {
-    ...(options?.allowKeychainPrompt !== undefined
-      ? { allowKeychainPrompt: options.allowKeychainPrompt }
-      : {}),
-    ...(options?.database ? { database: options.database } : {}),
-  };
 }
 
 function loadPersistedAuthProfileStores(
@@ -1249,7 +1239,6 @@ export function createAuthProfileStoreRuntime(
   }
 
   const { prepareAuthProfileStoreForModelRuntime, ...reads } = createAuthProfileStoreReadRuntime({
-    resolvePersistedLoadOptions,
     loadAuthProfileStoreForAgent,
     withPreparedAuthProfileStoreReads,
     overlayExternalAuthProfiles,

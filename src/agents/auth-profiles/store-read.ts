@@ -17,6 +17,7 @@ import { materializePersonalAuthProfile } from "./personal-profiles.js";
 import { mergeRuntimeExternalProfileReferences } from "./runtime-external-profile-references.js";
 import {
   resolveExternalCliOverlayOptions,
+  resolvePersistedLoadOptions,
   resolveRuntimeAuthProfileLoadOptions,
   type createAuthProfileStoreRuntimeReader,
   type LoadAuthProfileStoreOptions,
@@ -42,10 +43,7 @@ import {
   setRuntimeAuthProfileStoreSnapshot,
   updateRuntimeAuthProfileStoreSnapshot,
 } from "./runtime-snapshots.js";
-import {
-  resolveAuthProfileDatabasePath as resolveAgentAuthPath,
-  type AuthProfileDatabase,
-} from "./sqlite.js";
+import { resolveAuthProfileDatabasePath as resolveAgentAuthPath } from "./sqlite.js";
 import type { AuthProfileStore } from "./types.js";
 
 type RuntimeReadHost = Parameters<typeof createAuthProfileStoreRuntimeReader>[0];
@@ -63,9 +61,6 @@ type EnsureAuthProfileStoreOptions = Pick<
   | "syncExternalCli"
 >;
 type StoreReadHost = Pick<RuntimeReadHost, "loadAuthProfileStoreForAgent"> & {
-  resolvePersistedLoadOptions: (
-    options: Pick<LoadAuthProfileStoreOptions, "allowKeychainPrompt" | "database"> | undefined,
-  ) => { allowKeychainPrompt?: boolean; database?: AuthProfileDatabase };
   withPreparedAuthProfileStoreReads: ReturnType<
     typeof createAuthProfileStoreRuntimeReader
   >["withPreparedAuthProfileStoreReads"];
@@ -121,7 +116,6 @@ function* readSharedAuthPath(): AuthProfileStoreReadSequence<string> {
 
 export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
   const {
-    resolvePersistedLoadOptions,
     loadAuthProfileStoreForAgent,
     withPreparedAuthProfileStoreReads,
     overlayExternalAuthProfiles,

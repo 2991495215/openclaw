@@ -3,23 +3,23 @@ import { redactToolPayloadText } from "../logging/redact.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import {
   buildSessionObserverPrompt,
+  type defaultCompleteModel,
+  type defaultPrepareModel,
   normalizeSessionObserverModelOutput,
   sanitizeSessionObserverModelText,
   SESSION_OBSERVER_SYSTEM_PROMPT,
+  type SessionObserverDeps,
+  type SessionObserverState,
 } from "./session-observer-model.js";
-import type { SessionObserverDeps, SessionObserverState } from "./session-observer-model.js";
 
 // CLI-backed utility models (for example claude-cli Haiku) take 9-16s per call.
 const SESSION_OBSERVER_MODEL_TIMEOUT_MS = 30_000;
 const REJECTED_OUTPUT_MAX_CHARS = 160;
 
-type PrepareModel = NonNullable<SessionObserverDeps["prepareModel"]>;
-type CompleteModel = NonNullable<SessionObserverDeps["completeModel"]>;
-
 export function createSessionObserverCompletion(params: {
   getConfig: SessionObserverDeps["getConfig"];
-  prepareModel: PrepareModel;
-  completeModel: CompleteModel;
+  prepareModel: typeof defaultPrepareModel;
+  completeModel: typeof defaultCompleteModel;
   isCurrent: (state: SessionObserverState) => boolean;
 }) {
   const ensurePrepared = async (state: SessionObserverState) => {

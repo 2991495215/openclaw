@@ -228,8 +228,6 @@ export type SessionObserverDeps = {
     connIds: ReadonlySet<string>,
     opts?: { dropIfSlow?: boolean },
   ) => void;
-  prepareModel?: PrepareModel;
-  completeModel?: CompleteModel;
   readSession?: (sessionKey: string, agentId: string) => SessionEntry | undefined;
   getSessionRowProjection?: () => SessionRowProjection | undefined;
   persistDigest?: (params: {

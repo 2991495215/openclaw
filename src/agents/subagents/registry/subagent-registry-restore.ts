@@ -31,6 +31,7 @@ import {
 } from "./subagent-child-owner-match.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { callSubagentRegistryGateway } from "./subagent-registry-deps.js";
+import { subagentRegistryLog as log } from "./subagent-registry-lifecycle-log.js";
 import {
   getCurrentSubagentRunOwner,
   waitForSubagentRetirementPublication,
@@ -95,11 +96,10 @@ export function createSubagentRegistryRestorer(config: {
   ) => Promise<boolean>;
   settleFailedQueuedSubagentLaunch: SubagentLaunchManager["settleFailedQueuedSubagentLaunch"];
   completeCollectorLaunchCleanup: (runId: string) => Promise<void>;
-  warn: (message: string, meta?: Record<string, unknown>) => void;
 }) {
   const { runs, getGatewayContextResolver, bindGatewayOwners } = config;
   const { settleRequesterTurn, ensureListener, startSweeper } = config;
-  const { scheduleSweep, resumeRun, warn } = config;
+  const { scheduleSweep, resumeRun } = config;
   const { listSwarmRunsForGroup, startQueuedSubagentRun } = config;
   const { terminateAcceptedRestoredCollectorRun, cleanupCollectorLaunchResources } = config;
   const { settleFailedQueuedSubagentLaunch, completeCollectorLaunchCleanup } = config;
@@ -252,7 +252,7 @@ export function createSubagentRegistryRestorer(config: {
               cleanupSessionEntry?.sessionId,
               cleanupSessionEntry?.lifecycleRevision,
             ).catch((cleanupError: unknown) => {
-              warn("failed to settle restored collector launch failure", {
+              log.warn("failed to settle restored collector launch failure", {
                 runId,
                 childSessionKey: entry.childSessionKey,
                 error: cleanupError,
@@ -520,13 +520,13 @@ export function createSubagentRegistryRestorer(config: {
           await restoreSubagentRunMetadata(runs, stateContext, assertCurrent);
           assertCurrent();
         }
-        warnLegacySubagentAuthority(runs.values(), warn);
+        warnLegacySubagentAuthority(runs.values(), log.warn);
         await completeRestore();
       } catch (err) {
         if (restoreState !== "succeeded") {
           restoredRowsPending ||= runs.size > runCountBeforeRestore;
         }
-        warn(
+        log.warn(
           `failed to restore subagent runs from disk: ${err instanceof Error ? err.message : String(err)}`,
         );
         throw err;
@@ -551,7 +551,7 @@ export function createSubagentRegistryRestorer(config: {
   ): Promise<boolean> {
     const runId = entry.runId;
     const warnCleanup = (message: string, failure: unknown) =>
-      warn(message, { runId, childSessionKey: entry.childSessionKey, error: failure });
+      log.warn(message, { runId, childSessionKey: entry.childSessionKey, error: failure });
     // Root custody includes the terminal commit and final cleanup publication.
     return runWithGatewayIndependentRootWorkAdmission(async () => {
       const authority = resolveSubagentChildAuthority(entry);

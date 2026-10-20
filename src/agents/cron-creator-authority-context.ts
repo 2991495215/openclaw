@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import type { CronScheduledToolCallerOrigin } from "../cron/scheduled-tool-policy.js";
 import {
   CRON_MANAGEMENT_METHODS,
   createCronCreatorAuthorityRunScope,
@@ -11,7 +10,6 @@ import {
   type CronCreatorAuthorityRunScope,
   type CronManagementEntitlement,
 } from "../gateway/cron-creator-authority-grant.js";
-import type { CronAuthenticatedChannelRequester } from "../gateway/cron-creator-authority-grant.types.js";
 import {
   getAgentRunContext,
   validateAgentRunDelegatedAuthority,
@@ -37,25 +35,11 @@ type CronCreatorAuthorityResolverScope = {
 export type CronCreatorAuthorityCapability = CronCreatorAuthorityRunScope;
 
 export function createCronCreatorAuthorityCapability(
-  runId: string,
-  callerOrigin: CronScheduledToolCallerOrigin = { kind: "unknown" },
-  managementEntitlement?: CronManagementEntitlement,
-  isCurrent?: () => boolean,
-  channelRequester?: CronAuthenticatedChannelRequester,
-  requesterOwner?: CronCreatorAuthorityCapability["requesterOwner"],
-  callerScopedCreation?: true,
+  ...[runId, ...authority]: Parameters<typeof createCronCreatorAuthorityRunScope>
 ): CronCreatorAuthorityCapability | undefined {
   const normalizedRunId = runId.trim();
   return normalizedRunId
-    ? createCronCreatorAuthorityRunScope(
-        normalizedRunId,
-        callerOrigin,
-        managementEntitlement,
-        isCurrent,
-        channelRequester,
-        requesterOwner,
-        callerScopedCreation,
-      )
+    ? createCronCreatorAuthorityRunScope(normalizedRunId, ...authority)
     : undefined;
 }
 

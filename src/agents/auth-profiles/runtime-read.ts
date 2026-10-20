@@ -50,6 +50,7 @@ import {
 import {
   resolveAuthProfileDatabasePath as resolveAgentAuthPath,
   resolveAuthProfileDatabaseOwnerId,
+  type AuthProfileDatabase,
 } from "./sqlite.js";
 import type { AuthProfileReadSource } from "./store.worker-contract.js";
 import type { AuthProfileStore, AuthProfileRowRead } from "./types.js";
@@ -59,6 +60,17 @@ export type {
   LoadAuthProfileStoreOptions,
   PreparedAuthProfileStoreReads,
 } from "./runtime-read.types.js";
+
+export function resolvePersistedLoadOptions(
+  options: Pick<LoadAuthProfileStoreOptions, "allowKeychainPrompt" | "database"> | undefined,
+): { allowKeychainPrompt?: boolean; database?: AuthProfileDatabase } {
+  return {
+    ...(options?.allowKeychainPrompt !== undefined
+      ? { allowKeychainPrompt: options.allowKeychainPrompt }
+      : {}),
+    ...(options?.database ? { database: options.database } : {}),
+  };
+}
 
 export function resolveRuntimeAuthProfileLoadOptions(
   options?: LoadAuthProfileStoreOptions,

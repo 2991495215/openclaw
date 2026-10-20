@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { resetSecretRedactionRegistryForTest } from "../logging/secret-redaction-registry.test-support.js";
 import { createSessionObserverCompletion } from "./session-observer-completion.js";
-import type { SessionObserverDeps } from "./session-observer-model.js";
+import type { defaultCompleteModel } from "./session-observer-model.js";
 import { observerState } from "./session-observer-state.test-support.js";
 import {
   createHarness,
@@ -46,7 +46,7 @@ it("reports a redacted, collapsed, bounded prefix of the last of two rejected re
   registerSecretValueForRedaction(registered);
   const result = { ...modelMessage({}), text: "first rejected output" };
   const completeModel = vi
-    .fn<NonNullable<SessionObserverDeps["completeModel"]>>()
+    .fn<typeof defaultCompleteModel>()
     .mockResolvedValueOnce(result)
     .mockResolvedValueOnce({
       ...result,

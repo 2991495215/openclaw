@@ -96,7 +96,6 @@ type DashboardToolOptions = {
   agentSessionKey?: string;
   agentId?: string;
   callGateway?: InProcessGatewayCaller;
-  emitCommand?: typeof emitBoardCommand;
 };
 
 function requireInteger(params: Record<string, unknown>, key: string): number {
@@ -234,7 +233,6 @@ function snapshotResult(
 
 export function createDashboardTool(opts: DashboardToolOptions = {}): AnyAgentTool {
   const gatewayCall = opts.callGateway ?? callInProcessGatewayTool;
-  const emitCommand = opts.emitCommand ?? emitBoardCommand;
   return {
     label: "Dashboard",
     name: "dashboard",
@@ -293,7 +291,7 @@ export function createDashboardTool(opts: DashboardToolOptions = {}): AnyAgentTo
                 kind: "set_chat_dock",
                 dock: readPresentation(params) === "expanded" ? "hidden" : "right",
               };
-        const delivered = emitCommand(
+        const delivered = emitBoardCommand(
           { sessionKey, agentId: opts.agentId, command },
           admittedResolver,
         );
