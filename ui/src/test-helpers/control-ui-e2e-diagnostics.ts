@@ -4,7 +4,6 @@ import { withTimeout } from "@openclaw/fs-safe/advanced";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import type { ConsoleMessage, Frame, Page, Request } from "playwright";
 import { agentRouteFromPath, isRouteId, pathForRoute } from "../app-route-paths.ts";
-import type { ControlUiReadiness } from "../app/control-ui-readiness.ts";
 import { createControlUiE2eArtifactDir } from "./control-ui-e2e-artifacts.ts";
 import { captureControlUiE2eRendererStall } from "./control-ui-e2e-renderer-stall.ts";
 
@@ -368,11 +367,7 @@ async function captureControlUiE2eFailureDiagnosticsUnsafe(
       const app = document.querySelector("openclaw-app");
       const shell = document.querySelector("openclaw-app-shell");
       const runInspector = document.querySelector("#activity-run-panel");
-      const diagnostics: ReturnType<ControlUiReadiness["hook"]["diagnostics"]> | undefined =
-        window.openclawControlUi?.diagnostics();
       const readiness = window.openclawControlUi?.snapshot();
-      const agentsState = diagnostics?.roster;
-      const gatewaySnapshot = diagnostics?.gateway;
       const customElementCounts: Record<string, number> = {};
       for (const element of document.querySelectorAll("*")) {
         const name = element.localName;
@@ -384,10 +379,6 @@ async function captureControlUiE2eFailureDiagnosticsUnsafe(
       const textarea = document.querySelector<HTMLTextAreaElement>(
         ".agent-chat__composer-combobox textarea",
       );
-      const roster =
-        agentsState?.agentsList && typeof agentsState.agentsList === "object"
-          ? (agentsState.agentsList as { agents?: unknown })
-          : null;
       const send = document.querySelector<HTMLButtonElement>(".chat-send-btn--send");
       const sendLabel = send?.getAttribute("aria-label");
       // Submit-disabled labels can contain server errors. Only known static UI copy
@@ -418,7 +409,6 @@ async function captureControlUiE2eFailureDiagnosticsUnsafe(
                 routeReady: readiness.routeReady,
                 rosterReady: readiness.rosterReady,
                 ready: readiness.ready,
-                settlementFailed: diagnostics?.settlementError != null,
               }
             : null,
           sessionGroupDefaults: groupMode
@@ -496,7 +486,7 @@ async function captureControlUiE2eFailureDiagnosticsUnsafe(
             executionIdentityPresent: runInspector?.hasAttribute("data-execution-id") ?? null,
             runIdentityPresent: runInspector?.hasAttribute("data-run-id") ?? null,
           },
-          gatewayPhase: safeValue(gatewaySnapshot?.phase, [
+          gatewayPhase: safeValue(readiness?.gatewayPhase, [
             "stopped",
             "connecting",
             "connected",
@@ -505,13 +495,6 @@ async function captureControlUiE2eFailureDiagnosticsUnsafe(
             "starting",
             "reload-required",
           ]),
-          connected: typeof agentsState?.connected === "boolean" ? agentsState.connected : null,
-          roster: {
-            loading:
-              typeof agentsState?.agentsLoading === "boolean" ? agentsState.agentsLoading : null,
-            count: Array.isArray(roster?.agents) ? roster.agents.length : null,
-            errorPresent: Boolean(agentsState?.agentsError),
-          },
           longFrames: copy(windowState["__OPENCLAW_CONTROL_UI_E2E_LONG_FRAMES__"]?.() ?? null),
           documentReadyState: safeValue(document.readyState, [
             "loading",
@@ -550,7 +533,7 @@ async function captureControlUiE2eFailureDiagnosticsUnsafe(
               }
             : null,
         },
-        app: copy(diagnostics ?? null),
+        router: copy(readiness?.route ?? null),
         document: {
           customElementCounts,
           hasApp: Boolean(app),
@@ -594,8 +577,7 @@ async function captureControlUiE2eFailureDiagnosticsUnsafe(
     captureErrors.push(`page.evaluate: ${String(evaluateError)}`);
   }
   const models = modelResponses ? summarizeRecordedModelResponses(modelResponses) : null;
-  const app = asOptionalRecord(asOptionalRecord(browserState)?.app);
-  const router = asOptionalRecord(app?.router);
+  const router = asOptionalRecord(asOptionalRecord(browserState)?.router);
   const matches = Array.isArray(router?.matches) ? router.matches : null;
   const routeId = asOptionalRecord(matches?.[0])?.routeId;
   const knownRoute = typeof routeId === "string" && isRouteId(routeId) ? routeId : null;

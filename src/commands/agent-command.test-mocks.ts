@@ -309,7 +309,6 @@ vi.mock("../skills/runtime/session-snapshot.js", () => ({
         version: 0,
       },
       shouldRefresh: !params?.existingSnapshot,
-      snapshotVersion: 0,
     }),
   ),
 }));

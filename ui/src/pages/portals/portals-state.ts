@@ -33,10 +33,9 @@ export function createPortals(
 ) {
   let active = true;
   let presentationPending = false;
-  const snapshotPresentation = (): PortalsPresentation => {
+  const snapshotPresentation = () => {
     const current = presentation();
     return {
-      embedded: current.embedded,
       presented: current.presented,
       requestedPortalId: current.requestedPortalId,
       requestedEnvironmentId: current.requestedEnvironmentId,

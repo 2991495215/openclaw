@@ -674,14 +674,12 @@ vi.mock("../skills/runtime/session-snapshot.js", () => ({
           version: 0,
         },
         shouldRefresh: !params.existingSnapshot,
-        snapshotVersion: 0,
       };
     }
     if (params.existingSnapshot?.resolvedSkills !== undefined) {
       return {
         snapshot: params.existingSnapshot,
         shouldRefresh: false,
-        snapshotVersion: 0,
       };
     }
     const rebuilt = state.buildWorkspaceSkillSnapshotMock(params.workspaceDir, params) as {
@@ -692,7 +690,6 @@ vi.mock("../skills/runtime/session-snapshot.js", () => ({
         ? { ...params.existingSnapshot, resolvedSkills: rebuilt?.resolvedSkills }
         : rebuilt,
       shouldRefresh: !params.existingSnapshot,
-      snapshotVersion: 0,
     };
   },
 }));

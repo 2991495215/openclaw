@@ -82,7 +82,6 @@ vi.mock("../../skills/runtime/session-snapshot.js", () => ({
   resolveReusableWorkspaceSkillSnapshot: vi.fn(() => ({
     snapshot: { prompt: "", skills: [], resolvedSkills: [] },
     shouldRefresh: false,
-    snapshotVersion: "test-snapshot",
   })),
 }));
 
@@ -169,7 +168,6 @@ describe("resolveCommandsSystemPromptBundle", () => {
     vi.mocked(resolveReusableWorkspaceSkillSnapshot).mockReturnValue({
       snapshot: { prompt: "", skills: [], resolvedSkills: [] },
       shouldRefresh: false,
-      snapshotVersion: "test-snapshot",
     } as never);
   });
 
@@ -369,7 +367,6 @@ describe("resolveCommandsSystemPromptBundle", () => {
       vi.mocked(resolveReusableWorkspaceSkillSnapshot).mockReturnValue({
         snapshot: hostSnapshot,
         shouldRefresh: false,
-        snapshotVersion: "host-snapshot",
       } as never);
 
       const result = await resolveCommandsSystemPromptBundle(params);

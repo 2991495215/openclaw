@@ -113,7 +113,7 @@ export function detectLegacyMeetingTranscripts(params: {
 }): LegacyMeetingTranscriptsDetection {
   const sourceDir = path.join(params.stateDir, "transcripts");
   if (params.doctorOnlyStateMigrations !== true) {
-    return { sourceDir, hasLegacy: false, pendingImportCount: 0 };
+    return { sourceDir, hasLegacy: false };
   }
   const databaseState = readMeetingTranscriptMigrationDetectionState({
     env: { ...(params.env ?? process.env), OPENCLAW_STATE_DIR: params.stateDir },
@@ -170,11 +170,10 @@ export function detectLegacyMeetingTranscripts(params: {
     return {
       sourceDir,
       hasLegacy: hasSource || needsDatabaseRepair,
-      pendingImportCount,
     };
   } catch (error) {
     if (isRecord(error) && error.code === "ENOENT") {
-      return { sourceDir, hasLegacy: needsDatabaseRepair, pendingImportCount };
+      return { sourceDir, hasLegacy: needsDatabaseRepair };
     }
     throw error;
   }
