@@ -41,9 +41,6 @@ const enSystems = {
     desktopSetupEnabling: "Enabling desktop access…",
     desktopSetupEnabled: "Desktop access is enabled",
     desktopSetupConnecting: "Waiting for desktop access to become available.",
-    desktopSetupPrivacyHint:
-      "This shares the Gateway computer, not the computer running your browser. OpenClaw connects over loopback and forwards the desktop through your authenticated Gateway connection. Turning on OS screen sharing may also allow network access; review its allowed users and permissions.",
-    returnToDesktop: "Return to desktop",
     desktopSetupApplyHint: "Applies without restarting the Gateway.",
     desktopSetupAdminHint: "A Gateway administrator can enable desktop access.",
     desktopSetupCheckAgain: "Check again",

@@ -1,11 +1,8 @@
 import type { JSX as SolidJSX } from "@solidjs/web";
 import { merge, onSettled } from "solid-js";
-import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
-import { useOptionalApplication } from "../../lib/reactive/context.ts";
 import { t } from "../../lib/reactive/i18n.ts";
 import { projectOwner } from "../../lib/reactive/projection.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../lib/solid-bridge.ts";
-import { hostDesktopSetupHref } from "../../pages/systems/systems-navigation.ts";
 import { createDesktopFullscreen } from "../desktop-fullscreen.ts";
 import { DockResizer } from "../dock-layout-solid.tsx";
 import { nativeDockPanelCss as dockStyles } from "../dock-panel-styles.ts";
@@ -94,6 +91,7 @@ defineSolidBridge<DesktopPanelInputs, Methods>(
       embedded: { default: false, type: Boolean, reflect: true },
       presented: { default: false, type: Boolean },
       refreshOnPresentation: { default: true, type: Boolean },
+      runtimeConfig: { default: null, attribute: false },
       onDocumentClose: { default: null, attribute: false },
       onFocusTargetChange: { default: null, attribute: false },
       desktopClientFactory: { default: () => new DesktopClient(), attribute: false },
@@ -163,7 +161,6 @@ function PictureInPictureButton(props: {
 
 /** Compose the document and dock views without owning connection state. */
 function DesktopPresentation(props: { view: DesktopPanelOwner["view"] }) {
-  const app = useOptionalApplication();
   const content = {
     get state(): DesktopPanelState {
       return props.view.content.state === "picker" &&
@@ -183,21 +180,6 @@ function DesktopPresentation(props: { view: DesktopPanelOwner["view"] }) {
               props.view.content.errorText
             }
             noticeText={props.view.content.noticeText}
-            setupHref={
-              props.view.content.hostSetupRequired
-                ? hostDesktopSetupHref(props.view.focusTarget().basePath, window.location.pathname)
-                : null
-            }
-            onSetupClick={(event) => {
-              // Focus documents do not start the application router.
-              if (!app || props.view.documentMode || !shouldHandleNavigationClick(event)) {
-                return;
-              }
-              event.preventDefault();
-              app.navigate("systems", {
-                search: new URL(event.currentTarget.href).search,
-              });
-            }}
             availability={props.view.content.availability}
           />
           <DesktopAudioNotice state={props.view.audio.state()} />

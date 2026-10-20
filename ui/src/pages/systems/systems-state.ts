@@ -6,6 +6,7 @@ import type { ApplicationContext } from "../../app/context.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import { hasOperatorReadAccess } from "../../app/operator-access.ts";
 import { isDesktopPanelAvailable } from "../../app/panel-availability.ts";
+import { enableHostDesktop as enableHostDesktopConfig } from "../../components/desktop/host-desktop-setup.ts";
 import { t } from "../../i18n/index.ts";
 import { resolveEditableSnapshotConfig } from "../../lib/config/config-state-model.ts";
 import { formatUiError } from "../../lib/format-error.ts";
@@ -17,7 +18,6 @@ import {
   type SystemsInventory,
   type SystemsInventoryRow,
 } from "./systems-data.ts";
-import { readHostDesktopSetupNavigation } from "./systems-navigation.ts";
 import {
   SYSTEMS_GATEWAY_STALE_MS,
   SYSTEMS_NODE_STALE_MS,
@@ -41,7 +41,6 @@ type SystemsState = {
   showDetails: boolean;
   error: string | null;
   desktopSetupError: string | null;
-  desktopReturn: NonNullable<ReturnType<typeof readHostDesktopSetupNavigation>>["returnTo"];
   backups: BackupStatusResult | null;
   backupsError: string | null;
 };
@@ -61,7 +60,6 @@ export function createSystems(context: ApplicationContext) {
     showDetails: false,
     error: null,
     desktopSetupError: null,
-    desktopReturn: null,
     backups: null,
     backupsError: null,
   };
@@ -225,20 +223,15 @@ export function createSystems(context: ApplicationContext) {
     state.desktopSetupError = null;
     notify();
     try {
-      await runtimeConfig.ensureLoaded();
-      if (!isCurrent() || !canEnableHostDesktop()) {
-        return;
-      }
-      const patched = await runtimeConfig.patch({
-        raw: { desktop: { host: { enabled: true } } },
-        note: "systems: enable host desktop",
-        canDispatch: () => isCurrent() && canEnableHostDesktop(),
-      });
-      if (isCurrent() && !patched) {
-        state.desktopSetupError = runtimeConfig.state.lastError ?? t("systems.desktopSetupFailed");
-      }
-      if (isCurrent() && patched) {
+      const failure = await enableHostDesktopConfig(
+        runtimeConfig,
+        "systems: enable host desktop",
+        () => isCurrent() && canEnableHostDesktop(),
+      );
+      if (isCurrent() && failure === null) {
         await refresh();
+      } else if (isCurrent() && failure !== undefined) {
+        state.desktopSetupError = failure;
       }
     } catch (error) {
       if (isCurrent()) {
@@ -333,12 +326,6 @@ export function createSystems(context: ApplicationContext) {
       cancelBackups();
       resetDesktopSetup();
       return;
-    }
-    const search = context.router.getState().location?.search ?? "";
-    const setup = readHostDesktopSetupNavigation(search, context.basePath);
-    state.desktopReturn = setup?.returnTo ?? null;
-    if (setup) {
-      select("gateway");
     }
     subscriptions = [
       // Gateway receipts cancel stale inventory, backup, and desktop work before connection or access changes settle.

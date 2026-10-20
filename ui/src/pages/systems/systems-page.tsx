@@ -1,9 +1,10 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { For, Show, createEffect, createMemo, onCleanup, onSettled } from "solid-js";
-import { DESKTOP_PANEL_TOGGLE_EVENT } from "../../components/panel-toggle-contract.ts";
+import { hostDesktopSetupCopy } from "../../components/desktop/host-desktop-setup.ts";
 import "../../components/sparkline-tile.tsx";
-import { Icon } from "../../components/solid/icon.tsx";
+import { DESKTOP_PANEL_TOGGLE_EVENT } from "../../components/panel-toggle-contract.ts";
 import "../../components/desktop/desktop-panel.ts";
+import { Icon } from "../../components/solid/icon.tsx";
 import { registerSystemsEnglish } from "../../i18n/locales/en-systems.ts";
 import { formatByteSize, formatTimeAgo } from "../../lib/format.ts";
 import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
@@ -333,30 +334,14 @@ function HostDesktopSetup(props: { controller: Systems; row: SystemsInventoryRow
   const enabled = () => controller().hostDesktopEnabled();
   const isMac = () => systemPlatform(row())?.startsWith("macOS") === true;
   const ready = () => setup()?.state === "ready" || setup()?.state === "managed";
-  const title = () =>
-    enabled()
-      ? "systems.desktopSetupEnabled"
-      : ([
-          ["managed", "systems.managedDesktopConfigured"],
-          ["ready", isMac() ? "systems.screenSharingDetected" : "systems.desktopDetected"],
-          ["needs-server", isMac() ? "systems.screenSharingNeeded" : "systems.desktopServerNeeded"],
-        ].find(([kind]) => kind === setup()?.state)?.[1] ?? "systems.desktopSetupAttention");
-  const hint = () =>
-    enabled()
-      ? "systems.desktopSetupConnecting"
-      : ready()
-        ? "systems.desktopSetupEnableHint"
-        : isMac() && setup()?.state === "needs-server"
-          ? "systems.screenSharingSetupHint"
-          : "systems.desktopServerSetupHint";
+  const copy = () => hostDesktopSetupCopy(setup()?.state, isMac(), enabled());
   return (
     <div class="systems-state" role="status">
       <span class="systems-state__icon" aria-hidden="true">
         <Icon name="monitor" />
       </span>
-      <h2>{t(title())}</h2>
-      <p>{t(hint())}</p>
-      <p>{t("systems.desktopSetupPrivacyHint")}</p>
+      <h2>{t(copy().title)}</h2>
+      <p>{t(copy().hint)}</p>
       {setup()?.state === "unsupported" && setup()!.detail ? <p>{setup()!.detail}</p> : null}
       {controller().state.desktopSetupError ? (
         <p class="systems-callout--error" role="alert">
@@ -468,27 +453,6 @@ function SystemsWorkspace(props: {
           <h1>{title()}</h1>
           <span>{row() ? t("systems." + systemKind(row()!)) : t("systems.selectHint")}</span>
         </div>
-        <Show when={controller().state.desktopReturn}>
-          {(target) => (
-            <a
-              class="btn"
-              href={target().pathname}
-              onClick={(event) => {
-                const destination = target();
-                // Focus views have a separate bootstrap; keep their native document navigation.
-                if (!shouldHandleNavigationClick(event) || !destination.routeId) {
-                  return;
-                }
-                event.preventDefault();
-                controller().context.navigate(destination.routeId, {
-                  pathname: destination.pathname,
-                });
-              }}
-            >
-              {t("systems.returnToDesktop")}
-            </a>
-          )}
-        </Show>
         <select
           class="systems-mobile-picker"
           aria-label={t("systems.select")}

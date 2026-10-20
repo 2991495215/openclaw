@@ -28,6 +28,7 @@ import {
 import type { DesktopPanelState } from "./desktop-panel-state.ts";
 import { DesktopSessionOwner } from "./desktop-session-owner.ts";
 import { desktopSourceForEnvironment } from "./desktop-source.ts";
+import { createDesktopHostSetupOwner } from "./host-desktop-setup.ts";
 
 registerDesktopEnglish();
 
@@ -47,7 +48,6 @@ export function createDesktopPanel(
   let controlling = false;
   let errorText: string | null = null;
   let noticeText: string | null = null;
-  let hostSetupRequired = false;
   let disconnectedReason: string | null = null;
   let desktopApps: WorkerDesktopAppId[] = [];
   let sizingMode: desktopTransport.DesktopSizingMode = "fit";
@@ -57,10 +57,13 @@ export function createDesktopPanel(
   let credentialAuth: "vnc-password" | "ard-account" | undefined;
   let pendingConnection: PendingDesktopConnection | null = null;
   let operation = 0;
+  const recheck = () => void refreshEnvironments(undefined, undefined, true);
+  const hostSetup = createDesktopHostSetupOwner(host, notify, recheck);
   let controlTakeoverRecoveryUsed = false;
   // Automatic resolution follows the session; an explicit choice owns its pop-out target.
   let selection: "pending" | "resolved" | "explicit" | "picker" = "pending";
   const usesAutomaticSource = () => selection === "pending" || selection === "resolved";
+  const automaticPicker = () => usesAutomaticSource() && host.embedded && host.sessionKey !== null;
   const sessionSource = new DesktopSessionOwner(
     host,
     notify,
@@ -257,8 +260,6 @@ export function createDesktopPanel(
   function returnToPicker(sourceSelection: typeof selection = "picker"): void {
     disconnectConnection();
     phase = "picker";
-    noticeText = null;
-    hostSetupRequired = false;
     selection = sourceSelection;
     currentId = null;
     currentSource = null;
@@ -269,6 +270,7 @@ export function createDesktopPanel(
     sizingMode = "fit";
     canResize = false;
     disconnectedReason = null;
+    hostSetup.clear();
     notify();
     sessionSource.clearDesktopSource();
   }
@@ -304,8 +306,6 @@ export function createDesktopPanel(
     const operationId = expectedOperationId ?? ++operation;
     loading = true;
     errorText = null;
-    noticeText = null;
-    hostSetupRequired = false;
     notify();
     let refreshed = false;
     let requestedSource: string | undefined;
@@ -332,7 +332,7 @@ export function createDesktopPanel(
       const inventory = await inventoryRequest.result;
       if (inventory && inventoryRequest.isCurrent()) {
         requestedSource = inventory.selectedSource;
-        hostSetupRequired = inventory.hostSetupRequired === true;
+        hostSetup.set(usesAutomaticSource() ? (inventory.hostSetup ?? null) : null);
         environments = inventory.environments;
         notify();
         refreshed = true;
@@ -354,11 +354,10 @@ export function createDesktopPanel(
     if (refreshed && inventoryRequest.isCurrent() && selection === "pending") {
       if (requestedSource !== undefined) {
         selection = "resolved";
+        notify();
         await connectEnvironment(requestedSource, host.documentControl);
       } else if (host.requestedSource !== null || host.sessionKey !== null) {
-        noticeText = t(
-          hostSetupRequired ? "desktop.hostSetupRequired" : "desktop.sourceUnavailable",
-        );
+        noticeText = hostSetup.view() ? null : t("desktop.sourceUnavailable");
         notify();
       }
     }
@@ -411,6 +410,7 @@ export function createDesktopPanel(
       sizingMode = "fit";
     }
     canResize = false;
+    hostSetup.clear();
     const environment = environments.find((candidate) => candidate.id === environmentId);
     desktopApps = [...(environment?.worker?.desktopApps ?? [])];
     disconnectConnection(currentId === environmentId);
@@ -421,7 +421,6 @@ export function createDesktopPanel(
     sessionSource.setDesktopSource(source, environment?.desktopAvailability);
     controlling = control;
     phase = "connecting";
-    hostSetupRequired = false;
     errorText = null;
     disconnectedReason = null;
     if (!takeoverRecovery) {
@@ -645,12 +644,12 @@ export function createDesktopPanel(
           hasTarget: host.sessionKey !== null || host.requestedSource !== null,
           errorText: controls.launcher.feedback().error ?? errorText,
           noticeText,
-          hostSetupRequired,
           availability: sessionSource.desktopAvailability,
           picker: {
-            automatic: usesAutomaticSource() && host.embedded && host.sessionKey !== null,
+            automatic: automaticPicker(),
             environments,
-            onRefresh: () => void refreshEnvironments(undefined, undefined, true),
+            hostSetup: hostSetup.view(),
+            onRefresh: recheck,
             onConnect: (environmentId: string) => {
               selection = "explicit";
               notify();

@@ -196,14 +196,11 @@ Desktop without restarting the Gateway; the desktop becomes available on the
 same connection. Gateway administrator access is required. Detection does not
 expose the desktop or change system permissions. Existing managed Linux desktops
 can be enabled from the same view. **Settings → Labs → Host Desktop** remains
-available to turn access off or manage it separately.
-
-If a chat targets the Gateway computer while Host Desktop is disabled, its Desktop
-panel offers **Open desktop setup**. This opens the Gateway host in Systems,
-regardless of the previously selected machine. After checking Screen Sharing and
-enabling access, choose **Return to desktop** to retest and connect the original
-chat's desktop. Unavailable paired nodes and cloud machines keep their own recovery
-path; enabling the Gateway desktop does not repair those computers.
+available to turn access off or manage it separately. When a chat session's
+Desktop panel or a focused Desktop window targets the Gateway host and Host
+Desktop is off, it shows the same check, setup steps, and enable action, then
+re-checks and connects once Host Desktop is available. Focused windows keep a
+Back action during setup and sign-in.
 
 Enabling macOS Screen Sharing, a paired node's Desktop sharing, or screenshot
 capture alone does not enable the Gateway's desktop. On macOS, Remote Management

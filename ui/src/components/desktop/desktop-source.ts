@@ -46,7 +46,7 @@ export async function loadDesktopEnvironments(
       environments: EnvironmentSummary[];
       selectedSource: string | undefined;
       pendingSource?: string;
-      hostSetupRequired?: boolean;
+      hostSetup?: EnvironmentSummary;
     }
   | undefined
 > {
@@ -83,19 +83,33 @@ export async function loadDesktopEnvironments(
       return undefined;
     }
   }
+  const selectedSource = environments.find(
+    (environment) =>
+      environment.id === selectedTarget &&
+      environment.status === "available" &&
+      environment.desktop === true,
+  )?.id;
+  let hostSetup: EnvironmentSummary | undefined;
+  if (
+    selectedTarget === "gateway" &&
+    selectedSource === undefined &&
+    selectedEnvironment?.status === "available"
+  ) {
+    // Host Desktop is off: ask what setup the host needs; a failed check keeps the generic notice.
+    const listed = await client
+      .request<EnvironmentsListResult>("environments.list", { includeDesktopSetup: true })
+      .catch(() => undefined);
+    if (!options.isCurrent()) {
+      return undefined;
+    }
+    hostSetup = listed?.environments.find(
+      (environment) => environment.id === "gateway" && environment.desktopSetup,
+    );
+  }
   return {
-    // Preserve the requested host before document recovery loads unrelated picker sources.
-    hostSetupRequired:
-      selectedEnvironment?.id === "gateway" &&
-      selectedEnvironment.status === "available" &&
-      selectedEnvironment.desktop !== true,
-    selectedSource: environments.find(
-      (environment) =>
-        environment.id === selectedTarget &&
-        environment.status === "available" &&
-        environment.desktop === true,
-    )?.id,
+    selectedSource,
     environments: environments.filter((environment) => environment.desktop === true),
+    ...(hostSetup ? { hostSetup } : {}),
   };
 }
 
