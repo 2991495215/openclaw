@@ -251,6 +251,37 @@ it.each(["descriptor", "startup"] as const)(
   },
 );
 
+it("keeps an off-page descriptor title until the session is deleted", async () => {
+  const h = await setup();
+  const request = h.current().request.getMockImplementation();
+  assert(request);
+  h.current().request.mockImplementation((method, params) => {
+    if (method === "sessions.list") {
+      return Promise.resolve(sessionsResult([]));
+    }
+    if (method === "sessions.delete") {
+      return Promise.resolve({ deleted: true });
+    }
+    return request(method, params);
+  });
+  await h.sessions.refresh({ agentId: "main", force: true });
+  // History can adopt the shared page after the descriptor has already been projected.
+  h.state.sessionsResult = h.sessions.presentation.result;
+  expect(selectedChatSessionRow(h.state)).toBeUndefined();
+  h.draw();
+  expect(h.header.querySelector(".chat-pane__session-title-text")?.textContent).toBe(
+    "Original title",
+  );
+  await h.sessions.delete(h.state.sessionKey, {
+    agentId: "main",
+    expectedSessionId: "current-incarnation",
+  });
+  h.draw();
+  expect(h.header.querySelector(".chat-pane__session-title-text")?.textContent).not.toBe(
+    "Original title",
+  );
+});
+
 it("queues a header rename and rendered reaction through the shared outbox", async () => {
   const h = await setup();
   h.disconnect();

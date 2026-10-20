@@ -63,7 +63,9 @@ export abstract class ChatPaneSessionMenu extends ChatPaneContext {
   protected resolveHeaderSessionTitle(row: GatewaySessionRow | undefined): string {
     return chatSessionPresentationTitle(
       this.state,
-      row ?? this.transcriptSessionProps(row).transcriptMetadata,
+      row ??
+        this.resourceSessionObservation()?.row ??
+        this.transcriptSessionProps(row).transcriptMetadata,
       this.sessionKey,
     );
   }
