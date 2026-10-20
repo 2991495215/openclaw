@@ -130,6 +130,11 @@ export async function notifySessionsSendSession(params: {
   });
 }
 
+function isRunScopedAgentSessionKey(sessionKey: string): boolean {
+  const parsed = parseAgentSessionKey(sessionKey);
+  return Boolean(parsed && /(?:^|:)run:[^:]+(?::|$)/.test(parsed.rest));
+}
+
 function resolveCronRunScopedFallbackSessionKey(sessionKey: string): string | undefined {
   if (!isCronRunSessionKey(sessionKey)) {
     return undefined;
@@ -209,7 +214,10 @@ export async function trySessionsSendActiveRunDelivery(
     selection.assertCurrent();
     let fallbackSessionKey: string | undefined;
     const activeOperation =
-      params.mode === "steer" || params.allowActiveRunQueueDelivery
+      params.mode === "steer" ||
+      (params.mode !== "followup" &&
+        params.allowActiveRunQueueDelivery &&
+        (ownChild || isRunScopedAgentSessionKey(params.sessionKey)))
         ? getSessionControllerOperation(
             params.sessionStoreTarget.canonicalKey,
             captureSessionTarget({

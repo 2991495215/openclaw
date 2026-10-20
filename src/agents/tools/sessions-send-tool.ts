@@ -605,7 +605,7 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
               sourceOrigin: sameSession ? requesterOrigin : undefined,
               sessionKey: resolvedKey,
               sessionStoreTarget: targetSession,
-              allowActiveRunQueueDelivery: !sameSession,
+              allowActiveRunQueueDelivery: !sameSession && timeoutSeconds === 0,
               expectedSessionId,
               preparedTargetSessionId: targetSessionEntry?.sessionId,
               assertSendCurrent: communication.assertCurrent,

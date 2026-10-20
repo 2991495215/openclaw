@@ -195,7 +195,7 @@ describe("sessions tools", () => {
     expect(peekSystemEventEntries(targetKey)).toEqual([]);
   });
 
-  it("sessions_send steer refuses idle work and followup feeds an active recipient", async () => {
+  it("sessions_send steer refuses idle work and followup starts a separate turn", async () => {
     const targetKey = "agent:main:cron:followup:run:active";
     await seedSession(targetKey, "active-target");
     const calls: GatewayCall[] = [];
@@ -245,9 +245,9 @@ describe("sessions tools", () => {
           timeoutSeconds: 0,
         }),
     );
-    expect(followup.details).toMatchObject({ status: "accepted", targetDisposition: "steered" });
-    expect(queueMessage).toHaveBeenCalledOnce();
-    expect(calls.filter((request) => request.method === "agent")).toHaveLength(0);
+    expect(followup.details).toMatchObject({ status: "accepted", targetDisposition: "queued" });
+    expect(queueMessage).not.toHaveBeenCalled();
+    expect(calls.filter((request) => request.method === "agent")).toHaveLength(1);
   });
 
   it("sessions_send does not enqueue a notification beyond an exact session grant", async () => {

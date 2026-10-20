@@ -159,7 +159,6 @@ it.each(["missing", "different", "different account"] as const)(
 
 it.each([
   [undefined, false, false, false, false],
-  ["followup", false, false, false, false],
   ["steer", true, false, true, false],
   ["steer", false, true, false, false],
   [undefined, false, false, false, true],

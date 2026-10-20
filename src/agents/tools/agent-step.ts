@@ -1,19 +1,14 @@
 import crypto from "node:crypto";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { getRuntimeConfig } from "../../config/config.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
-import { prepareSessionDeliveryGeneration } from "../../config/sessions/session-delivery-generation.js";
 import { composeSessionSourceAssertion } from "../../config/sessions/session-source-authority.js";
 import type { TrustedAgentToolCaller } from "../../gateway/server-methods/client-types.js";
-import { resolveGatewaySessionStoreTargetInWorker } from "../../gateway/session-utils-store-worker.js";
 import { stringifyRouteThreadId } from "../../plugin-sdk/channel-route.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { annotateInterSessionPromptText } from "../../sessions/input-provenance.js";
-import { isSessionRunActiveForKey } from "../../sessions/session-controller.queries.js";
 import { recordSessionParticipantBestEffort } from "../../sessions/session-participant-recording.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
-import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveNestedAgentLaneForSession } from "../lanes.js";
 import { waitForAgentRunReply } from "../run-wait.js";
 import { captureGatewayToolCallerAssertion } from "./gateway-caller-context.js";
@@ -26,7 +21,6 @@ import {
   prepareSessionsSendCommunication,
   type SessionSendReplyAdmission,
 } from "./sessions-send-communication.js";
-import { trySessionsSendActiveRunDelivery } from "./sessions-send-tool.delivery.js";
 import type { AgentStepSession } from "./sessions-send-tool.types.js";
 
 export async function runAgentStep(params: {
@@ -119,115 +113,35 @@ export async function runAgentStep(params: {
     });
   }
   let response: Record<string, unknown> | undefined;
-  let steered = false;
-  let callGateway = communication?.callGateway ?? gatewayCall;
+  const callGateway = communication?.callGateway ?? gatewayCall;
   try {
-    if (communication && isSessionRunActiveForKey(params.sessionKey)) {
-      const cfg = communication.admissionConfig;
-      communication.assertCurrent();
-      const agentId =
-        params.agentId ?? resolveSessionAgentId({ config: cfg, sessionKey: params.sessionKey });
-      const target = await resolveGatewaySessionStoreTargetInWorker({
-        cfg,
-        key: params.sessionKey,
-        agentId,
-        assertActive: communication.assertCurrent,
-      });
-      const entry = target.store[target.canonicalKey];
-      if (!entry?.sessionId) {
-        throw new Error("Requester session no longer exists.");
-      }
-      const generation = await prepareSessionDeliveryGeneration({
-        agentId: target.agentId,
-        storePath: target.storePath,
-        sessionKey: target.canonicalKey,
-        sessionId: params.expectedSession?.sessionId ?? entry.sessionId,
-        lifecycleRevision: params.expectedSession
+    response = await callGateway({
+      method: "agent",
+      // This is a returned result, not a new request to the peer. Consuming it
+      // must not require an acknowledgment or repeat an already delivered final.
+      replyExpectation: "optional",
+      agentToolCaller: params.requester,
+      params: {
+        message,
+        ...(params.agentId ? { agentId: params.agentId } : {}),
+        sessionKey: params.sessionKey,
+        deliver: false,
+        sourceReplyDeliveryMode: "message_tool_only",
+        channel: params.deliveryContext?.channel ?? INTERNAL_MESSAGE_CHANNEL,
+        lane: resolveNestedAgentLaneForSession(params.sessionKey),
+        extraSystemPrompt: params.extraSystemPrompt,
+        inputProvenance,
+        idempotencyKey: stepIdem,
+        expectedExistingSessionId: params.expectedSession?.sessionId,
+        expectedExistingSessionLifecycleRevision: params.expectedSession
           ? (params.expectedSession.lifecycleRevision ?? null)
-          : (entry.lifecycleRevision ?? null),
-      });
-      let accepted = false;
-      try {
-        const result = await trySessionsSendActiveRunDelivery(
-          {
-            cfg,
-            admissionConfig: cfg,
-            callGateway,
-            callDurableGateway: communication.callDurableGateway,
-            runId: stepIdem,
-            sessionKey: target.canonicalKey,
-            sessionStoreTarget: target,
-            expectedSessionId: params.expectedSession?.sessionId ?? entry.sessionId,
-            recipientGeneration: generation,
-            transcriptText: message,
-            onQueueAccepted: (value) => {
-              accepted ||= value;
-            },
-            assertSendCurrent: communication.assertCurrent,
-            allowActiveRunQueueDelivery: true,
-            sendParams: {
-              // Active input cannot change the running turn's system prompt. Carry
-              // the returned-result instructions with this attributed input instead.
-              message: annotateInterSessionPromptText(
-                `${params.extraSystemPrompt}\n\n${params.message}`,
-                inputProvenance,
-              ),
-              agentId: target.agentId,
-              inputProvenance,
-              sourceReplyDeliveryMode: "message_tool_only",
-            },
-          },
-          false,
-        );
-        if ("ok" in result) {
-          if (!result.ok) {
-            const details = asOptionalRecord(result.result.details);
-            throw new Error(
-              typeof details?.error === "string"
-                ? details.error
-                : "Requester result steering failed.",
-            );
-          }
-          steered = result.targetDisposition === "steered";
-          accepted ||= steered;
-        } else if (result.callGateway) {
-          callGateway = result.callGateway;
-        }
-      } finally {
-        if (!accepted) {
-          generation.release();
-        }
-      }
-    }
-    if (!steered) {
-      response = await callGateway({
-        method: "agent",
-        // This is a returned result, not a new request to the peer. Consuming it
-        // must not require an acknowledgment or repeat an already delivered final.
-        replyExpectation: "optional",
-        agentToolCaller: params.requester,
-        params: {
-          message,
-          ...(params.agentId ? { agentId: params.agentId } : {}),
-          sessionKey: params.sessionKey,
-          deliver: false,
-          sourceReplyDeliveryMode: "message_tool_only",
-          channel: params.deliveryContext?.channel ?? INTERNAL_MESSAGE_CHANNEL,
-          lane: resolveNestedAgentLaneForSession(params.sessionKey),
-          extraSystemPrompt: params.extraSystemPrompt,
-          inputProvenance,
-          idempotencyKey: stepIdem,
-          expectedExistingSessionId: params.expectedSession?.sessionId,
-          expectedExistingSessionLifecycleRevision: params.expectedSession
-            ? (params.expectedSession.lifecycleRevision ?? null)
-            : undefined,
-          accountId: params.deliveryContext?.accountId,
-          to: params.deliveryContext?.to,
-          threadId: stringifyRouteThreadId(params.deliveryContext?.threadId),
-        },
-        timeoutMs: 10_000,
-      });
-    }
+          : undefined,
+        accountId: params.deliveryContext?.accountId,
+        to: params.deliveryContext?.to,
+        threadId: stringifyRouteThreadId(params.deliveryContext?.threadId),
+      },
+      timeoutMs: 10_000,
+    });
   } finally {
     communication?.close();
   }
@@ -244,9 +158,6 @@ export async function runAgentStep(params: {
     });
   }
 
-  if (steered) {
-    return;
-  }
   const resolvedRunId =
     typeof response?.runId === "string" && response.runId ? response.runId : stepIdem;
   const result = await waitForAgentRunReply({

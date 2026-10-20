@@ -128,9 +128,9 @@ export function registerSessionsSendRejectedSteeringTests({
     { reason: "injection_unavailable" as const, followup: true, mode: "followup" as const },
     { reason: "injection_unavailable" as const, followup: false, mode: "steer" as const },
   ])(
-    "sessions_send handles unaccepted sibling steering: $reason, mode=$mode",
+    "sessions_send handles unaccepted eligible run-scoped steering: $reason, mode=$mode",
     async ({ reason, followup, mode }) => {
-      const key = "agent:main:dashboard:sibling-rejection";
+      const key = "agent:main:dashboard:sibling-rejection:run:captured";
       await seedSession(key, "sibling-rejection-session");
       await activeRun(key, { config: cloneTestConfig(), sessionId: "sibling-rejection-session" });
       const queue = vi
@@ -166,16 +166,20 @@ export function registerSessionsSendRejectedSteeringTests({
         if (followup) {
           expect(admissions[0]?.[0].params).toMatchObject({ sessionKey: key });
         }
-        expect(queue).toHaveBeenCalledOnce();
-        expect(queue).toHaveBeenCalledWith({
-          operation: expect.objectContaining({ sessionId: "sibling-rejection-session" }),
-          text: expect.stringContaining("synthetic update"),
-          abortOnUnconfirmedTranscript: false,
-          options: expect.objectContaining({
-            assertCurrent: expect.any(Function),
-            waitForTranscriptCommit: true,
-          }),
-        });
+        if (mode === "followup") {
+          expect(queue).not.toHaveBeenCalled();
+        } else {
+          expect(queue).toHaveBeenCalledOnce();
+          expect(queue).toHaveBeenCalledWith({
+            operation: expect.objectContaining({ sessionId: "sibling-rejection-session" }),
+            text: expect.stringContaining("synthetic update"),
+            abortOnUnconfirmedTranscript: false,
+            options: expect.objectContaining({
+              assertCurrent: expect.any(Function),
+              waitForTranscriptCommit: true,
+            }),
+          });
+        }
       } finally {
         await settleContinuations();
         queue.mockRestore();

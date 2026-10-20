@@ -345,63 +345,63 @@ export function registerSessionsSendActiveSteeringTests({
     }
   });
 
-  it.each([undefined, "steer"] as const)(
-    "sessions_send preserves self-send mode=$mode",
-    async (mode) => {
-      const key = "agent:main:dashboard:self-send";
-      await seedSession(key, "self-send-session");
-      const queueMessage = await activeRun(key, {
-        config: cloneTestConfig(),
-        sessionId: "self-send-session",
-      });
-      mockGatewayResponses({
-        agent: { runId: "self-followup", status: "accepted" },
-        "agent.wait": { status: "ok", terminalReply: { disposition: "empty" } },
-      });
-      const tool = withTestRequester(
-        createSessionsSendTool({
-          agentSessionKey: key,
-          requesterOrigin: {
-            channel: "telegram",
-            accountId: "synthetic-account",
-            to: "synthetic-chat",
-            threadId: "synthetic-thread",
-          },
-          config: cloneTestConfig(),
-        }),
-        key,
-      );
-      const result = await tool.execute("self-send", {
-        sessionKey: key,
-        message: "synthetic self followup",
-        timeoutSeconds: 0,
-        mode,
-      });
-      expect(result.details).toMatchObject({
-        status: "accepted",
-        targetDisposition: mode ? "steered" : "queued",
-      });
-      if (mode) {
-        expect(queueMessage).toHaveBeenCalledOnce();
-      } else {
-        expect(queueMessage).not.toHaveBeenCalled();
-      }
-      const admissions = callGatewayMock.mock.calls.filter(
-        ([request]) => request.method === "agent",
-      );
-      expect(admissions).toHaveLength(mode ? 0 : 1);
-      if (!mode) {
-        expect(admissions[0]?.[0].params).toMatchObject({
-          sessionKey: key,
+  it.each(
+    ([undefined, "steer"] as const).flatMap((mode) =>
+      ["agent:main:dashboard:self-send", "agent:main:dashboard:self-send:run:captured"].map(
+        (key) => ({ mode, key }),
+      ),
+    ),
+  )("sessions_send preserves self-send mode=$mode key=$key", async ({ mode, key }) => {
+    await seedSession(key, "self-send-session");
+    const queueMessage = await activeRun(key, {
+      config: cloneTestConfig(),
+      sessionId: "self-send-session",
+    });
+    mockGatewayResponses({
+      agent: { runId: "self-followup", status: "accepted" },
+      "agent.wait": { status: "ok", terminalReply: { disposition: "empty" } },
+    });
+    const tool = withTestRequester(
+      createSessionsSendTool({
+        agentSessionKey: key,
+        requesterOrigin: {
           channel: "telegram",
           accountId: "synthetic-account",
           to: "synthetic-chat",
           threadId: "synthetic-thread",
-        });
-      }
-      await settleContinuations();
-    },
-  );
+        },
+        config: cloneTestConfig(),
+      }),
+      key,
+    );
+    const result = await tool.execute("self-send", {
+      sessionKey: key,
+      message: "synthetic self followup",
+      timeoutSeconds: 0,
+      mode,
+    });
+    expect(result.details).toMatchObject({
+      status: "accepted",
+      targetDisposition: mode ? "steered" : "queued",
+    });
+    if (mode) {
+      expect(queueMessage).toHaveBeenCalledOnce();
+    } else {
+      expect(queueMessage).not.toHaveBeenCalled();
+    }
+    const admissions = callGatewayMock.mock.calls.filter(([request]) => request.method === "agent");
+    expect(admissions).toHaveLength(mode ? 0 : 1);
+    if (!mode) {
+      expect(admissions[0]?.[0].params).toMatchObject({
+        sessionKey: key,
+        channel: "telegram",
+        accountId: "synthetic-account",
+        to: "synthetic-chat",
+        threadId: "synthetic-thread",
+      });
+    }
+    await settleContinuations();
+  });
 
   it.each(
     ([undefined, "followup"] as const).flatMap((mode) =>
@@ -433,28 +433,35 @@ export function registerSessionsSendActiveSteeringTests({
         timeoutSeconds,
       });
       expect(result.details).toMatchObject(
-        busy
-          ? { status: "accepted", targetDisposition: "steered", delivery: { status: "skipped" } }
-          : timeoutSeconds === 0
-            ? { status: "accepted", targetDisposition: "queued" }
-            : { status: "ok", reply: "synthetic idle reply" },
+        timeoutSeconds === 0
+          ? { status: "accepted", targetDisposition: "queued" }
+          : { status: "ok", reply: "synthetic idle reply" },
       );
       expect(
         callGatewayMock.mock.calls.filter(
           ([request]) => request.method === "agent" && request.params?.sessionKey === key,
         ),
-      ).toHaveLength(busy ? 0 : 1);
+      ).toHaveLength(1);
+      expect(
+        callGatewayMock.mock.calls.find(([request]) => request.method === "agent")?.[0].params
+          ?.inputProvenance,
+      ).toMatchObject({
+        kind: "inter_session",
+        sourceSessionKey: "agent:main:dashboard:mailbox-sender",
+        sourceTool: "sessions_send",
+      });
       if (busy) {
-        expect(queueMessage).toHaveBeenCalledOnce();
+        expect(queueMessage).not.toHaveBeenCalled();
+        // A zero-wait admission still has the existing detached reply waiter.
         expect(
           callGatewayMock.mock.calls.filter(([request]) => request.method === "agent.wait"),
-        ).toHaveLength(0);
+        ).toHaveLength(1);
       }
       await settleContinuations();
       if (busy) {
         expect(
           callGatewayMock.mock.calls.filter(([request]) => request.method === "agent"),
-        ).toHaveLength(0);
+        ).toHaveLength(1);
       }
     },
   );
@@ -464,7 +471,7 @@ export function registerSessionsSendActiveSteeringTests({
     { target: "main", unconfirmed: false },
     { target: "agent:main:main", unconfirmed: true },
   ])(
-    "sessions_send steers a busy sibling ($target, unconfirmed=$unconfirmed)",
+    "sessions_send explicitly steers a busy sibling ($target, unconfirmed=$unconfirmed)",
     async ({ target, unconfirmed }) => {
       const calls: Array<{ method?: string; params?: unknown }> = [];
       const ordinaryActiveKey = "agent:main:main";
@@ -490,6 +497,9 @@ export function registerSessionsSendActiveSteeringTests({
       });
       callGatewayMock.mockImplementation(async (request) => {
         calls.push(request);
+        if (request.method === "sessions.resolve") {
+          return { key: ordinaryActiveKey };
+        }
         if (request.method === "agent") {
           return { runId: "ordinary-agent-run", status: "accepted", acceptedAt: 2000 };
         }
@@ -505,6 +515,7 @@ export function registerSessionsSendActiveSteeringTests({
       const result = await tool.execute("call-ordinary-active", {
         sessionKey: target,
         message: "synthetic sibling update",
+        mode: "steer",
         timeoutSeconds: 0,
       });
 
