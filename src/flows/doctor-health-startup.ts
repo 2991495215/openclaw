@@ -96,13 +96,13 @@ export async function prepareDoctorInteractiveMaintenance(params: {
     await prepareDoctorDatabasePreflight({ scope: "state" });
   }
   const { maybeOfferUpdateBeforeDoctor } = await import("../commands/doctor-update.js");
-  const offeredUpdate = await maybeOfferUpdateBeforeDoctor({
+  const updateHandled = await maybeOfferUpdateBeforeDoctor({
     options: params.options,
     root: params.root,
     confirm: (p) => prompter.confirm(p),
     outro: params.outro,
   });
-  if (offeredUpdate.handled) {
+  if (updateHandled) {
     return "handled";
   }
   if (!params.databasePreflight) {

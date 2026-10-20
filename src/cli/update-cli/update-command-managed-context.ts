@@ -4,7 +4,6 @@ import { createManagedUpdateRequesterContinuationAuthority } from "../../infra/u
 import { loadInstalledPluginIndexInstallRecords } from "../../plugins/installed-plugin-index-records.js";
 import {
   captureTargetDatabaseSchemaContext,
-  updateConfigSource,
   isCandidateAdmissionContextCovered,
   type TargetDatabaseSchemaContextOptions,
 } from "./schema-preflight.js";
@@ -100,7 +99,6 @@ export async function readUpdateCandidateSource(
         ? snapshot.sourceConfig
         : snapshot.config,
     hash: hashConfigRaw(snapshot.raw),
-    source: updateConfigSource(snapshot),
   };
 }
 

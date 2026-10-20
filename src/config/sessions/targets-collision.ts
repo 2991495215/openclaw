@@ -19,10 +19,6 @@ export type SessionStoreTarget = {
 
 type SessionStoreTargetCollisionDiagnostic = {
   message: string;
-  sqlitePath: string;
-  ownerAgentId?: string;
-  ignoredAgentIds: string[];
-  ownerSource: NonNullable<ResolvedSqliteStoreTarget["ownerSource"]>;
 };
 
 const log = createSubsystemLogger("sessions/targets");
@@ -60,7 +56,7 @@ export function dedupeSessionStoreTargetsBySqliteTarget(
     string,
     Array<{
       target: SessionStoreTarget;
-      ownerSource?: SessionStoreTargetCollisionDiagnostic["ownerSource"];
+      ownerSource?: ResolvedSqliteStoreTarget["ownerSource"];
       unsuffixedOwnerAgentId?: string;
     }>
   >();
@@ -138,10 +134,6 @@ export function dedupeSessionStoreTargetsBySqliteTarget(
           : ownerSource === "occupied-unsuffixed"
             ? `Session store target collision at ${sqlitePath}: unsuffixed target is occupied without a durable owner; all claimant(s) use suffixed targets: ${ignoredAgentIds.map((id) => `"${id}"`).join(", ")}.`
             : `Session store target collision at ${sqlitePath}: registry ownership is ambiguous; all claimant(s) use suffixed targets: ${ignoredAgentIds.map((id) => `"${id}"`).join(", ")}.`,
-      sqlitePath,
-      ...(ownerAgentId ? { ownerAgentId } : {}),
-      ignoredAgentIds,
-      ownerSource,
     };
     reportDiagnostic(diagnostic);
   }
@@ -167,9 +159,6 @@ export function dedupeSessionStoreTargetsBySqliteTarget(
     if (pathOwners.length !== 1 && registeredOwners.length > 1) {
       const diagnostic: SessionStoreTargetCollisionDiagnostic = {
         message: `Session store target collision at ${sqlitePath}: registry ownership is ambiguous across ${registeredOwners.map((id) => `"${id}"`).join(", ")}; no owner selected.`,
-        sqlitePath,
-        ignoredAgentIds: [...byAgentId.keys()],
-        ownerSource: "ambiguous-registry",
       };
       reportDiagnostic(diagnostic);
       continue;
@@ -213,10 +202,6 @@ export function dedupeSessionStoreTargetsBySqliteTarget(
       const effectiveIgnoredAgentIds = selected ? ignoredAgentIds : [...byAgentId.keys()];
       const diagnostic: SessionStoreTargetCollisionDiagnostic = {
         message: `Session store target collision at ${sqlitePath}: owner "${ownerAgentId}" selected by ${ownerSource}; ignored owner(s): ${effectiveIgnoredAgentIds.map((id) => `"${id}"`).join(", ")}.`,
-        sqlitePath,
-        ownerAgentId,
-        ignoredAgentIds: effectiveIgnoredAgentIds,
-        ownerSource,
       };
       reportDiagnostic(diagnostic);
     }

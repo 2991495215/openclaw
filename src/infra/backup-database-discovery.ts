@@ -10,7 +10,6 @@ import { resolveDatabaseEngineSelection } from "./database-engine/config.js";
 import { withDatabaseEngineSelection } from "./database-engine/context.js";
 import type { DatabasePortPluginOwners } from "./database-engine/port-descriptor.js";
 import { listDatabaseEngineStores } from "./database-engine/registry.js";
-import { statePortProvider } from "./database-engine/state-port.js";
 import { captureRuntimeWorkerSource } from "./runtime-worker-generation.js";
 import { WorkerTaskPool } from "./worker-task-pool.js";
 
@@ -19,7 +18,6 @@ type Input = Parameters<typeof discoverBackupDatabasePaths>[0] & {
 };
 type Reply = {
   paths: string[];
-  stateRoots: readonly string[];
   pluginOwners: DatabasePortPluginOwners;
   pluginInventory: ActivatedPluginBackupInventory;
   resources: Array<{ path: string; family: string; pluginId: string }>;
@@ -84,11 +82,6 @@ if (parentPort && workerData?.databaseDiscovery === true) {
               : [];
           }),
         ),
-        stateRoots: await statePortProvider.resolveRoots({
-          ...input,
-          env: input.env ?? process.env,
-          plugins,
-        }),
         pluginOwners,
         pluginInventory: resolveActivatedPluginBackupInventory(input),
       };

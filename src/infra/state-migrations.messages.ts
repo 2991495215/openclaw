@@ -133,7 +133,6 @@ export function createLegacyStateMigrationStepReceipt(
 }
 
 export class DoctorStateMigrationRefusalError extends Error {
-  readonly stepReceipts: readonly LegacyStateMigrationStepReceipt[];
   readonly failureFacts: UpdateFailureFact[];
 
   constructor(stepReceipts: readonly LegacyStateMigrationStepReceipt[]) {
@@ -168,7 +167,6 @@ export class DoctorStateMigrationRefusalError extends Error {
       ].join("\n"),
     );
     this.name = "DoctorStateMigrationRefusalError";
-    this.stepReceipts = [...stepReceipts];
     this.failureFacts = failureFacts;
   }
 }

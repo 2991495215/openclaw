@@ -125,7 +125,7 @@ it.skipIf(process.platform === "win32").each(["before", "after"] as const)(
     try {
       await expect(prepared.publish()).rejects.toMatchObject({
         name: "SqliteReplacementOutcomeUnknownError",
-        receipt: { targetPath: options.targetPath, ...content(source) },
+        message: expect.stringContaining(options.targetPath),
       });
       expect(await fs.readFile(options.targetPath)).toEqual(phase === "before" ? original : source);
     } finally {

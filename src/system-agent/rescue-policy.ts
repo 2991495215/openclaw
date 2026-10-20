@@ -10,7 +10,6 @@ type SystemAgentRescueDecision =
   | { allowed: true }
   | {
       allowed: false;
-      reason: "disabled" | "sandbox-active" | "not-owner" | "not-direct-message";
       message: string;
     };
 
@@ -29,7 +28,6 @@ export function resolveSystemAgentRescuePolicy(
   if (sandboxMode !== "off") {
     return {
       allowed: false,
-      reason: "sandbox-active",
       message:
         "OpenClaw rescue is blocked because OpenClaw sandboxing is active. Fix the install locally or disable sandboxing before using remote rescue.",
     };
@@ -49,21 +47,18 @@ export function resolveSystemAgentRescuePolicy(
   if (effective.mode !== "full") {
     return {
       allowed: false,
-      reason: "disabled",
       message: "OpenClaw rescue requires YOLO host posture with sandboxing off.",
     };
   }
   if (!input.senderIsOwner) {
     return {
       allowed: false,
-      reason: "not-owner",
       message: "OpenClaw rescue only accepts commands from an OpenClaw owner.",
     };
   }
   if (!input.isDirectMessage) {
     return {
       allowed: false,
-      reason: "not-direct-message",
       message: "OpenClaw rescue is restricted to owner DMs by default.",
     };
   }

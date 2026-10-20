@@ -239,18 +239,10 @@ export async function persistInboundImagesForTranscript(params: {
   return { entries, omission };
 }
 
-type UnsupportedAttachmentReason =
-  | "empty-payload"
-  | "text-only-image"
-  | "unsupported-non-image"
-  | "non-image-too-large-for-sandbox";
-
 export class UnsupportedAttachmentError extends Error {
-  readonly reason: UnsupportedAttachmentReason;
-  constructor(reason: UnsupportedAttachmentReason, message: string) {
+  constructor(message: string) {
     super(message);
     this.name = "UnsupportedAttachmentError";
-    this.reason = reason;
   }
 }
 
@@ -346,7 +338,7 @@ export async function parseMessageWithAttachments(
       const { base64: b64, label, mime } = normalizeAttachment(att, idx);
 
       if (b64.length === 0) {
-        throw new UnsupportedAttachmentError("empty-payload", `attachment ${label}: empty payload`);
+        throw new UnsupportedAttachmentError(`attachment ${label}: empty payload`);
       }
       const prepared = await prepareMediaAttachment(
         { base64: b64, label, mime, imageStorage: opts?.imageStorage },
@@ -366,13 +358,11 @@ export async function parseMessageWithAttachments(
       opts?.assertCurrent?.();
       if (isImage && !supportsInlineImages && !shouldForceImageOffload) {
         throw new UnsupportedAttachmentError(
-          "text-only-image",
           `attachment ${label}: active model does not accept image inputs`,
         );
       }
       if (!isImage && !acceptNonImage) {
         throw new UnsupportedAttachmentError(
-          "unsupported-non-image",
           `attachment ${label}: non-image attachments (${finalMime}) are not supported on this entrypoint`,
         );
       }

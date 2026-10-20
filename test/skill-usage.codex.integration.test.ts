@@ -193,7 +193,7 @@ describe("persistent skill usage through registered Codex dynamic tools", () => 
       await expectUsage(2);
       expect(execute).toHaveBeenCalledTimes(2);
       expect(consumeRunSkillUsage(runId)).toEqual([
-        { name: skillName, source: "workspace", activation: "read", skillFile },
+        { name: skillName, source: "workspace", activation: "read" },
       ]);
       expect(consumeRunSkillUsage(runId)).toEqual([]);
       expect(publicEvents).toEqual([]);
@@ -229,7 +229,7 @@ describe("persistent skill usage through registered Codex dynamic tools", () => 
     expect(await call("skill-command")).toMatchObject({ success: true });
     await expectUsage(1);
     expect(consumeRunSkillUsage(runId)).toEqual([
-      { name: skillName, source: "workspace", activation: "command", skillFile },
+      { name: skillName, source: "workspace", activation: "command" },
     ]);
     expect(trustedEvents).toMatchObject([
       { type: "skill.used", activation: "command", toolName: "daily_brief" },

@@ -240,7 +240,6 @@ export async function prepareChatSendAttachments(params: {
                   .map((ref) => `${ref.label} (${ref.sizeBytes} bytes)`)
                   .join(", ");
                 throw new UnsupportedAttachmentError(
-                  "non-image-too-large-for-sandbox",
                   `attachments exceed sandbox staging limit (${SANDBOX_MEDIA_MAX_BYTES} bytes): ${details}`,
                 );
               }

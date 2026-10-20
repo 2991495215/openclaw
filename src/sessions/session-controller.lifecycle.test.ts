@@ -544,8 +544,7 @@ it("bounds preempt settlement with a typed mutation timeout", async () => {
     expect(timeoutError).toBeInstanceOf(SessionMutationPreemptTimeoutError);
     expect(timeoutError).toMatchObject({
       name: "SessionMutationPreemptTimeoutError",
-      sessionKey: target.sessionKey,
-      mutationKind: "delete",
+      message: `Session ${target.sessionKey} did not settle before delete preemption timed out`,
     });
     expect(run).not.toHaveBeenCalled();
   } finally {

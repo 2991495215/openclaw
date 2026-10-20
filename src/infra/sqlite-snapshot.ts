@@ -59,10 +59,7 @@ export type SqliteReplacementReceipt = SqliteFileContent & {
 };
 
 export class SqliteReplacementOutcomeUnknownError extends Error {
-  constructor(
-    readonly receipt: SqliteReplacementReceipt,
-    cause: unknown,
-  ) {
+  constructor(receipt: SqliteReplacementReceipt, cause: unknown) {
     super(
       `SQLite replacement outcome is uncertain: ${receipt.targetPath}. Reconcile the target against the retained recovery manifest before retrying.`,
       { cause },

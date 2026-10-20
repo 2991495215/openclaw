@@ -376,20 +376,15 @@ describe("container image replacement Doctor repair and startup readiness", () =
       expect(fs.readFileSync(databasePath)).toEqual(original);
       await expect(repairContainerState()).rejects.toMatchObject({
         name: "DoctorStateMigrationRefusalError",
-        stepReceipts: expect.arrayContaining([
+        failureFacts: expect.arrayContaining([
           expect.objectContaining({
-            id: "media-persistence",
-            outcome: "refused",
-            refusal: { code: "step-refused", message: expect.any(String) },
-            warnings: expect.arrayContaining([
-              expect.stringContaining(
-                `${databasePath} metadata schema version 18 does not match 19`,
-              ),
-            ]),
+            check: "media-persistence",
+            code: "step-refused",
+            message: expect.stringContaining("metadata schema version 18 does not match 19"),
           }),
           expect.objectContaining({
-            id: "transcript-directives",
-            refusal: expect.objectContaining({ code: "blocked-by-prior-refusal" }),
+            check: "transcript-directives",
+            code: "blocked-by-prior-refusal",
           }),
         ]),
       });

@@ -28,9 +28,7 @@ type OfficialExternalPluginCatalogEnvelopeVerificationResult =
       ok: true;
       feed: OfficialExternalPluginCatalogFeed;
       signedBy: string;
-      signedByKeyIds?: readonly string[];
       signatureCount?: number;
-      threshold?: number;
     }
   | {
       ok: false;
@@ -120,9 +118,7 @@ export function verifyOfficialExternalPluginCatalogSignedEnvelope(
       signedBy: trustedSignatureKeyIds[0] ?? "",
       ...(threshold > 1
         ? {
-            signedByKeyIds: trustedSignatureKeyIds,
             signatureCount: trustedSignaturePublicKeys.size,
-            threshold,
           }
         : {}),
     };

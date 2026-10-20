@@ -137,10 +137,10 @@ function expectSingleInlinePng(parsed: ParsedAttachments) {
   expect(parsed.images[0]?.mimeType).toBe("image/png");
 }
 
-async function expectUnsupportedAttachmentReason(
+async function expectUnsupportedAttachment(
   attachments: ChatAttachment[],
   opts: Parameters<typeof parseMessageWithAttachments>[2],
-  reason: UnsupportedAttachmentError["reason"],
+  message: string,
 ) {
   let caught: unknown;
   try {
@@ -152,8 +152,10 @@ async function expectUnsupportedAttachmentReason(
     caught = err;
   }
   expect(caught).toBeInstanceOf(UnsupportedAttachmentError);
-  expect((caught as UnsupportedAttachmentError).name).toBe("UnsupportedAttachmentError");
-  expect((caught as UnsupportedAttachmentError).reason).toBe(reason);
+  expect(caught).toMatchObject({
+    name: "UnsupportedAttachmentError",
+    message: expect.stringContaining(message),
+  });
   expect(saveMediaBufferMock).not.toHaveBeenCalled();
 }
 
@@ -565,7 +567,7 @@ describe("parseMessageWithAttachments validation errors", () => {
       },
     ]);
 
-    await expectUnsupportedAttachmentReason(normalized, {}, "empty-payload");
+    await expectUnsupportedAttachment(normalized, {}, "empty payload");
   });
 
   it("continues to omit RPC attachments without recognized content", () => {
@@ -581,18 +583,18 @@ describe("parseMessageWithAttachments validation errors", () => {
 
   it("rejects generic-container payloads with image mime and image filename when acceptNonImage is false", async () => {
     const zip = Buffer.from("PK\u0003\u0004zip-archive-bytes").toString("base64");
-    await expectUnsupportedAttachmentReason(
+    await expectUnsupportedAttachment(
       [pngAttachment({ fileName: "fake.png", content: zip })],
       { acceptNonImage: false },
-      "unsupported-non-image",
+      "are not supported on this entrypoint",
     );
   });
 
   it("throws UnsupportedAttachmentError on image when supportsInlineImages is false", async () => {
-    await expectUnsupportedAttachmentReason(
+    await expectUnsupportedAttachment(
       [pngAttachment()],
       { supportsInlineImages: false },
-      "text-only-image",
+      "active model does not accept image inputs",
     );
   });
 

@@ -246,13 +246,13 @@ async function runDoctorHealthFlowWithResult(
           await prepareDoctorDatabasePreflight({ scope: "state" });
         }
         const { maybeOfferUpdateBeforeDoctor } = await import("../commands/doctor-update.js");
-        const offeredUpdate = await maybeOfferUpdateBeforeDoctor({
+        const updateHandled = await maybeOfferUpdateBeforeDoctor({
           options,
           root,
           confirm: (p) => prompter.confirm(p),
           outro: showDoctorOutro,
         });
-        if (offeredUpdate.handled) {
+        if (updateHandled) {
           return undefined;
         }
       }
