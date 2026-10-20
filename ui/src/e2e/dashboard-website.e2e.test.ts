@@ -1,9 +1,15 @@
+import { writeFile } from "node:fs/promises";
 import { expect, it } from "vitest";
 import { selectChatLayoutAction } from "../test-helpers/chat-layout-menu.ts";
+import { takeControlUiViewportScreenshot } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import { clickBoardWidgetControl } from "../test-helpers/control-ui-e2e-widget.ts";
 import { controlUiSessionUrl, installMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { createControlUiSessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
 import { focusChatSidePanel, openChatSidePanelType } from "./chat-side-panel.test-support.ts";
+import {
+  controlUiE2eBuiltModuleRequest,
+  failControlUiModuleForDocuments,
+} from "./control-ui-built-module.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createControlUiE2eSuite({
@@ -42,6 +48,29 @@ const website = `<!doctype html><html lang="en"><meta name="viewport" content="w
 <script>const note=document.querySelector('input');note.value=localStorage.getItem('status-note')||'';note.oninput=()=>localStorage.setItem('status-note',note.value);async function refresh(){document.querySelector('#status').textContent=(await (await fetch('/api/status')).json()).text;}document.querySelector('#refresh').onclick=refresh;refresh();</script></html>`;
 
 suite.define(() => {
+  it("shows a standalone dashboard error when its route loader chunk fails", async () => {
+    await suite.withPage(
+      { locale: "en-US", serviceWorkers: "block", viewport: { width: 1280, height: 900 } },
+      async ({ page }) => {
+        const failure = await failControlUiModuleForDocuments(
+          page,
+          controlUiE2eBuiltModuleRequest("ui/src/app/app-root-focus.ts"),
+        );
+        await installMockGateway(page, { sessionKey });
+        await page.goto(`${suite.server.baseUrl}focus/dashboard/main/12345678`);
+        const error = page.getByRole("alert");
+        await error.waitFor();
+        expect(failure.documentCount()).toBe(1);
+        expect(await error.textContent()).toContain("Could not load this dashboard:");
+        expect(await error.textContent()).toContain("Failed to fetch dynamically imported module");
+        await writeFile(
+          `${suite.artifactDir}/dashboard-loader-failed.png`,
+          await takeControlUiViewportScreenshot(page, error, [error]),
+        );
+      },
+    );
+  });
+
   it("runs a website with its own storage and refresh, preserving it through dashboard focus", async () => {
     await suite.withPage(
       { serviceWorkers: "block", viewport: { width: 1280, height: 900 } },
