@@ -21,6 +21,7 @@ import { ConnectingSplash } from "../components/solid/loading-skeleton.tsx";
 import { LoadingState } from "../components/solid/loading-state.tsx";
 import { installTitleTooltips } from "../components/tooltip-title.ts";
 import { i18n } from "../i18n/index.ts";
+import { formatUiError } from "../lib/format-error.ts";
 import {
   projectAgentSelection,
   projectApplicationConfig,
@@ -277,7 +278,12 @@ function OpenClawApp(host: HTMLElement, runtime: ApplicationRuntime): SolidJSX.E
           }
         }
       })
-      .catch((error: unknown) => console.error("[openclaw] application start failed", error));
+      .catch((error: unknown) => {
+        console.error("[openclaw] application start failed", error);
+        if (active && focusTarget?.kind === "dashboard") {
+          setFocusDashboardRoute({ kind: "error", message: formatUiError(error) });
+        }
+      });
   });
   onCleanup(() => {
     active = false;

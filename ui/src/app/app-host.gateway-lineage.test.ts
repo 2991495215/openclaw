@@ -160,6 +160,28 @@ afterEach(async () => {
 });
 
 describe("Control UI Gateway target lineage", () => {
+  it("shows a visible error when the standalone dashboard loader cannot load", async () => {
+    // mock-isolation: Fail the lazy module boundary without replacing route or rendering decisions.
+    vi.doMock("./app-root-focus.ts", () => {
+      throw new Error("Synthetic dashboard loader unavailable");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { gateway, hello } = createGatewayHarness();
+    gateway.start();
+    hello();
+    try {
+      const { container, draw } = await createGatewaySurface(gateway, "/focus/dashboard/main");
+      await vi.dynamicImportSettled();
+      await draw();
+      const alert = container.querySelector('[role="alert"]');
+      expect(alert).not.toBeNull();
+      expect(alert?.textContent).toContain("Could not load this dashboard:");
+    } finally {
+      gateway.stop();
+      vi.doUnmock("./app-root-focus.ts");
+    }
+  });
+
   it.each([
     { pathname: "/focus/dashboard/main", phase: "connecting" },
     { pathname: "/settings/connection", phase: "connecting" },
