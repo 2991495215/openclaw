@@ -158,7 +158,12 @@ const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex
 try {
   for (const [label, bin, args, pattern] of [
     ["platform-tools", adb, ["version"], /Version ([\d.-]+)/u],
-    ["emulator", emulator, ["-version"], /emulator version ([\d.]+).*build_id (\d+)/u],
+    [
+      "emulator",
+      emulator,
+      ["-no-window", "-version"],
+      /emulator version ([\d.]+).*build_id (\d+)/u,
+    ],
   ] as const) {
     const result = await command(bin, [...args]);
     const match = pattern.exec(result.stdout + result.stderr);
