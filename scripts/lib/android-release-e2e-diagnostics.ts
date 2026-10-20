@@ -1,5 +1,45 @@
 import path from "node:path";
 
+/** Normal ADB INFO records identify transport loss without enabling packet dumps. */
+export function androidReleaseAdbServerLineFacts(line: string) {
+  const termination = /\bemulator-(\d+): connection terminated: ([^\r\n]+)$/u.exec(line);
+  if (!termination) {
+    return undefined;
+  }
+  const message = termination[2]!;
+  const reason =
+    message === "read failed: EOF"
+      ? "read-eof"
+      : message.startsWith("read failed: ")
+        ? "read-error"
+        : message === "write failed"
+          ? "write-error"
+          : message.startsWith("poll failed: ")
+            ? "poll-error"
+            : message === "connection closed"
+              ? "connection-closed"
+              : "unknown";
+  const errno = [
+    ["ECONNRESET", "Connection reset by peer"],
+    ["ECONNABORTED", "Software caused connection abort"],
+    ["EPIPE", "Broken pipe"],
+    ["EIO", "Input/output error"],
+    ["EBADF", "Bad file descriptor"],
+    ["EINVAL", "Invalid argument"],
+    ["ETIMEDOUT", "Connection timed out"],
+    ["EINTR", "Interrupted system call"],
+  ].find(
+    ([, text]) => message === `read failed: ${text}` || message === `poll failed: ${text}`,
+  )?.[0];
+  return {
+    event: "connection-terminated",
+    port: Number(termination[1]),
+    reason,
+    errno,
+    hostTime: /^(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})\s/u.exec(line)?.[1],
+  };
+}
+
 /** Public failure facts must never copy command arguments, app text or raw logs. */
 export function androidReleaseCommandFacts(
   bin: string,

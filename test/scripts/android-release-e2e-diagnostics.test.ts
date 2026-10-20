@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  androidReleaseAdbServerLineFacts,
   androidReleaseCommandFacts,
   androidReleaseConsoleLineFacts,
   androidReleaseDeviceFacts,
@@ -9,6 +10,45 @@ import {
 } from "../../scripts/lib/android-release-e2e-diagnostics.js";
 
 describe("Android release public failure diagnostics", () => {
+  it.each([
+    ["read failed: EOF", "read-eof", undefined],
+    ["read failed: Connection reset by peer", "read-error", "ECONNRESET"],
+    ["poll failed: Bad file descriptor", "poll-error", "EBADF"],
+    ["write failed", "write-error", undefined],
+    ["connection closed", "connection-closed", undefined],
+    ["read failed: private-token", "read-error", undefined],
+    ["private-token", "unknown", undefined],
+  ])("sanitizes host ADB termination reason %s", (message, reason, errno) => {
+    const facts = androidReleaseAdbServerLineFacts(
+      `10-20 02:26:01.123 2962 2973 I adb : transport.cpp:1165 emulator-5580: connection terminated: ${message}`,
+    );
+    expect(facts).toEqual({
+      event: "connection-terminated",
+      port: 5580,
+      reason,
+      errno,
+      hostTime: "10-20 02:26:01.123",
+    });
+    expect(JSON.stringify(facts)).not.toContain("private-token");
+  });
+
+  it("omits unrelated host logs and does not copy devices, paths or extra log lines", () => {
+    expect(androidReleaseAdbServerLineFacts("private-token /private/path")).toBeUndefined();
+    expect(
+      androidReleaseAdbServerLineFacts("private-device: connection terminated: read failed: EOF"),
+    ).toBeUndefined();
+    const facts = androidReleaseAdbServerLineFacts(
+      "emulator-5582: connection terminated: read failed: EOF /private/token",
+    );
+    expect(facts).toMatchObject({ port: 5582, reason: "read-error", errno: undefined });
+    expect(JSON.stringify(facts)).not.toMatch(/private|token/u);
+    expect(
+      androidReleaseAdbServerLineFacts(
+        "emulator-5580: connection terminated: read failed: EOF\nprivate-token",
+      ),
+    ).toBeUndefined();
+  });
+
   it.each([
     [
       "failed to copy /private/setup-secret: Permission denied",

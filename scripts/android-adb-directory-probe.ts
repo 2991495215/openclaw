@@ -8,6 +8,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
+  androidReleaseAdbServerLineFacts,
   androidReleaseCommandFacts,
   androidReleaseConsoleLineFacts,
   androidReleaseHostFacts,
@@ -19,8 +20,11 @@ if (process.platform !== "linux" || process.arch !== "x64" || !sdk || !output) {
   throw new Error("Requires Linux x64, ANDROID_SDK_ROOT and PROOF_PATH");
 }
 const root = await mkdtemp(path.join(os.tmpdir(), "android-adb-probe-"));
+const adbLog = path.join(root, "adb-server.private.log");
 const env = {
   ...process.env,
+  ANDROID_ADB_LOG_PATH: adbLog,
+  ADB_TRACE: "",
   ANDROID_AVD_HOME: path.join(root, "avd"),
   ANDROID_USER_HOME: path.join(root, "android"),
 };
@@ -31,6 +35,7 @@ const filter = "adbd:V libc:F DEBUG:V init:I tombstoned:I lmkd:I *:S";
 const run = promisify(execFile);
 const started = Date.now();
 let stage = "sdk";
+let adbLogLines = 0;
 const events: Record<string, unknown>[] = [];
 const proof = {
   schema: 1,
@@ -47,6 +52,7 @@ const proof = {
     "shared-storage/FUSE",
   ],
   targetSha: process.env.TARGET_SHA,
+  startedAt: new Date(started).toISOString(),
   iterations: 0,
   cleanupConfirmed: true,
   events,
@@ -190,6 +196,29 @@ async function consoleFacts(file: string, source: string, cycle: number) {
       guestTime: /(?:^|\s)(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})(?:\s|$)/u.exec(line)?.[1],
     });
   }
+}
+async function adbServerFacts(cycle: number, moment: string) {
+  const text = await readFile(adbLog, "utf8").catch(() => null);
+  record("adb-server-capture", {
+    cycle,
+    moment,
+    available: text !== null,
+    bytes: text === null ? 0 : Buffer.byteLength(text),
+  });
+  if (!text) {
+    return false;
+  }
+  const lines = text.split(/\r?\n/u);
+  // Keep a partial final record for the next capture while the server is writing.
+  lines.pop();
+  for (const line of lines.slice(adbLogLines)) {
+    const facts = androidReleaseAdbServerLineFacts(line);
+    if (facts && (facts.port === 5580 || facts.port === 5582)) {
+      record("adb-server", { cycle, moment, ...facts });
+    }
+  }
+  adbLogLines = lines.length;
+  return true;
 }
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 try {
@@ -349,6 +378,9 @@ try {
         await sleep(100);
       }
       await snapshot(serial, cycle, "before-pulls");
+      if (!(await adbServerFacts(cycle, "before-pulls"))) {
+        throw new Error("host-adb-log-unavailable");
+      }
       stage = "pull";
       for (let iteration = 1; iteration <= 100; iteration++) {
         const destination = path.join(root, "pulled");
@@ -391,6 +423,7 @@ try {
         "concurrent-service-exit",
         "file-count-mismatch",
         "file-hash-mismatch",
+        "host-adb-log-unavailable",
       ];
       record("cycle-failed", {
         cycle,
@@ -398,10 +431,13 @@ try {
           error instanceof Error && reasons.includes(error.message) ? error.message : "probe-error",
       });
       await snapshot(serial, cycle, "failure").catch(() => {});
+      await adbServerFacts(cycle, "failure");
       await command(adb, ["-s", serial, "wait-for-device"], 20_000).catch(() => null);
       await snapshot(serial, cycle, "after-passive-wait").catch(() => {});
+      await adbServerFacts(cycle, "after-passive-wait");
       throw new Error("cycle-failed", { cause: error });
     } finally {
+      await adbServerFacts(cycle, "before-cleanup");
       for (const owned of services.toReversed()) {
         await stop(owned).catch(() => {
           proof.cleanupConfirmed = false;
@@ -409,6 +445,7 @@ try {
       }
       await consoleFacts(kernel, "kernel", cycle);
       await consoleFacts(logcat, "logcat", cycle);
+      await adbServerFacts(cycle, "after-cleanup");
     }
   }
   proof.status = proof.cleanupConfirmed ? "passed" : "failed";
