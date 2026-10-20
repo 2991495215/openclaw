@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { getOrCreateWeakOwnerMap } from "../../shared/weak-owner-map.js";
 import type { AuthProfileCredential, AuthProfileSecretsStore } from "./types.js";
 
 /** Private metadata in the existing secrets row. Absent-profile entries fence inheritance ABA. */
@@ -24,11 +25,7 @@ export function continueAuthProfileAuthorizationInheritance(
   profileId: string,
   previous: AuthProfileCredential,
 ): void {
-  let entries = inheritedContinuations.get(profiles);
-  if (!entries) {
-    entries = new Map();
-    inheritedContinuations.set(profiles, entries);
-  }
+  const entries = getOrCreateWeakOwnerMap(inheritedContinuations, profiles);
   entries.set(profileId, { kind: "refresh", previous: structuredClone(previous), used: false });
 }
 export function copyAuthProfileAuthorizationInheritance(source: object, target: object): void {

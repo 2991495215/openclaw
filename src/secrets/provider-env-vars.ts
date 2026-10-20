@@ -24,6 +24,7 @@ import {
 import { hasKind } from "../plugins/slots.js";
 import { appendUniqueEnvVarCandidates } from "../shared/env-var-candidates.js";
 import { isDeeplyFrozenPlainData } from "../shared/immutable-data.js";
+import { getOrCreateWeakOwnerMap } from "../shared/weak-owner-map.js";
 
 const CORE_PROVIDER_AUTH_ENV_VAR_CANDIDATES = {
   anthropic: ["ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
@@ -286,11 +287,7 @@ export function resolveProviderAuthLookupMaps(
     lookupMapsBySnapshot.set(snapshot, byConfig);
   }
   const configKey = config ?? lookupMapsBySnapshot;
-  let byKey = byConfig.get(configKey);
-  if (!byKey) {
-    byKey = new Map();
-    byConfig.set(configKey, byKey);
-  }
+  const byKey = getOrCreateWeakOwnerMap(byConfig, configKey);
   let maps = byKey.get(key);
   if (!maps) {
     maps = computeProviderAuthLookupMaps(params, snapshot);
