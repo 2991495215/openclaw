@@ -61,9 +61,66 @@ export function androidReleaseCommandFacts(
       /failed to receive|failed to send|failed to copy|unexpected id|failed to read copy response/iu.test(
         output,
       ),
+    buildingFileListOnly: tool === "adb" && stderr.trim() === "pull: building file list...",
     stdoutBytes: Buffer.byteLength(stdout),
     stderrBytes: Buffer.byteLength(stderr),
   };
+}
+
+/** Emulator console records survive loss of the guest's ADB transport. */
+export function androidReleaseConsoleLineFacts(line: string) {
+  const fatal = /Fatal signal (\d+)\b.*\bpid (\d+) \(adbd\)/u.exec(line);
+  if (fatal) {
+    return { event: "adbd-fatal-signal", signal: Number(fatal[1]), pid: Number(fatal[2]) };
+  }
+  const crash = /pid: (\d+), tid: \d+, name: .*>>> ([^\r\n]+) <<</u.exec(line);
+  if (crash) {
+    return {
+      event: "native-crash",
+      pid: Number(crash[1]),
+      process: /(?:^|\/)adbd$/u.test(crash[2]!) ? "adbd" : "other",
+    };
+  }
+  const exit = /Service 'adbd' \(pid (\d+)\) (received signal|exited with status) (\d+)/u.exec(
+    line,
+  );
+  if (exit) {
+    return {
+      event: exit[2] === "received signal" ? "adbd-exit-signal" : "adbd-exit-status",
+      pid: Number(exit[1]),
+      code: Number(exit[3]),
+    };
+  }
+  if (/\bstarting service 'adbd'/u.test(line)) {
+    return { event: "adbd-start" };
+  }
+  const started =
+    /\b(?:started service 'adbd' has pid|Service 'adbd' started with pid) (\d+)/u.exec(line);
+  if (started) {
+    return { event: "adbd-started", pid: Number(started[1]) };
+  }
+  const frame = /#(\d+) pc ([a-f0-9]+)\s+(\S+)/u.exec(line);
+  if (frame) {
+    const module = path.basename(frame[3]!);
+    return {
+      event: "native-frame",
+      index: Number(frame[1]),
+      pc: frame[2],
+      module: ["adbd", "libc.so", "libc++.so", "libbase.so", "libadbd.so"].includes(module)
+        ? module
+        : "other",
+    };
+  }
+  if (/\bKernel panic - not syncing:/u.test(line)) {
+    return { event: "kernel-panic" };
+  }
+  if (/\b(?:Out of memory:|Killed process \d+ \(adbd\))/u.test(line)) {
+    return { event: "guest-out-of-memory" };
+  }
+  if (/\b(?:FORTIFY:|fdsan:|Scudo ERROR:|Check failed:)/u.test(line)) {
+    return { event: "native-abort-check" };
+  }
+  return undefined;
 }
 
 /** Only numeric facts from the qualification-owned shell probe cross into artifacts. */

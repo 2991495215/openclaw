@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   androidReleaseCommandFacts,
+  androidReleaseConsoleLineFacts,
   androidReleaseDeviceFacts,
   androidReleaseErrorFacts,
   androidReleaseHostFacts,
@@ -61,6 +62,64 @@ describe("Android release public failure diagnostics", () => {
       }
     },
   );
+
+  it("recognizes a directory-list progress message without inventing a transfer error", () => {
+    expect(
+      androidReleaseCommandFacts("adb", ["pull"], "", "pull: building file list...\n"),
+    ).toMatchObject({ buildingFileListOnly: true, stderrBytes: 28, syncFailure: false });
+    expect(
+      androidReleaseCommandFacts("adb", ["pull"], "", "pull: building file list... private"),
+    ).toMatchObject({ buildingFileListOnly: false });
+  });
+
+  it.each([
+    [
+      "libc: Fatal signal 11 (SIGSEGV), code 1, fault addr 0x0 in tid 563 (adbd), pid 540 (adbd)",
+      { event: "adbd-fatal-signal", signal: 11, pid: 540 },
+    ],
+    [
+      "DEBUG: pid: 540, tid: 563, name: adbd  >>> /apex/com.android.adbd/bin/adbd <<<",
+      { event: "native-crash", pid: 540, process: "adbd" },
+    ],
+    [
+      "DEBUG: pid: 541, tid: 563, name: private  >>> /private/secret <<<",
+      { event: "native-crash", pid: 541, process: "other" },
+    ],
+    [
+      "init: Service 'adbd' (pid 540) received signal 11",
+      { event: "adbd-exit-signal", pid: 540, code: 11 },
+    ],
+    [
+      "init: Service 'adbd' (pid 540) exited with status 1",
+      { event: "adbd-exit-status", pid: 540, code: 1 },
+    ],
+    ["init: starting service 'adbd'...", { event: "adbd-start" }],
+    ["init: ... started service 'adbd' has pid 734", { event: "adbd-started", pid: 734 }],
+    [
+      "DEBUG: #00 pc 0000000000012345 /apex/com.android.adbd/bin/adbd (private_symbol+42)",
+      { event: "native-frame", index: 0, pc: "0000000000012345", module: "adbd" },
+    ],
+    [
+      "DEBUG: #01 pc 0000000000098765 /private/secret.so (private_symbol+42)",
+      { event: "native-frame", index: 1, pc: "0000000000098765", module: "other" },
+    ],
+    ["[123.45] Kernel panic - not syncing: private", { event: "kernel-panic" }],
+    ["Out of memory: Killed process 540 (adbd) private", { event: "guest-out-of-memory" }],
+    ["libc: FORTIFY: private", { event: "native-abort-check" }],
+  ])("exports console event facts without guest text: %s", (line, expected) => {
+    const facts = androidReleaseConsoleLineFacts(line);
+    expect(facts).toEqual(expected);
+    expect(JSON.stringify(facts)).not.toMatch(/private|secret|symbol|apex/u);
+  });
+
+  it("omits unrelated guest output from console diagnostics", () => {
+    expect(
+      androidReleaseConsoleLineFacts("private-token and private message text"),
+    ).toBeUndefined();
+    expect(
+      androidReleaseConsoleLineFacts("init: starting service 'private-secret'..."),
+    ).toBeUndefined();
+  });
 
   it("exports only numeric device facts, excluding paths and probe errors", () => {
     const facts = androidReleaseDeviceFacts(

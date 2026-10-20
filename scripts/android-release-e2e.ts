@@ -25,6 +25,7 @@ import { createOpenClawTestInstance } from "../test/helpers/openclaw-test-instan
 import { applyMockOpenAiModelConfig } from "./e2e/lib/fixtures/mock-openai-config.mjs";
 import {
   androidReleaseCommandFacts,
+  androidReleaseConsoleLineFacts,
   androidReleaseDeviceFacts,
   androidReleaseErrorFacts,
   androidReleaseHostFacts,
@@ -210,6 +211,8 @@ export async function main(argv = process.argv.slice(2)) {
     ANDROID_USER_HOME: path.join(root, "android"),
   };
   const adb = path.join(sdk, "platform-tools/adb");
+  const phoneConsoleFilter = "adbd:V libc:F DEBUG:V init:I tombstoned:I lmkd:I *:S";
+  let phoneConsoleBytes = 0;
   let commandIndex = 0;
   async function command(
     bin: string,
@@ -297,7 +300,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const deviceCommand = (device: Device, args: string[], timeoutMs = 60_000, cleanup = false) =>
     command(adb, ["-s", device.serial, ...args], timeoutMs, { cleanup });
-  async function snapshot(device: Device, moment: "before-pull" | "failure") {
+  async function snapshot(device: Device, moment: "before-pull" | "failure" | "after-disconnect") {
     const probe = async (bin: string, args: string[]) => {
       try {
         return await command(bin, args, 5_000, { cleanup: true, probe: true });
@@ -352,13 +355,14 @@ export async function main(argv = process.argv.slice(2)) {
       shellResponded: facts.length > 0,
       ...androidReleaseDeviceFacts(facts),
     });
+    return state;
   }
   function service(
     owner: string,
     bin: string,
     args: string[],
     childEnv: NodeJS.ProcessEnv,
-    onOutput?: (chunk: string) => void,
+    onOutput?: (chunk: string, stream: "stdout" | "stderr") => void,
   ) {
     const stop = new AbortController();
     const index = ++commandIndex;
@@ -377,7 +381,7 @@ export async function main(argv = process.argv.slice(2)) {
         for (const stream of [child.stdout, child.stderr]) {
           stream?.on("data", (chunk: Buffer) => {
             raw = (raw + chunk.toString()).slice(-16 * 1024 * 1024);
-            onOutput?.(chunk.toString());
+            onOutput?.(chunk.toString(), stream === child.stdout ? "stdout" : "stderr");
           });
         }
       },
@@ -680,6 +684,8 @@ export async function main(argv = process.argv.slice(2)) {
       );
       const device: Device = { role, serial: `emulator-${port}`, port, forward: 0, name };
       devices.push(device);
+      const consoleLines = { stdout: "", stderr: "" };
+      let adbdCrash = false;
       service(
         `${role}-emulator`,
         path.join(sdk, "emulator/emulator"),
@@ -698,8 +704,30 @@ export async function main(argv = process.argv.slice(2)) {
           "2",
           "-memory",
           role === "phone" ? "2048" : "1024",
+          // The emulator console keeps guest crash/init output available when ADB disconnects.
+          ...(role === "phone" ? ["-show-kernel", "-logcat", phoneConsoleFilter] : []),
         ],
         env,
+        role === "phone"
+          ? (chunk, stream) => {
+              phoneConsoleBytes += Buffer.byteLength(chunk);
+              consoleLines[stream] += chunk;
+              const lines = consoleLines[stream].split(/\r?\n/u);
+              consoleLines[stream] = lines.pop()!.slice(-64 * 1024);
+              for (const line of lines) {
+                const facts = androidReleaseConsoleLineFacts(line);
+                if (facts) {
+                  if (facts.event === "native-crash") {
+                    adbdCrash = facts.process === "adbd";
+                  }
+                  if (facts.event === "native-frame" && !adbdCrash) {
+                    continue;
+                  }
+                  trace("phone-console", { ...facts, closing });
+                }
+              }
+            }
+          : undefined,
       );
       await poll(async () => {
         try {
@@ -716,6 +744,19 @@ export async function main(argv = process.argv.slice(2)) {
       }, 300_000);
       if (!(await deviceCommand(device, ["emu", "avd", "name"])).split(/\r?\n/u).includes(name)) {
         throw new Error("emulator-identity-mismatch");
+      }
+      if (role === "phone") {
+        const filter = await deviceCommand(device, ["shell", "getprop", "ro.boot.logcat"]);
+        const consoleService = await deviceCommand(device, [
+          "shell",
+          "getprop",
+          "init.svc.goldfish-logcat",
+        ]);
+        const filterMatches = filter === phoneConsoleFilter.replaceAll(" ", ",");
+        trace("phone-console-config", { filterMatches, running: consoleService === "running" });
+        if (!filterMatches || consoleService !== "running") {
+          throw new Error("phone-console-diagnostics-unavailable");
+        }
       }
       await deviceCommand(device, [
         "shell",
@@ -771,6 +812,8 @@ export async function main(argv = process.argv.slice(2)) {
       wear: `android-34/android-wear/${abi}`,
       // Metadata must use the same headless backend as the CI emulators.
       sdkEmulator: await command(path.join(sdk, "emulator/emulator"), ["-no-window", "-version"]),
+      platformTools:
+        /^Version ([\d.-]+)$/mu.exec(await command(adb, ["version"]))?.[1] ?? "unknown",
     };
     const setup = await rpc<{ setupCode: string }>("device.pair.setupCode", {
       publicUrl: instance.url,
@@ -1004,7 +1047,22 @@ export async function main(argv = process.argv.slice(2)) {
       error instanceof Error ? (error.stack ?? error.message) : String(error),
     );
     for (const device of devices) {
-      await snapshot(device, "failure");
+      const state = await snapshot(device, "failure");
+      if (device.role === "phone" && state !== "device" && !abort.signal.aborted) {
+        // Observe a possible adbd restart without reconnecting, restarting it, or retrying the test.
+        // Keep the emulator console alive long enough for init/crash_dump to report its cause.
+        try {
+          await command(adb, ["-s", device.serial, "wait-for-device"], 20_000, {
+            cleanup: true,
+            probe: true,
+          });
+        } catch (probeError) {
+          if (hasUnjoinedWork(probeError)) {
+            preserveRoot = true;
+          }
+        }
+        await snapshot(device, "after-disconnect");
+      }
       // Failure screens can include a setup credential. Keep them private, outside
       // the published screenshot directory, and collect before emulator teardown.
       try {
@@ -1119,6 +1177,7 @@ export async function main(argv = process.argv.slice(2)) {
     }
     const gatewayCleanup = await Promise.allSettled([instance?.cleanup()]);
     const cleanup = await Promise.allSettled(services.map((child) => child.done));
+    trace("phone-console-capture", { bytes: phoneConsoleBytes });
     const cleanupFailed =
       gatewayCleanup.some((entry) => entry.status === "rejected") ||
       cleanup.some((entry) => entry.status === "rejected" && hasUnjoinedWork(entry.reason));
