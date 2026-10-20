@@ -14,11 +14,8 @@ export function markOpenClawExecEnv<T extends Record<string, string | undefined>
   };
 }
 
-export function ensureOpenClawExecMarkerOnProcess(
-  env: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv {
-  env[OPENCLAW_CLI_ENV_VAR] = CLI_ENV_VALUE;
-  return env;
+export function ensureOpenClawExecMarkerOnProcess(): void {
+  process.env[OPENCLAW_CLI_ENV_VAR] = CLI_ENV_VALUE;
 }
 
 export function buildExecRoutingEnv(
