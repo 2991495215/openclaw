@@ -70,7 +70,6 @@ export function createSessionOwnerMenu(
     return {
       self,
       owners: [...new Map(owners.map((owner) => [owner.type + ":" + owner.id, owner])).values()],
-      directory: directory?.result,
       searchGeneration: connection.epoch + searchGeneration(),
       connected: Boolean(connection.snapshot && connection.capture()),
       loading: Boolean(directory?.loading),

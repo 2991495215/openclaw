@@ -381,7 +381,6 @@ export class ShellGatewayOwner {
       return;
     }
     const previous = context.agents.state.agentsList;
-    const activeAgentId = context.agentSelection.state.selectedId;
     const next = await context.agents.refreshList();
     if (!next || this.host.context !== context) {
       return;
@@ -393,15 +392,6 @@ export class ShellGatewayOwner {
     }
     if (rosterDiff.changedIds.length > 0) {
       void context.agentIdentity.ensure(rosterDiff.changedIds);
-    }
-    const nextIds = new Set(next.agents.map((agent) => agent.id));
-    if (
-      activeAgentId &&
-      context.agentSelection.state.selectedId === activeAgentId &&
-      next.agents.length > 0 &&
-      !nextIds.has(activeAgentId)
-    ) {
-      context.agentSelection.set(next.defaultId, { background: true });
     }
   }
 

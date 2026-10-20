@@ -68,7 +68,7 @@ import {
 } from "./chat-tool-content.solid.tsx";
 import { toolResultSurfaceProps } from "./chat-tool-render-model.ts";
 import { TranscriptMessageElementsContext } from "./chat-transcript-message-elements.ts";
-import { WorkspaceConflictTranscriptMessage } from "./chat-workspace-conflict.ts";
+import { WorkspaceConflictTranscriptMessage } from "./chat-workspace-conflict.tsx";
 import { ToolPreview } from "./widget-card.ts";
 
 registerEnglishCatalog(registerChatMessageMetadataEnglish);

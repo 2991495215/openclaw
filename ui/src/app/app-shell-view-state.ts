@@ -295,7 +295,6 @@ export function readShellView(host: ShellViewHost) {
     config,
     gatewayConnected,
     overlaySnapshot,
-    connectionStatus,
     presentationScope,
     terminalAvailable,
     desktopPanelAvailable,
@@ -339,6 +338,5 @@ export function readShellView(host: ShellViewHost) {
     connectionRecovery: host.connectionRecovery,
     floatingUpdateCard,
     settingsSidebarProps,
-    navigationSnapshot,
   };
 }

@@ -1,7 +1,11 @@
 import type { RouteLocation } from "@openclaw/uirouter";
-import { vi } from "vitest";
+import { onTestFinished, vi } from "vitest";
 import type { AgentsListResult } from "../api/types.ts";
 import type { ApplicationRouter, RouteId } from "../app-routes.ts";
+import { createAgentCapability } from "../lib/agents/index.ts";
+import { createApplicationGateway } from "../test-helpers/application-context-fixtures.ts";
+import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
+import { createAgentSelectionCapability } from "./agent-selection.ts";
 import type { ShellNavigationOwner } from "./app-shell-navigation.ts";
 import { createApplicationConfigCapability } from "./config.ts";
 import type { ApplicationContext } from "./context.ts";
@@ -101,35 +105,34 @@ export function createRosterRefreshContext(params: {
   next: AgentsListResult;
   selectedId: string;
 }) {
-  const agentsState = { agentsList: params.previous };
-  const selectionState = { selectedId: params.selectedId, scopeId: params.selectedId };
-  const refreshList = vi.fn(async () => {
-    agentsState.agentsList = params.next;
-    return params.next;
+  const source = createApplicationGateway();
+  source.publish({
+    ...source.gateway.snapshot,
+    client: createTestGatewayClient(vi.fn(async () => params.next)),
+    phase: "connected",
   });
-  const invalidateFiles = vi.fn();
+  const agents = createAgentCapability(source.gateway);
+  agents.state.agentsList = params.previous;
+  const agentSelection = createAgentSelectionCapability(source.gateway, agents);
+  agentSelection.set(params.selectedId);
+  onTestFinished(() => {
+    agentSelection.dispose();
+    agents.dispose();
+  });
+  const refreshList = vi.spyOn(agents, "refreshList");
+  const invalidateFiles = vi.spyOn(agents, "invalidateFiles");
   const invalidateIdentity = vi.fn();
   const ensureIdentity = vi.fn(async () => undefined);
-  const setSelection = vi.fn((agentId: string) => {
-    selectionState.selectedId = agentId;
-    selectionState.scopeId = agentId;
-  });
+  const setSelection = vi.spyOn(agentSelection, "set");
   const refreshConfig = vi.fn(async () => null);
   const context = {
     config: createShellConfigFixture(),
-    agents: {
-      state: agentsState,
-      refreshList,
-      invalidateFiles,
-    },
+    agents,
     agentIdentity: {
       invalidate: invalidateIdentity,
       ensure: ensureIdentity,
     },
-    agentSelection: {
-      state: selectionState,
-      set: setSelection,
-    },
+    agentSelection,
     runtimeConfig: {
       state: { configFormDirty: false },
       refresh: refreshConfig,

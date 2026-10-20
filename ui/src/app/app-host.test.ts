@@ -1049,7 +1049,7 @@ describe("OpenClaw shell keyboard shortcuts", () => {
     shell.handleGatewayEvent({ event: "config.changed", payload: {} });
     await vi.advanceTimersByTimeAsync(100);
 
-    expect(harness.setSelection).toHaveBeenCalledExactlyOnceWith("main", { background: true });
+    expect(harness.context.agentSelection.state).toEqual({ selectedId: "main", scopeId: "main" });
   });
 
   it("coalesces config.changed bursts into one roster refresh", async () => {
