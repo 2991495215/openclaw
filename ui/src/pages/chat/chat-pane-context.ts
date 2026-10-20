@@ -68,6 +68,7 @@ import { cancelChatScroll } from "./scroll.ts";
 import { currentSessionApprovalReplay } from "./session-approval-projection.ts";
 import {
   clearChatMessagesFromCache,
+  projectChatTranscriptMetadata,
   readChatSessionSnapshot,
   retireCachedPairingQr,
 } from "./session-message-cache.ts";
@@ -84,10 +85,20 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
     }
     if (
       !this.ownsChatSnapshot({ sessionKey: state.sessionKey }) ||
-      this.resourceSessionObservation()?.hasObserved ||
       (selectedSession && !state.sessions.state.resultCached)
     ) {
       return { selectedSession };
+    }
+    const observation = this.resourceSessionObservation();
+    if (observation?.hasObserved) {
+      const row = observation.row;
+      return {
+        selectedSession,
+        transcriptMetadata:
+          row?.sessionId && row.sessionId === state.currentSessionId
+            ? projectChatTranscriptMetadata(row)
+            : undefined,
+      };
     }
     const snapshot = readChatSessionSnapshot(state.chatMessagesBySession, state, {
       sessionKey: state.sessionKey,

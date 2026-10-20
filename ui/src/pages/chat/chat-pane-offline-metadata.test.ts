@@ -28,7 +28,7 @@ beforeEach(() => {
   sessionStorage.clear();
 });
 
-async function setup() {
+async function setup(initialRow: Partial<GatewaySessionRow> = {}) {
   const store = createGatewayStoreTestStore();
   store.gateway.start();
   const client = store.current();
@@ -41,6 +41,7 @@ async function setup() {
     sharingRole: "owner",
     visibility: "shared",
     updatedAt: 1,
+    ...initialRow,
   };
   client.request.mockImplementation(async (method, params) => {
     switch (method) {
@@ -97,6 +98,7 @@ async function setup() {
     gateway: store.gateway,
     runtimeConfig: createRuntimeConfigCapability(store.gateway),
   };
+  state.settings = { ...state.settings, gatewayUrl: store.gateway.connection.gatewayUrl };
   state.loadAssistantIdentity = vi.fn(async () => undefined);
   const stopSessions = sessions.subscribe((next) => pane.applySessionsState(next));
   const stopGateway = store.gateway.subscribe((next) => pane.applyGatewaySnapshot(next));
@@ -251,8 +253,10 @@ it.each(["descriptor", "startup"] as const)(
   },
 );
 
-it("keeps an off-page descriptor title until the session is deleted", async () => {
-  const h = await setup();
+it("keeps off-page descriptor title and transcript metadata until the session is deleted", async () => {
+  const h = await setup({ status: "done", lastRunId: "completed-run", runtimeMs: 180_000 });
+  await loadChatHistory(h.state, { startup: true });
+  expect(h.state.currentSessionId).toBe("current-incarnation");
   const request = h.current().request.getMockImplementation();
   assert(request);
   h.current().request.mockImplementation((method, params) => {
@@ -272,6 +276,18 @@ it("keeps an off-page descriptor title until the session is deleted", async () =
   expect(h.header.querySelector(".chat-pane__session-title-text")?.textContent).toBe(
     "Original title",
   );
+  const chat = h.pane.render().layout?.primary.chat;
+  expect(chat?.selectedSession).toBeUndefined();
+  expect(chat?.transcriptMetadata).toMatchObject({
+    label: "Original title",
+    status: "done",
+    lastRunId: "completed-run",
+    runtimeMs: 180_000,
+  });
+  expect(chat?.transcriptMetadata).not.toHaveProperty("sharingRole");
+  h.state.currentSessionId = "another-incarnation";
+  expect(h.pane.render().layout?.primary.chat.transcriptMetadata).toBeUndefined();
+  h.state.currentSessionId = "current-incarnation";
   await h.sessions.delete(h.state.sessionKey, {
     agentId: "main",
     expectedSessionId: "current-incarnation",
@@ -280,6 +296,7 @@ it("keeps an off-page descriptor title until the session is deleted", async () =
   expect(h.header.querySelector(".chat-pane__session-title-text")?.textContent).not.toBe(
     "Original title",
   );
+  expect(h.pane.render().layout?.primary.chat.transcriptMetadata).toBeUndefined();
 });
 
 it("queues a header rename and rendered reaction through the shared outbox", async () => {
