@@ -33,6 +33,7 @@ import { createSlackStreamingDeliveryRuntime } from "./dispatch-streaming.js";
 import {
   createSlackFailureNoticePolicy,
   createSlackQueuedFailureNoticePolicy,
+  isSlackAnswerPayload,
 } from "./failure-notice.js";
 import { finalizeSlackPreviewEdit } from "./preview-finalize.js";
 import type { PreparedSlackMessage } from "./types.js";
@@ -123,6 +124,7 @@ async function dispatchSlackMessageWithSetup(
     previewLifecycle.previewFinalized ||
     Boolean(draftStream?.messageId());
   const failurePolicyParams = {
+    cfg,
     context: prepared.ctxPayload,
     accountId: account.accountId,
     channelId: message.channel,
@@ -130,9 +132,11 @@ async function dispatchSlackMessageWithSetup(
     failureNoticeTeamId: prepared.eventScope?.teamId,
     statusThreadTs,
   };
+  let usefulReplyDelivered = false;
   const failurePolicy = createSlackFailureNoticePolicy(
     failurePolicyParams,
     () => delivery.observedReplyDelivery || previewLifecycle.previewFinalized,
+    () => usefulReplyDelivered,
   );
 
   const deliverSlackPayload = async (
@@ -378,7 +382,13 @@ async function dispatchSlackMessageWithSetup(
         humanDelay: resolveHumanDelayConfig(cfg, route.agentId),
       },
       delivery: {
-        deliver: deliverSlackPayload,
+        deliver: async (payload, info) => {
+          const result = await deliverSlackPayload(payload, info);
+          if (result.visibleReplySent && isSlackAnswerPayload(payload)) {
+            usefulReplyDelivered = true;
+          }
+          return result;
+        },
         onError: (err, info) => {
           // Core settles delivery errors without throwing; Slack closeout still owns the failure.
           dispatchError ??= err;
@@ -389,6 +399,7 @@ async function dispatchSlackMessageWithSetup(
       record: prepared.turn.record,
       botLoopProtection: resolveSlackBotLoopProtection(prepared),
       replyOptions: {
+        allowRestartRecoveryFailureNotice: failurePolicy.shouldReportFailure(),
         onVisibleWorkSessions: progress.onVisibleWorkSessions,
         groupThreadReplyFormatter: formatSlackGroupThreadReply,
         // Followups can outlive this dispatch and retain their own source address.
@@ -498,8 +509,12 @@ async function dispatchSlackMessageWithSetup(
     }
   }
 
+  const failed = Boolean(dispatchError || agentRunFailed);
+  const reportFailure = failurePolicy.shouldReportFailure();
   const completionChunks =
-    progress.useNativeProgressStreaming && !progress.nativeProgressCompletionSent
+    progress.useNativeProgressStreaming &&
+    !progress.nativeProgressCompletionSent &&
+    (!failed || reportFailure)
       ? progress.buildNativeProgressCompletionChunks(
           dispatchError || agentRunFailed ? "error" : progress.nativeProgressTerminalStatus,
         )
@@ -507,7 +522,7 @@ async function dispatchSlackMessageWithSetup(
   if (completionChunks?.length) {
     progress.nativeProgressCompletionSent = true;
   }
-  await delivery.finishStream(completionChunks);
+  await delivery.finishStream(completionChunks, !reportFailure);
 
   const anyReplyDelivered = hasVisibleInboundReplyDispatch(settledDispatchResult, {
     observedReplyDelivery: delivery.observedReplyDelivery || previewLifecycle.finalDelivered,
@@ -526,15 +541,21 @@ async function dispatchSlackMessageWithSetup(
     failurePolicy.recordDelivered();
   }
 
-  if (dispatchError || agentRunFailed) {
-    // A failed turn without a reply has no other visible outcome.
-    await progress.finalizeDraftProgressCard("error", { postIfMissing: !anyReplyDelivered });
+  if (failed) {
+    if (reportFailure) {
+      await progress.finalizeDraftProgressCard("error", { postIfMissing: !anyReplyDelivered });
+    } else {
+      // Generic progress does not authorize an unsolicited public failure.
+      await draftStream?.clear();
+    }
   }
   await progress.dropDetachedProgressCards();
 
   if (statusReactionsEnabled) {
-    if (dispatchError || agentRunFailed) {
-      await statusReactions.setError();
+    if (failed) {
+      if (reportFailure) {
+        await statusReactions.setError();
+      }
       void statusReactions.restoreInitial();
     } else if (anyReplyDelivered) {
       await statusReactions.setDone();
