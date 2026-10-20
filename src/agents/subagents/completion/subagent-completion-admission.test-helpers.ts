@@ -18,6 +18,7 @@ import { SubagentLifecycleController } from "../registry/subagent-registry-lifec
 import { subagentRuns } from "../registry/subagent-registry-memory.js";
 import { getLatestLiveSubagentRunByChildSessionKey } from "../registry/subagent-registry-read.js";
 import { loadSubagentRegistryFromSqlite } from "../registry/subagent-registry-state.fixture.test-support.js";
+import { createSubagentRegistrySweeper } from "../registry/subagent-registry-sweeper.js";
 import { observeRootWork } from "../registry/subagent-registry.browser-cleanup.test-support.js";
 import { bindSubagentRunRecord } from "../registry/subagent-registry.store.codec.js";
 import { writeSubagentRunValuesInDatabase } from "../registry/subagent-registry.store.kernel.js";
@@ -159,6 +160,44 @@ export function requesterWakeDriver(inputs: ReturnType<typeof records>[]) {
     controller,
     wake,
     warn,
+    async sweep() {
+      const sweeper = createSubagentRegistrySweeper({
+        runs: subagentRuns,
+        resumedRuns: new Set(),
+        clearPendingLifecycleError: vi.fn(),
+        clearPendingLifecycleTimeout: vi.fn(),
+        sweepPendingLifecycle: vi.fn(),
+        completeSubagentRunWithRecovery: vi.fn(),
+        getGatewayRecoveryRuntime: () => undefined,
+        finalizeInterruptedSubagentRun: vi.fn(async () => 0),
+        startSubagentAnnounceCleanupFlow: controller.startSubagentAnnounceCleanupFlow,
+        completeCleanupBookkeeping: controller.completeCleanupBookkeeping,
+        resumeRequesterSettleWake: controller.resumeRequesterSettleWake,
+        resumePendingRequesterSettlements: controller.resumePendingRequesterSettlements,
+        isCleanupOwnerCurrent: controller.isCleanupOwnerCurrent,
+        isTerminalTailActive: controller.isTerminalTailActive,
+        sessionEffectsHostCurrent: (entry) => controller.sessionEffectsHostCurrent(entry),
+        shouldSuppressSessionEffects: (entry, effects) =>
+          controller.shouldSuppressSessionEffects(entry, effects),
+        discardTerminalDelivery: SubagentLifecycleController.discardTerminalDelivery,
+        shouldEmitEndedHookForRun: () => false,
+        emitSubagentEndedHookForRun: vi.fn(async () => {}),
+        callGateway: vi.fn(),
+        cleanupCollectorLaunchResources: vi.fn(async () => true),
+        runContextEngineSubagentEnded: vi.fn(async () => {}),
+        notifyContextEngineSubagentEnded: vi.fn(async () => {}),
+        retireSupersededRun: vi.fn(async () => {}),
+        retireObligations: vi.fn(async () => {}),
+        warn,
+      });
+      const settleRootWork = observeRootWork();
+      try {
+        await sweeper.sweepOnce();
+      } finally {
+        await settleRootWork();
+        await sweeper.reset();
+      }
+    },
     async run(entry = inputs[0]!.subagent) {
       const settleRootWork = observeRootWork();
       try {
