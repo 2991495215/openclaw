@@ -147,7 +147,8 @@ struct ContentZoomShortcutTests {
         let configuration = WKSnapshotConfiguration()
         configuration.afterScreenUpdates = true
         let image = try await webView.takeSnapshot(configuration: configuration)
-        let bitmap = try #require(NSBitmapImageRep(data: #require(image.tiffRepresentation)))
+        let tiff = try #require(image.tiffRepresentation)
+        let bitmap = try #require(NSBitmapImageRep(data: tiff))
         let png = try #require(bitmap.representation(using: .png, properties: [:]))
         try png.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name)-window.png"))
     }
