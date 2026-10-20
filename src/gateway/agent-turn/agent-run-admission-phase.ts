@@ -572,11 +572,10 @@ export async function prepareAgentRunDispatch(
     return undefined;
   }
   try {
-    // Accepted work retains this caller; native children also outlive requester recovery.
+    // Accepted work retains this caller; the shared owner derives continuation from child lineage.
     capturedOperator = await retainGatewayOperatorRun({
       ...params,
-      independentContinuation:
-        params.client?.internal?.agentRunTracking === "native_subagent" ? true : undefined,
+      spawnedBy: params.sessionEntry?.spawnedBy,
       entry: activeRunAbort.entry,
       abortSession: params.resolvedSessionKey
         ? {
