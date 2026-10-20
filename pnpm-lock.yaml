@@ -2242,8 +2242,8 @@ importers:
   extensions/session-compaction:
     dependencies:
       typebox:
-        specifier: 1.3.36
-        version: 1.3.36
+        specifier: 1.3.37
+        version: 1.3.37
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
