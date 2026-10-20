@@ -14,7 +14,7 @@ import { createExtensionRuntime, loadExtensionFromFactory } from "./extensions/l
 import type { Extension, ExtensionFactory, LoadExtensionsResult } from "./extensions/types.js";
 import type { PromptTemplate } from "./prompt-templates.js";
 import { loadPromptTemplates } from "./prompt-templates.js";
-import { createSourceInfo, type PathMetadata, type SourceInfo } from "./source-info.js";
+import type { PathMetadata, SourceInfo } from "./source-info.js";
 
 export interface ResourceExtensionPaths {
   skillPaths?: Array<{ path: string; metadata: PathMetadata }>;
@@ -55,7 +55,8 @@ class ResourceCollection<T> {
     const sourceInfos = this.sourceInfos;
     return (entries ?? []).map((entry) => {
       const path = resolvePath(entry.path);
-      sourceInfos.set(path, createSourceInfo(path, entry.metadata));
+      const { source, scope, origin, baseDir } = entry.metadata;
+      sourceInfos.set(path, { path, source, scope, origin, baseDir });
       return path;
     });
   }
