@@ -105,7 +105,10 @@ describe("Android release public failure diagnostics", () => {
     ],
     ["[123.45] Kernel panic - not syncing: private", { event: "kernel-panic" }],
     ["Out of memory: Killed process 540 (adbd) private", { event: "guest-out-of-memory" }],
-    ["libc: FORTIFY: private", { event: "native-abort-check" }],
+    ["libc: FORTIFY: private", { event: "native-abort-check", reason: "fortify" }],
+    ["DEBUG: Abort message: 'fdsan: private'", { event: "native-abort-check", reason: "fdsan" }],
+    ["libc: Scudo ERROR: private", { event: "native-abort-check", reason: "scudo" }],
+    ["adbd: Check failed: private", { event: "native-abort-check", reason: "assertion" }],
   ])("exports console event facts without guest text: %s", (line, expected) => {
     const facts = androidReleaseConsoleLineFacts(line);
     expect(facts).toEqual(expected);
@@ -119,6 +122,20 @@ describe("Android release public failure diagnostics", () => {
     expect(
       androidReleaseConsoleLineFacts("init: starting service 'private-secret'..."),
     ).toBeUndefined();
+  });
+
+  it("retains a native binary build ID for symbolizing a crash without its symbol or path", () => {
+    expect(
+      androidReleaseConsoleLineFacts(
+        "DEBUG: #00 pc 0000000000012345 /apex/com.android.adbd/bin/adbd (private_symbol+42) (BuildId: 1234abcd)",
+      ),
+    ).toEqual({
+      event: "native-frame",
+      index: 0,
+      pc: "0000000000012345",
+      module: "adbd",
+      buildId: "1234abcd",
+    });
   });
 
   it("exports only numeric device facts, excluding paths and probe errors", () => {

@@ -109,6 +109,7 @@ export function androidReleaseConsoleLineFacts(line: string) {
       module: ["adbd", "libc.so", "libc++.so", "libbase.so", "libadbd.so"].includes(module)
         ? module
         : "other",
+      buildId: /\(BuildId: ([a-f0-9]{8,128})\)/u.exec(line)?.[1],
     };
   }
   if (/\bKernel panic - not syncing:/u.test(line)) {
@@ -117,8 +118,16 @@ export function androidReleaseConsoleLineFacts(line: string) {
   if (/\b(?:Out of memory:|Killed process \d+ \(adbd\))/u.test(line)) {
     return { event: "guest-out-of-memory" };
   }
-  if (/\b(?:FORTIFY:|fdsan:|Scudo ERROR:|Check failed:)/u.test(line)) {
-    return { event: "native-abort-check" };
+  const abortKind = [
+    ["fortify", /\bFORTIFY:/u],
+    ["fdsan", /\bfdsan:/u],
+    ["scudo", /\bScudo ERROR:/u],
+    ["assertion", /\bCheck failed:/u],
+  ] as const;
+  for (const [reason, pattern] of abortKind) {
+    if (pattern.test(line)) {
+      return { event: "native-abort-check", reason };
+    }
   }
   return undefined;
 }

@@ -212,6 +212,7 @@ export async function main(argv = process.argv.slice(2)) {
   };
   const adb = path.join(sdk, "platform-tools/adb");
   const phoneConsoleFilter = "adbd:V libc:F DEBUG:V init:I tombstoned:I lmkd:I *:S";
+  const phoneLogcat = path.join(root, "phone-logcat.private.log");
   let phoneConsoleBytes = 0;
   let commandIndex = 0;
   async function command(
@@ -685,7 +686,6 @@ export async function main(argv = process.argv.slice(2)) {
       const device: Device = { role, serial: `emulator-${port}`, port, forward: 0, name };
       devices.push(device);
       const consoleLines = { stdout: "", stderr: "" };
-      let adbdCrash = false;
       service(
         `${role}-emulator`,
         path.join(sdk, "emulator/emulator"),
@@ -704,8 +704,10 @@ export async function main(argv = process.argv.slice(2)) {
           "2",
           "-memory",
           role === "phone" ? "2048" : "1024",
-          // The emulator console keeps guest crash/init output available when ADB disconnects.
-          ...(role === "phone" ? ["-show-kernel", "-logcat", phoneConsoleFilter] : []),
+          // Both channels survive ADB loss; a private logcat file avoids two QEMU stdio owners.
+          ...(role === "phone"
+            ? ["-show-kernel", "-logcat", phoneConsoleFilter, "-logcat-output", phoneLogcat]
+            : []),
         ],
         env,
         role === "phone"
@@ -717,13 +719,10 @@ export async function main(argv = process.argv.slice(2)) {
               for (const line of lines) {
                 const facts = androidReleaseConsoleLineFacts(line);
                 if (facts) {
-                  if (facts.event === "native-crash") {
-                    adbdCrash = facts.process === "adbd";
-                  }
-                  if (facts.event === "native-frame" && !adbdCrash) {
+                  if (facts.event === "native-frame") {
                     continue;
                   }
-                  trace("phone-console", { ...facts, closing });
+                  trace("phone-console", { ...facts, source: "kernel", closing });
                 }
               }
             }
@@ -1177,7 +1176,32 @@ export async function main(argv = process.argv.slice(2)) {
     }
     const gatewayCleanup = await Promise.allSettled([instance?.cleanup()]);
     const cleanup = await Promise.allSettled(services.map((child) => child.done));
-    trace("phone-console-capture", { bytes: phoneConsoleBytes });
+    // Read after the emulator closes the file. Guest timestamps describe occurrence;
+    // trace elapsedMs describes collection, so these records cannot imply event ordering.
+    const guestLogcat = await readFile(phoneLogcat, "utf8").catch(() => "");
+    let adbdCrash = false;
+    for (const line of guestLogcat.split(/\r?\n/u)) {
+      const facts = androidReleaseConsoleLineFacts(line);
+      if (!facts) {
+        continue;
+      }
+      if (facts.event === "native-crash") {
+        adbdCrash = facts.process === "adbd";
+      }
+      if (facts.event === "native-frame" && !adbdCrash) {
+        continue;
+      }
+      trace("phone-console", {
+        ...facts,
+        source: "logcat",
+        guestTime: /(?:^|\s)(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})(?:\s|$)/u.exec(line)?.[1],
+        collectedAfterCleanup: true,
+      });
+    }
+    trace("phone-console-capture", {
+      bytes: phoneConsoleBytes,
+      guestBytes: Buffer.byteLength(guestLogcat),
+    });
     const cleanupFailed =
       gatewayCleanup.some((entry) => entry.status === "rejected") ||
       cleanup.some((entry) => entry.status === "rejected" && hasUnjoinedWork(entry.reason));
