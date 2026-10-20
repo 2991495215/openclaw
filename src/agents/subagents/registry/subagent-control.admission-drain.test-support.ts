@@ -57,7 +57,7 @@ export function registerAdmissionDrainControlTests({
         onInterrupt: () => interrupted.resolve(),
       });
       setSubagentControlDepsForTest({
-        clearSessionQueues: () => ({ followupCleared: 0, keys: [] }),
+        clearSessionQueues: () => ({ keys: [] }),
       });
 
       const dispatch = vi.fn(async () => {});

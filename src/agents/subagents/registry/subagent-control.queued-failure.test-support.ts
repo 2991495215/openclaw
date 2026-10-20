@@ -114,7 +114,7 @@ export function registerQueuedReservationFailureTests({
       ),
     );
     setSubagentControlDepsForTest({
-      clearSessionQueues: () => ({ followupCleared: 0, keys: [] }),
+      clearSessionQueues: () => ({ keys: [] }),
     });
     if (failure === "claim release") {
       const operation = createReplyOperation({

@@ -9,7 +9,6 @@ import { completeFollowupRunLifecycle } from "./lifecycle.js";
 import { getExistingFollowupQueue } from "./state.js";
 
 export type ClearSessionQueueResult = {
-  followupCleared: number;
   keys: string[];
 };
 
@@ -21,7 +20,6 @@ export function clearSessionQueues(
 ): ClearSessionQueueResult {
   const seen = new Set<string>();
   const clearedQueues = new Set<NonNullable<ReturnType<typeof getExistingFollowupQueue>>>();
-  let followupCleared = 0;
   const clearedKeys: string[] = [];
   for (const key of keys) {
     const cleaned = normalizeOptionalString(key);
@@ -34,7 +32,7 @@ export function clearSessionQueues(
     const queue = getExistingFollowupQueue(cleaned, target);
     if (queue && !clearedQueues.has(queue)) {
       clearedQueues.add(queue);
-      followupCleared += clearSessionControllerMailbox(
+      clearSessionControllerMailbox(
         queue,
         completeFollowupRunLifecycle,
         capturedInputs,
@@ -42,5 +40,5 @@ export function clearSessionQueues(
       );
     }
   }
-  return { followupCleared, keys: clearedKeys };
+  return { keys: clearedKeys };
 }

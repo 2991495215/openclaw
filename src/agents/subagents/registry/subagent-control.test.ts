@@ -93,7 +93,6 @@ type ControlRuntime = typeof import("./subagent-control.runtime.js");
 
 const controlRuntimeMocks = vi.hoisted(() => ({
   clearSessionQueues: vi.fn<ControlRuntime["clearSessionQueues"]>(() => ({
-    followupCleared: 0,
     keys: [],
   })),
 }));
@@ -770,7 +769,7 @@ describe("killSubagentRunAdmin", () => {
     await addSubagentRunForTests(source);
     source = subagentRuns.get(source.runId)!;
     setSubagentControlDepsForTest({
-      clearSessionQueues: () => ({ followupCleared: 0, keys: [] }),
+      clearSessionQueues: () => ({ keys: [] }),
     });
 
     const replacementReady = createDeferred();

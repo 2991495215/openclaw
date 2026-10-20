@@ -58,7 +58,8 @@ describe("queued delivery correlation cleanup", () => {
         .map(({ run }) => run.controllerInput!);
       const clear = async () => {
         if (boundary === "clear") {
-          return clearSessionQueues([key], undefined, inputs).followupCleared;
+          clearSessionQueues([key], undefined, inputs);
+          return undefined;
         }
         const result = await stopSession({
           source: "restart",
@@ -67,9 +68,18 @@ describe("queued delivery correlation cleanup", () => {
         await result.settled;
         return result.queuedCancelled;
       };
-      expect(await clear()).toBe(3);
-      await Promise.all(inputs.map(captureSessionControllerSourceSettlement));
-      expect(await clear()).toBe(0);
+      for (const expectedCount of [3, 0]) {
+        const cleared = await clear();
+        if (boundary === "stop") {
+          expect(cleared).toBe(expectedCount);
+        }
+        await Promise.all(inputs.map(captureSessionControllerSourceSettlement));
+        expect(queue.items.map((run) => run.prompt)).toEqual(["source-5"]);
+        expect(queue.summarySources.map((run) => run.prompt)).toEqual(["source-3"]);
+        expect(
+          queue.summaryElisions.flatMap((part) => part.sources.map((run) => run.prompt)),
+        ).toEqual(["source-1"]);
+      }
       for (const [index, { begin, end }] of sources.entries()) {
         expect(begin).toHaveBeenCalledTimes(index % 2 === 0 ? 1 : 0);
         expect(end).toHaveBeenCalledTimes(index % 2 === 0 ? 1 : 0);
