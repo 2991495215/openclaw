@@ -2,6 +2,7 @@ import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { SqliteCoordinatorError } from "../infra/sqlite-lifecycle-errors.js";
 import { runSqliteReadOperationSync } from "../infra/sqlite-schema-facts.js";
 import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import {
   getOpenClawDatabaseMaintenanceScope,
   observeOpenClawDatabaseMaintenanceResource,
@@ -39,11 +40,7 @@ export function withMaintenanceOpenClawStateDatabaseReadOnly<T>(
     return { reused: false };
   }
   scope.assertReadAdmission();
-  let readers = maintenanceReaders.get(scope);
-  if (!readers) {
-    readers = new Map();
-    maintenanceReaders.set(scope, readers);
-  }
+  const readers = getOrCreateInnerMap(maintenanceReaders, scope);
   let reader = readers.get(pathname);
   if (!reader) {
     const admission = captureOpenClawStateDatabaseReadAdmission(pathname);

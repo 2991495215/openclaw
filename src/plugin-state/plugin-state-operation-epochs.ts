@@ -1,4 +1,5 @@
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { captureOpenClawStateDatabaseReadAdmission } from "../state/openclaw-state-db-cache.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { PluginStateOperationInvalidatedError } from "./plugin-state-operation-error.js";
@@ -12,11 +13,7 @@ const sources = resolveGlobalSingleton(
 );
 
 function namespaceEpoch(coordinationKey: string, scope: Namespace): Epoch {
-  let namespaces = sources.get(coordinationKey);
-  if (!namespaces) {
-    namespaces = new Map();
-    sources.set(coordinationKey, namespaces);
-  }
+  const namespaces = getOrCreateInnerMap(sources, coordinationKey);
   const key = JSON.stringify([scope.pluginId, scope.namespace]);
   let epoch = namespaces.get(key);
   if (!epoch) {

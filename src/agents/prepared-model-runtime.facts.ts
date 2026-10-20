@@ -21,6 +21,7 @@ import type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.typ
 import { getPluginRegistryInspectionResources } from "../plugins/registry-inspection-resources.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { resolveRuntimeSyntheticAuthProviderRefs } from "../plugins/synthetic-auth.runtime.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { prepareAmbientAgentCredentialsForDiscovery } from "./agent-auth-discovery.js";
 import { discoverModelsFromCapturedSources } from "./agent-model-discovery.js";
 import { withAgentRosterFactsBatch } from "./agent-scope-config.js";
@@ -516,11 +517,7 @@ export async function prepareConfiguredRuntimeFactsBatch(params: {
   );
   const { pluginMetadataSnapshot } = params.pluginGeneration;
   const registries: PreparedConfiguredModelRegistries = params.registries ?? new Map();
-  let registriesBySource = registries.get(pluginMetadataSnapshot);
-  if (!registriesBySource) {
-    registriesBySource = new Map();
-    registries.set(pluginMetadataSnapshot, registriesBySource);
-  }
+  const registriesBySource = getOrCreateInnerMap(registries, pluginMetadataSnapshot);
   for (const facts of params.agentFacts) {
     await nextTurn();
     params.assertCurrent?.(facts.input);

@@ -20,6 +20,7 @@ import {
 import type { PluginManifestRecord } from "../../../plugins/manifest-registry.js";
 import { loadPluginManifestRegistryForPluginRegistry } from "../../../plugins/plugin-registry.js";
 import { isSafeChannelEnvVarTriggerName } from "../../../secrets/channel-env-var-names.js";
+import { getOrCreateInnerMap } from "../../../shared/inner-map.js";
 import { normalizeLowercaseStringSet } from "../../../shared/normalized-string-set.js";
 
 const CHANNEL_PLUGIN_BLOCKERS_CHECK_ID = "core/doctor/channel-plugin-blockers";
@@ -192,11 +193,7 @@ function listPackageEnvConfiguredChannelTriggers(
     if (allOf.length === 0 && anyOf.length === 0) {
       continue;
     }
-    let triggers = triggersByChannelId.get(channelId);
-    if (!triggers) {
-      triggers = new Map();
-      triggersByChannelId.set(channelId, triggers);
-    }
+    const triggers = getOrCreateInnerMap(triggersByChannelId, channelId);
     const hasEnvValue = (envVar: string) => {
       if (!isSafeChannelEnvVarTriggerName(envVar)) {
         return false;

@@ -3,6 +3,7 @@ import { createAbortError, racePromiseWithAbortSignal } from "../infra/abort-sig
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { withAgentRosterFactsBatch } from "./agent-scope-config.js";
 import { assertPreparedModelRuntimeAdmissionCanWait } from "./prepared-model-runtime-admission.js";
 import { listConfiguredOwnerInputs } from "./prepared-model-runtime.configured.js";
@@ -91,11 +92,7 @@ export function listConfiguredRefreshInputs(
     ) {
       continue;
     }
-    let workspacesByDir = preservedWorkspaceByAgentDir.get(agentId);
-    if (!workspacesByDir) {
-      workspacesByDir = new Map();
-      preservedWorkspaceByAgentDir.set(agentId, workspacesByDir);
-    }
+    const workspacesByDir = getOrCreateInnerMap(preservedWorkspaceByAgentDir, agentId);
     if (!workspacesByDir.has(agentDir)) {
       workspacesByDir.set(agentDir, workspaceDir);
     }

@@ -1,3 +1,4 @@
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import type { OpenClawStateDatabaseReadAdmission } from "../state/openclaw-state-db-async-lifecycle.js";
 import { registerOpenClawStateDatabaseLifecycleListener } from "../state/openclaw-state-db-cache.js";
 import { McpConnectionAuthorityError } from "./mcp-connection-authority-error.js";
@@ -30,11 +31,7 @@ export function retainMcpOAuthAuthorizationState(
   }
   admission.assertCurrent();
   const databaseKey = admission.identity.key;
-  let stores = databases.get(databaseKey);
-  if (!stores) {
-    stores = new Map();
-    databases.set(databaseKey, stores);
-  }
+  const stores = getOrCreateInnerMap(databases, databaseKey);
   let state = stores.get(storeKey);
   if (!state) {
     state = {

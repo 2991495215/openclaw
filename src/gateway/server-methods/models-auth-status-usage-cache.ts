@@ -9,6 +9,7 @@ import type {
 } from "../../infra/provider-usage.types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { trackAsyncWork } from "../../shared/async-work-scope.js";
+import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { formatForLog } from "../ws-log.js";
 import {
   clearProviderUsageRuntimeSnapshot,
@@ -44,15 +45,6 @@ type ProviderUsageRefresh = ProviderUsageCacheIdentity & {
 // Both read on one page load, so each agent keeps one entry per provider set.
 const usageCacheByAgentId = new Map<string, Map<string, ProviderUsageCacheEntry>>();
 const usageRefreshByAgentId = new Map<string, Map<string, ProviderUsageRefresh>>();
-
-function agentEntries<T>(byAgentId: Map<string, Map<string, T>>, agentId: string) {
-  let entries = byAgentId.get(agentId);
-  if (!entries) {
-    entries = new Map();
-    byAgentId.set(agentId, entries);
-  }
-  return entries;
-}
 
 export function clearModelAuthStatusUsageCache(): void {
   usageCacheByAgentId.clear();
@@ -151,7 +143,7 @@ function scheduleProviderUsageRefresh(
       .then((freshUsage) => {
         const usage = retainLastGoodOnTimeout(freshUsage, params.lastGood);
         if (isCurrent()) {
-          agentEntries(usageCacheByAgentId, params.agentId).set(params.providerKey, {
+          getOrCreateInnerMap(usageCacheByAgentId, params.agentId).set(params.providerKey, {
             agentDir: params.agentDir,
             configRef: params.configRef,
             credentialKey: params.credentialKey,
@@ -185,7 +177,7 @@ function scheduleProviderUsageRefresh(
     providerKey: params.providerKey,
     promise,
   };
-  agentEntries(usageRefreshByAgentId, params.agentId).set(params.providerKey, refresh);
+  getOrCreateInnerMap(usageRefreshByAgentId, params.agentId).set(params.providerKey, refresh);
   return promise;
 }
 

@@ -1,3 +1,4 @@
+import { getOrCreateInnerMap } from "../../../shared/inner-map.js";
 import type { SubagentRunReadRecord } from "./subagent-registry-read.types.js";
 import { latestSubagentRun, recordLatestSubagentRun } from "./subagent-run-generation.js";
 
@@ -47,11 +48,7 @@ export function buildSubagentRunReadTopology<T extends SubagentRunReadRecord>(pa
       return;
     }
     const rows = index.get(key) ?? [];
-    let positions = positionsByIndex.get(index);
-    if (!positions) {
-      positions = new Map();
-      positionsByIndex.set(index, positions);
-    }
+    const positions = getOrCreateInnerMap(positionsByIndex, index);
     const position = positions.get(runId);
     if (position !== undefined) {
       if (entry) {

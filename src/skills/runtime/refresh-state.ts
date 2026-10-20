@@ -1,3 +1,4 @@
+import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { notifyListeners, registerListener } from "../../shared/listeners.js";
 import type { ExecutionSkillWorkspace } from "../loading/workspace-skill-roots.js";
 import { normalizeWorkspaceSkillRoots } from "../loading/workspace-skill-roots.js";
@@ -106,11 +107,7 @@ function recordSourceVersion(
     versions.workspace.set(workspaceDir, sourceClock);
     return;
   }
-  let revisions = versions.scopes.get(workspaceDir);
-  if (!revisions) {
-    revisions = new Map();
-    versions.scopes.set(workspaceDir, revisions);
-  }
+  const revisions = getOrCreateInnerMap(versions.scopes, workspaceDir);
   for (const scope of scopes) {
     revisions.set(sourceScopeKey(workspaceDir, scope), sourceClock);
   }

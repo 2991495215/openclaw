@@ -10,6 +10,7 @@ import {
   SessionHistoryDeltaPreparationError,
   unwrapSessionTranscriptWorkerReply,
 } from "../config/sessions/session-history-worker-errors.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { createChatHistoryRecoveryProjection } from "./chat-display-projection.core.js";
 import { createSubagentCoordinationHistoryProjection } from "./chat-display-projection.history.js";
 import { projectTranscriptEntryMessage } from "./session-transcript-entry-message.js";
@@ -136,11 +137,7 @@ export function createPreparedSessionHistorySubagentProjection(
   const sessions = new Map(facts.sessions);
   const runs = new Map<string, Map<number | undefined, boolean>>();
   for (const [runId, messageSeq, hidden] of facts.runMessages) {
-    let messages = runs.get(runId);
-    if (!messages) {
-      messages = new Map();
-      runs.set(runId, messages);
-    }
+    const messages = getOrCreateInnerMap(runs, runId);
     messages.set(messageSeq, hidden);
   }
   const requireFact = (

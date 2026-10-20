@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import {
   getOpenClawDatabaseMaintenanceScope,
   type OpenClawDatabaseMaintenanceScope,
@@ -45,11 +46,7 @@ export function captureSqliteMaintenanceIntegrity(
   // The raw-copy owner compares every byte before returning this image. Record
   // its successful QUICK before any private normalization or transform runs.
   return () => {
-    let receipts = capturedIntegrity.get(scope);
-    if (!receipts) {
-      receipts = new Map();
-      capturedIntegrity.set(scope, receipts);
-    }
+    const receipts = getOrCreateInnerMap(capturedIntegrity, scope);
     receipts.set(key, { source, tables });
   };
 }

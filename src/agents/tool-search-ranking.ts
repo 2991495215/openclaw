@@ -1,4 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 
 /** Collects property names and descriptions from a JSON-Schema-shaped value. */
 export function readParameterText(parameters: unknown, depth = 0): string {
@@ -347,11 +348,7 @@ export function buildLexicalIndex<T>(documents: ReadonlyArray<RankedDocument<T>>
   documents.forEach((document, position) => {
     const indexed = { value: document.value, length: document.terms.length, position };
     for (const term of document.terms) {
-      let matches = postings.get(term);
-      if (!matches) {
-        matches = new Map();
-        postings.set(term, matches);
-      }
+      const matches = getOrCreateInnerMap(postings, term);
       matches.set(indexed, (matches.get(indexed) ?? 0) + 1);
     }
     totalLength += indexed.length;

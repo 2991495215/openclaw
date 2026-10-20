@@ -1,6 +1,7 @@
 // Process-local skip markers share credential failures across turns of a session.
 // Restarting clears them so every fallback candidate gets another attempt.
 import { parseStrictNonNegativeInteger } from "@openclaw/normalization-core/number-coercion";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { modelKey } from "./model-ref-shared.js";
 
 // Operators opt in with OPENCLAW_FALLBACK_SKIP_TTL_MS.
@@ -91,11 +92,7 @@ export function markFallbackCandidateSkipped(params: {
   }
   pruneAllExpired(now);
   const buckets = getState().buckets;
-  let bucket = buckets.get(params.sessionId);
-  if (!bucket) {
-    bucket = new Map();
-    buckets.set(params.sessionId, bucket);
-  }
+  const bucket = getOrCreateInnerMap(buckets, params.sessionId);
   bucket.set(candidateKey(params.provider, params.model, params.authScope), {
     expiresAtMs: now + ttlMs,
     reason: params.reason,

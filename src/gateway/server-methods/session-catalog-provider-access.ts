@@ -17,6 +17,7 @@ import type {
   SessionCatalogListProviderParams,
   SessionCatalogProvider,
 } from "../../plugins/session-catalog.js";
+import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { SessionCatalogListAdmission } from "./session-catalog-list-admission.js";
 import { startSessionCatalogListDiagnostics } from "./session-catalog-list-diagnostics.js";
 import { catalogError } from "./session-catalog-result.js";
@@ -254,11 +255,7 @@ export function resolveProviderCreateTarget(
     byProvider = new WeakMap();
     providerCreateTargetsByConfig.set(config, byProvider);
   }
-  let byAgent = byProvider.get(provider);
-  if (!byAgent) {
-    byAgent = new Map();
-    byProvider.set(provider, byAgent);
-  }
+  const byAgent = getOrCreateInnerMap(byProvider, provider);
   const cached = byAgent.get(agentId);
   if (cached) {
     // The provider contract makes create targets config-derived. A reload changes config identity;

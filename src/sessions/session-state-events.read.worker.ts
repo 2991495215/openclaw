@@ -2,6 +2,7 @@ import { executeSqliteQuerySync, executeSqliteQueryTakeFirstSync } from "../infr
 import type { EngineConnection } from "../infra/sql-connection.js";
 import { normalizeSqliteNumber } from "../infra/sqlite-number.js";
 import { runSqliteReadSnapshotSync } from "../infra/sqlite-transaction.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { SESSION_WATCH_PROVENANCE_AMBIENT_GROUP } from "../state/session-watch-cursor-provenance.js";
 import type { WorkerOperationHandlers } from "../state/worker-operation-registry.js";
 import {
@@ -76,11 +77,7 @@ export const sessionStateReadOperations = {
           .where("session_key", "in", keys.slice(offset, offset + 500)),
       ).rows;
       for (const row of rows) {
-        let sessions = versions.get(row.agent_id);
-        if (!sessions) {
-          sessions = new Map();
-          versions.set(row.agent_id, sessions);
-        }
+        const sessions = getOrCreateInnerMap(versions, row.agent_id);
         sessions.set(row.session_key, normalizeSqliteNumber(row.last_sequence) ?? 0);
       }
     }

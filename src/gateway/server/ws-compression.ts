@@ -8,7 +8,7 @@ import {
   inflateRawSync,
 } from "node:zlib";
 import type { WebSocket } from "ws";
-import { getOrCreateWeakOwnerMap } from "../../shared/weak-owner-map.js";
+import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { gatewayFrameSegments } from "../serialized-json.js";
 import { gatewayReceiver } from "./ws-receiver.js";
 
@@ -121,7 +121,7 @@ export function registerDeflatedSegment(bytes: Uint8Array, deflated: Uint8Array)
   if (bytes.byteLength < GATEWAY_PER_MESSAGE_DEFLATE.threshold) {
     return;
   }
-  const windows = getOrCreateWeakOwnerMap(deflatedSegments, bytes);
+  const windows = getOrCreateInnerMap(deflatedSegments, bytes);
   windows.set(15, Buffer.from(deflated.buffer, deflated.byteOffset, deflated.byteLength));
 }
 
@@ -280,7 +280,7 @@ export function installGatewayDeflateCodec(
           continue;
         }
         flushSmall();
-        const windows = getOrCreateWeakOwnerMap(deflatedSegments, bytes);
+        const windows = getOrCreateInnerMap(deflatedSegments, bytes);
         let piece = windows.get(windowBits);
         if (!piece) {
           // Avoid retaining pooled slabs for small copies; keep Node's native large-copy path.

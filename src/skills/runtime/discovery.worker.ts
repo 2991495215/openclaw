@@ -6,6 +6,7 @@ import {
   withPluginCache,
   type PluginCache,
 } from "../../plugins/plugin-cache.js";
+import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { pinConfigDir } from "../../utils.js";
 import { readWorkspaceSkillStatusFacts } from "../discovery/status-files.js";
 import {
@@ -115,11 +116,7 @@ serveWorkerTasks<SkillsDiscoveryOutput>((input, channel) => {
             : resolvedPlan,
       };
       const environmentKey = JSON.stringify(environment);
-      let batch = sourceReads.get(environmentKey);
-      if (!batch) {
-        batch = new Map();
-        sourceReads.set(environmentKey, batch);
-      }
+      const batch = getOrCreateInnerMap(sourceReads, environmentKey);
       const sources = readWorkspaceSkillSources(sourceRequest, batch);
       const entries = mergeSkillRecords(sources.entries, key, []);
       appendLowerPrecedenceSkillRecords(

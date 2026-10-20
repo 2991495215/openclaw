@@ -1,4 +1,5 @@
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import type {
   ProviderResolveSyntheticAuthContext,
   ProviderSyntheticAuthResult,
@@ -121,11 +122,7 @@ export async function prepareSyntheticAuthWithProvider(
   // Registry attribution wraps descriptors; the executable hook identifies the
   // implementation whose result belongs to this config/env/workspace scope.
   const prepare = provider.prepareSyntheticAuth;
-  let entries = scope?.resolvers.get(prepare);
-  if (!entries && scope) {
-    entries = new Map();
-    scope.resolvers.set(prepare, entries);
-  }
+  const entries = scope ? getOrCreateInnerMap(scope.resolvers, prepare) : undefined;
   const current: Entry = entries?.get(ref) ?? { pending: new Map() };
   entries?.set(ref, current);
   let result = current.result;

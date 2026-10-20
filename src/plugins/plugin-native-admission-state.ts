@@ -1,6 +1,7 @@
 import path from "node:path";
 import { isPathInside } from "../infra/path-guards.js";
 import { isDeeplyFrozenPlainData } from "../shared/immutable-data.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { isArtifactPreservingStateRead } from "../state/artifact-preserving-state-reads.js";
 import { resolveActivePluginInstallRoots } from "./install-root-context.js";
 import { resolveInstalledPluginIndexInstallOwner } from "./installed-plugin-index-install-owner.js";
@@ -206,11 +207,7 @@ function bindAdmissionState(cache: PluginCache, state: AdmissionState): Admissio
   }
   scope.add(state);
   state.borrowers.add(scope);
-  let views = admissions.get(cache);
-  if (!views) {
-    views = new Map();
-    admissions.set(cache, views);
-  }
+  const views = getOrCreateInnerMap(admissions, cache);
   views.set(state.viewKey, state);
   return state;
 }

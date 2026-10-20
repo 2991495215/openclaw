@@ -3,6 +3,7 @@ import {
   resolveCurrentPairedDeviceNodeBinding,
 } from "../infra/device-pairing-node-state.js";
 import type { VoiceWakeRoutingConfig } from "../infra/voicewake-routing.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { GATEWAY_EVENT_NODE_RUNNER_INVENTORY_CHANGED } from "./events.js";
 import { isLiveTextAppend } from "./live-text-continuity.js";
 import {
@@ -126,11 +127,7 @@ export function createGatewayNodeSessionRuntime(params: {
     const subscription = { pairingGeneration: normalizedPairingGeneration };
     nodeEntry.sessionKeys.set(normalizedSessionKey, subscription);
 
-    let sessionMap = sessionSubscribers.get(normalizedSessionKey);
-    if (!sessionMap) {
-      sessionMap = new Map();
-      sessionSubscribers.set(normalizedSessionKey, sessionMap);
-    }
+    const sessionMap = getOrCreateInnerMap(sessionSubscribers, normalizedSessionKey);
     sessionMap.set(normalizedNodeId, subscription);
   };
 
@@ -344,11 +341,7 @@ export function createGatewayNodeSessionRuntime(params: {
                 payloadJSON,
                 onSent: () => {
                   if (!liveText.group.aborted || publication.settled) {
-                    let receipts = group.receipts.get(subscription);
-                    if (!receipts) {
-                      receipts = new Map();
-                      group.receipts.set(subscription, receipts);
-                    }
+                    const receipts = getOrCreateInnerMap(group.receipts, subscription);
                     receipts.set(streamKey, { connId, publication });
                   }
                 },

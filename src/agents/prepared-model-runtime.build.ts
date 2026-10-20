@@ -8,6 +8,7 @@ import { getPluginMetadataSnapshotCache } from "../plugins/plugin-cache.js";
 import { settlePluginNativeAdmissions } from "../plugins/plugin-native-admission-state.js";
 import { groupPluginRecords as groupRecords } from "../plugins/record-groups.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
 import { collectConfiguredAgentHarnessRuntimes } from "./harness-runtimes.js";
 import {
@@ -196,11 +197,7 @@ async function buildSnapshotBatch(
       >
     >();
     const getConfiguredModelFacts: typeof prepareConfiguredModelFacts = (config, metadata) => {
-      let factsByMetadata = configuredModelFactsByConfig.get(config);
-      if (!factsByMetadata) {
-        factsByMetadata = new Map();
-        configuredModelFactsByConfig.set(config, factsByMetadata);
-      }
+      const factsByMetadata = getOrCreateInnerMap(configuredModelFactsByConfig, config);
       let facts = factsByMetadata.get(metadata);
       if (!facts) {
         facts = prepareConfiguredModelFacts(config, metadata);

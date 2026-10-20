@@ -1,4 +1,5 @@
 import { resolveGlobalMap } from "../shared/global-singleton.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 
 export type PluginSdkDeprecatedApi = {
   id: string;
@@ -19,11 +20,7 @@ export function recordPluginSdkDeprecationUsage(
   replacement: string,
   removeAfter?: string,
 ): void {
-  let recorded = usage.get(pluginId);
-  if (!recorded) {
-    recorded = new Map();
-    usage.set(pluginId, recorded);
-  }
+  const recorded = getOrCreateInnerMap(usage, pluginId);
   if (!recorded.has(id)) {
     recorded.set(id, { id, displayName, replacement, ...(removeAfter ? { removeAfter } : {}) });
   }

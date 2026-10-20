@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { PluginStateStoreError } from "../plugin-state/plugin-state-store.types.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import type {
   MeetingParticipationAttempt,
   MeetingParticipationContext,
@@ -82,10 +83,7 @@ export class MeetingParticipation<TSession> {
     if (this.#closed.has(sessionId) || !this.options.current(sessionId) || !observedEpoch) {
       return false;
     }
-    let epochs = this.#epochs.get(sessionId);
-    if (!epochs) {
-      this.#epochs.set(sessionId, (epochs = new Map()));
-    }
+    const epochs = getOrCreateInnerMap(this.#epochs, sessionId);
     const epoch = epochs.get(kind);
     if (epoch?.seen.has(observedEpoch) && epoch.current !== observedEpoch) {
       return false;
@@ -114,10 +112,7 @@ export class MeetingParticipation<TSession> {
     if (!source.id || !this.observeEpoch(sessionId, source.kind, source.epoch)) {
       return undefined;
     }
-    let sources = this.#sources.get(sessionId);
-    if (!sources) {
-      this.#sources.set(sessionId, (sources = new Map()));
-    }
+    const sources = getOrCreateInnerMap(this.#sources, sessionId);
     for (const [key, existing] of sources) {
       if (Date.now() - existing.observedAt > SOURCE_LIFETIME_MS) {
         sources.delete(key);
@@ -125,10 +120,7 @@ export class MeetingParticipation<TSession> {
     }
     const key = fingerprint([source.kind, source.epoch, source.id]);
     const previous = sources.get(key);
-    let identities = this.#identities.get(sessionId);
-    if (!identities) {
-      this.#identities.set(sessionId, (identities = new Map()));
-    }
+    const identities = getOrCreateInnerMap(this.#identities, sessionId);
     let identity = identities.get(key);
     if (!identity) {
       if (identities.size >= 10_000) {

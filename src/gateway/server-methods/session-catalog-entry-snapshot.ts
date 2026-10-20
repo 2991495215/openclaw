@@ -15,6 +15,7 @@ import type {
 } from "../../plugins/session-catalog.js";
 import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { freezeJsonSnapshot } from "../../shared/immutable-data.js";
+import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { projectSessionActor } from "../session-identity-projection.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "../session-request-agent.js";
 import type { SessionRowProjection } from "../session-row-projection.js";
@@ -221,11 +222,7 @@ export function createSessionCatalogRequestEntrySnapshot(params: {
           configs = new WeakMap();
           planningEntriesByRevision.set(revision, configs);
         }
-        let agents = configs.get(params.cfg);
-        if (!agents) {
-          agents = new Map();
-          configs.set(params.cfg, agents);
-        }
+        const agents = getOrCreateInnerMap(configs, params.cfg);
         const planning = cachedPlanning ?? {
           revision: {},
           entriesByAgentId,

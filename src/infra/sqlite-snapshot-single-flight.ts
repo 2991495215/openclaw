@@ -5,6 +5,7 @@ import {
   type RetainedOperation,
 } from "@openclaw/worker-runtime/lifecycle";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { getOrCreateInnerMap } from "../shared/inner-map.js";
 import {
   retainSnapshotWork,
   SqliteSnapshotCleanupError,
@@ -209,12 +210,7 @@ function startSnapshotFlight(
   const key = `${readDatabasePathIdentitySync(databasePath).key}:${operation}`;
   let flights = snapshotFlights.unscoped;
   if (lifecycle?.scope) {
-    let scoped = snapshotFlights.scoped.get(lifecycle.scope);
-    if (!scoped) {
-      scoped = new Map();
-      snapshotFlights.scoped.set(lifecycle.scope, scoped);
-    }
-    flights = scoped;
+    flights = getOrCreateInnerMap(snapshotFlights.scoped, lifecycle.scope);
   }
   let flight = flights.get(key);
   if (!flight) {

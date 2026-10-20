@@ -5,6 +5,7 @@ import {
   SqliteWorkerError,
 } from "../../infra/sqlite-worker-contract.js";
 import { GatewayRetainedWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
+import { getOrCreateInnerMap } from "../../shared/inner-map.js";
 import { registerOpenClawStateDatabaseAsyncResource } from "../../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
@@ -54,11 +55,7 @@ function createLifetime({ admission }: OpenClawStateWorkerContext) {
   const selectRevisions = (changes: readonly WorktreeRegistryChange[]) => {
     const selected = new Set<RegistryRevision>();
     for (const { id, fields } of changes) {
-      let row = revisions.get(id);
-      if (!row) {
-        row = new Map();
-        revisions.set(id, row);
-      }
+      const row = getOrCreateInnerMap(revisions, id);
       for (const field of fields) {
         let revision = row.get(field);
         if (!revision) {
