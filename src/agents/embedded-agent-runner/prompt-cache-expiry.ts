@@ -3,6 +3,7 @@ import {
   isDirectAnthropicModel,
   isNativeOpenAIEndpoint,
   resolveAnthropicCacheOptions,
+  usesNativeOpenAICodexResponsesBackend,
 } from "@openclaw/ai/transports";
 import type { Model } from "../../llm/types.js";
 import type { NormalizedUsage } from "../usage.js";
@@ -11,7 +12,7 @@ import type { NormalizedUsage } from "../usage.js";
 export type PromptCacheExpiryEstimate = {
   observedAt: number;
   windowMs: number;
-  basis: "anthropic-ttl" | "openai-minimum";
+  basis: "anthropic-ttl" | "openai-minimum" | "codex-idle-heuristic";
 };
 
 /** Only conversation-prefix caches eligible for pre-expiry compaction; short TTLs are excluded. */
@@ -26,7 +27,6 @@ export function estimatePromptCacheExpiry(params: {
   const { model, retention, usage, requestStartedAt } = params;
   const now = params.now ?? Date.now();
   if (
-    params.authMode !== "api-key" ||
     retention === "none" ||
     usage?.cacheTelemetry?.state === "unavailable" ||
     !((usage?.cacheRead ?? 0) > 0 || (usage?.cacheWrite ?? 0) > 0) ||
@@ -35,6 +35,18 @@ export function estimatePromptCacheExpiry(params: {
     requestStartedAt <= 0 ||
     requestStartedAt > now
   ) {
+    return undefined;
+  }
+  if (
+    params.authMode === "oauth" &&
+    usesNativeOpenAICodexResponsesBackend(model) &&
+    URL.parse(model.baseUrl)?.origin === "https://chatgpt.com"
+  ) {
+    // Opt-in idle policy, not a provider TTL: start the assumed window at the
+    // completed model activity, rather than treating request duration as idle.
+    return { observedAt: now, windowMs: 1_800_000, basis: "codex-idle-heuristic" };
+  }
+  if (params.authMode !== "api-key") {
     return undefined;
   }
   // The payload owner applies explicit retention, endpoint defaults and compatibility overrides.
@@ -59,8 +71,8 @@ export function estimatePromptCacheExpiry(params: {
   ) {
     return { observedAt: requestStartedAt, windowMs: 1_800_000, basis: "openai-minimum" };
   }
-  // Legacy OpenAI lifetimes are variable, not 24h deadlines. ChatGPT sign-in,
-  // proxies, Bedrock and Vertex have distinct contracts; Gemini resources cache
+  // Legacy OpenAI lifetimes are variable, not 24h deadlines. Proxies,
+  // Bedrock and Vertex have distinct contracts; Gemini resources cache
   // the stable system/tools, not the conversation being compacted. No guessed timer.
   return undefined;
 }

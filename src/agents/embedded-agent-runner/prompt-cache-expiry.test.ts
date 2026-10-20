@@ -23,6 +23,11 @@ const openai: Model = {
   api: "openai-responses",
   baseUrl: "https://api.openai.com/v1",
 };
+const codex: Model = {
+  ...openai,
+  api: "openai-chatgpt-responses",
+  baseUrl: "https://chatgpt.com/backend-api/codex",
+};
 const observation = { authMode: "api-key", usage: { cacheRead: 2000 }, requestStartedAt: now, now };
 
 describe("cache-expiry qualification", () => {
@@ -52,6 +57,17 @@ describe("cache-expiry qualification", () => {
         baseUrl: "https://chatgpt.com/backend-api/codex",
       },
     },
+    { model: { ...codex, provider: "custom-codex" }, authMode: "oauth" },
+    { model: { ...codex, baseUrl: "https://proxy.example/backend-api/codex" }, authMode: "oauth" },
+    { model: { ...codex, baseUrl: "https://chatgpt.com/unrelated" }, authMode: "oauth" },
+    { model: { ...codex, baseUrl: "http://chatgpt.com/backend-api/codex" }, authMode: "oauth" },
+    {
+      model: { ...codex, baseUrl: "https://chatgpt.com:8443/backend-api/codex" },
+      authMode: "oauth",
+    },
+    { model: { ...codex, api: "openai-responses" }, authMode: "oauth" },
+    { model: codex, authMode: "oauth", retention: "none" },
+    { model: codex, authMode: "oauth", usage: { input: 2000 } },
     { model: anthropic, authMode: "oauth" },
     { model: anthropic, authMode: undefined },
     { model: anthropic, retention: "none" },
@@ -69,6 +85,32 @@ describe("cache-expiry qualification", () => {
     },
   );
 
+  it("labels the subscription idle assumption separately from provider lifetime facts", () => {
+    expect(
+      estimatePromptCacheExpiry({
+        ...observation,
+        model: codex,
+        authMode: "oauth",
+        requestStartedAt: now - 120_000,
+      }),
+    ).toEqual({ observedAt: now, windowMs: 1_800_000, basis: "codex-idle-heuristic" });
+  });
+
+  it.each([
+    [60_000, undefined],
+    [300_000, undefined],
+    [1_800_000, now + 1_500_000],
+    [3_600_000, now + 3_300_000],
+  ] as const)("leaves five minutes for an eligible %i ms window", (windowMs, notBefore) => {
+    const plan = planCacheExpiryCompaction(
+      { observedAt: now, windowMs, basis: "anthropic-ttl" },
+      now,
+    );
+    expect(plan).toEqual(
+      notBefore === undefined ? undefined : { notBefore, expiresAt: now + windowMs },
+    );
+  });
+
   it("counts generation time, permits cache writes, and never schedules an expired observation", () => {
     const estimate = estimatePromptCacheExpiry({
       ...observation,
@@ -82,7 +124,7 @@ describe("cache-expiry qualification", () => {
       throw new Error("expected a qualified observation");
     }
     expect(planCacheExpiryCompaction(estimate, now)).toEqual({
-      notBefore: now + 60_000,
+      notBefore: now,
       expiresAt: now + 120_000,
     });
     expect(planCacheExpiryCompaction(estimate, now + 120_000)).toBeUndefined();
@@ -92,7 +134,7 @@ describe("cache-expiry qualification", () => {
         now,
       ),
     ).toEqual({
-      notBefore: now + 1_500_000,
+      notBefore: now + 1_260_000,
       expiresAt: now + 1_560_000,
     });
   });

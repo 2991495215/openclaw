@@ -179,8 +179,10 @@ compaction, manual `/compact`, or model-requested compaction.
 
 The timer requires positive cache-read or cache-write usage from the actual
 request, its start time, and a supported model, endpoint, and authentication mode.
-Generation time counts toward the window. It starts up to one minute early,
-skips already expired observations, and yields to foreground work. A changed
+Provider-backed estimates count generation time toward the window. Every eligible
+window uses a five-minute lead: a 30-minute window schedules at 25 minutes and
+a one-hour window at 55 minutes. Already expired observations are skipped, and
+maintenance yields to foreground work. A changed
 session, model selection, credentials, configuration, or an intervening compaction
 invalidates pending work. Once started, maintenance uses the bounded compaction
 timeout rather than discarding a paid summary when the estimated cache window passes.
@@ -189,8 +191,21 @@ Currently qualified routes are direct Anthropic API-key requests with an effecti
 one-hour marker TTL and direct OpenAI API-key requests on GPT-5.6 and newer (the
 documented 30-minute minimum). An Anthropic `long` preference that the transport
 downgrades to a five-minute marker does not qualify. These are scheduling estimates,
-not exact expiry promises. Other routes are skipped rather than assigned a universal
-55-minute interval. See [provider cache contracts](/reference/prompt-caching#pre-expiry-compaction).
+not exact expiry promises.
+
+For ChatGPT/Codex OAuth through the **built-in OpenClaw runtime**, the same opt-in
+also permits a deliberately assumed 30-minute idle window: one attempt after
+25 minutes without another foreground turn. The estimate is labeled
+`codex-idle-heuristic`, not a documented Codex TTL. It requires positive cache
+usage on the canonical `openai` provider and official ChatGPT Responses backend;
+provider aliases, custom backends, and unknown routes do not inherit it. The idle
+clock begins when the completed model activity is observed, not at request start.
+
+This does **not** enable timers for native Codex app-server or generic CLI runtimes.
+Their compaction remains runtime-owned. In particular, the native standalone
+compact operation cannot carry the admitted turn generation required by ChatGPT
+subscription sharing, so this timer does not bypass that restriction or silently
+switch runtimes. See [provider cache contracts](/reference/prompt-caching#pre-expiry-compaction).
 
 Compaction still costs inference and can lose detail. It may use a different
 prompt or summarization model, so a timer does **not** guarantee cache hits or

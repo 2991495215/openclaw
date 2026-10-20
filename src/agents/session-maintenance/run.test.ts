@@ -16,7 +16,11 @@ import type { ReplyOperation } from "../../sessions/session-controller.contracts
 import { isCurrentSessionControllerOperation } from "../../sessions/session-controller.identity.js";
 import { sessionControllers } from "../../sessions/session-controller.state.js";
 import { beginForegroundSessionMaintenance, waitForSessionMaintenance } from "./coordinator.js";
-import { createSessionMaintenanceFollowup, scheduleSessionMaintenance } from "./run.js";
+import {
+  createSessionMaintenanceFollowup,
+  scheduleSessionMaintenance,
+  type SessionMaintenanceRequest,
+} from "./run.js";
 
 const maintenanceRuntime = vi.hoisted(() => ({
   entry: undefined as SessionEntry | undefined,
@@ -58,7 +62,7 @@ vi.mock("../command/runtime-loaders.js", async (importOriginal) => ({
       if (params.force) {
         maintenanceRuntime.forcedFlushes += 1;
         if (maintenanceRuntime.advanceClockDuringFlush) {
-          vi.setSystemTime(Date.now() + 70_000);
+          vi.setSystemTime(Date.now() + 310_000);
         }
       }
       maintenanceRuntime.flushOperations.push({
@@ -93,6 +97,9 @@ afterEach(() => {
 
 it.each([
   "expiry",
+  "expiry-30m",
+  "heuristic",
+  "activity-reset",
   "window-elapsed-during-flush",
   "expired-before-admission",
   "self-request",
@@ -109,6 +116,8 @@ it.each([
   "disabled",
 ] as const)("serves optional compaction safely for %s", async (mode) => {
   vi.useFakeTimers();
+  const halfHour = mode === "expiry-30m" || mode === "heuristic" || mode === "activity-reset";
+  const expectExpiry = halfHour || mode === "expiry" || mode === "window-elapsed-during-flush";
   requireActivePluginRegistry();
   const sessionKey = "agent:main:idle-compaction";
   const entry: SessionEntry = {
@@ -123,6 +132,8 @@ it.each([
       defaults: {
         compaction: {
           enabled: mode !== "disabled",
+          // This case crosses the five-minute cache lead, not its configured work deadline.
+          timeoutSeconds: mode === "window-elapsed-during-flush" ? 360 : undefined,
           cacheExpiry: {
             enabled: mode === "cache-default" ? undefined : mode !== "cache-disabled",
           },
@@ -133,44 +144,64 @@ it.each([
   const followupRun = createTestFollowupRun({
     sessionKey,
     sessionId: entry.sessionId,
-    // The admitted flush can cross the one-minute cache lead without exhausting its own budget.
-    timeoutMs: 120_000,
+    // Cross the five-minute lead while keeping the admitted checkpoint within its own budget.
+    timeoutMs: 360_000,
     config: cfg,
   });
   setRuntimeConfigSnapshot(cfg);
-  scheduleSessionMaintenance(
-    {
-      prepared: {
-        cfg,
-        sessionKey,
-        storePath: "/synthetic/idle-compaction/sessions.json",
-        timeoutMs: 120_000,
-      },
-      followupRun,
-      sessionId: entry.sessionId,
-      lifecycleRevision: entry.lifecycleRevision,
-      lifecycleGeneration: getAgentEventLifecycleGeneration(),
-      startedAt: Date.now(),
-      expectedCompactionCount: 0,
-      expectedSelection: { model: "fixture" },
-      cacheExpiry: {
-        observedAt: Date.now(),
-        windowMs:
-          mode === "shorter-window"
-            ? 60_000
-            : mode === "short-window" || mode === "self-request"
-              ? 300_000
-              : 3_600_000,
-        basis: "anthropic-ttl",
-      },
-      requestedCompaction: mode === "self-request" ? { focus: "Keep pending work" } : undefined,
+  const request: SessionMaintenanceRequest = {
+    prepared: {
+      cfg,
+      sessionKey,
+      storePath: "/synthetic/idle-compaction/sessions.json",
+      timeoutMs: 360_000,
     },
-    Promise.resolve(mode !== "failed-delivery"),
-  );
+    followupRun,
+    sessionId: entry.sessionId,
+    lifecycleRevision: entry.lifecycleRevision,
+    lifecycleGeneration: getAgentEventLifecycleGeneration(),
+    startedAt: Date.now(),
+    expectedCompactionCount: 0,
+    expectedSelection: { model: "fixture" },
+    cacheExpiry: {
+      observedAt: Date.now(),
+      windowMs:
+        mode === "shorter-window"
+          ? 60_000
+          : mode === "short-window" || mode === "self-request"
+            ? 300_000
+            : halfHour
+              ? 1_800_000
+              : 3_600_000,
+      basis:
+        mode === "heuristic" || mode === "activity-reset"
+          ? "codex-idle-heuristic"
+          : mode === "expiry-30m"
+            ? "openai-minimum"
+            : "anthropic-ttl",
+    },
+    requestedCompaction: mode === "self-request" ? { focus: "Keep pending work" } : undefined,
+  };
+  scheduleSessionMaintenance(request, Promise.resolve(mode !== "failed-delivery"));
   await waitForSessionMaintenance(sessionKey);
   expect(maintenanceRuntime.compactions).toBe(
     mode === "disabled" || mode === "failed-delivery" ? 0 : 1,
   );
+  if (mode === "activity-reset") {
+    const release = await beginForegroundSessionMaintenance(sessionKey);
+    await vi.advanceTimersByTimeAsync(1_800_000);
+    expect(maintenanceRuntime.forcedFlushes).toBe(0);
+    release();
+    scheduleSessionMaintenance(
+      {
+        ...request,
+        startedAt: Date.now(),
+        cacheExpiry: { observedAt: Date.now(), windowMs: 1_800_000, basis: "codex-idle-heuristic" },
+      },
+      Promise.resolve(true),
+    );
+    await waitForSessionMaintenance(sessionKey);
+  }
   if (mode === "foreground") {
     (await beginForegroundSessionMaintenance(sessionKey))();
   }
@@ -190,7 +221,8 @@ it.each([
   if (mode === "expired-before-admission") {
     vi.setSystemTime(Date.now() + 3_600_000);
   }
-  await vi.advanceTimersByTimeAsync(3_540_000 - 1);
+  const delay = halfHour ? 1_500_000 : 3_300_000;
+  await vi.advanceTimersByTimeAsync(delay - 1);
   await waitForSessionMaintenance(sessionKey);
   expect(maintenanceRuntime.requestedCompactions).toEqual(
     mode === "self-request" ? [{ focus: "Keep pending work" }] : [],
@@ -199,15 +231,9 @@ it.each([
   await vi.advanceTimersByTimeAsync(1);
   await waitForSessionMaintenance(sessionKey);
   expect(maintenanceRuntime.requestedCompactions).toEqual(
-    mode === "expiry" || mode === "window-elapsed-during-flush"
-      ? [{}]
-      : mode === "self-request"
-        ? [{ focus: "Keep pending work" }]
-        : [],
+    expectExpiry ? [{}] : mode === "self-request" ? [{ focus: "Keep pending work" }] : [],
   );
-  expect(maintenanceRuntime.forcedFlushes).toBe(
-    mode === "expiry" || mode === "self-request" || mode === "window-elapsed-during-flush" ? 1 : 0,
-  );
+  expect(maintenanceRuntime.forcedFlushes).toBe(expectExpiry || mode === "self-request" ? 1 : 0);
   const count = maintenanceRuntime.compactions;
   await vi.advanceTimersByTimeAsync(3_600_000);
   expect(maintenanceRuntime.compactions).toBe(count);

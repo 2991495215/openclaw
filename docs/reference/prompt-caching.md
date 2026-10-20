@@ -156,19 +156,23 @@ Five-minute or shorter windows never arm this automatic timer, even when
 `agents.defaults.compaction.cacheExpiry.enabled` is `true`. This is an effective-TTL
 policy, not a ban on the `short` retention label: the already-qualified direct
 OpenAI routes below retain their 30-minute estimate. Prompt caching itself and
-normal, manual, and model-requested compaction are unchanged.
+normal, manual, and model-requested compaction are unchanged. Eligible windows use
+a five-minute lead: 30 minutes schedules at 25 minutes, and one hour at 55 minutes.
+The ChatGPT subscription case below is an explicit idle heuristic, not a provider
+TTL guarantee; it is available only where OpenClaw owns compaction.
 
 Provider contracts reviewed on **October 20, 2026**:
 
-| Route                                    | Documented lifetime                                                                                                                                          | Automatic compaction timer                        |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Direct Anthropic API key                 | Five minutes, or one hour when the effective marker requests it; refresh measured from request start                                                         | One-hour markers only, after positive cache usage |
-| Direct OpenAI API key, GPT-5.6 and newer | At least 30 minutes after write/reuse; may be retained longer                                                                                                | Uses the minimum as an estimate, not exact expiry |
-| Earlier OpenAI API models                | In-memory typically 5–10 minutes, up to an hour; extended retention typically around 30 minutes, up to 24 hours; defaults also depend on organization policy | Skipped: no reliable deadline                     |
-| ChatGPT sign-in and CLI/native harnesses | No equivalent OpenClaw-controlled lifetime contract                                                                                                          | Skipped                                           |
-| Amazon Bedrock                           | Model- and API-specific TTLs; Claude/Nova checkpoints and OpenAI APIs differ                                                                                 | Not qualified by this timer yet                   |
-| Google Gemini explicit resources         | Resource TTL and refresh belong to the resource owner; OpenClaw caches stable system/tools, not the conversation tail                                        | Skipped: not a conversation-expiry trigger        |
-| Vertex AI, OpenRouter and custom proxies | Distinct route/model contracts and routing behavior                                                                                                          | Not qualified by this timer yet                   |
+| Route                                            | Documented lifetime                                                                                                                                          | Automatic compaction timer                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Direct Anthropic API key                         | Five minutes, or one hour when the effective marker requests it; refresh measured from request start                                                         | One-hour markers only, after positive cache usage                                  |
+| Direct OpenAI API key, GPT-5.6 and newer         | At least 30 minutes after write/reuse; may be retained longer                                                                                                | Uses the minimum as an estimate, not exact expiry                                  |
+| Earlier OpenAI API models                        | In-memory typically 5–10 minutes, up to an hour; extended retention typically around 30 minutes, up to 24 hours; defaults also depend on organization policy | Skipped: no reliable deadline                                                      |
+| ChatGPT/Codex OAuth, built-in OpenClaw runtime   | No verified numeric TTL; explicitly assumed 30-minute idle window                                                                                            | Opt-in 25-minute idle heuristic after positive cache usage on the official backend |
+| Native Codex app-server and generic CLI runtimes | Runtime-owned compaction; no equivalent host-controlled lifetime contract                                                                                    | Skipped by this timer; native automatic compaction remains unchanged               |
+| Amazon Bedrock                                   | Model- and API-specific TTLs; Claude/Nova checkpoints and OpenAI APIs differ                                                                                 | Not qualified by this timer yet                                                    |
+| Google Gemini explicit resources                 | Resource TTL and refresh belong to the resource owner; OpenClaw caches stable system/tools, not the conversation tail                                        | Skipped: not a conversation-expiry trigger                                         |
+| Vertex AI, OpenRouter and custom proxies         | Distinct route/model contracts and routing behavior                                                                                                          | Not qualified by this timer yet                                                    |
 
 Sources: [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching),
 [OpenAI cache lifetime](https://developers.openai.com/api/docs/guides/prompt-caching#cache-lifetime),
@@ -176,7 +180,11 @@ Sources: [Anthropic prompt caching](https://platform.claude.com/docs/en/build-wi
 Gemini resource scope is the implemented contract in
 `src/agents/embedded-agent-runner/google-prompt-cache.ts`. This table distinguishes
 provider documentation from OpenClaw’s deliberately narrower qualification;
-“not qualified” does not mean the provider has no cache.
+“not qualified” does not mean the provider has no cache. The subscription idle
+assumption is separately labeled `codex-idle-heuristic` in run metadata. New
+foreground activity cancels its pending timer; a later successful eligible turn
+can arm a fresh one. The timer never rearms itself, and unknown providers, aliases,
+and custom backends receive no inferred lifetime.
 
 ## Provider behavior
 
