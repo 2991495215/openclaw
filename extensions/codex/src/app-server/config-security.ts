@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { hostname as readHostName } from "node:os";
 import path from "node:path";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
@@ -16,11 +15,9 @@ import type {
 } from "./config-contracts.js";
 import { selectGuardianSandbox } from "./config-exec-policy.js";
 import { DEFAULT_CODEX_APP_SERVER_NETWORK_PROXY_PROFILE_PREFIX } from "./config-parsing.js";
-import { stringifyCodexPolicy } from "./config-policy-json.js";
+import { fingerprintCodexPolicy } from "./config-policy-json.js";
 import {
-  parseAllowedApprovalPoliciesFromCodexRequirements,
-  parseAllowedApprovalsReviewersFromCodexRequirements,
-  parseAllowedSandboxModesFromCodexRequirements,
+  parseCodexRequirementsPolicy,
   readCodexRequirementsToml,
   selectGuardianApprovalPolicy,
   selectGuardianApprovalsReviewer,
@@ -74,7 +71,9 @@ export function resolveCodexAppServerNetworkProxy(
     },
     network: networkConfig,
   };
-  const profileName = resolveNetworkProxyPermissionProfileName(config, profile);
+  const profileName =
+    readNonEmptyString(config.profileName) ??
+    `${DEFAULT_CODEX_APP_SERVER_NETWORK_PROXY_PROFILE_PREFIX}-${fingerprintCodexPolicy({ version: 1, profile }).slice(0, 16)}`;
   const configPatch: JsonObject = {
     "features.network_proxy.enabled": true,
     default_permissions: profileName,
@@ -85,29 +84,10 @@ export function resolveCodexAppServerNetworkProxy(
   return {
     networkProxy: {
       profileName,
-      configFingerprint: fingerprintCodexAppServerNetworkProxyConfigPatch(configPatch),
+      configFingerprint: fingerprintCodexPolicy(configPatch),
       configPatch,
     },
   };
-}
-
-function resolveNetworkProxyPermissionProfileName(
-  config: CodexAppServerNetworkProxyConfig,
-  profile: JsonObject,
-): string {
-  const explicitProfileName = readNonEmptyString(config.profileName);
-  if (explicitProfileName) {
-    return explicitProfileName;
-  }
-  const suffix = createHash("sha256")
-    .update(stringifyCodexPolicy({ version: 1, profile }))
-    .digest("hex")
-    .slice(0, 16);
-  return `${DEFAULT_CODEX_APP_SERVER_NETWORK_PROXY_PROFILE_PREFIX}-${suffix}`;
-}
-
-function fingerprintCodexAppServerNetworkProxyConfigPatch(configPatch: JsonObject): string {
-  return createHash("sha256").update(stringifyCodexPolicy(configPatch)).digest("hex");
 }
 
 function normalizeNetworkProxyPermissionMap(
@@ -132,27 +112,26 @@ function resolveNetworkProxyReadOnlyPaths(
 }
 
 function normalizeNetworkProxyReadOnlyPath(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    throw invalidNetworkProxyReadOnlyPathsError();
-  }
-  const parser = trimmed.startsWith("/") ? path.posix : path.win32;
-  const normalized = stripTrailingPathSeparators(parser.normalize(trimmed));
-  const parsed = parser.parse(normalized);
-  const originalSegments = trimmed.slice(parser.parse(trimmed).root.length).split(/[\\/]+/u);
-  const segments = normalized.slice(parsed.root.length).split(/[\\/]+/u);
   if (
-    trimmed.startsWith(":") ||
+    !value ||
+    value !== value.trim() ||
+    value.startsWith(":") ||
     hasControlCharacter(value) ||
-    /[*?[\]{}]/u.test(trimmed) ||
-    !isLiteralAbsolutePath(trimmed) ||
-    normalized === parsed.root ||
-    originalSegments.some((segment) => segment === "..") ||
-    segments.some((segment) => segment === "..")
+    /[*?[\]{}]/u.test(value) ||
+    !isLiteralAbsolutePath(value)
   ) {
     throw invalidNetworkProxyReadOnlyPathsError();
   }
-  return normalized;
+  const parser = value.startsWith("/") ? path.posix : path.win32;
+  const segments = value
+    .slice(parser.parse(value).root.length)
+    .split(parser === path.posix ? "/" : /[\\/]+/u);
+  const normalized = parser.normalize(value);
+  if (normalized === parser.parse(normalized).root || segments.includes("..")) {
+    throw invalidNetworkProxyReadOnlyPathsError();
+  }
+  // A backslash is a filename character on POSIX, not a separator to remove.
+  return normalized.endsWith(parser.sep) ? normalized.slice(0, -1) : normalized;
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -163,13 +142,6 @@ function hasControlCharacter(value: string): boolean {
     }
   }
   return false;
-}
-
-function stripTrailingPathSeparators(value: string): string {
-  const rootLength = path.win32.isAbsolute(value)
-    ? path.win32.parse(value).root.length
-    : path.posix.parse(value).root.length;
-  return value.length > rootLength ? value.replace(/[\\/]+$/u, "") : value;
 }
 
 function isLiteralAbsolutePath(value: string): boolean {
@@ -217,8 +189,9 @@ export function hasCodexMcpToolApprovalOverrides(
 export function withMcpElicitationsApprovalPolicy(
   policy: CodexAppServerEffectiveApprovalPolicy,
 ): CodexAppServerEffectiveApprovalPolicy {
-  // UnlessTrusted already allows MCP elicitation; granular would erase per-command approvals.
-  if (policy === "untrusted") {
+  // These policies already allow MCP elicitation. Preserve their identity for managed
+  // allowlists; granular would also erase per-command approvals under UnlessTrusted.
+  if (policy === "untrusted" || policy === "on-request") {
     return policy;
   }
   if (typeof policy !== "string") {
@@ -229,30 +202,16 @@ export function withMcpElicitationsApprovalPolicy(
       },
     };
   }
-  if (policy === "never") {
-    return {
-      granular: {
-        mcp_elicitations: true,
-        rules: false,
-        sandbox_approval: false,
-        request_permissions: false,
-        skill_approval: false,
-      },
-    };
-  }
+  const prompting = policy !== "never";
   return {
     granular: {
       mcp_elicitations: true,
-      rules: true,
-      sandbox_approval: true,
-      request_permissions: true,
-      skill_approval: true,
+      rules: prompting,
+      sandbox_approval: prompting,
+      request_permissions: prompting,
+      skill_approval: prompting,
     },
   };
-}
-
-export function resolveTransport(value: unknown): CodexAppServerTransportMode {
-  return value === "websocket" || value === "unix" ? value : "stdio";
 }
 
 export function inferCodexAppServerConnectionClass(params: {
@@ -262,25 +221,11 @@ export function inferCodexAppServerConnectionClass(params: {
   if (params.transport !== "websocket") {
     return "local-loopback";
   }
-  return params.url && isLoopbackWebSocketUrl(params.url) ? "local-loopback" : "remote";
-}
-
-function assertCodexAppServerConnectionClassConfig(params: {
-  connectionClass: CodexAppServerConnectionClass;
-  authToken?: string;
-  headers: Record<string, string>;
-}): void {
-  if (
-    params.connectionClass === "remote" &&
-    !hasIdentityBearingWebSocketAuth({
-      authToken: params.authToken,
-      headers: params.headers,
-    })
-  ) {
-    throw new Error(
-      "remote Codex app-server WebSocket URLs require appServer.authToken or an Authorization header",
-    );
-  }
+  const parsed = params.url ? URL.parse(params.url) : null;
+  return (parsed?.protocol === "ws:" || parsed?.protocol === "wss:") &&
+    isLoopbackHost(parsed.hostname)
+    ? "local-loopback"
+    : "remote";
 }
 
 /** Applies the canonical remote-auth boundary to any Codex AppServer transport. */
@@ -290,37 +235,18 @@ export function assertCodexAppServerConnectionSecurity(params: {
   authToken?: string;
   headers: Record<string, string>;
 }): void {
-  assertCodexAppServerConnectionClassConfig({
-    connectionClass: inferCodexAppServerConnectionClass(params),
-    authToken: params.authToken,
-    headers: params.headers,
-  });
-}
-
-function isLoopbackWebSocketUrl(value: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return false;
+  if (
+    inferCodexAppServerConnectionClass(params) === "remote" &&
+    !readNonEmptyString(params.authToken) &&
+    !Object.entries(params.headers).some(
+      ([key, value]) =>
+        key.trim().toLowerCase() === "authorization" && Boolean(readNonEmptyString(value)),
+    )
+  ) {
+    throw new Error(
+      "remote Codex app-server WebSocket URLs require appServer.authToken or an Authorization header",
+    );
   }
-  if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
-    return false;
-  }
-  return isLoopbackHost(parsed.hostname);
-}
-
-function hasIdentityBearingWebSocketAuth(params: {
-  authToken?: string;
-  headers: Record<string, string>;
-}): boolean {
-  if (readNonEmptyString(params.authToken)) {
-    return true;
-  }
-  return Object.entries(params.headers).some(
-    ([key, value]) =>
-      key.trim().toLowerCase() === "authorization" && Boolean(readNonEmptyString(value)),
-  );
 }
 
 export function resolvePolicyMode(value: unknown): CodexAppServerPolicyMode | undefined {
@@ -344,32 +270,14 @@ export function resolveDefaultCodexAppServerPolicy(params: {
     return { mode: "yolo", dangerFullAccessAllowed: true };
   }
   const content = readCodexRequirementsToml(params);
-  if (content === undefined) {
-    if (!params.forceGuardian) {
-      return { mode: "yolo", dangerFullAccessAllowed: true };
-    }
-    return {
-      mode: "guardian",
-      dangerFullAccessAllowed: true,
-      approvalPolicy: selectGuardianApprovalPolicy(
-        undefined,
-        params.execModeRequiringPromptingApprovals,
-      ),
-      approvalsReviewer: params.forceUserReviewer
-        ? selectUserApprovalsReviewer(undefined, params.execModeRequiringUserReviewer)
-        : selectGuardianApprovalsReviewer(
-            undefined,
-            params.execModeRequiringPromptingApprovals === "auto" ? "auto" : undefined,
-          ),
-      sandbox: selectGuardianSandbox(undefined),
-    };
+  if (content === undefined && !params.forceGuardian) {
+    return { mode: "yolo", dangerFullAccessAllowed: true };
   }
-  const allowedSandboxModes = parseAllowedSandboxModesFromCodexRequirements(
-    content,
-    readNonEmptyString(params.hostName) ?? readHostName(),
-  );
-  const allowedApprovalPolicies = parseAllowedApprovalPoliciesFromCodexRequirements(content);
-  const allowedApprovalsReviewers = parseAllowedApprovalsReviewersFromCodexRequirements(content);
+  const { allowedSandboxModes, allowedApprovalPolicies, allowedApprovalsReviewers } =
+    parseCodexRequirementsPolicy(
+      content,
+      content === undefined ? undefined : (readNonEmptyString(params.hostName) ?? readHostName()),
+    );
   const yoloSandboxAllowed =
     allowedSandboxModes === undefined || allowedSandboxModes.has("danger-full-access");
   const yoloApprovalAllowed =

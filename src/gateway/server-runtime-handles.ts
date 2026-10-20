@@ -1,4 +1,3 @@
-// Gateway mutable runtime handles.
 // Provides stop-safe defaults for timers, sidecars, subscriptions, and services.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
@@ -45,17 +44,13 @@ export type GatewayServerMutableState = {
   tailscaleCleanup: (() => Promise<void>) | null;
   readonly postReadySidecars: GatewaySidecarStopOwner;
   readonly gatewayLifetimeSidecars: GatewaySidecarStopOwner;
-  skillsRefreshTimer: ReturnType<typeof setTimeout> | null;
-  skillsRefreshDelayMs: number;
-  skillsChangeUnsub: () => Promise<void>;
+  skillsChangeUnsub: (options?: { exitAfterClose?: boolean }) => Promise<void>;
   channelHealthMonitor: ChannelHealthMonitor | null;
   configReloader: GatewayConfigReloaderHandle;
   reconcileAuditPolicy: ((config: OpenClawConfig) => void) | null;
   agentUnsub: (() => Promise<void> | void) | null;
-  heartbeatUnsub: (() => void) | null;
   transcriptUnsub: (() => void) | null;
   lifecycleUnsub: (() => void) | null;
-  taskUnsub: (() => void) | null;
 };
 
 /** Creates gateway mutable state with inert handles that are safe to stop before startup finishes. */
@@ -67,25 +62,21 @@ export function createGatewayServerMutableState(): GatewayServerMutableState {
     heartbeatRunner: createNoopHeartbeatRunner(),
     stopDeliveryRecovery: async () => {},
     stopGatewayUpdateCheck: async () => {},
-    tailscaleCleanup: null as (() => Promise<void>) | null,
+    tailscaleCleanup: null,
     postReadySidecars: createGatewaySidecarStopOwner(),
     gatewayLifetimeSidecars: createGatewaySidecarStopOwner(),
-    skillsRefreshTimer: null as ReturnType<typeof setTimeout> | null,
-    skillsRefreshDelayMs: 30_000,
     skillsChangeUnsub: async () => {},
-    channelHealthMonitor: null as ChannelHealthMonitor | null,
+    channelHealthMonitor: null,
     configReloader: {
       stop: async () => {},
       applyPluginLifecycleChange: async () => {
         throw new Error("Plugin lifecycle is unavailable before Gateway startup completes.");
       },
       isConfigReloadSettled: () => false,
-    } satisfies GatewayConfigReloaderHandle,
+    },
     reconcileAuditPolicy: null,
-    agentUnsub: null as (() => Promise<void> | void) | null,
-    heartbeatUnsub: null as (() => void) | null,
-    transcriptUnsub: null as (() => void) | null,
-    lifecycleUnsub: null as (() => void) | null,
-    taskUnsub: null as (() => void) | null,
+    agentUnsub: null,
+    transcriptUnsub: null,
+    lifecycleUnsub: null,
   };
 }

@@ -1,10 +1,5 @@
 import type { AgentMessage } from "@openclaw/agent-core";
 import { replaceCompactionReplayOwnerContent } from "@openclaw/ai/transports";
-/**
- * Transcript repair helpers for tool-call replay.
- *
- * Normalizes raw tool-call blocks and synthesizes missing tool results without rewriting trusted local payloads.
- */
 import { safeParseJsonRecord } from "@openclaw/normalization-core";
 import { readStringValue } from "@openclaw/normalization-core/string-coerce";
 import {
@@ -33,18 +28,10 @@ type RawToolCallBlock = ToolCallBlock & {
   partialJson?: unknown;
 };
 
-function hasToolCallId(block: RawToolCallBlock): boolean {
-  return collectToolCallIds(block).length > 0;
-}
-
 function hasPartialJson(
   block: RawToolCallBlock,
 ): block is RawToolCallBlock & { partialJson: string } {
   return typeof block.partialJson === "string";
-}
-
-function isCompleteJsonObject(value: string): boolean {
-  return safeParseJsonRecord(value) !== undefined;
 }
 
 function isFinalizedOpenAIResponsesToolCall(
@@ -61,7 +48,7 @@ function isFinalizedOpenAIResponsesToolCall(
     !block.arguments ||
     typeof block.arguments !== "object" ||
     Array.isArray(block.arguments) ||
-    (!isCompleteJsonObject(block.partialJson) &&
+    (safeParseJsonRecord(block.partialJson) === undefined &&
       (block.partialJson.trim() !== "" || Object.keys(block.arguments).length > 0))
   ) {
     return false;
@@ -78,16 +65,6 @@ function sanitizeToolCallBlock(block: RawToolCallBlock): RawToolCallBlock {
   const rawName = readStringValue(block.name);
   const name = rawName?.trim();
   return name && name !== rawName ? { ...block, name } : block;
-}
-
-function countRawToolCallBlocks(content: unknown[]): number {
-  let count = 0;
-  for (const block of content) {
-    if (isContractToolCallBlock(block)) {
-      count += 1;
-    }
-  }
-  return count;
 }
 
 function isReplaySafeThinkingAssistantTurn(
@@ -139,12 +116,6 @@ function hasSessionsSpawnAttachmentToolCall(content: unknown[]): boolean {
 
 export { makeMissingToolResult };
 
-type ToolCallInputRepairReport = {
-  messages: AgentMessage[];
-  droppedToolCalls: number;
-  droppedAssistantMessages: number;
-};
-
 type ToolCallInputRepairOptions = {
   allowedToolNames?: Iterable<string>;
   allowProviderOwnedThinkingReplay?: boolean;
@@ -162,16 +133,15 @@ type ToolUseResultPairingOptions = {
 
 export { stripToolResultDetails } from "../shared/model-context-message.js";
 
-function collectFollowingToolResults(
+export function collectFollowingToolResults(
   messages: AgentMessage[],
   index: number,
+  currentToolCalls?: ReturnType<typeof extractToolCallsFromAssistant>,
+  hasAssistantToolCall: (message: Extract<AgentMessage, { role: "assistant" }>) => boolean = (
+    message,
+  ) => extractToolCallsFromAssistant(message).length > 0,
 ): { ids: Set<string>; displaced: boolean } {
   const ids = new Set<string>();
-  const assistant = messages[index];
-  const currentToolCalls =
-    assistant && typeof assistant === "object" && assistant.role === "assistant"
-      ? extractToolCallsFromAssistant(assistant)
-      : [];
   let sawNonToolResult = false;
   let displaced = false;
   for (let nextIndex = index + 1; nextIndex < messages.length; nextIndex += 1) {
@@ -180,11 +150,13 @@ function collectFollowingToolResults(
       sawNonToolResult = true;
       continue;
     }
-    if (message.role === "assistant" && extractToolCallsFromAssistant(message).length > 0) {
+    if (message.role === "assistant" && hasAssistantToolCall(message)) {
       break;
     }
     if (message.role === "toolResult") {
-      const normalizedLegacyResult = normalizeLegacyToolResultId(message, currentToolCalls);
+      const normalizedLegacyResult = currentToolCalls
+        ? normalizeLegacyToolResultId(message, currentToolCalls)
+        : message;
       const resultIds = extractToolResultIds(normalizedLegacyResult);
       for (const id of resultIds) {
         ids.add(id);
@@ -197,12 +169,10 @@ function collectFollowingToolResults(
   return { ids, displaced };
 }
 
-function repairToolCallInputs(
+export function sanitizeToolCallInputs(
   messages: AgentMessage[],
   options?: ToolCallInputRepairOptions,
-): ToolCallInputRepairReport {
-  let droppedToolCalls = 0;
-  let droppedAssistantMessages = 0;
+): AgentMessage[] {
   let changed = false;
   const out: AgentMessage[] = [];
   const allowedToolNames = normalizeAllowedToolNames(options?.allowedToolNames);
@@ -225,14 +195,18 @@ function repairToolCallInputs(
     if (
       allowProviderOwnedThinkingReplay &&
       msg.content.some((block) => isThinkingLikeBlock(block)) &&
-      countRawToolCallBlocks(msg.content) > 0
+      msg.content.some(isContractToolCallBlock)
     ) {
       // Signed Anthropic thinking blocks must remain byte-for-byte stable on
       // replay. Preserve the turn when every sibling tool call is already valid;
       // the later pairing repair can synthesize missing legacy tool results
       // without mutating provider-owned assistant content.
       const replaySafeToolCalls = extractToolCallsFromAssistant(msg);
-      const followingToolResults = collectFollowingToolResults(messages, index);
+      const followingToolResults = collectFollowingToolResults(
+        messages,
+        index,
+        replaySafeToolCalls,
+      );
       const hasSpawnAttachments = hasSessionsSpawnAttachmentToolCall(msg.content);
       if (
         isReplaySafeThinkingAssistantTurn(msg.content, allowedToolNames, isCompleted) &&
@@ -250,8 +224,6 @@ function repairToolCallInputs(
         changed ||= followingToolResults.displaced;
         out.push(msg);
       } else {
-        droppedToolCalls += countRawToolCallBlocks(msg.content);
-        droppedAssistantMessages += 1;
         changed = true;
       }
       continue;
@@ -261,25 +233,21 @@ function repairToolCallInputs(
     let messageChanged = false;
 
     for (const block of msg.content) {
-      if (isContractToolCallBlock(block)) {
-        const rawBlock = block as RawToolCallBlock;
-        // Drop genuinely incomplete streaming artifacts (missing required fields).
-        if (
-          !hasToolCallInput(block) ||
-          !hasToolCallId(block) ||
-          !isAllowedToolCallName(rawBlock.name, isCompleted(rawBlock) ? null : allowedToolNames)
-        ) {
-          droppedToolCalls += 1;
-          changed = true;
-          messageChanged = true;
-          continue;
-        }
+      if (!isContractToolCallBlock(block)) {
+        nextContent.push(block);
+        continue;
       }
-      let workBlock = block;
-      if (isContractToolCallBlock(block) && hasPartialJson(block)) {
+      if (
+        !hasToolCallInput(block) ||
+        collectToolCallIds(block).length === 0 ||
+        !isAllowedToolCallName(block.name, isCompleted(block) ? null : allowedToolNames)
+      ) {
+        messageChanged = true;
+        continue;
+      }
+      let workBlock: RawToolCallBlock = block;
+      if (hasPartialJson(block)) {
         if (!isFinalizedOpenAIResponsesToolCall(msg, block)) {
-          droppedToolCalls += 1;
-          changed = true;
           messageChanged = true;
           continue;
         }
@@ -287,55 +255,30 @@ function repairToolCallInputs(
         // Legacy generic Responses transport persisted successful toolUse turns
         // with the scratch buffer intact. Strip it only when terminal state and
         // the provider-specific finalized shape both prove completion.
-        const stripped = { ...block };
-        delete (stripped as RawToolCallBlock & { partialJson?: unknown }).partialJson;
+        const stripped: RawToolCallBlock = { ...block };
+        delete stripped.partialJson;
         workBlock = stripped;
-        changed = true;
         messageChanged = true;
       }
-      if (isContractToolCallBlock(workBlock)) {
-        const sanitized = sanitizeToolCallBlock(workBlock);
-        if (sanitized !== workBlock) {
-          changed = true;
-          messageChanged = true;
-        }
-        nextContent.push(sanitized as typeof block);
-        continue;
-      }
-      nextContent.push(workBlock);
+      const sanitized = sanitizeToolCallBlock(workBlock);
+      messageChanged ||= sanitized !== workBlock;
+      nextContent.push(sanitized as typeof block);
     }
 
-    if (messageChanged) {
-      if (nextContent.length === 0) {
-        droppedAssistantMessages += 1;
-        continue;
-      }
-      const nextMessage = replaceCompactionReplayOwnerContent(msg, nextContent);
-      for (const toolCall of extractToolCallsFromAssistant(nextMessage)) {
-        priorToolCallIds.add(toolCall.id);
-      }
-      out.push(nextMessage);
+    changed ||= messageChanged;
+    if (messageChanged && nextContent.length === 0) {
       continue;
     }
-
-    for (const toolCall of extractToolCallsFromAssistant(msg)) {
+    const nextMessage = messageChanged
+      ? replaceCompactionReplayOwnerContent(msg, nextContent)
+      : msg;
+    for (const toolCall of extractToolCallsFromAssistant(nextMessage)) {
       priorToolCallIds.add(toolCall.id);
     }
-    out.push(msg);
+    out.push(nextMessage);
   }
 
-  return {
-    messages: changed ? out : messages,
-    droppedToolCalls,
-    droppedAssistantMessages,
-  };
-}
-
-export function sanitizeToolCallInputs(
-  messages: AgentMessage[],
-  options?: ToolCallInputRepairOptions,
-): AgentMessage[] {
-  return repairToolCallInputs(messages, options).messages;
+  return changed ? out : messages;
 }
 
 export function sanitizeToolUseResultPairing(
@@ -364,10 +307,6 @@ type ToolUseRepairReport = {
   droppedOrphanCount: number;
   moved: boolean;
 };
-
-function shouldDropErroredAssistantResults(options?: ToolUseResultPairingOptions): boolean {
-  return options?.erroredAssistantResultPolicy === "drop";
-}
 
 export function repairToolUseResultPairing(
   messages: AgentMessage[],
@@ -414,16 +353,21 @@ export function repairToolUseResultPairing(
     pushUnframedRange(frame.startIndex);
     cursor = frame.endIndex;
 
-    if (!(frame.failed && shouldDropErroredAssistantResults(options))) {
+    const dropFailed = frame.failed && options?.erroredAssistantResultPolicy === "drop";
+    if (!dropFailed) {
       out.push(frame.assistant);
-      for (const occurrence of frame.occurrences) {
-        if (occurrence.result) {
-          out.push(occurrence.result);
-          continue;
+    }
+    for (const occurrence of frame.occurrences) {
+      if (dropFailed) {
+        if (occurrence.sourceResult) {
+          discarded.push({
+            message: occurrence.sourceResult,
+            index: occurrence.sourceResultIndex ?? messages.indexOf(occurrence.sourceResult),
+          });
         }
-        if (frame.failed) {
-          continue;
-        }
+      } else if (occurrence.result) {
+        out.push(occurrence.result);
+      } else if (!frame.failed) {
         const missing = makeMissingToolResult({
           toolCallId: occurrence.id,
           toolName: occurrence.name,
@@ -432,15 +376,6 @@ export function repairToolUseResultPairing(
         occurrence.result = missing;
         added.push(missing);
         out.push(missing);
-      }
-    } else {
-      for (const occurrence of frame.occurrences) {
-        if (occurrence.sourceResult) {
-          discarded.push({
-            message: occurrence.sourceResult,
-            index: occurrence.sourceResultIndex ?? messages.indexOf(occurrence.sourceResult),
-          });
-        }
       }
     }
     out.push(...frame.remainder);

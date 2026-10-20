@@ -13,10 +13,10 @@ describe("Codex network proxy config admission", () => {
       },
     },
     {
-      name: "invalid sibling field",
-      field: "appServer.remoteWorkspaceRoot",
+      name: "malformed auth input",
+      field: "appServer.authToken",
       appServer: {
-        remoteWorkspaceRoot: " ",
+        authToken: { unexpected: "synthetic-secret" },
         networkProxy: { enabled: true, domains: { "example.com": "allow" } },
       },
     },
@@ -25,9 +25,9 @@ describe("Codex network proxy config admission", () => {
     ({ appServer, field }) => {
       const pluginConfig = {
         appServer: {
-          ...appServer,
           authToken: "synthetic-secret-token",
           headers: { Authorization: "Bearer synthetic-secret-header" },
+          ...appServer,
         },
       };
       const validated = validateJsonSchemaValue({
@@ -46,28 +46,6 @@ describe("Codex network proxy config admission", () => {
       );
     },
   );
-
-  it("rejects a manifest-valid malformed auth input without dropping the enabled allowlist", () => {
-    const validated = validateJsonSchemaValue({
-      schema: manifest.configSchema,
-      value: {
-        appServer: {
-          authToken: { unexpected: "synthetic-secret" },
-          networkProxy: { enabled: true, domains: { "example.com": "allow" } },
-        },
-      },
-      applyDefaults: true,
-    });
-    expect(validated.ok).toBe(true);
-    if (!validated.ok) {
-      throw new Error("Expected manifest-valid config");
-    }
-    expect(() => resolveRuntimeForTest({ pluginConfig: validated.value })).toThrow(
-      new Error(
-        'Invalid plugins.entries.codex.config.appServer.authToken; fix this field before starting Codex with network restrictions. Run "openclaw doctor --fix" for supported repairs.',
-      ),
-    );
-  });
 
   it("identifies an invalid domains map without exposing its keys or values", () => {
     expect(() =>
@@ -91,6 +69,8 @@ describe("Codex network proxy config admission", () => {
   it.each([
     { name: "relative path", readOnlyPaths: ["app/node_modules/openclaw"] },
     { name: "root path", readOnlyPaths: ["/"] },
+    { name: "leading whitespace", readOnlyPaths: [" /opt/credentials"] },
+    { name: "trailing whitespace", readOnlyPaths: ["/opt/credentials "] },
     { name: "special profile key", readOnlyPaths: [":minimal"] },
     { name: "glob path", readOnlyPaths: ["/app/*"] },
     { name: "traversal path", readOnlyPaths: ["/app/../etc"] },
@@ -131,11 +111,12 @@ describe("Codex network proxy config admission", () => {
           allowLocalBinding: true,
           readOnlyPaths: [
             "/app/node_modules/openclaw",
-            "/opt/oce/repository-credentials",
-            "/run/oce/repository-credentials",
+            "/app/node_modules/openclaw/",
+            "/opt/example/repository-helper",
+            "/run/example/repository-credentials",
           ],
           domains: {
-            "git.123-control.svc": "allow",
+            "git.broker.example.com": "allow",
             "api.openai.com": "allow",
             "169.254.169.254": "deny",
             "blocked.example.com": "deny",
@@ -156,19 +137,24 @@ describe("Codex network proxy config admission", () => {
 
     expect(
       resolveRuntimeForTest({ pluginConfig: validated.value }).networkProxy?.configPatch,
-    ).toMatchObject({
+    ).toEqual({
+      "features.network_proxy.enabled": true,
+      default_permissions: "repository-broker-test",
       permissions: {
         "repository-broker-test": {
           filesystem: {
+            ":minimal": "read",
+            ":project_roots": { ".": "write" },
             "/app/node_modules/openclaw": "read",
-            "/opt/oce/repository-credentials": "read",
-            "/run/oce/repository-credentials": "read",
+            "/opt/example/repository-helper": "read",
+            "/run/example/repository-credentials": "read",
           },
           network: {
+            enabled: true,
             mode: "full",
             allow_local_binding: true,
             domains: {
-              "git.123-control.svc": "allow",
+              "git.broker.example.com": "allow",
               "api.openai.com": "allow",
               "169.254.169.254": "deny",
               "blocked.example.com": "deny",
@@ -177,13 +163,30 @@ describe("Codex network proxy config admission", () => {
         },
       },
     });
-    const permissions = resolveRuntimeForTest({
-      pluginConfig: validated.value,
-    }).networkProxy?.configPatch.permissions as Record<
-      string,
-      { network: Record<string, unknown> }
-    >;
-    expect(permissions["repository-broker-test"]?.network).not.toHaveProperty("private_endpoints");
+  });
+
+  it("preserves a literal POSIX trailing backslash in a read grant", () => {
+    const runtime = resolveRuntimeForTest({
+      pluginConfig: {
+        appServer: {
+          networkProxy: {
+            enabled: true,
+            profileName: "literal-path",
+            readOnlyPaths: ["/opt/example/credentials\\"],
+          },
+        },
+      },
+    });
+    expect(runtime.networkProxy?.configPatch.permissions).toEqual({
+      "literal-path": {
+        filesystem: {
+          ":minimal": "read",
+          "/opt/example/credentials\\": "read",
+          ":project_roots": { ".": "write" },
+        },
+        network: { enabled: true },
+      },
+    });
   });
 
   it("preserves blank-field admission and fallback without an enabled proxy", () => {

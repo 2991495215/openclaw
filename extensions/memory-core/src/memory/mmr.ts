@@ -1,3 +1,4 @@
+import type { ResolvedMemorySearchConfig } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { jaccardSimilarity, tokenize } from "./tokenize.js";
 
@@ -8,17 +9,7 @@ type MMRItem = {
   snippet: string;
 };
 
-export type MMRConfig = {
-  /** Enable/disable MMR re-ranking. Default: false (opt-in) */
-  enabled: boolean;
-  /** Lambda parameter: 0 = max diversity, 1 = max relevance. Default: 0.7 */
-  lambda: number;
-};
-
-export const DEFAULT_MMR_CONFIG: MMRConfig = {
-  enabled: false,
-  lambda: 0.7,
-};
+export type MMRConfig = ResolvedMemorySearchConfig["query"]["hybrid"]["mmr"];
 
 type PreparedMMRItem<T extends MMRItem> = {
   item: T;
@@ -29,20 +20,15 @@ type PreparedMMRItem<T extends MMRItem> = {
   maxSimilarity: number;
 };
 
-export function applyMMRToHybridResults<T extends MMRItem & { path: string; startLine: number }>(
-  items: T[],
-  config: Partial<MMRConfig> = {},
-): T[] {
+export function applyMMRToHybridResults<T extends MMRItem>(items: T[], lambda: number): T[] {
   if (items.length === 0) {
     return items;
   }
-  const { enabled = DEFAULT_MMR_CONFIG.enabled, lambda = DEFAULT_MMR_CONFIG.lambda } = config;
-  if (!enabled || items.length <= 1) {
+  if (items.length === 1) {
     return [...items];
   }
-  const clampedLambda = Math.max(0, Math.min(1, lambda));
-  if (clampedLambda === 1) {
-    return [...items].toSorted((a, b) => b.score - a.score);
+  if (lambda === 1) {
+    return items.toSorted((a, b) => b.score - a.score);
   }
   const prepared: PreparedMMRItem<T>[] = items.map((item) => {
     const snippet = item.snippet;
@@ -68,8 +54,7 @@ export function applyMMRToHybridResults<T extends MMRItem & { path: string; star
     let bestItem: PreparedMMRItem<T> | null = null;
     let bestMMRScore = -Infinity;
     for (const candidate of remaining) {
-      const mmrScore =
-        clampedLambda * candidate.relevance - (1 - clampedLambda) * candidate.maxSimilarity;
+      const mmrScore = lambda * candidate.relevance - (1 - lambda) * candidate.maxSimilarity;
       if (
         mmrScore > bestMMRScore ||
         (mmrScore === bestMMRScore && candidate.score > (bestItem?.score ?? -Infinity))
