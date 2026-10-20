@@ -3,7 +3,7 @@ const EQUIVALENTS: Readonly<Record<string, { name: string; setup: string }>> = {
   "48668144": {
     name: "AgentMail",
     setup:
-      "Install the official plugin with `openclaw plugins install clawhub:@agentmail/agentmail --no-enable`. Configure an AgentMail API key through native setup, then enable the plugin and use its bundled CLI skill for inbox creation and mail reads. An inbound email channel is not required for scheduled reads. Setup: https://www.agentmail.to/docs/integrations/openclaw",
+      "Install the official plugin with `openclaw plugins install clawhub:@agentmail/agentmail --no-enable`. Explicitly keep it disabled during setup with `openclaw plugins disable agentmail`; --no-enable preserves defaults rather than forcing a disabled state. Configure an AgentMail API key through native setup, then enable the plugin and use its bundled CLI skill for inbox creation and mail reads. An inbound email channel is not required for scheduled reads. Setup: https://www.agentmail.to/docs/integrations/openclaw",
   },
   "49086599": {
     name: "X reads/search via the bundled xurl skill",
