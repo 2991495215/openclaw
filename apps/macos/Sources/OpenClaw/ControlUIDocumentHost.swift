@@ -19,6 +19,7 @@ final class ControlUIDocumentHost {
 
     private(set) var nativeStartupObservation: Task<Void, Never>?
     var nativeAuthScript: WKUserScript?
+    var windowChromeScript: WKUserScript?
     private(set) var nativeGatewayAuthRevision: UInt64 = 0
     let tlsParams: GatewayTLSParams?
     let browserSessionLease: DashboardBrowserSessionStore.Lease?
@@ -71,6 +72,9 @@ final class ControlUIDocumentHost {
             forKey: "drawsBackground")
         self.webView.underPageBackgroundColor = .windowBackgroundColor
         self.webView.allowsBackForwardNavigationGestures = true
+        self.webView.pageZoom = DashboardWebView.boundedContentZoom(
+            AppDefaults.standard.object(forKey: DashboardWebView.contentZoomDefaultsKey) as? Double ?? 1)
+        self.webView.onContentZoomChanged = { [weak self] in self?.installWindowChromeScript() }
         nativeAuthHandler.owner = self
         self.registerWindowChromeHandler()
         self.installWindowChromeScript()
