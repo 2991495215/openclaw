@@ -12,10 +12,12 @@ import {
 describe("Android release public failure diagnostics", () => {
   it.each([
     ["read failed: EOF", "read-eof", undefined],
+    ["read failed", "read-error", undefined],
     ["read failed: Connection reset by peer", "read-error", "ECONNRESET"],
     ["poll failed: Bad file descriptor", "poll-error", "EBADF"],
     ["write failed", "write-error", undefined],
     ["connection closed", "connection-closed", undefined],
+    ["requested stop", "requested-stop", undefined],
     ["read failed: private-token", "read-error", undefined],
     ["private-token", "unknown", undefined],
   ])("sanitizes host ADB termination reason %s", (message, reason, errno) => {

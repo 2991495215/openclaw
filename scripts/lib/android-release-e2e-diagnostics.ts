@@ -10,7 +10,7 @@ export function androidReleaseAdbServerLineFacts(line: string) {
   const reason =
     message === "read failed: EOF"
       ? "read-eof"
-      : message.startsWith("read failed: ")
+      : message === "read failed" || message.startsWith("read failed: ")
         ? "read-error"
         : message === "write failed"
           ? "write-error"
@@ -18,7 +18,9 @@ export function androidReleaseAdbServerLineFacts(line: string) {
             ? "poll-error"
             : message === "connection closed"
               ? "connection-closed"
-              : "unknown";
+              : message === "requested stop"
+                ? "requested-stop"
+                : "unknown";
   const errno = [
     ["ECONNRESET", "Connection reset by peer"],
     ["ECONNABORTED", "Software caused connection abort"],
