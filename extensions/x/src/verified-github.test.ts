@@ -9,14 +9,15 @@ import { clearRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-s
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveXAccount } from "./accounts.js";
 import { openXAllowlist } from "./allowlist.js";
-import { createXApiClient } from "./api.js";
 import { xPlugin } from "./channel.js";
 import { getXApi } from "./client.js";
 import { createXGitHubReader } from "./github.js";
 import { formatXSenderLine } from "./guest-policy.js";
 import { resolveXIngress } from "./ingress.js";
 import { XBudgetExceededError } from "./spend.js";
+import { createXApiClient } from "./test-support/api.js";
 import { config, fixture, post } from "./test-support/monitor-fixture.js";
+import { withXTestFetch } from "./test-support/network.js";
 import { createXTestSpend } from "./test-support/spend.js";
 import { createXGitHubService } from "./verified-github-service.js";
 import { getXGitHubStatus, syncXGitHub } from "./verified-github.js";
@@ -30,7 +31,7 @@ vi.mock("./github.js", async (importOriginal) => {
   return {
     ...actual,
     createXGitHubReader: (options: Parameters<typeof actual.createXGitHubReader>[0]) =>
-      actual.createXGitHubReader({ ...options, fetch: options.fetch ?? network.github }),
+      withXTestFetch(actual.createXGitHubReader(options), network.github),
   };
 });
 vi.mock("./client.js", async (importOriginal) => ({

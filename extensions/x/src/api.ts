@@ -12,7 +12,6 @@ export type XPost = NonNullable<ReturnType<typeof parseXPost>>;
 export type XUser = { id: string; username: string; name?: string; protected?: boolean };
 export type XPage = ReturnType<typeof parsePage>;
 export type XPostEnvelope = { post: XPost; users: XUser[]; recipientPending?: true };
-export type XFetch = (input: string, init?: RequestInit) => Promise<Response>;
 export type XTokenState = "idle" | "refreshing" | "ready" | "error";
 
 export class XApiError extends Error {
@@ -192,7 +191,6 @@ export function createXApiClient(options: {
   clientSecret: string;
   refreshToken: string;
   bearerToken?: string;
-  fetch?: XFetch;
   signal?: AbortSignal;
   loadRefreshToken?: () => Promise<string | undefined>;
   saveRefreshToken: (token: string) => Promise<void>;
@@ -223,24 +221,19 @@ export function createXApiClient(options: {
         await options.saveRefreshToken(pendingRefreshToken);
         pendingRefreshToken = undefined;
       }
-      const response = await fetchXService(
-        "api.x.com",
-        "/2/oauth2/token",
-        {
-          method: "POST",
-          redirect: "error",
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${encodeURIComponent(options.clientId)}:${encodeURIComponent(options.clientSecret)}`).toString("base64")}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: new URLSearchParams({
-            grant_type: "refresh_token",
-            refresh_token: refreshToken,
-          }).toString(),
-          signal: requestSignal(),
+      const response = await fetchXService("api.x.com", "/2/oauth2/token", {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${encodeURIComponent(options.clientId)}:${encodeURIComponent(options.clientSecret)}`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded",
         },
-        options.fetch,
-      );
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+        }).toString(),
+        signal: requestSignal(),
+      });
       if (!response.ok) {
         await response.body?.cancel();
         throw new XApiError(response.status, "token refresh");
@@ -348,7 +341,6 @@ export function createXApiClient(options: {
               ...(body ? { body } : {}),
               signal,
             },
-            options.fetch,
             params.assertActive
               ? async () => {
                   try {

@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createXGitHubReader, type XGitHubPermission } from "./github.js";
+import {
+  createXGitHubReader as createNativeXGitHubReader,
+  type XGitHubPermission,
+} from "./github.js";
+import { withXTestFetch, type XFetch } from "./test-support/network.js";
 
-type GitHubFetch = NonNullable<Parameters<typeof createXGitHubReader>[0]["fetch"]>;
+type GitHubFetch = XFetch;
+
+function createXGitHubReader({
+  fetch,
+  ...options
+}: Parameters<typeof createNativeXGitHubReader>[0] & { fetch: XFetch }) {
+  return withXTestFetch(createNativeXGitHubReader(options), fetch);
+}
 
 function collaborator(login: string, permission?: XGitHubPermission) {
   return {

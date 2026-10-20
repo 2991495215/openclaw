@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createXApiClient, type XPost } from "./api.js";
+import { createXApiClient, type XPost } from "./test-support/api.js";
 import { createXTestSpend } from "./test-support/spend.js";
 import { assembleXThread } from "./thread.js";
 

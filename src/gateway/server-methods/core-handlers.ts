@@ -55,7 +55,7 @@ const CORE_GATEWAY_HANDLER_MODULES = {
     import("./device-pair-setup.js").then((module) => module.devicePairSetupHandlers),
   diagnostics: () => import("./diagnostics.js").then((module) => module.diagnosticsHandlers),
   "debug-proxy": () => import("./debug-proxy.js").then((module) => module.debugProxyHandlers),
-  doctor: () => import("./doctor.js").then((module) => module.createDoctorHandlers()),
+  doctor: () => import("./doctor.js").then((module) => module.doctorHandlers),
   environments: () => import("./environments.js").then((module) => module.environmentsHandlers),
   worktrees: () => import("./worktrees.js").then((module) => module.worktreesHandlers),
   "exec-approvals": () =>

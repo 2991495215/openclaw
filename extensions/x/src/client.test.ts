@@ -2,6 +2,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getXApi } from "./client.js";
 import type { XAccountConfig } from "./config-schema.js";
+import { withXTestFetch } from "./test-support/network.js";
 
 const fixture = vi.hoisted(() => {
   const rows = new Map<string, unknown>();
@@ -39,8 +40,7 @@ vi.mock("./api.js", async (importOriginal) => {
   return {
     ...actual,
     createXApiClient(options: Parameters<typeof actual.createXApiClient>[0]) {
-      options.fetch = fixture.fetch;
-      return actual.createXApiClient(options);
+      return withXTestFetch(actual.createXApiClient(options), fixture.fetch);
     },
   };
 });

@@ -1,6 +1,6 @@
 import { PlatformMessageNotDispatchedError } from "openclaw/plugin-sdk/error-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createXApiClient, type XFetch } from "./api.js";
+import { createXApiClient, type XFetch } from "./test-support/api.js";
 import { createXTestSpend } from "./test-support/spend.js";
 
 afterEach(() => {

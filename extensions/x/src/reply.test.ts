@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createXApiClient } from "./api.js";
 import { sendXReply } from "./reply.js";
 import { normalizeXReplyTarget } from "./target.js";
+import { createXApiClient } from "./test-support/api.js";
 import { createXTestSpend } from "./test-support/spend.js";
 
 function createReplyFixture() {

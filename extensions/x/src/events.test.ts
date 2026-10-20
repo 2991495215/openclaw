@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createXApiClient, type XPost, type XPostEnvelope } from "./api.js";
 import { runXEvents, type XCursorState, type XEventStatus } from "./events.js";
+import { createXApiClient, type XPost, type XPostEnvelope } from "./test-support/api.js";
 import { budgetApi, post } from "./test-support/events.js";
 import { createXTestSpend } from "./test-support/spend.js";
 

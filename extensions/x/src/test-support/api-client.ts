@@ -1,4 +1,4 @@
-import { createXApiClient, type XFetch } from "../api.js";
+import { createXApiClient, type XFetch } from "./api.js";
 import { createXTestSpend } from "./spend.js";
 
 export function createXTestApi(

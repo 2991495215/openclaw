@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createXApiClient, type XPost } from "./api.js";
 import { resolveXRecipient } from "./recipient.js";
+import { createXApiClient, type XPost } from "./test-support/api.js";
 import { createXTestSpend } from "./test-support/spend.js";
 
 describe("X reply recipients", () => {
