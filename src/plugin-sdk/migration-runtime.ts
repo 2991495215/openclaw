@@ -112,6 +112,8 @@ export async function createMigrationAgent(
     };
     const result = await createAgent({
       entry,
+      // Import retries do not authorize recovery of preserved agent databases.
+      restorePaths: [],
       // Imported files own this agent's instructions; do not seed stock onboarding.
       skipBootstrap: true,
       beforePersistentApply: () => owner.assertCurrent(),
