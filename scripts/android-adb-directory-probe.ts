@@ -504,10 +504,11 @@ echo $! >${guest.directory}/tracer.pid
 async function guestSyscallFacts(guest: GuestTrace, sample = false) {
   // Only the original daemon threads own this transport. Followed shell children
   // have independent descriptor tables and can reuse the same descriptor number.
+  // The shell-manager thread doing the initial task listing may exit before attach.
   for (const tid of guest.tids) {
     const captured = await guestRoot(
       guest.serial,
-      `${sample ? "head -n 40" : "cat"} ${guest.directory}/syscalls.${tid}\n`,
+      `if [ -f ${guest.directory}/syscalls.${tid} ]; then ${sample ? "head -n 40" : "cat"} ${guest.directory}/syscalls.${tid}; fi\n`,
     );
     await writeFile(`${guest.prefix}.${tid}`, captured.stdout, { mode: 0o600 });
   }
