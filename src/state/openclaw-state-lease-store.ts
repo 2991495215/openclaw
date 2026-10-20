@@ -20,7 +20,7 @@ type LeaseDatabase = Pick<DB, "state_leases">;
 
 /** Publish owner facts in the caller's transaction without renewing or replacing its lease. */
 export function updateOpenClawStateLeasePayloadInTransaction(
-  db: EngineConnection,
+  db: DatabaseSync,
   identity: OpenClawStateLeaseIdentity,
   payloadJson: string,
 ): boolean {

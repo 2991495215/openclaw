@@ -5,7 +5,6 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import { sliceUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
-import type { NodePermissionDetails } from "../../packages/gateway-protocol/src/node-permissions.js";
 import { validateSystemRunExecutionContext } from "../../packages/gateway-protocol/src/system-run-execution-context.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { describeInterpreterInlineEval } from "../infra/command-analysis/inline-eval.js";
@@ -36,6 +35,7 @@ import {
 } from "../infra/exec-auto-review.js";
 import {
   requestExecHostViaSocket,
+  type NodePermissionDetails,
   type ExecHostRequest,
   type ExecHostRunResult,
 } from "../infra/exec-host.js";

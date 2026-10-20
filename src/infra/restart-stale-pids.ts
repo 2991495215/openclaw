@@ -599,7 +599,9 @@ export function cleanStaleGatewayProcessesSync(
     waitForPortFreeSync(port);
     return killed;
   } catch (error) {
-    restartLog.warn(`stale gateway process cleanup failed: ${formatRawErrorMessage(error)}`);
+    restartLog.warn(
+      `stale gateway process cleanup failed: ${formatRawErrorMessage(error, { redact: (text) => text })}`,
+    );
     return [];
   }
 }

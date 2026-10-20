@@ -96,7 +96,6 @@ export async function backupDoctorSqliteDatabases(params: {
   repair?: { key: string; validate: (database: DatabaseSync) => void };
   verifiedSnapshots?: readonly BackupSqliteSnapshotFact[];
   migrationTables?: ReadonlyMap<string, readonly string[]>;
-  integrityChecks?: ReadonlyMap<string, SqliteIntegrityCheckOptions>;
   stateFamilyBackedUp?: true;
   /** Recovery must retain its own verified originals, including on disposable rehearsals. */
   requireSnapshots?: true;

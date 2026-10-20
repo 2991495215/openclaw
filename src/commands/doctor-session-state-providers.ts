@@ -422,7 +422,6 @@ export function createPluginSessionStateDoctorScanner(params: {
                         provider: model.provider,
                         modelId: model.model,
                         requestedRuntime: selection.runtime,
-                        contextManagement: harness.contextManagement,
                         config: params.cfg,
                         agentId,
                         sessionKey: selection.key,
