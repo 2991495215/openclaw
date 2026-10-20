@@ -62,7 +62,7 @@ export function createCodexDesktopGenerationService(params: {
         current.watcher = watch(APPLICATIONS_PATH, { recursive: false }, (_eventType, filename) => {
           if (
             ctx.scheduler.signal.aborted ||
-            (filename && !candidateNames.has(filename.toString().split(path.sep)[0] ?? ""))
+            (filename && !candidateNames.has(filename.split(path.sep)[0] ?? ""))
           ) {
             return;
           }
