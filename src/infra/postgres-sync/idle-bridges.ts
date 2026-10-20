@@ -1,5 +1,4 @@
-import { receiveMessageOnPort, type MessagePort, type Worker } from "node:worker_threads";
-import type { BridgeReply } from "./protocol.js";
+import type { MessagePort, Worker } from "node:worker_threads";
 
 type IdleBridge = {
   port: MessagePort;
@@ -13,26 +12,9 @@ const idleBridges = new Map<string, IdleBridge>();
 const maxIdleBridges = 4;
 
 function closeBridge(bridge: IdleBridge): void {
-  try {
-    const id = ++bridge.requestId;
-    bridge.port.postMessage({ operation: "close", id }, []);
-    const deadline = performance.now() + 5_000;
-    let observed: number;
-    while ((observed = Atomics.load(bridge.control, 0)) !== id) {
-      const remaining = deadline - performance.now();
-      if (remaining <= 0 || Atomics.load(bridge.control, 1)) {
-        return;
-      }
-      Atomics.wait(bridge.control, 0, observed, remaining);
-    }
-    const reply: BridgeReply | undefined = receiveMessageOnPort(bridge.port)?.message;
-    if (reply?.id === id && !("error" in reply)) {
-      Atomics.wait(bridge.control, 1, 0, Math.max(0, deadline - performance.now()));
-    }
-  } finally {
-    bridge.port.close();
-    void bridge.worker.terminate();
-  }
+  // Only server-idle transports enter this pool; termination closes their sockets.
+  bridge.port.close();
+  void bridge.worker.terminate();
 }
 
 const ignoreWorkerError = () => {};
