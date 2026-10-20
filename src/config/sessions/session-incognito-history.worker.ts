@@ -98,7 +98,12 @@ export function createIncognitoHistoryWorker(
       const { searchSessionTranscriptsReadOnlySync } =
         await import("./session-transcript-search.js");
       prepared = prepareHistoryRead(command.type, () => {
-        const { found: _found, ...result } = sessions.length
+        // The search revision fences canonical store reads; it is not part of the history result.
+        const {
+          found: _found,
+          revision: _revision,
+          ...result
+        } = sessions.length
           ? searchSessionTranscriptsReadOnlySync(
               {
                 ...selection,
@@ -107,7 +112,7 @@ export function createIncognitoHistoryWorker(
               },
               { agentId: database.agentId, path: database.path, env },
             )
-          : { found: true, hits: [], truncated: false };
+          : { found: true, revision: undefined, hits: [], truncated: false };
         return {
           kind: "transcript-search",
           result: { ...result, indexing: !isSessionTranscriptIndexStatusClean(database.db) },
