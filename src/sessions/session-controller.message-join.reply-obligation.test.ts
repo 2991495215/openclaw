@@ -275,7 +275,7 @@ it.each([
               assertCurrent: () => incoming.operatorAuthority?.assertCurrent(),
               toolAuthorityPreparation: bindPreparedToolAuthority(
                 bindWorkerToolPreparation({
-                  authorityKind: "source-bound",
+                  authorityKind: "source-bound" as const,
                   assertCurrent: () => joined.read(),
                   compatAssertCurrent: () => joined.read(),
                   prepareCurrent: joined.prepareCurrent,

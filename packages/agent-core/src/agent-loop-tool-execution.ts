@@ -184,6 +184,7 @@ export async function prepareToolCallExecution(
         onImplementationStart();
         return prepared.tool.execute(
           prepared.toolCall.id,
+          // SAFETY: prepareToolCall validated these arguments against this exact tool's schema.
           prepared.args as never,
           signal,
           onUpdate,

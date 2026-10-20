@@ -317,7 +317,8 @@ describe("sessions_send direct queue source authority", () => {
           }
           tool = available;
         }
-        const send = () => tool.execute("source-send", { sessionKey, message, timeoutSeconds: 0 });
+        const send = () =>
+          tool.execute("source-send", { sessionKey, message, mode: "steer", timeoutSeconds: 0 });
         const pending = withGatewayToolCallerIdentity(
           {
             ...createSessionsSendTestCaller(requesterSessionKey),

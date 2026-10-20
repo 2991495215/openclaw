@@ -181,8 +181,6 @@ it.each([
               enabled: true,
               allowed: false,
               defaultLevel: "off" as const,
-              fullAccessAvailable: false,
-              fullAccessBlockedReason: "host-policy" as const,
             },
           },
         };
