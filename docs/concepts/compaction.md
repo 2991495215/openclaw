@@ -173,19 +173,23 @@ default and also respects `compaction.enabled: false`. This is not a keep-warm
 heartbeat: maintenance never rearms itself, and a restart discards pending timers.
 A later successful foreground turn can arm a new timer.
 
+Five-minute or shorter cache windows are always excluded, even when this option
+is enabled. This exclusion does not disable prompt caching, normal context-pressure
+compaction, manual `/compact`, or model-requested compaction.
+
 The timer requires positive cache-read or cache-write usage from the actual
 request, its start time, and a supported model, endpoint, and authentication mode.
-Generation time counts toward the window. It starts up to one minute early
-(10% of the window for shorter windows), skips already expired observations, and
-yields to foreground work. A changed session, model selection, credentials,
-configuration, or an intervening compaction invalidates pending work. Once started,
-maintenance uses the bounded compaction timeout rather than discarding a paid
-summary when the estimated cache window passes.
+Generation time counts toward the window. It starts up to one minute early,
+skips already expired observations, and yields to foreground work. A changed
+session, model selection, credentials, configuration, or an intervening compaction
+invalidates pending work. Once started, maintenance uses the bounded compaction
+timeout rather than discarding a paid summary when the estimated cache window passes.
 
-Currently qualified routes are direct Anthropic API-key requests (the effective
-five-minute or one-hour marker TTL) and direct OpenAI API-key requests on GPT-5.6
-and newer (the documented 30-minute minimum). These are scheduling estimates, not
-exact expiry promises. Other routes are skipped rather than assigned a universal
+Currently qualified routes are direct Anthropic API-key requests with an effective
+one-hour marker TTL and direct OpenAI API-key requests on GPT-5.6 and newer (the
+documented 30-minute minimum). An Anthropic `long` preference that the transport
+downgrades to a five-minute marker does not qualify. These are scheduling estimates,
+not exact expiry promises. Other routes are skipped rather than assigned a universal
 55-minute interval. See [provider cache contracts](/reference/prompt-caching#pre-expiry-compaction).
 
 Compaction still costs inference and can lose detail. It may use a different

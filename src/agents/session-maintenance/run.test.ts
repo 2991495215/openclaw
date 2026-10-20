@@ -58,7 +58,7 @@ vi.mock("../command/runtime-loaders.js", async (importOriginal) => ({
       if (params.force) {
         maintenanceRuntime.forcedFlushes += 1;
         if (maintenanceRuntime.advanceClockDuringFlush) {
-          vi.setSystemTime(Date.now() + 40_000);
+          vi.setSystemTime(Date.now() + 70_000);
         }
       }
       maintenanceRuntime.flushOperations.push({
@@ -96,6 +96,10 @@ it.each([
   "window-elapsed-during-flush",
   "expired-before-admission",
   "self-request",
+  "short-window",
+  "shorter-window",
+  "cache-disabled",
+  "cache-default",
   "foreground",
   "model-change",
   "account-change",
@@ -116,13 +120,21 @@ it.each([
   maintenanceRuntime.entry = entry;
   const cfg = {
     agents: {
-      defaults: { compaction: { enabled: mode !== "disabled", cacheExpiry: { enabled: true } } },
+      defaults: {
+        compaction: {
+          enabled: mode !== "disabled",
+          cacheExpiry: {
+            enabled: mode === "cache-default" ? undefined : mode !== "cache-disabled",
+          },
+        },
+      },
     },
   };
   const followupRun = createTestFollowupRun({
     sessionKey,
     sessionId: entry.sessionId,
-    timeoutMs: 60_000,
+    // The admitted flush can cross the one-minute cache lead without exhausting its own budget.
+    timeoutMs: 120_000,
     config: cfg,
   });
   setRuntimeConfigSnapshot(cfg);
@@ -132,7 +144,7 @@ it.each([
         cfg,
         sessionKey,
         storePath: "/synthetic/idle-compaction/sessions.json",
-        timeoutMs: 60_000,
+        timeoutMs: 120_000,
       },
       followupRun,
       sessionId: entry.sessionId,
@@ -141,12 +153,24 @@ it.each([
       startedAt: Date.now(),
       expectedCompactionCount: 0,
       expectedSelection: { model: "fixture" },
-      cacheExpiry: { observedAt: Date.now(), windowMs: 300_000, basis: "anthropic-ttl" },
+      cacheExpiry: {
+        observedAt: Date.now(),
+        windowMs:
+          mode === "shorter-window"
+            ? 60_000
+            : mode === "short-window" || mode === "self-request"
+              ? 300_000
+              : 3_600_000,
+        basis: "anthropic-ttl",
+      },
       requestedCompaction: mode === "self-request" ? { focus: "Keep pending work" } : undefined,
     },
     Promise.resolve(mode !== "failed-delivery"),
   );
   await waitForSessionMaintenance(sessionKey);
+  expect(maintenanceRuntime.compactions).toBe(
+    mode === "disabled" || mode === "failed-delivery" ? 0 : 1,
+  );
   if (mode === "foreground") {
     (await beginForegroundSessionMaintenance(sessionKey))();
   }
@@ -164,9 +188,15 @@ it.each([
   }
   maintenanceRuntime.advanceClockDuringFlush = mode === "window-elapsed-during-flush";
   if (mode === "expired-before-admission") {
-    vi.setSystemTime(Date.now() + 300_000);
+    vi.setSystemTime(Date.now() + 3_600_000);
   }
-  await vi.advanceTimersByTimeAsync(270_000);
+  await vi.advanceTimersByTimeAsync(3_540_000 - 1);
+  await waitForSessionMaintenance(sessionKey);
+  expect(maintenanceRuntime.requestedCompactions).toEqual(
+    mode === "self-request" ? [{ focus: "Keep pending work" }] : [],
+  );
+  expect(maintenanceRuntime.forcedFlushes).toBe(mode === "self-request" ? 1 : 0);
+  await vi.advanceTimersByTimeAsync(1);
   await waitForSessionMaintenance(sessionKey);
   expect(maintenanceRuntime.requestedCompactions).toEqual(
     mode === "expiry" || mode === "window-elapsed-during-flush"

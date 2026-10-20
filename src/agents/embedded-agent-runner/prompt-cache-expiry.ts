@@ -14,7 +14,7 @@ export type PromptCacheExpiryEstimate = {
   basis: "anthropic-ttl" | "openai-minimum";
 };
 
-/** Only qualified conversation-prefix caches: never infer a TTL from a provider label alone. */
+/** Only conversation-prefix caches eligible for pre-expiry compaction; short TTLs are excluded. */
 export function estimatePromptCacheExpiry(params: {
   model: Model;
   authMode?: string;
@@ -43,10 +43,10 @@ export function estimatePromptCacheExpiry(params: {
       { ...model, api: "anthropic-messages" },
       retention,
     );
-    if (cacheControl) {
+    if (cacheControl && "ttl" in cacheControl && cacheControl.ttl === "1h") {
       return {
         observedAt: requestStartedAt,
-        windowMs: "ttl" in cacheControl && cacheControl.ttl === "1h" ? 3_600_000 : 300_000,
+        windowMs: 3_600_000,
         basis: "anthropic-ttl",
       };
     }

@@ -27,9 +27,7 @@ const observation = { authMode: "api-key", usage: { cacheRead: 2000 }, requestSt
 
 describe("cache-expiry qualification", () => {
   it.each([
-    [anthropic, "short", 300_000],
     [anthropic, "long", 3_600_000],
-    [{ ...anthropic, compat: { supportsLongCacheRetention: false } }, "long", 300_000],
     [openai, undefined, 1_800_000],
     [openai, "short", 1_800_000],
     [openai, "long", 1_800_000],
@@ -41,6 +39,8 @@ describe("cache-expiry qualification", () => {
   });
 
   it.each([
+    { model: anthropic, retention: "short" },
+    { model: { ...anthropic, compat: { supportsLongCacheRetention: false } }, retention: "long" },
     { model: { ...anthropic, baseUrl: "https://proxy.example" }, retention: "long" },
     { model: { ...openai, baseUrl: "https://proxy.example" }, retention: "long" },
     { model: { ...openai, id: "gpt-5.4" }, retention: "long" },
@@ -61,9 +61,11 @@ describe("cache-expiry qualification", () => {
     { model: anthropic, requestStartedAt: now + 1 },
     { model: anthropic, requestStartedAt: undefined },
   ] satisfies Array<Partial<Parameters<typeof estimatePromptCacheExpiry>[0]> & { model: Model }>)(
-    "does not invent a lifetime: %j",
+    "does not qualify automatic compaction: %j",
     (overrides) => {
-      expect(estimatePromptCacheExpiry({ ...observation, ...overrides })).toBeUndefined();
+      expect(
+        estimatePromptCacheExpiry({ ...observation, retention: "long", ...overrides }),
+      ).toBeUndefined();
     },
   );
 
@@ -71,19 +73,25 @@ describe("cache-expiry qualification", () => {
     const estimate = estimatePromptCacheExpiry({
       ...observation,
       model: anthropic,
+      retention: "long",
       usage: { cacheWrite: 1500 },
-      requestStartedAt: now - 240_000,
+      requestStartedAt: now - 3_480_000,
     });
     expect(estimate).toBeDefined();
     if (!estimate) {
       throw new Error("expected a qualified observation");
     }
     expect(planCacheExpiryCompaction(estimate, now)).toEqual({
-      notBefore: now + 30_000,
-      expiresAt: now + 60_000,
+      notBefore: now + 60_000,
+      expiresAt: now + 120_000,
     });
-    expect(planCacheExpiryCompaction(estimate, now + 60_000)).toBeUndefined();
-    expect(planCacheExpiryCompaction({ ...estimate, windowMs: 1_800_000 }, now)).toEqual({
+    expect(planCacheExpiryCompaction(estimate, now + 120_000)).toBeUndefined();
+    expect(
+      planCacheExpiryCompaction(
+        { ...estimate, observedAt: now - 240_000, windowMs: 1_800_000 },
+        now,
+      ),
+    ).toEqual({
       notBefore: now + 1_500_000,
       expiresAt: now + 1_560_000,
     });

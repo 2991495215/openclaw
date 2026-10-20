@@ -2,6 +2,10 @@ import type { PromptCacheExpiryEstimate } from "../embedded-agent-runner/prompt-
 
 /** Scheduling consumes recorded transport facts without loading provider runtimes. */
 export function planCacheExpiryCompaction(estimate: PromptCacheExpiryEstimate, now = Date.now()) {
+  // Even an opted-in caller must not spend compaction work on five-minute or shorter caches.
+  if (estimate.windowMs <= 300_000) {
+    return undefined;
+  }
   const expiresAt = estimate.observedAt + estimate.windowMs;
   if (expiresAt <= now) {
     return undefined;

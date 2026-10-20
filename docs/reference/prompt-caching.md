@@ -152,12 +152,17 @@ agents:
 Optional [pre-expiry compaction](/concepts/compaction#before-cache-expiry) uses
 positive cache usage, not merely a configured retention preference. It does not
 extend a cache indefinitely or promise that the summarizer will hit the same prefix.
+Five-minute or shorter windows never arm this automatic timer, even when
+`agents.defaults.compaction.cacheExpiry.enabled` is `true`. This is an effective-TTL
+policy, not a ban on the `short` retention label: the already-qualified direct
+OpenAI routes below retain their 30-minute estimate. Prompt caching itself and
+normal, manual, and model-requested compaction are unchanged.
 
 Provider contracts reviewed on **October 20, 2026**:
 
 | Route                                    | Documented lifetime                                                                                                                                          | Automatic compaction timer                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Direct Anthropic API key                 | Five minutes, or one hour when the effective marker requests it; refresh measured from request start                                                         | Qualified after positive cache usage              |
+| Direct Anthropic API key                 | Five minutes, or one hour when the effective marker requests it; refresh measured from request start                                                         | One-hour markers only, after positive cache usage |
 | Direct OpenAI API key, GPT-5.6 and newer | At least 30 minutes after write/reuse; may be retained longer                                                                                                | Uses the minimum as an estimate, not exact expiry |
 | Earlier OpenAI API models                | In-memory typically 5–10 minutes, up to an hour; extended retention typically around 30 minutes, up to 24 hours; defaults also depend on organization policy | Skipped: no reliable deadline                     |
 | ChatGPT sign-in and CLI/native harnesses | No equivalent OpenClaw-controlled lifetime contract                                                                                                          | Skipped                                           |
