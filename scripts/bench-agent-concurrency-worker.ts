@@ -482,7 +482,7 @@ function sweepRow(child: number, generation: number, now: number): SubagentRunRe
 
 async function runSweepSample(childCount: number): Promise<Sample> {
   const [
-    { getSubagentRunsForChildSession, subagentRuns: runs },
+    { subagentRuns: runs },
     { createSubagentRegistrySweeper },
     { mutateSubagentRuns },
     { isSameSubagentRunOwner },
@@ -554,8 +554,6 @@ async function runSweepSample(childCount: number): Promise<Sample> {
     retireObligations: async () => {
       retiredObligations += 1;
     },
-    getRunsForChildSession: getSubagentRunsForChildSession,
-    getRunsForCollectorGroup: () => [],
     warn: () => {},
   });
   try {

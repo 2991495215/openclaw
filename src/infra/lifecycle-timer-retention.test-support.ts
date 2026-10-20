@@ -76,8 +76,6 @@ function sweeperFixture(): TimerFixture {
     notifyContextEngineSubagentEnded: unexpected,
     retireSupersededRun: unexpected,
     retireObligations: unexpected,
-    getRunsForChildSession: unexpected,
-    getRunsForCollectorGroup: unexpected,
     warn: unexpected,
   });
   let references: WeakRef<object>[] = [];
