@@ -9,7 +9,6 @@ import JSON5 from "json5";
 import { MANIFEST_KEY } from "../compat/legacy-names.js";
 import { parseBooleanValue } from "../utils/boolean.js";
 import { parseJsonWithJson5Fallback } from "../utils/parse-json-compat.js";
-import type { Requirements } from "./requirements.js";
 
 /** Reads a frontmatter field only when it is represented as a string value. */
 export function getFrontmatterString(
@@ -47,36 +46,32 @@ export function resolveOpenClawManifestBlock(params: {
   }
 }
 
-/** Extracts normalized runtime requirement lists from an OpenClaw manifest block. */
-export function resolveOpenClawManifestRequires(
-  metadataObj: Record<string, unknown>,
-): Omit<Requirements, "os"> | undefined {
-  const requiresRaw = asOptionalObjectRecord(metadataObj.requires);
-  if (!requiresRaw) {
-    return undefined;
-  }
-  return {
-    bins: normalizeCsvOrLooseStringList(requiresRaw.bins),
-    anyBins: normalizeCsvOrLooseStringList(requiresRaw.anyBins),
-    env: normalizeCsvOrLooseStringList(requiresRaw.env),
-    config: normalizeCsvOrLooseStringList(requiresRaw.config),
-  };
-}
-
-/** Parses manifest install entries with a caller-owned parser and drops unsupported specs. */
-export function resolveOpenClawManifestInstall<T>(
+/** Normalizes shared manifest fields while retaining caller-owned install validation. */
+export function resolveOpenClawManifestCommonFields<T>(
   metadataObj: Record<string, unknown>,
   parseInstallSpec: (input: unknown) => T | undefined,
-): T[] {
+) {
+  const requiresRaw = asOptionalObjectRecord(metadataObj.requires);
   const installRaw = Array.isArray(metadataObj.install) ? (metadataObj.install as unknown[]) : [];
-  return installRaw
+  const install = installRaw
     .map((entry) => parseInstallSpec(entry))
     .filter((entry): entry is T => Boolean(entry));
-}
-
-/** Extracts normalized OS allowlist entries from an OpenClaw manifest block. */
-export function resolveOpenClawManifestOs(metadataObj: Record<string, unknown>): string[] {
-  return normalizeCsvOrLooseStringList(metadataObj.os);
+  const os = normalizeCsvOrLooseStringList(metadataObj.os);
+  return {
+    always: typeof metadataObj.always === "boolean" ? metadataObj.always : undefined,
+    emoji: readStringValue(metadataObj.emoji),
+    homepage: readStringValue(metadataObj.homepage),
+    os: os.length > 0 ? os : undefined,
+    requires: requiresRaw
+      ? {
+          bins: normalizeCsvOrLooseStringList(requiresRaw.bins),
+          anyBins: normalizeCsvOrLooseStringList(requiresRaw.anyBins),
+          env: normalizeCsvOrLooseStringList(requiresRaw.env),
+          config: normalizeCsvOrLooseStringList(requiresRaw.config),
+        }
+      : undefined,
+    install: install.length > 0 ? install : undefined,
+  };
 }
 
 type ParsedOpenClawManifestInstallBase = {

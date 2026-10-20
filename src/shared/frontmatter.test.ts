@@ -6,9 +6,7 @@ import {
   parseFrontmatterBool,
   parseOpenClawManifestInstallBase,
   resolveOpenClawManifestBlock,
-  resolveOpenClawManifestInstall,
-  resolveOpenClawManifestOs,
-  resolveOpenClawManifestRequires,
+  resolveOpenClawManifestCommonFields,
 } from "./frontmatter.js";
 
 describe("shared/frontmatter", () => {
@@ -31,27 +29,49 @@ describe("shared/frontmatter", () => {
     ).toBeUndefined();
   });
 
-  it("normalizes manifest requirement and os lists", () => {
+  it("normalizes manifest common fields without changing authored string values", () => {
     expect(
-      resolveOpenClawManifestRequires({
-        requires: {
-          bins: "bun, node",
-          anyBins: [" ffmpeg ", ""],
-          env: ["OPENCLAW_TOKEN", " OPENCLAW_URL "],
-          config: null,
+      resolveOpenClawManifestCommonFields(
+        {
+          always: false,
+          emoji: " ",
+          homepage: "",
+          os: [" darwin ", "linux", ""],
+          requires: {
+            bins: "bun, node",
+            anyBins: [" ffmpeg ", ""],
+            env: ["OPENCLAW_TOKEN", " OPENCLAW_URL "],
+            config: null,
+          },
         },
-      }),
+        () => undefined,
+      ),
     ).toEqual({
-      bins: ["bun", "node"],
-      anyBins: ["ffmpeg"],
-      env: ["OPENCLAW_TOKEN", "OPENCLAW_URL"],
-      config: [],
+      always: false,
+      emoji: " ",
+      homepage: "",
+      os: ["darwin", "linux"],
+      requires: {
+        bins: ["bun", "node"],
+        anyBins: ["ffmpeg"],
+        env: ["OPENCLAW_TOKEN", "OPENCLAW_URL"],
+        config: [],
+      },
+      install: undefined,
     });
-    expect(resolveOpenClawManifestRequires({})).toBeUndefined();
-    expect(resolveOpenClawManifestOs({ os: [" darwin ", "linux", ""] })).toEqual([
-      "darwin",
-      "linux",
-    ]);
+    expect(
+      resolveOpenClawManifestCommonFields(
+        { always: "false", emoji: 1, homepage: null, os: [], install: {} },
+        () => undefined,
+      ),
+    ).toEqual({
+      always: undefined,
+      emoji: undefined,
+      homepage: undefined,
+      os: undefined,
+      requires: undefined,
+      install: undefined,
+    });
   });
 
   it("parses and applies install common fields", () => {
@@ -129,7 +149,7 @@ describe("shared/frontmatter", () => {
 
   it("maps install entries through the parser and filters rejected specs", () => {
     expect(
-      resolveOpenClawManifestInstall(
+      resolveOpenClawManifestCommonFields(
         {
           install: [{ id: "keep" }, { id: "drop" }, "bad"],
         },
@@ -143,7 +163,7 @@ describe("shared/frontmatter", () => {
           }
           return undefined;
         },
-      ),
+      ).install,
     ).toEqual([{ id: "keep" }]);
   });
 });

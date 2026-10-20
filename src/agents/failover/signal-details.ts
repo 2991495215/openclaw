@@ -1,3 +1,4 @@
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 
@@ -18,13 +19,10 @@ function collectFailoverDetailCandidates(
       candidates.push(normalized);
     }
     if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-        try {
-          collectFailoverDetailCandidates(JSON.parse(trimmed) as unknown, candidates, seen);
-        } catch {
-          // Non-JSON detail strings are still useful as direct classifier candidates.
-        }
+      try {
+        collectFailoverDetailCandidates(safeParseJsonRecord(value.trim()), candidates, seen);
+      } catch {
+        // Non-JSON detail strings are still useful as direct classifier candidates.
       }
     }
     return;

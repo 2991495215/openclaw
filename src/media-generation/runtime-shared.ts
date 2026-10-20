@@ -1,4 +1,4 @@
-import { clampTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
+import { clampPositiveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
   resolveCapabilityModelRefForProviders,
@@ -136,20 +136,14 @@ export function resolveReferenceImageCapabilityError(params: {
     : undefined;
 }
 
-function resolveMediaProviderDefaultTimeoutMs(timeoutMs: number | undefined): number | undefined {
-  return typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
-    ? clampTimerTimeoutMs(timeoutMs)
-    : undefined;
-}
-
 /** Resolves a request timeout, preferring per-request over provider defaults. */
 export function resolveMediaProviderRequestTimeoutMs(params: {
   timeoutMs?: number;
   providerDefaultTimeoutMs?: number;
 }): number | undefined {
   return (
-    resolveMediaProviderDefaultTimeoutMs(params.timeoutMs) ??
-    resolveMediaProviderDefaultTimeoutMs(params.providerDefaultTimeoutMs)
+    clampPositiveTimerTimeoutMs(params.timeoutMs) ??
+    clampPositiveTimerTimeoutMs(params.providerDefaultTimeoutMs)
   );
 }
 

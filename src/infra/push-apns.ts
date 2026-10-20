@@ -1,5 +1,6 @@
 import { createHash, createPrivateKey, sign as signJwt } from "node:crypto";
 import { readSecretFile } from "@openclaw/fs-safe/secret";
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
@@ -242,14 +243,8 @@ function parseReason(body: string): string | undefined {
   if (!trimmed) {
     return undefined;
   }
-  try {
-    const parsed = JSON.parse(trimmed) as { reason?: unknown };
-    return typeof parsed.reason === "string" && parsed.reason.trim().length > 0
-      ? parsed.reason.trim()
-      : truncateUtf16Safe(trimmed, 200);
-  } catch {
-    return truncateUtf16Safe(trimmed, 200);
-  }
+  const parsed = safeParseJsonRecord(trimmed);
+  return normalizeOptionalString(parsed?.reason) ?? truncateUtf16Safe(trimmed, 200);
 }
 
 export function shouldClearStoredApnsRegistration(params: {

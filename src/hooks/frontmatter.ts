@@ -4,9 +4,7 @@ import {
   applyOpenClawManifestInstallCommonFields,
   parseOpenClawManifestInstallBase,
   resolveOpenClawManifestBlock,
-  resolveOpenClawManifestInstall,
-  resolveOpenClawManifestOs,
-  resolveOpenClawManifestRequires,
+  resolveOpenClawManifestCommonFields,
 } from "../shared/frontmatter.js";
 import type {
   OpenClawHookMetadata,
@@ -46,19 +44,11 @@ export function resolveHookManifestMetadata(
   if (!metadataObj) {
     return undefined;
   }
-  const requires = resolveOpenClawManifestRequires(metadataObj);
-  const install = resolveOpenClawManifestInstall(metadataObj, parseInstallSpec);
-  const osRaw = resolveOpenClawManifestOs(metadataObj);
   return {
-    always: typeof metadataObj.always === "boolean" ? metadataObj.always : undefined,
-    emoji: readStringValue(metadataObj.emoji),
-    homepage: readStringValue(metadataObj.homepage),
+    ...resolveOpenClawManifestCommonFields(metadataObj, parseInstallSpec),
     hookKey: readStringValue(metadataObj.hookKey),
     export: readStringValue(metadataObj.export),
-    os: osRaw.length > 0 ? osRaw : undefined,
     events: normalizeCsvOrLooseStringList(metadataObj.events),
-    requires,
-    install: install.length > 0 ? install : undefined,
   };
 }
 

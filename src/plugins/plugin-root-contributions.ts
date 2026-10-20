@@ -4,7 +4,6 @@ import { normalizePluginsConfigWithResolverCore } from "./config-normalization-s
 import { resolveMemorySlotDecision } from "./config-state.js";
 import type { PluginManifestRecord } from "./manifest-registry.types.js";
 import type { PluginMetadataSnapshot } from "./plugin-metadata-snapshot.types.js";
-import { hasKind } from "./slots.js";
 
 /** Select active root contributions while leaving path validation and publication to consumers. */
 export function* iteratePluginRootContributions(params: {
@@ -18,8 +17,6 @@ export function* iteratePluginRootContributions(params: {
     params.config?.plugins,
     params.metadataSnapshot.normalizePluginId,
   );
-  const memorySlot = normalizedPlugins.slots.memory;
-  let selectedMemoryPluginId: string | null = null;
   for (const record of params.metadataSnapshot.manifestRegistry.plugins) {
     const roots = record[params.contribution];
     if (!roots || roots.length === 0) {
@@ -40,14 +37,11 @@ export function* iteratePluginRootContributions(params: {
     const memoryDecision = resolveMemorySlotDecision({
       id: record.id,
       kind: record.kind,
-      slot: memorySlot,
-      selectedId: selectedMemoryPluginId,
+      slot: normalizedPlugins.slots.memory,
+      selectedId: null,
     });
     if (!memoryDecision.enabled) {
       continue;
-    }
-    if (memoryDecision.selected && hasKind(record.kind, "memory")) {
-      selectedMemoryPluginId = record.id;
     }
     yield { record, roots };
   }

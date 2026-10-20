@@ -6,6 +6,7 @@ import {
   operatorScopeSatisfied,
   roleScopesAllow,
 } from "../../shared/operator-scope-compat.js";
+import { getOrCreateWeakOwnerMap } from "../../shared/weak-owner-map.js";
 import { prepareUserProfileRolePolicyAuthority } from "../../state/user-channel-identity-operations.js";
 import { captureResidentUserProfileAccess } from "../../state/user-profile-list.js";
 import type { PersonalGitHubAction, PersonalGitHubActionV2 } from "../github-personal-oauth.js";
@@ -117,11 +118,7 @@ async function prepareOptionsSession(
   if (isIncognitoSessionKey(sessionKey)) {
     return prepareGitHubPublicationSession(sessionKey, { agentId, cfg, assertCurrent });
   }
-  let flights = optionsSessionFlights.get(cfg);
-  if (!flights) {
-    flights = new Map();
-    optionsSessionFlights.set(cfg, flights);
-  }
+  const flights = getOrCreateWeakOwnerMap(optionsSessionFlights, cfg);
   const key = JSON.stringify([getRuntimeConfigSnapshotMetadata()?.revision, agentId, sessionKey]);
   let flight = flights.get(key);
   if (!flight) {

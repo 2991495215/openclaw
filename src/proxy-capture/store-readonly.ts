@@ -1,4 +1,6 @@
 import { gunzipSync } from "node:zlib";
+import { safeParseJson } from "@openclaw/normalization-core/json-coercion";
+import { asNullableObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeNullableString as normalizeObservedValue } from "@openclaw/normalization-core/string-coerce";
 import type { Compilable, InferResult } from "kysely";
 import {
@@ -215,16 +217,7 @@ export function readDebugProxyCaptureSessionEvents(
 // Metadata is optional and user/tool supplied, so parse defensively for coverage
 // summaries instead of assuming every event has valid JSON.
 function parseMetaJson(metaJson: unknown): Record<string, unknown> | null {
-  if (typeof metaJson !== "string" || metaJson.trim().length === 0) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(metaJson) as unknown;
-    // SAFETY: Parsed objects, including arrays, are read only through optional label keys.
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
+  return typeof metaJson === "string" ? asNullableObjectRecord(safeParseJson(metaJson)) : null;
 }
 
 function sortObservedCounts(counts: Map<string, number>): CaptureObservedDimension[] {

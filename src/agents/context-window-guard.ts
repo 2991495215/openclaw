@@ -1,3 +1,4 @@
+import { floorPositiveFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveConfiguredContextTokenLimits } from "./context-resolution.js";
 import { isLocalProviderEndpoint } from "./provider-attribution.js";
@@ -16,11 +17,7 @@ export type ContextWindowInfo = {
 };
 
 function normalizePositiveInt(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-  const int = Math.floor(value);
-  return int > 0 ? int : null;
+  return floorPositiveFiniteNumber(value) || null;
 }
 
 /** Resolve the effective context window and source for one provider/model. */

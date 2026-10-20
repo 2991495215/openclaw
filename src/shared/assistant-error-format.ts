@@ -1,3 +1,4 @@
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { asOptionalRecord, readStringField } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
@@ -88,15 +89,8 @@ export function parseApiErrorPayload(raw?: string): ErrorPayload | null {
     return null;
   }
   const candidate = trimmed.replace(ERROR_PAYLOAD_PREFIX_RE, "").trim();
-  if (!candidate.startsWith("{") || !candidate.endsWith("}")) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(candidate) as unknown;
-    return isErrorPayloadObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  const parsed = safeParseJsonRecord(candidate);
+  return isErrorPayloadObject(parsed) ? parsed : null;
 }
 
 function extractHttpStatusMatch(

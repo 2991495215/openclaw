@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Insertable, Selectable, Updateable } from "kysely";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
 import type { EngineConnection } from "../../infra/sql-connection.js";
@@ -363,15 +363,6 @@ export function insertSandboxRegistryRowIfMissingInDatabase(
   sandboxRegistryPublication.stage(db, rows);
 }
 
-function parseRegistryEntryJson(row: SandboxRegistryRow): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(row.entry_json) as unknown;
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function optionalPayloadString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -380,7 +371,7 @@ export function rowToContainerEntry(row: SandboxRegistryRow): SandboxRegistryEnt
   if (row.registry_kind !== "container") {
     return null;
   }
-  const payload = parseRegistryEntryJson(row);
+  const payload = safeParseJsonRecord(row.entry_json);
   if (!payload) {
     return null;
   }
@@ -402,7 +393,7 @@ export function rowToBrowserEntry(row: SandboxRegistryRow): SandboxBrowserRegist
   if (row.registry_kind !== "browser") {
     return null;
   }
-  const payload = parseRegistryEntryJson(row);
+  const payload = safeParseJsonRecord(row.entry_json);
   if (!payload) {
     return null;
   }

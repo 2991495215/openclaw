@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { mergeProcessEnv } from "../infra/process-env.js";
 import type { OpenClawPluginNodeHostCommandIo } from "../plugins/types.js";
@@ -37,22 +38,14 @@ function isPtyDimension(value: unknown): value is number {
 }
 
 function decodePtyInput(payloadJSON: string): NodePtyInput | null {
-  try {
-    const value = JSON.parse(payloadJSON) as unknown;
-    if (!isRecord(value)) {
-      return null;
-    }
-    const input = value;
-    if (input.kind === "data" && typeof input.data === "string") {
-      return { kind: "data", data: input.data };
-    }
-    if (input.kind === "resize" && isPtyDimension(input.cols) && isPtyDimension(input.rows)) {
-      return { kind: "resize", cols: input.cols, rows: input.rows };
-    }
-    return null;
-  } catch {
-    return null;
+  const input = safeParseJsonRecord(payloadJSON);
+  if (input?.kind === "data" && typeof input.data === "string") {
+    return { kind: "data", data: input.data };
   }
+  if (input?.kind === "resize" && isPtyDimension(input.cols) && isPtyDimension(input.rows)) {
+    return { kind: "resize", cols: input.cols, rows: input.rows };
+  }
+  return null;
 }
 
 function decodePtyParams(paramsJSON: string | null | undefined, action: "start" | "resume") {

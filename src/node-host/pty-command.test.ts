@@ -48,6 +48,7 @@ function createPtyFixture() {
     data: (chunk: string) => onData?.(chunk),
     exit: (event: { exitCode: number; signal?: number }) => onExit?.(event),
     input: (payload: object) => onInput?.(JSON.stringify(payload)),
+    rawInput: (payload: string) => onInput?.(payload),
     ready: () => vi.waitFor(() => expect(onInput).toBeDefined()),
     run: (
       params: Partial<Parameters<typeof runNodePtyCommand>[0]> = {},
@@ -136,7 +137,7 @@ it.each(["source", "abort"] as const)(
 );
 
 it("relays output, data, resize, abort, and exit", async () => {
-  const { pty, io, controller, data, input, exit, run } = createPtyFixture();
+  const { pty, io, controller, data, input, rawInput, exit, run } = createPtyFixture();
   const spawn = vi.fn(async () => pty);
   const result = run(
     {
@@ -167,8 +168,20 @@ it("relays output, data, resize, abort, and exit", async () => {
   expect(pty.resume).toHaveBeenCalledOnce();
   input({ kind: "resize", cols: 0, rows: 30 });
   input({ kind: "resize", cols: 80, rows: 2001 });
+  for (const payload of [
+    "{",
+    "",
+    "null",
+    "[]",
+    "42",
+    '{"kind":"other"}',
+    '{"kind":"data","data":3}',
+  ]) {
+    rawInput(payload);
+  }
+  expect(pty.write).not.toHaveBeenCalled();
   expect(pty.resize).not.toHaveBeenCalled();
-  input({ kind: "data", data: "keys" });
+  rawInput(' \n {"kind":"data","data":"keys"}\t');
   input({ kind: "resize", cols: 100, rows: 30 });
   expect(pty.write).toHaveBeenCalledWith("keys");
   expect(pty.resize).toHaveBeenCalledWith(100, 30);

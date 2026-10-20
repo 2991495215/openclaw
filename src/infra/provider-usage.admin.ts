@@ -1,3 +1,4 @@
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
@@ -42,13 +43,7 @@ export function decodeProviderUsageAdminToken(prefix: string, raw: string): stri
   if (!raw.startsWith(prefix)) {
     return undefined;
   }
-  try {
-    return normalizeOptionalString(
-      asOptionalRecord(JSON.parse(raw.slice(prefix.length)) as unknown)?.token,
-    );
-  } catch {
-    return undefined;
-  }
+  return normalizeOptionalString(safeParseJsonRecord(raw.slice(prefix.length))?.token);
 }
 
 export { asOptionalRecord as asProviderUsageObject };

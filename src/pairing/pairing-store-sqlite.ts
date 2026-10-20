@@ -1,11 +1,13 @@
 // Internal SQLite persistence for channel pairing requests and allow entries.
 
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { parseDateStringTimestampMs } from "@openclaw/normalization-core/number-coercion";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { asNonArrayRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { Selectable } from "kysely";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
+import { normalizeOptionalTrimmedStringRecord } from "../shared/collection-input.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
 import {
   runOpenClawStateWriteTransaction,
@@ -35,20 +37,6 @@ type ChannelPairingState = {
   allowFrom?: Record<string, string[]>;
 };
 
-function normalizePersistedPairingMeta(value: unknown): Record<string, string> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const out: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    const normalized = normalizeOptionalString(entry);
-    if (normalized) {
-      out[key] = normalized;
-    }
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
 export function normalizePersistedPairingRequest(value: unknown): PairingRequest | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -67,7 +55,7 @@ export function normalizePersistedPairingRequest(value: unknown): PairingRequest
   ) {
     return undefined;
   }
-  const meta = normalizePersistedPairingMeta(value.meta);
+  const meta = normalizeOptionalTrimmedStringRecord(asNonArrayRecord(value.meta));
   return { id, code, createdAt, lastSeenAt, ...(meta ? { meta } : {}) };
 }
 
@@ -105,14 +93,7 @@ export const pairingReadOperations = {
 
 function normalizePairingRequestRows(rows: readonly PairingRequestRow[]): PairingRequest[] {
   return rows.flatMap((row) => {
-    let meta: Record<string, string> | undefined;
-    if (row.meta_json) {
-      try {
-        meta = normalizePersistedPairingMeta(JSON.parse(row.meta_json));
-      } catch {
-        meta = undefined;
-      }
-    }
+    let meta = safeParseJsonRecord(row.meta_json ?? "");
     // The indexed column owns request scope. Duplicated metadata may be absent or stale and
     // must never move a request or approval across accounts during a state rewrite.
     meta = { ...meta, accountId: resolveAllowFromAccountId(row.account_id) };

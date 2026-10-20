@@ -1,4 +1,5 @@
 import { encodedModelRequestBodyStream } from "@openclaw/ai/internal/model-request-body";
+import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 
 export function requestBodyHasStreamTrue(
   request: Request | undefined,
@@ -21,10 +22,5 @@ export function requestBodyHasStreamTrue(
   if (typeof init?.body !== "string" || !init.body) {
     return false;
   }
-  try {
-    // SAFETY: Only stream is inspected; invalid JSON and null are handled by the catch.
-    return (JSON.parse(init.body) as { stream?: unknown }).stream === true;
-  } catch {
-    return false;
-  }
+  return safeParseJsonRecord(init.body)?.stream === true;
 }

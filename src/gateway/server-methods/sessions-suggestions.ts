@@ -38,7 +38,6 @@ import {
   retainForwardedSessionMutationAuthorization,
   withSessionMutationCommitGuard,
 } from "./session-mutation-guards.js";
-import { sharingExpectedEntry } from "./sessions-sharing-authority.js";
 import {
   authorizeSessionSuggestionMutation,
   createSessionSuggestionMutation,
@@ -140,11 +139,6 @@ export const sessionSuggestionHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      const expectedSessionId = target.entry.sessionId;
-      const expectedEntry = {
-        ...sharingExpectedEntry(target),
-        lifecycleRevision: target.entry.lifecycleRevision,
-      };
       const mutation = await createSessionSuggestionMutation({
         target,
         context,
@@ -154,6 +148,7 @@ export const sessionSuggestionHandlers: GatewayRequestHandlers = {
         signal,
         assertCurrent: sessionMutationAuthorization?.assertCurrent,
       });
+      const { expectedSessionId, expectedEntry } = mutation;
       try {
         const added = await mutation.run({
           kind: "start",
@@ -331,11 +326,6 @@ export const sessionSuggestionHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      const expectedSessionId = target.entry.sessionId;
-      const expectedEntry = {
-        ...sharingExpectedEntry(target),
-        lifecycleRevision: target.entry.lifecycleRevision,
-      };
       const mutation = await createSessionSuggestionMutation({
         target,
         context,
@@ -345,6 +335,7 @@ export const sessionSuggestionHandlers: GatewayRequestHandlers = {
         signal,
         assertCurrent: sessionMutationAuthorization?.assertCurrent,
       });
+      const { expectedSessionId, expectedEntry } = mutation;
       try {
         const claimResult = await mutation.run({
           kind: "start",

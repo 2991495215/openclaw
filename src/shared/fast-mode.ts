@@ -1,3 +1,4 @@
+import { asPositiveInteger } from "@openclaw/normalization-core/number-coercion";
 import type { FastMode } from "@openclaw/normalization-core/string-coerce";
 import { modelKey } from "./model-key.js";
 
@@ -24,10 +25,6 @@ type FastModeConfig = {
   };
 };
 
-function normalizeFastModeAutoOnSeconds(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
-}
-
 export function resolveFastModeModelAutoOnSeconds(params: {
   cfg: FastModeConfig | undefined;
   provider?: string;
@@ -40,10 +37,10 @@ export function resolveFastModeModelAutoOnSeconds(params: {
   ];
   for (const modelParams of sources) {
     const seconds =
-      normalizeFastModeAutoOnSeconds(modelParams?.fastAutoOnSeconds) ??
-      normalizeFastModeAutoOnSeconds(modelParams?.fast_auto_on_seconds) ??
-      normalizeFastModeAutoOnSeconds(modelParams?.fastSeconds) ??
-      normalizeFastModeAutoOnSeconds(modelParams?.fast_seconds);
+      asPositiveInteger(modelParams?.fastAutoOnSeconds) ??
+      asPositiveInteger(modelParams?.fast_auto_on_seconds) ??
+      asPositiveInteger(modelParams?.fastSeconds) ??
+      asPositiveInteger(modelParams?.fast_seconds);
     if (seconds !== undefined) {
       return seconds;
     }
@@ -60,7 +57,7 @@ export function resolveFastModeForElapsed(params: {
   const nowMs = params.nowMs ?? Date.now();
   const elapsedMs = Math.max(0, nowMs - params.startedAtMs);
   const fastAutoOnSeconds =
-    normalizeFastModeAutoOnSeconds(params.fastAutoOnSeconds) ?? DEFAULT_FAST_MODE_AUTO_ON_SECONDS;
+    asPositiveInteger(params.fastAutoOnSeconds) ?? DEFAULT_FAST_MODE_AUTO_ON_SECONDS;
   const thresholdMs = fastAutoOnSeconds * 1000;
   const enabled =
     params.mode === "auto"
@@ -84,7 +81,7 @@ export function formatFastModeAutoProgressText(params: {
     return "💨Fast: auto-on";
   }
   const fastAutoOnSeconds =
-    normalizeFastModeAutoOnSeconds(params.fastAutoOnSeconds) ?? DEFAULT_FAST_MODE_AUTO_ON_SECONDS;
+    asPositiveInteger(params.fastAutoOnSeconds) ?? DEFAULT_FAST_MODE_AUTO_ON_SECONDS;
   return `💨Fast: auto-off(${params.elapsedSeconds}s>=${fastAutoOnSeconds}s)`;
 }
 
@@ -103,7 +100,7 @@ export function formatFastModeConfirmation(mode: FastMode | undefined): string {
 
 export function formatFastModeAutoLabel(params?: { fastAutoOnSeconds?: number }): string {
   const fastAutoOnSeconds =
-    normalizeFastModeAutoOnSeconds(params?.fastAutoOnSeconds) ?? DEFAULT_FAST_MODE_AUTO_ON_SECONDS;
+    asPositiveInteger(params?.fastAutoOnSeconds) ?? DEFAULT_FAST_MODE_AUTO_ON_SECONDS;
   return `auto (${fastAutoOnSeconds} sec)`;
 }
 

@@ -377,24 +377,23 @@ export async function readClawHubClawPreview(
   return preview;
 }
 
-async function readClawHubClawContents(
+async function withVerifiedClawHubArtifact<T>(
   params: ClawHubFetchOptions & ClawHubCoordinate,
-  requestedPreview?: Pick<ClawHubClawCatalogPreview, "kind" | "name">,
-): Promise<{
-  contents: ClawHubClawCatalogDetail["contents"];
-  preview?: ClawHubClawCatalogPreview;
-}> {
-  const artifactResponse = await fetchClawHubPackageArtifact({
-    ...params,
-    name: params.packageName,
-  });
-  const expected = readExactClawArtifact(artifactResponse, params);
+  expected: ReturnType<typeof readExactClawArtifact>,
+  tempDirPrefix: string,
+  run: (
+    source: ResolvedClawHubSource,
+    rootDir: string,
+    archivePath: string,
+    artifactByteLength: number,
+  ) => Promise<T>,
+): Promise<T> {
   const download = await downloadClawHubPackageArchive({
     name: params.packageName,
     version: params.version,
     artifact: "clawpack",
-    ...(params.baseUrl ? { baseUrl: params.baseUrl } : {}),
-    ...(params.token ? { token: params.token } : {}),
+    baseUrl: params.baseUrl,
+    token: params.token,
     timeoutMs: params.timeoutMs ?? CLAWHUB_TIMEOUT_MS,
   });
   try {
@@ -412,99 +411,20 @@ async function readClawHubClawContents(
     const artifactByteLength = (await fs.stat(download.archivePath)).size;
     const extracted = await withExtractedArchiveRoot({
       archivePath: download.archivePath,
-      tempDirPrefix: "openclaw-claw-catalog-",
+      tempDirPrefix,
       timeoutMs: params.timeoutMs ?? CLAWHUB_TIMEOUT_MS,
       rootMarkers: ["package.json", "CLAW.md", "claw.json"],
       onExtracted: async (rootDir) => {
-        const verified = await readVerifiedArtifactSource({
+        const source = await readVerifiedArtifactSource({
           sourceRoot: rootDir,
           packageName: params.packageName,
           version: params.version,
           artifactSha256: expected.sha256,
           artifactByteLength,
         });
-        const manifest = verified.manifest;
-        const instructions = [
-          ...Object.entries(manifest.workspace.bootstrapFiles)
-            .filter(([, declaration]) => Boolean(declaration))
-            .map(([name, declaration]) => ({ name, source: declaration!.source })),
-          ...manifest.workspace.files.map((file) => ({ name: file.path, source: file.source })),
-        ];
-        // Native first-run instructions are seeded outside the managed workspace declarations.
-        if (verified.packageBootstrap) {
-          instructions.push({ name: "BOOTSTRAP.md", source: verified.packageBootstrap.sourcePath });
-        }
-        if (verified.clawMarkdownBody && !instructions.some((file) => file.name === "SOUL.md")) {
-          instructions.push({ name: "SOUL.md", source: "CLAW.md#body" });
-        }
-        const skills = manifest.packages
-          .filter((pkg) => pkg.kind === "skill")
-          .map((pkg) => ({ name: pkg.ref, version: pkg.version }));
-        const [describedInstructions, describedSkills] = requestedPreview
-          ? [instructions, skills]
-          : await Promise.all([
-              Promise.all(
-                instructions.map(async (instruction) => {
-                  const preview = await readClawHubCatalogPreview({
-                    params,
-                    requested: { kind: "instruction", name: instruction.name },
-                    instructions,
-                    skills,
-                    verified,
-                    rootDir,
-                  });
-                  const excerpt = toCatalogExcerpt(preview?.content);
-                  return { ...instruction, ...(excerpt ? { excerpt } : {}) };
-                }),
-              ),
-              Promise.all(
-                skills.map(async (skill) => {
-                  const preview = await readClawHubCatalogPreview({
-                    params,
-                    requested: { kind: "skill", name: skill.name },
-                    instructions,
-                    skills,
-                    verified,
-                    rootDir,
-                  }).catch(() => undefined);
-                  const excerpt = toCatalogExcerpt(
-                    preview?.content ? stripFrontmatterBlock(preview.content) : undefined,
-                  );
-                  return { ...skill, ...(excerpt ? { excerpt } : {}) };
-                }),
-              ),
-            ]);
-        const preview = await readClawHubCatalogPreview({
-          params,
-          requested: requestedPreview,
-          instructions,
-          skills,
-          verified,
-          rootDir,
-        });
         return {
           ok: true as const,
-          value: {
-            contents: {
-              instructions: describedInstructions,
-              skills: describedSkills,
-              integrations: [
-                ...manifest.packages
-                  .filter((pkg) => pkg.kind === "plugin")
-                  .map((pkg) => ({ name: pkg.ref, kind: "plugin" as const, version: pkg.version })),
-                ...Object.keys(manifest.mcpServers).map((name) => ({
-                  name,
-                  kind: "mcpServer" as const,
-                })),
-              ],
-              automations: manifest.cronJobs.map((job) => ({
-                name: job.name || job.id,
-                schedule: job.schedule.cron,
-                timezone: job.schedule.timezone,
-              })),
-            },
-            ...(preview ? { preview } : {}),
-          },
+          value: await run(source, rootDir, download.archivePath, artifactByteLength),
         };
       },
     });
@@ -515,6 +435,107 @@ async function readClawHubClawContents(
   } finally {
     await download.cleanup();
   }
+}
+
+async function readClawHubClawContents(
+  params: ClawHubFetchOptions & ClawHubCoordinate,
+  requestedPreview?: Pick<ClawHubClawCatalogPreview, "kind" | "name">,
+): Promise<{
+  contents: ClawHubClawCatalogDetail["contents"];
+  preview?: ClawHubClawCatalogPreview;
+}> {
+  const artifactResponse = await fetchClawHubPackageArtifact({
+    ...params,
+    name: params.packageName,
+  });
+  const expected = readExactClawArtifact(artifactResponse, params);
+  return await withVerifiedClawHubArtifact(
+    params,
+    expected,
+    "openclaw-claw-catalog-",
+    async (verified, rootDir) => {
+      const manifest = verified.manifest;
+      const instructions = [
+        ...Object.entries(manifest.workspace.bootstrapFiles)
+          .filter(([, declaration]) => Boolean(declaration))
+          .map(([name, declaration]) => ({ name, source: declaration!.source })),
+        ...manifest.workspace.files.map((file) => ({ name: file.path, source: file.source })),
+      ];
+      // Native first-run instructions are seeded outside the managed workspace declarations.
+      if (verified.packageBootstrap) {
+        instructions.push({ name: "BOOTSTRAP.md", source: verified.packageBootstrap.sourcePath });
+      }
+      if (verified.clawMarkdownBody && !instructions.some((file) => file.name === "SOUL.md")) {
+        instructions.push({ name: "SOUL.md", source: "CLAW.md#body" });
+      }
+      const skills = manifest.packages
+        .filter((pkg) => pkg.kind === "skill")
+        .map((pkg) => ({ name: pkg.ref, version: pkg.version }));
+      const [describedInstructions, describedSkills] = requestedPreview
+        ? [instructions, skills]
+        : await Promise.all([
+            Promise.all(
+              instructions.map(async (instruction) => {
+                const preview = await readClawHubCatalogPreview({
+                  params,
+                  requested: { kind: "instruction", name: instruction.name },
+                  instructions,
+                  skills,
+                  verified,
+                  rootDir,
+                });
+                const excerpt = toCatalogExcerpt(preview?.content);
+                return { ...instruction, ...(excerpt ? { excerpt } : {}) };
+              }),
+            ),
+            Promise.all(
+              skills.map(async (skill) => {
+                const preview = await readClawHubCatalogPreview({
+                  params,
+                  requested: { kind: "skill", name: skill.name },
+                  instructions,
+                  skills,
+                  verified,
+                  rootDir,
+                }).catch(() => undefined);
+                const excerpt = toCatalogExcerpt(
+                  preview?.content ? stripFrontmatterBlock(preview.content) : undefined,
+                );
+                return { ...skill, ...(excerpt ? { excerpt } : {}) };
+              }),
+            ),
+          ]);
+      const preview = await readClawHubCatalogPreview({
+        params,
+        requested: requestedPreview,
+        instructions,
+        skills,
+        verified,
+        rootDir,
+      });
+      return {
+        contents: {
+          instructions: describedInstructions,
+          skills: describedSkills,
+          integrations: [
+            ...manifest.packages
+              .filter((pkg) => pkg.kind === "plugin")
+              .map((pkg) => ({ name: pkg.ref, kind: "plugin" as const, version: pkg.version })),
+            ...Object.keys(manifest.mcpServers).map((name) => ({
+              name,
+              kind: "mcpServer" as const,
+            })),
+          ],
+          automations: manifest.cronJobs.map((job) => ({
+            name: job.name || job.id,
+            schedule: job.schedule.cron,
+            timezone: job.schedule.timezone,
+          })),
+        },
+        ...(preview ? { preview } : {}),
+      };
+    },
+  );
 }
 
 type PersistClawHubSource = () => Promise<ResolvedClawHubSource>;
@@ -543,13 +564,7 @@ export async function withResolvedClawHubSource<T>(
   const trust = await checkClawHubPackageTrust({
     subject: { kind: "claw", packageName },
     version,
-    expectedClawArtifact: {
-      sha256: expectedSha256,
-      npmIntegrity: resolvedArtifact.npmIntegrity,
-      ...(resolvedArtifact.npmShasum !== undefined
-        ? { npmShasum: resolvedArtifact.npmShasum }
-        : {}),
-    },
+    expectedClawArtifact: resolvedArtifact,
     baseUrl: params.baseUrl,
     token: params.token,
     timeoutMs: params.timeoutMs,
@@ -572,88 +587,49 @@ export async function withResolvedClawHubSource<T>(
     trustRecord: trust.trustInstallRecordFields,
   };
 
-  const download = await downloadClawHubPackageArchive({
-    name: packageName,
-    version,
-    artifact: "clawpack",
-    baseUrl: params.baseUrl,
-    token: params.token,
-    timeoutMs: params.timeoutMs ?? CLAWHUB_TIMEOUT_MS,
-  });
-  try {
-    if (
-      download.artifact !== "clawpack" ||
-      download.sha256Hex !== expectedSha256 ||
-      download.npmIntegrity !== resolvedArtifact.npmIntegrity ||
-      (resolvedArtifact.npmShasum !== undefined &&
-        download.npmShasum !== resolvedArtifact.npmShasum)
-    ) {
-      throw new ClawHubSourceError(
-        "clawhub_artifact_integrity_mismatch",
-        "ClawHub artifact integrity changed during download.",
-      );
-    }
-    const artifactByteLength = (await fs.stat(download.archivePath)).size;
-    const extracted = await withExtractedArchiveRoot({
-      archivePath: download.archivePath,
-      tempDirPrefix: "openclaw-claw-source-",
-      timeoutMs: params.timeoutMs ?? CLAWHUB_TIMEOUT_MS,
-      rootMarkers: ["package.json", "CLAW.md", "claw.json"],
-      onExtracted: async (rootDir) => {
-        const artifactSource = await readVerifiedArtifactSource({
-          sourceRoot: rootDir,
-          packageName,
-          version,
-          artifactSha256: expectedSha256,
-          artifactByteLength,
-        });
-        if (
-          params.baseUrl !== undefined &&
-          resolveClawHubBaseUrl(params.baseUrl) !== resolveClawHubBaseUrl() &&
-          artifactSource.manifest.packages.length > 0
-        ) {
+  const value = await withVerifiedClawHubArtifact(
+    { ...params, packageName, version },
+    resolvedArtifact,
+    "openclaw-claw-source-",
+    async (artifactSource, rootDir, archivePath, artifactByteLength) => {
+      if (
+        params.baseUrl !== undefined &&
+        resolveClawHubBaseUrl(params.baseUrl) !== resolveClawHubBaseUrl() &&
+        artifactSource.manifest.packages.length > 0
+      ) {
+        throw new ClawHubSourceError(
+          "clawhub_registry_mismatch",
+          "ClawHub Claw dependencies require the configured registry.",
+        );
+      }
+      let persistedSource: Promise<ResolvedClawHubSource> | undefined;
+      const persistSource: PersistClawHubSource = async () => {
+        if (params.mode !== "apply") {
           throw new ClawHubSourceError(
-            "clawhub_registry_mismatch",
-            "ClawHub Claw dependencies require the configured registry.",
+            "clawhub_preview_persistence_forbidden",
+            "A ClawHub preview cannot persist package content.",
           );
         }
-        let persistedSource: Promise<ResolvedClawHubSource> | undefined;
-        const persistSource: PersistClawHubSource = async () => {
-          if (params.mode !== "apply") {
-            throw new ClawHubSourceError(
-              "clawhub_preview_persistence_forbidden",
-              "A ClawHub preview cannot persist package content.",
-            );
-          }
-          persistedSource ??= (async () => {
-            const sourceRoot = await persistExtractedSource({
-              rootDir,
-              archivePath: download.archivePath,
-              artifactSha256: expectedSha256,
-              artifactByteLength,
-              stateDir: params.stateDir,
-            });
-            return await readVerifiedArtifactSource({
-              sourceRoot,
-              packageName,
-              version,
-              artifactSha256: expectedSha256,
-              artifactByteLength,
-            });
-          })();
-          return await persistedSource;
-        };
-        return {
-          ok: true as const,
-          value: await params.run(artifactSource, trustProjection, persistSource),
-        };
-      },
-    });
-    if (!extracted.ok || !("value" in extracted)) {
-      throw new ClawHubSourceError("clawhub_extract_failed", extracted.error);
-    }
-    return { value: extracted.value, ...trustProjection };
-  } finally {
-    await download.cleanup();
-  }
+        persistedSource ??= (async () => {
+          const sourceRoot = await persistExtractedSource({
+            rootDir,
+            archivePath,
+            artifactSha256: expectedSha256,
+            artifactByteLength,
+            stateDir: params.stateDir,
+          });
+          return await readVerifiedArtifactSource({
+            sourceRoot,
+            packageName,
+            version,
+            artifactSha256: expectedSha256,
+            artifactByteLength,
+          });
+        })();
+        return await persistedSource;
+      };
+      return await params.run(artifactSource, trustProjection, persistSource);
+    },
+  );
+  return { value, ...trustProjection };
 }
