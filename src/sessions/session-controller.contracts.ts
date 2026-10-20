@@ -622,7 +622,6 @@ export type SessionControllerMailbox = {
     summaryLines: string[];
     sourceRefs: Map<FollowupRun, FollowupRun>;
   }>;
-  evictedSummaryCount: number;
   lastRun?: FollowupRun["run"];
   recentSources: Map<string, { input: SessionControllerInput; expires: number }>;
 };

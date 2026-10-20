@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { resolveStateDir } from "../config/state-dir.js";
 import {
   loadDeviceIdentityIfPresent,
   loadOrCreateDeviceIdentity,
@@ -27,11 +28,7 @@ export function resolveHeartbeatSchedulerSeed(
     // Read-only Doctor previews never create identity state; absent state
     // still receives a deterministic monitor anchor.
   }
-  return createHash("sha256")
-    .update(env.HOME ?? "")
-    .update("\0")
-    .update(process.cwd())
-    .digest("hex");
+  return createHash("sha256").update(resolveStateDir(env)).digest("hex");
 }
 
 export function resolveHeartbeatPhaseMs(params: {

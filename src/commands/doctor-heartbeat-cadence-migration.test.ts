@@ -27,7 +27,10 @@ import {
 } from "../cron/store/runtime-authority-store.js";
 import { getCronStoreKysely } from "../cron/store/schema.js";
 import type { CronStoredJob } from "../cron/types.js";
-import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
+import {
+  loadDeviceIdentityIfPresent,
+  loadOrCreateDeviceIdentity,
+} from "../infra/device-identity.js";
 import { executeSqliteQuerySync } from "../infra/kysely-sync.js";
 import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
@@ -48,7 +51,10 @@ import {
 } from "./doctor-heartbeat-cadence-migration.js";
 import type { DoctorCronJob } from "./doctor-heartbeat-jobs.js";
 import { retireHeartbeatWithDoctor } from "./doctor-heartbeat-retirement.js";
-import { resolveHeartbeatPhaseMs } from "./doctor-heartbeat-schedule.js";
+import {
+  resolveHeartbeatPhaseMs,
+  resolveHeartbeatSchedulerSeed,
+} from "./doctor-heartbeat-schedule.js";
 
 const NOW = Date.parse("2026-10-02T12:00:00Z");
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
@@ -801,6 +807,38 @@ describe("heartbeat cadence Doctor cutover", () => {
     await ensureHeartbeatMonitorJobs(f.cfg, f.storePath, f.env);
     expect(readState(f)!.jobs.find((job) => job.id === previous.id)).toEqual(converted);
   });
+
+  it.each(["migrate", "ensure"] as const)(
+    "%s creates automations without minting a primary device identity",
+    async (operation) => {
+      const f = fixture();
+      const nodeIdentity = loadOrCreateDeviceIdentity({ env: f.env, identityKey: "node" });
+      const seed = resolveHeartbeatSchedulerSeed(undefined, { env: f.env, readOnly: true });
+      if (operation === "migrate") {
+        expect(
+          (
+            await maybeMigrateHeartbeatCadenceToCron({
+              cfg: f.cfg,
+              env: f.env,
+              shouldRepair: true,
+            })
+          ).warnings,
+        ).toEqual([]);
+      } else {
+        await ensureHeartbeatMonitorJobs(f.cfg, f.storePath, f.env);
+      }
+      expect(loadDeviceIdentityIfPresent({ env: f.env })).toBeNull();
+      expect(loadDeviceIdentityIfPresent({ env: f.env, identityKey: "node" })).toEqual(
+        nodeIdentity,
+      );
+      const job = readState(f)!.jobs[0]!;
+      expect(job.payload.kind).toBe("agentTurn");
+      vi.spyOn(process, "cwd").mockReturnValue(tempDirs.make("openclaw-heartbeat-cwd-"));
+      expect(resolveHeartbeatSchedulerSeed(undefined, { env: f.env, readOnly: true })).toBe(seed);
+      await ensureHeartbeatMonitorJobs(f.cfg, f.storePath, f.env);
+      expect(readState(f)!.jobs[0]?.schedule).toEqual(job.schedule);
+    },
+  );
 
   it("uses the supplied environment for scheduler identity and storage", async () => {
     const f = fixture();
