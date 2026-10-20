@@ -37,7 +37,15 @@ const proof = {
   status: "failed",
   coverage:
     "two fresh phone emulators; 100 recursive directory pulls each; concurrent idle ADB shell",
-  exclusions: ["app", "instrumentation", "Wear", "Gateway", "store upload", "app-scoped storage"],
+  exclusions: [
+    "app",
+    "instrumentation",
+    "Wear",
+    "Gateway",
+    "store upload",
+    "app-scoped storage",
+    "shared-storage/FUSE",
+  ],
   targetSha: process.env.TARGET_SHA,
   iterations: 0,
   cleanupConfirmed: true,
@@ -57,6 +65,11 @@ async function command(bin: string, args: string[], timeout = 20_000, input?: st
       ...androidReleaseCommandFacts(bin, args, failure.stdout ?? "", failure.stderr ?? ""),
       code: typeof failure.code === "number" ? failure.code : null,
       killed: failure.killed === true,
+      shellVerb:
+        args[2] === "shell" &&
+        ["dd", "stat", "sha256sum", "mkdir", "getprop"].includes(args[3] ?? "")
+          ? args[3]
+          : undefined,
       syncErrors: [
         "failed to read copy response: EOF",
         "failed to read copy response",
@@ -65,6 +78,13 @@ async function command(bin: string, args: string[], timeout = 20_000, input?: st
         "fchown() failed",
         "secure_mkdirs() failed",
         "decompress failed",
+        "remote open failed",
+        "remote read failed",
+        "remote compress failed",
+        "unexpected ID_DONE",
+        "msg.data.size too large",
+        "Transport endpoint is not connected",
+        "Stale file handle",
         "Operation not permitted",
         "Read-only file system",
         "Bad file descriptor",
@@ -278,26 +298,8 @@ try {
       ) {
         throw new Error("guest-logging-unavailable");
       }
-      stage = "shared-storage-ready";
-      const storageDeadline = Date.now() + 60_000;
-      while (
-        !(await command(
-          adb,
-          ["-s", serial, "shell", "test -d /sdcard && test -w /sdcard"],
-          5000,
-        ).then(
-          () => true,
-          () => false,
-        ))
-      ) {
-        if (!running(phone) || Date.now() >= storageDeadline) {
-          throw new Error("shared-storage-not-ready");
-        }
-        await sleep(500);
-      }
-      record("storage-ready", { cycle });
       stage = "fixture-setup";
-      const remote = "/sdcard/Download/directory-probe";
+      const remote = "/data/local/tmp/directory-probe";
       await command(adb, ["-s", serial, "shell", "mkdir", "-p", remote]);
       const expected = new Map<string, string>();
       for (let index = 0; index < 3; index++) {
@@ -384,7 +386,6 @@ try {
         "boot-failed",
         "emulator-identity-mismatch",
         "guest-logging-unavailable",
-        "shared-storage-not-ready",
         "fixture-invalid",
         "idle-shell-not-ready",
         "concurrent-service-exit",
