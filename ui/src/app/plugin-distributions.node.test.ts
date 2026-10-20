@@ -4,10 +4,40 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { brotliDecompressSync, gunzipSync } from "node:zlib";
+import {
+  brotliCompressSync,
+  brotliDecompressSync,
+  constants as zlibConstants,
+  gunzipSync,
+} from "node:zlib";
+import { gzip } from "pako";
 import { build, loadConfigFromFile, type Plugin } from "vite";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { controlUiPluginDistributionsPlugin } from "../../config/control-ui-plugin-distributions.ts";
+
+async function expectBeneficialSidecars(target: string, source: Buffer) {
+  // Independent codecs decide whether an on-disk representation must exist.
+  // Never derive expected variants from the producer being exercised.
+  for (const [suffix, encoded, decode] of [
+    [
+      "br",
+      brotliCompressSync(source, {
+        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 },
+      }),
+      brotliDecompressSync,
+    ],
+    ["gz", Buffer.from(gzip(source, { level: 9, legacyHash: true, memLevel: 6 })), gunzipSync],
+  ] as const) {
+    const sidecar = fs.readFile(target + "." + suffix);
+    if (encoded.byteLength < source.byteLength) {
+      const actual = await sidecar;
+      expect(actual.byteLength).toBeLessThan(source.byteLength);
+      expect(decode(actual)).toEqual(source);
+    } else {
+      await expect(sidecar).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  }
+}
 
 let root: string;
 beforeEach(async () => {
@@ -20,7 +50,11 @@ afterEach(async () => {
 
 async function fixture() {
   const files = [
-    ["chunk-1.js", "export const message = 'Deferred Workboard';"],
+    [
+      "chunk-1.js",
+      "export const message = 'Deferred Workboard';" + "\n// deferred chunk\n".repeat(128),
+    ],
+    ["empty.js", ""],
     ["index.css", ".workboard { color: green; }"],
     ["index.js", "export default { id: 'workboard', load: () => import('./chunk-1.js') };"],
   ] as const;
@@ -92,14 +126,18 @@ it("publishes the complete immutable generation, its local inventory and matchin
   const output = path.join(root, "ui-output/assets/plugins/workboard");
   const revisions = await fs.readdir(output);
   // The inventory must retain the existing catalog's declaration/capability/byte hash.
-  expect(revisions).toEqual(["c81749b6c5f6b8233fad01698a3bfa483e5b27dbc540f8d1a4d3117bf05e1b75"]);
+  expect(revisions).toEqual(["72e17c61224c9b605f45dd8d0a4aa8a969f1163d44d3863d536788365e0ae662"]);
   for (const [name, body] of files) {
     const target = path.join(output, revisions[0]!, name);
     expect(await fs.readFile(target, "utf8")).toBe(body);
-    expect(brotliDecompressSync(await fs.readFile(`${target}.br`)).toString()).toBe(body);
-    expect(gunzipSync(await fs.readFile(`${target}.gz`)).toString()).toBe(body);
+    await expectBeneficialSidecars(target, Buffer.from(body));
     expect(inputs.has(path.join(pluginRoot, generation, name))).toBe(true);
   }
+  const emitted = await fs.readdir(path.join(output, revisions[0]!));
+  expect(emitted).toContain("chunk-1.js.br");
+  expect(emitted).toContain("chunk-1.js.gz");
+  expect(emitted).not.toContain("empty.js.br");
+  expect(emitted).not.toContain("empty.js.gz");
   expect(inputs.has(path.join(pluginRoot, "package.json"))).toBe(true);
   expect(inputs.has(path.join(pluginRoot, "openclaw.plugin.json"))).toBe(true);
   const bundles = await fs.readdir(path.join(root, "ui-output/assets"));
@@ -155,6 +193,8 @@ it("rejects a full build whose promised packaged plugin is absent", async () => 
   await fs.writeFile(path.join(source, "index.ts"), "export default {};");
   await fs.rm(path.join(root, "dist"), { recursive: true });
   vi.stubEnv("OPENCLAW_CONTROL_UI_REQUIRE_PLUGIN_DISTRIBUTIONS", "1");
+  // A synthetic source tree must not inherit an enclosing checkout's tracked inventory.
+  vi.stubEnv("GIT_CEILING_DIRECTORIES", path.dirname(root));
   await expect(compile(new Set()).then(() => undefined)).rejects.toThrow(
     "Missing packaged native UI assets for workboard",
   );

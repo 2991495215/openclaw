@@ -28,9 +28,13 @@ if (root && fs.existsSync(path.join(root, "snapshot-cleanup-fixture.json"))) {
   };
   const save = () => fs.writeFileSync(output, JSON.stringify(report));
   const captureStack = () => {
-    const previous = Error.prepareStackTrace;
+    const previous = Object.getOwnPropertyDescriptor(Error, "prepareStackTrace");
     try {
-      Error.prepareStackTrace = (_error, sites) => sites;
+      Object.defineProperty(Error, "prepareStackTrace", {
+        configurable: true,
+        writable: true,
+        value: (_error, sites) => sites,
+      });
       const value = {};
       Error.captureStackTrace(value, captureStack);
       return value.stack
@@ -41,7 +45,11 @@ if (root && fs.existsSync(path.join(root, "snapshot-cleanup-fixture.json"))) {
         }))
         .slice(0, 20);
     } finally {
-      Error.prepareStackTrace = previous;
+      if (previous) {
+        Object.defineProperty(Error, "prepareStackTrace", previous);
+      } else {
+        delete Error.prepareStackTrace;
+      }
     }
   };
   const statSync = fs.lstatSync;

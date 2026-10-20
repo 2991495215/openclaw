@@ -45,6 +45,58 @@ const source = fixture.source;
 const staging = path.join(root, "staging");
 const reportPath = path.join(root, "passive-" + process.pid + "-0.json");
 const read = () => JSON.parse(fs.readFileSync(reportPath, "utf8"));
+const target = source + ".pre-startup-migration-descriptor.bak";
+fs.writeFileSync(target, "synthetic snapshot target");
+const initialFormatter = Object.getOwnPropertyDescriptor(Error, "prepareStackTrace");
+let getterCalls = 0;
+let setterCalls = 0;
+const formatter = () => "prior formatter";
+const descriptors = [
+  undefined,
+  { configurable: true, enumerable: true, writable: false, value: formatter },
+  {
+    configurable: true, enumerable: false,
+    get() { getterCalls++; return formatter; },
+    set() { setterCalls++; },
+  },
+];
+async function observeTarget(expected) {
+  assert.equal(fs.lstatSync(target).isFile(), true);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(Error, "prepareStackTrace"), expected);
+  assert.equal((await fs.promises.lstat(target)).isFile(), true);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(Error, "prepareStackTrace"), expected);
+}
+try {
+  for (const descriptor of descriptors) {
+    if (descriptor) Object.defineProperty(Error, "prepareStackTrace", descriptor);
+    else delete Error.prepareStackTrace;
+    const expected = Object.getOwnPropertyDescriptor(Error, "prepareStackTrace");
+    await observeTarget(expected);
+  }
+  assert.equal(getterCalls, 0);
+  assert.equal(setterCalls, 0);
+} finally {
+  if (initialFormatter) Object.defineProperty(Error, "prepareStackTrace", initialFormatter);
+  else delete Error.prepareStackTrace;
+}
+const targets = read();
+assert.equal(targets.counts.targets, 6);
+assert.deepEqual(targets.targets.map((row) => row.phase), [
+  "existing-target", "target-admission",
+  "existing-target", "target-admission",
+  "existing-target", "target-admission",
+]);
+for (const row of targets.targets) {
+  assert.equal(row.originalSource, true);
+  assert.match(row.targetHash, /^[0-9a-f]{64}$/);
+  assert(row.frames.length > 0 && row.frames.length <= 20);
+  assert(row.frames.some((frame) => frame.name === "observeTarget"));
+  for (const frame of row.frames) {
+    assert.deepEqual(Object.keys(frame).sort(), ["fileHash", "line", "name"]);
+    if (frame.fileHash !== null) assert.match(frame.fileHash, /^[0-9a-f]{64}$/);
+  }
+}
+assert.equal(JSON.stringify(targets.targets).includes(root), false);
 const kill = process.kill;
 let probeError;
 // Only the OS liveness result is faulted; requests, sends, callbacks and close are native.
