@@ -108,11 +108,9 @@ export async function runSystemAgent(
   const { withPluginRuntimeRegistryScope } =
     await import("../plugins/runtime/gateway-request-scope.js");
   await using cache = createPluginCache();
-  const readSnapshot =
-    boundOpts.deps?.readConfigFileSnapshot ??
-    (await import("../config/config.js")).readConfigFileSnapshot;
+  const { readConfigFileSnapshot } = await import("../config/config.js");
   const registry = await withPluginLifecycleLease({}, async (lease) => {
-    const snapshot = await readSnapshot();
+    const snapshot = await readConfigFileSnapshot();
     const currentArtifacts = await hasCurrentSystemAgentOwnerPluginArtifacts(binding, snapshot);
     if (!currentArtifacts) {
       throw new SystemAgentInferenceUnavailableError("conversation", [], "route-changed");
