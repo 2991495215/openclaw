@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       # Temporary controller: pin the reviewed diagnostic candidate independently of this workflow.
-      TARGET_SHA: e3ae3835b8a8e10ed98ee6abb3e886e29a546d3d
+      TARGET_SHA: aa1b065a2a1ad9e4a0f1c62c782435d27334687c
     steps:
       - name: Initialize failure proof and validate target
         shell: bash
@@ -53,6 +53,7 @@ jobs:
           set -euo pipefail
           [[ "$(git rev-parse HEAD)" == "$TARGET_SHA" ]]
           test -f scripts/android-adb-directory-probe.ts
+          test -f scripts/android-adb-bridge-trace.py
 
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
@@ -69,13 +70,14 @@ jobs:
           cache-mode: "off"
           install-screenshot-emulators: "true"
 
-      - name: Ensure syscall tracer is available
+      - name: Ensure diagnostic tracers are available
         run: |
-          if ! command -v strace >/dev/null; then
+          if ! command -v strace >/dev/null || ! command -v gdb >/dev/null; then
             sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends strace
+            sudo apt-get install -y --no-install-recommends strace gdb
           fi
           strace --version
+          gdb --version
           sudo -n true
 
       - name: Stress recursive directory pulls on two fresh phone emulators
