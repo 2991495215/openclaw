@@ -133,7 +133,6 @@ it.each(["calls", "tool_calls"])(
 
     const { output, events } = await runDsml(characterChunks(content), {
       mode: "direct",
-      beforeContentBlock() {},
     });
 
     expect(output.content).toEqual([{ type: "text", text: "before  after" }]);

@@ -62,17 +62,12 @@ type OpenAICompatibleChatCompletionChunk = Omit<ChatCompletionChunk, "choices"> 
 };
 
 type CompletionsStreamOptions = {
+  mode?: "direct" | "managed";
   signal?: AbortSignal;
   emitReasoning?: boolean;
   strictReasoningTags?: boolean;
   sawStreamDONE?: () => boolean;
-} & (
-  | {
-      mode: "direct";
-      beforeContentBlock: (nextType: "text" | "thinking" | "toolCall") => void;
-    }
-  | { mode?: "managed"; beforeContentBlock?: never }
-);
+};
 
 function extractToolCallThoughtSignature(toolCall: unknown): string | undefined {
   const tc = toolCall as Record<string, unknown> | undefined;
@@ -167,6 +162,39 @@ export async function processCompletionsStream(
   // Preview schedules are per active tool call; WeakMap keys die with the block.
   const toolArgumentPreviewSchedules = new WeakMap<ToolCallBlock, ToolArgumentPreviewSchedule>();
   const blockIndices = new WeakMap<TextBlock | ThinkingBlock | ToolCallBlock, number>();
+  const finishedDirectContent = directMode ? new Set<TextBlock | ThinkingBlock>() : undefined;
+  let openDirectText: TextBlock | undefined;
+  let openDirectThinking: ThinkingBlock | undefined;
+  const finishDirectContent = (block: TextBlock | ThinkingBlock | undefined) => {
+    if (!block || finishedDirectContent?.has(block)) {
+      return;
+    }
+    finishedDirectContent?.add(block);
+    stream.push({
+      type: `${block.type}_end`,
+      contentIndex: blockIndices.get(block) ?? -1,
+      content: block.type === "text" ? block.text : block.thinking,
+      partial: output,
+    });
+  };
+  const beforeDirectContentBlock = (nextType: "text" | "thinking" | "toolCall") => {
+    if (!directMode) {
+      return;
+    }
+    finishDirectContent(openDirectThinking);
+    if (nextType !== "toolCall") {
+      finishDirectContent(openDirectText);
+    }
+  };
+  const finishDirectStream = (includeToolCalls: boolean) => {
+    for (const [contentIndex, block] of output.content.entries()) {
+      if (block.type !== "toolCall") {
+        finishDirectContent(block);
+      } else if (includeToolCalls) {
+        stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: output });
+      }
+    }
+  };
   const normalizeToolCallDeltas = createOpenAICompletionsToolCallDeltaNormalizer();
   let finishReason: string | undefined;
   let sawNativeToolCallDelta = false;
@@ -221,7 +249,7 @@ export async function processCompletionsStream(
       currentBlock = null;
     }
     if (!currentBlock || currentBlock.type !== delta.kind) {
-      options?.beforeContentBlock?.(delta.kind);
+      beforeDirectContentBlock(delta.kind);
       if (delta.kind === "text") {
         currentBlock = { type: "text", text: "" };
         currentTextSource = delta.source;
@@ -234,6 +262,11 @@ export async function processCompletionsStream(
       }
       if (directMode) {
         directContent.block = currentBlock;
+        if (currentBlock.type === "text") {
+          openDirectText = currentBlock;
+        } else {
+          openDirectThinking = currentBlock;
+        }
       }
       output.content.push(currentBlock);
       blockIndices.set(currentBlock, output.content.length - 1);
@@ -401,260 +434,271 @@ export async function processCompletionsStream(
   const events = directMode ? responseStream : iterateModelStream(responseStream, options?.signal);
   let maxReasoningTokens = 0;
   let providerProcessingMs: number | undefined;
-  for await (const rawChunk of events) {
+  try {
+    for await (const rawChunk of events) {
+      throwIfModelStreamAborted(options?.signal);
+      chunkPushedEvent = false;
+      if (!rawChunk || typeof rawChunk !== "object") {
+        continue;
+      }
+      const chunk = rawChunk as OpenAICompatibleChatCompletionChunk;
+      output.responseId ||= chunk.id;
+      // Retain the provider-returned model when it differs from the requested id so
+      // routed/alias responses are not misattributed, matching the direct provider
+      // stream and the anthropic/responses managed transports.
+      if (typeof chunk.model === "string" && chunk.model.length > 0 && chunk.model !== model.id) {
+        output.responseModel ||= chunk.model;
+      }
+      const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
+      const usage = chunk.usage || choice?.usage;
+      // llama.cpp attaches final timings to the usage-only chunk when requested.
+      if (
+        chunk.timings !== undefined &&
+        (choice?.finish_reason ||
+          (Array.isArray(chunk.choices) && chunk.choices.length === 0 && chunk.usage))
+      ) {
+        const promptMs = asNonNegativeFiniteNumber(chunk.timings?.prompt_ms);
+        const predictedMs = asNonNegativeFiniteNumber(chunk.timings?.predicted_ms);
+        providerProcessingMs =
+          promptMs !== undefined && predictedMs !== undefined
+            ? asNonNegativeFiniteNumber(promptMs + predictedMs)
+            : undefined;
+      }
+      const reasoningTokens =
+        asPositiveFiniteNumber(usage?.completion_tokens_details?.reasoning_tokens) ?? 0;
+      const hasReasoningUsageActivity = reasoningTokens > maxReasoningTokens;
+      maxReasoningTokens = Math.max(maxReasoningTokens, reasoningTokens);
+      if (usage) {
+        output.usage = parseOpenAICompletionsUsage(usage, model, {
+          includeReasoningTokens: !directMode,
+        });
+        const terminalUsage = Boolean(
+          finishReason || choice?.finish_reason || chunk.choices?.length === 0,
+        );
+        const completeCounts = [usage.prompt_tokens, usage.completion_tokens].every(
+          (value) => typeof value === "number" && Number.isFinite(value) && value >= 0,
+        );
+        output.usage.usageReport = {
+          state: terminalUsage && completeCounts ? "available" : "unavailable",
+        };
+      }
+      const rawChoiceDelta = choice?.delta ?? choice?.message;
+      if (!choice) {
+        emitReasoningUsageActivity(hasReasoningUsageActivity);
+        continue;
+      }
+      if (choice.finish_reason) {
+        const finishReasonResult = mapOpenAIStopReason(choice.finish_reason, {
+          allowSingularToolCall: true,
+        });
+        output.stopReason = finishReasonResult.stopReason;
+        finishReason = finishReasonResult.stopReason;
+        if (finishReasonResult.errorMessage) {
+          output.errorMessage = finishReasonResult.errorMessage;
+        }
+      }
+      if (!rawChoiceDelta) {
+        emitReasoningUsageActivity(hasReasoningUsageActivity);
+        continue;
+      }
+      for (const normalizedDelta of normalizeToolCallDeltas(rawChoiceDelta, choice.finish_reason)) {
+        const choiceDelta = normalizedDelta.delta;
+        const deltaFields = choiceDelta as Record<string, unknown>;
+        const reasoningBatch = readOpenAICompletionsReasoningBatch(
+          deltaFields,
+          visibleReasoningDetailTypes,
+        );
+        const reasoningDeltas = reasoningBatch.deltas;
+        const hasReasoningThinking = reasoningBatch.hasThinking;
+        // Share the content/refusal owner to avoid duplicate mirrored refusals.
+        const contentDeltas = readOpenAICompletionsContentDeltas(
+          choiceDelta.content,
+          choiceDelta.refusal,
+          reasoningBatch.mirroredThinking,
+        );
+        const lastVisibleTextIndex = contentDeltas.findLastIndex((delta) => delta.kind === "text");
+        const hasSameChunkVisibleText =
+          reasoningBatch.hasVisibleText || lastVisibleTextIndex !== -1;
+        if (hasReasoningThinking) {
+          beginReasoning(hasSameChunkVisibleText);
+          appendReasoningDeltas(reasoningDeltas);
+        }
+        for (const [contentDeltaIndex, contentDelta] of contentDeltas.entries()) {
+          if (contentDelta.kind === "text") {
+            const parts = gemmaToolCallRecoverer?.push(contentDelta.text) ?? [contentDelta];
+            for (const part of parts) {
+              for (const routedDelta of reasoningTagTextPartitioner.pushVisible(part.text)) {
+                appendPartitionedVisibleDelta(routedDelta);
+              }
+            }
+          } else {
+            const hasLaterVisibleText = contentDeltaIndex < lastVisibleTextIndex;
+            beginReasoning(hasLaterVisibleText);
+            if (emitReasoning) {
+              if (currentBlock?.type === "toolCall" && !directMode) {
+                queuePostToolCallDelta(contentDelta);
+              } else {
+                appendContentDelta(contentDelta);
+              }
+            }
+          }
+        }
+        if (!hasReasoningThinking) {
+          appendReasoningDeltas(reasoningDeltas);
+        }
+        const toolCallDeltas = normalizedDelta.toolCalls;
+        if (toolCallDeltas.length > 0) {
+          // Native calls own mixed streams; emit pending raw text in its original position.
+          flushGemmaToolCallRecoverer(false);
+          sawNativeToolCallDelta = true;
+          flushReasoningTagTextPartitioner(false);
+          for (const toolCall of toolCallDeltas) {
+            const streamIndex = typeof toolCall.index === "number" ? toolCall.index : undefined;
+            let block =
+              streamIndex !== undefined ? toolCallBlocksByIndex.get(streamIndex) : undefined;
+            if (!block && toolCall.id) {
+              block = toolCallBlocksById.get(toolCall.id);
+            }
+            if (!block) {
+              if (currentBlock?.type === "toolCall") {
+                currentBlock = null;
+                flushPendingPostToolCallDeltas();
+              }
+              const initialSig = directMode ? undefined : extractToolCallThoughtSignature(toolCall);
+              beforeDirectContentBlock("toolCall");
+              if (directMode && directContent.block?.type === "thinking") {
+                directContent.block = null;
+              }
+              block = {
+                type: "toolCall",
+                id: toolCall.id || "",
+                name: toolCall.function?.name || "",
+                arguments: {},
+                partialJson: "",
+                ...(initialSig ? { thoughtSignature: initialSig } : {}),
+              };
+              encryptedReasoning.rememberToolCall(block.id, block);
+              toolArgumentPreviewSchedules.set(block, createToolArgumentPreviewSchedule());
+              appendToolCallBlock(block);
+            }
+            if (streamIndex !== undefined && !toolCallBlocksByIndex.has(streamIndex)) {
+              toolCallBlocksByIndex.set(streamIndex, block);
+            }
+            if (toolCall.id) {
+              const previousId = block.id;
+              if (!directMode || !block.id) {
+                block.id = toolCall.id;
+              }
+              toolCallBlocksById.set(toolCall.id, block);
+              if (block.id === toolCall.id) {
+                encryptedReasoning.rememberToolCall(toolCall.id, block, previousId);
+              }
+            }
+            currentBlock = block;
+            // Mirror the pinned OpenAI SDK and the managed transport: a nonempty
+            // function-name snapshot replaces the stored name so fragmented or
+            // corrected streamed names cannot freeze on the first fragment. In
+            // direct mode the first tool identity is authoritative, so only a
+            // continuation whose id explicitly conflicts with the established
+            // block keeps the first name; an absent id is treated as a
+            // continuation (the block was already resolved by index or id above),
+            // matching how the pinned SDK accumulates a later name-only frame.
+            const conflictingId = directMode && block.id && toolCall.id && block.id !== toolCall.id;
+            if (toolCall.function?.name && !conflictingId) {
+              block.name = toolCall.function.name;
+            }
+            const deltaSig = directMode ? undefined : extractToolCallThoughtSignature(toolCall);
+            if (deltaSig) {
+              block.thoughtSignature = deltaSig;
+            }
+            const toolArgumentsDelta = toolCall.function?.arguments;
+            if (toolArgumentsDelta) {
+              block.partialJson += toolArgumentsDelta;
+              // Preview refresh is scheduled geometrically; the terminal
+              // finalize re-parses the full buffer authoritatively either way.
+              if (toolArgumentPreviewSchedules.get(block)?.(block.partialJson.length)) {
+                block.arguments = parseStreamingJson(block.partialJson);
+              }
+            }
+            if (toolArgumentsDelta || directMode) {
+              pushStreamEvent({
+                type: "toolcall_delta",
+                contentIndex: blockIndices.get(block) ?? -1,
+                delta: toolArgumentsDelta ?? "",
+                partial: output,
+              });
+            }
+          }
+        }
+        encryptedReasoning.consumeDetails(deltaFields.reasoning_details);
+      }
+      flushPendingPostToolCallDeltas();
+      emitReasoningUsageActivity(hasReasoningUsageActivity);
+    }
+    // The SDK can end an aborted SSE iterator normally; cancellation must win
+    // before buffered terminal markers can promote provisional tool calls.
     throwIfModelStreamAborted(options?.signal);
-    chunkPushedEvent = false;
-    if (!rawChunk || typeof rawChunk !== "object") {
-      continue;
+    if (!finishReason && (directMode || options?.sawStreamDONE?.() === false)) {
+      throw new Error("Stream ended without finish_reason");
     }
-    const chunk = rawChunk as OpenAICompatibleChatCompletionChunk;
-    output.responseId ||= chunk.id;
-    // Retain the provider-returned model when it differs from the requested id so
-    // routed/alias responses are not misattributed, matching the direct provider
-    // stream and the anthropic/responses managed transports.
-    if (typeof chunk.model === "string" && chunk.model.length > 0 && chunk.model !== model.id) {
-      output.responseModel ||= chunk.model;
+    flushGemmaToolCallRecoverer();
+    flushReasoningTagTextPartitioner();
+    appendRecoveredParts(deepSeekToolCallRecoverer?.flush() ?? []);
+    for (const part of deepSeekTextFilter?.flush() ?? []) {
+      appendVisibleTextDelta(part);
     }
-    const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
-    const usage = chunk.usage || choice?.usage;
-    // llama.cpp attaches final timings to the usage-only chunk when requested.
-    if (
-      chunk.timings !== undefined &&
-      (choice?.finish_reason ||
-        (Array.isArray(chunk.choices) && chunk.choices.length === 0 && chunk.usage))
-    ) {
-      const promptMs = asNonNegativeFiniteNumber(chunk.timings?.prompt_ms);
-      const predictedMs = asNonNegativeFiniteNumber(chunk.timings?.predicted_ms);
-      providerProcessingMs =
-        promptMs !== undefined && predictedMs !== undefined
-          ? asNonNegativeFiniteNumber(promptMs + predictedMs)
-          : undefined;
-    }
-    const reasoningTokens =
-      asPositiveFiniteNumber(usage?.completion_tokens_details?.reasoning_tokens) ?? 0;
-    const hasReasoningUsageActivity = reasoningTokens > maxReasoningTokens;
-    maxReasoningTokens = Math.max(maxReasoningTokens, reasoningTokens);
-    if (usage) {
-      output.usage = parseOpenAICompletionsUsage(usage, model, {
-        includeReasoningTokens: !directMode,
-      });
-      const terminalUsage = Boolean(
-        finishReason || choice?.finish_reason || chunk.choices?.length === 0,
-      );
-      const completeCounts = [usage.prompt_tokens, usage.completion_tokens].every(
-        (value) => typeof value === "number" && Number.isFinite(value) && value >= 0,
-      );
-      output.usage.usageReport = {
-        state: terminalUsage && completeCounts ? "available" : "unavailable",
-      };
-    }
-    const rawChoiceDelta = choice?.delta ?? choice?.message;
-    if (!choice) {
-      emitReasoningUsageActivity(hasReasoningUsageActivity);
-      continue;
-    }
-    if (choice.finish_reason) {
-      const finishReasonResult = mapOpenAIStopReason(choice.finish_reason, {
-        allowSingularToolCall: true,
-      });
-      output.stopReason = finishReasonResult.stopReason;
-      finishReason = finishReasonResult.stopReason;
-      if (finishReasonResult.errorMessage) {
-        output.errorMessage = finishReasonResult.errorMessage;
-      }
-    }
-    if (!rawChoiceDelta) {
-      emitReasoningUsageActivity(hasReasoningUsageActivity);
-      continue;
-    }
-    for (const normalizedDelta of normalizeToolCallDeltas(rawChoiceDelta, choice.finish_reason)) {
-      const choiceDelta = normalizedDelta.delta;
-      const deltaFields = choiceDelta as Record<string, unknown>;
-      const reasoningBatch = readOpenAICompletionsReasoningBatch(
-        deltaFields,
-        visibleReasoningDetailTypes,
-      );
-      const reasoningDeltas = reasoningBatch.deltas;
-      const hasReasoningThinking = reasoningBatch.hasThinking;
-      // Share the content/refusal owner to avoid duplicate mirrored refusals.
-      const contentDeltas = readOpenAICompletionsContentDeltas(
-        choiceDelta.content,
-        choiceDelta.refusal,
-        reasoningBatch.mirroredThinking,
-      );
-      const lastVisibleTextIndex = contentDeltas.findLastIndex((delta) => delta.kind === "text");
-      const hasSameChunkVisibleText = reasoningBatch.hasVisibleText || lastVisibleTextIndex !== -1;
-      if (hasReasoningThinking) {
-        beginReasoning(hasSameChunkVisibleText);
-        appendReasoningDeltas(reasoningDeltas);
-      }
-      for (const [contentDeltaIndex, contentDelta] of contentDeltas.entries()) {
-        if (contentDelta.kind === "text") {
-          const parts = gemmaToolCallRecoverer?.push(contentDelta.text) ?? [contentDelta];
-          for (const part of parts) {
-            for (const routedDelta of reasoningTagTextPartitioner.pushVisible(part.text)) {
-              appendPartitionedVisibleDelta(routedDelta);
-            }
-          }
-        } else {
-          const hasLaterVisibleText = contentDeltaIndex < lastVisibleTextIndex;
-          beginReasoning(hasLaterVisibleText);
-          if (emitReasoning) {
-            if (currentBlock?.type === "toolCall" && !directMode) {
-              queuePostToolCallDelta(contentDelta);
-            } else {
-              appendContentDelta(contentDelta);
-            }
-          }
-        }
-      }
-      if (!hasReasoningThinking) {
-        appendReasoningDeltas(reasoningDeltas);
-      }
-      const toolCallDeltas = normalizedDelta.toolCalls;
-      if (toolCallDeltas.length > 0) {
-        // Native calls own mixed streams; emit pending raw text in its original position.
-        flushGemmaToolCallRecoverer(false);
-        sawNativeToolCallDelta = true;
-        flushReasoningTagTextPartitioner(false);
-        for (const toolCall of toolCallDeltas) {
-          const streamIndex = typeof toolCall.index === "number" ? toolCall.index : undefined;
-          let block =
-            streamIndex !== undefined ? toolCallBlocksByIndex.get(streamIndex) : undefined;
-          if (!block && toolCall.id) {
-            block = toolCallBlocksById.get(toolCall.id);
-          }
-          if (!block) {
-            if (currentBlock?.type === "toolCall") {
-              currentBlock = null;
-              flushPendingPostToolCallDeltas();
-            }
-            const initialSig = directMode ? undefined : extractToolCallThoughtSignature(toolCall);
-            options?.beforeContentBlock?.("toolCall");
-            if (directMode && directContent.block?.type === "thinking") {
-              directContent.block = null;
-            }
-            block = {
-              type: "toolCall",
-              id: toolCall.id || "",
-              name: toolCall.function?.name || "",
-              arguments: {},
-              partialJson: "",
-              ...(initialSig ? { thoughtSignature: initialSig } : {}),
-            };
-            encryptedReasoning.rememberToolCall(block.id, block);
-            toolArgumentPreviewSchedules.set(block, createToolArgumentPreviewSchedule());
-            appendToolCallBlock(block);
-          }
-          if (streamIndex !== undefined && !toolCallBlocksByIndex.has(streamIndex)) {
-            toolCallBlocksByIndex.set(streamIndex, block);
-          }
-          if (toolCall.id) {
-            const previousId = block.id;
-            if (!directMode || !block.id) {
-              block.id = toolCall.id;
-            }
-            toolCallBlocksById.set(toolCall.id, block);
-            if (block.id === toolCall.id) {
-              encryptedReasoning.rememberToolCall(toolCall.id, block, previousId);
-            }
-          }
-          currentBlock = block;
-          // Mirror the pinned OpenAI SDK and the managed transport: a nonempty
-          // function-name snapshot replaces the stored name so fragmented or
-          // corrected streamed names cannot freeze on the first fragment. In
-          // direct mode the first tool identity is authoritative, so only a
-          // continuation whose id explicitly conflicts with the established
-          // block keeps the first name; an absent id is treated as a
-          // continuation (the block was already resolved by index or id above),
-          // matching how the pinned SDK accumulates a later name-only frame.
-          const conflictingId = directMode && block.id && toolCall.id && block.id !== toolCall.id;
-          if (toolCall.function?.name && !conflictingId) {
-            block.name = toolCall.function.name;
-          }
-          const deltaSig = directMode ? undefined : extractToolCallThoughtSignature(toolCall);
-          if (deltaSig) {
-            block.thoughtSignature = deltaSig;
-          }
-          const toolArgumentsDelta = toolCall.function?.arguments;
-          if (toolArgumentsDelta) {
-            block.partialJson += toolArgumentsDelta;
-            // Preview refresh is scheduled geometrically; the terminal
-            // finalize re-parses the full buffer authoritatively either way.
-            if (toolArgumentPreviewSchedules.get(block)?.(block.partialJson.length)) {
-              block.arguments = parseStreamingJson(block.partialJson);
-            }
-          }
-          if (toolArgumentsDelta || directMode) {
-            pushStreamEvent({
-              type: "toolcall_delta",
-              contentIndex: blockIndices.get(block) ?? -1,
-              delta: toolArgumentsDelta ?? "",
-              partial: output,
-            });
-          }
-        }
-      }
-      encryptedReasoning.consumeDetails(deltaFields.reasoning_details);
-    }
+    currentBlock = null;
     flushPendingPostToolCallDeltas();
-    emitReasoningUsageActivity(hasReasoningUsageActivity);
-  }
-  // The SDK can end an aborted SSE iterator normally; cancellation must win
-  // before buffered terminal markers can promote provisional tool calls.
-  throwIfModelStreamAborted(options?.signal);
-  if (!finishReason && (directMode || options?.sawStreamDONE?.() === false)) {
-    throw new Error("Stream ended without finish_reason");
-  }
-  flushGemmaToolCallRecoverer();
-  flushReasoningTagTextPartitioner();
-  appendRecoveredParts(deepSeekToolCallRecoverer?.flush() ?? []);
-  for (const part of deepSeekTextFilter?.flush() ?? []) {
-    appendVisibleTextDelta(part);
-  }
-  currentBlock = null;
-  flushPendingPostToolCallDeltas();
-  // Native calls supersede recovered previews before any toolcall_end authorizes execution.
-  if (sawNativeToolCallDelta && recoveredToolCallBlocks.size > 0) {
-    output.content = output.content.filter(
-      (block) => block.type !== "toolCall" || !recoveredToolCallBlocks.has(block),
-    );
-  }
-  // Only an explicit stop or observed SSE terminal may authorize silent tool calls.
-  finalizeOpenAICompletionsToolCalls(output, {
-    allowSilentToolCallPromotion:
-      finishReason === "stop" || (sawNativeToolCallDelta && (options?.sawStreamDONE?.() ?? false)),
-    onConfirmedToolCall(block, contentIndex) {
-      if (directMode) {
-        return;
-      }
-      pushStreamEvent({
-        type: "toolcall_end",
-        contentIndex,
-        toolCall: block,
-        partial: output,
-      });
-    },
-  });
-  output.usage.usageReport ??= { state: "unavailable" };
-  if (
-    (!output.usage.contextUsage || output.usage.usageReport.state === "unavailable") &&
-    !options?.signal?.aborted &&
-    output.stopReason !== "error" &&
-    output.stopReason !== "aborted"
-  ) {
-    output.usage.contextUsage = { state: "unavailable" };
-    if (!compat.supportsUsageInStreaming) {
-      warnMissingStreamingUsage(openAIModel);
+    // Native calls supersede recovered previews before any toolcall_end authorizes execution.
+    if (sawNativeToolCallDelta && recoveredToolCallBlocks.size > 0) {
+      output.content = output.content.filter(
+        (block) => block.type !== "toolCall" || !recoveredToolCallBlocks.has(block),
+      );
     }
-  }
-  if (providerProcessingMs !== undefined) {
-    appendAssistantMessageDiagnostic(output, {
-      type: "provider_timing",
-      timestamp: Date.now(),
-      details: { processingMs: providerProcessingMs },
+    // Only an explicit stop or observed SSE terminal may authorize silent tool calls.
+    finalizeOpenAICompletionsToolCalls(output, {
+      allowSilentToolCallPromotion:
+        finishReason === "stop" ||
+        (sawNativeToolCallDelta && (options?.sawStreamDONE?.() ?? false)),
+      onConfirmedToolCall(block, contentIndex) {
+        if (directMode) {
+          return;
+        }
+        pushStreamEvent({
+          type: "toolcall_end",
+          contentIndex,
+          toolCall: block,
+          partial: output,
+        });
+      },
     });
+    output.usage.usageReport ??= { state: "unavailable" };
+    if (
+      (!output.usage.contextUsage || output.usage.usageReport.state === "unavailable") &&
+      !options?.signal?.aborted &&
+      output.stopReason !== "error" &&
+      output.stopReason !== "aborted"
+    ) {
+      output.usage.contextUsage = { state: "unavailable" };
+      if (!compat.supportsUsageInStreaming) {
+        warnMissingStreamingUsage(openAIModel);
+      }
+    }
+    if (providerProcessingMs !== undefined) {
+      appendAssistantMessageDiagnostic(output, {
+        type: "provider_timing",
+        timestamp: Date.now(),
+        details: { processingMs: providerProcessingMs },
+      });
+    }
+  } catch (error) {
+    if (directMode) {
+      finishDirectStream(false);
+    }
+    throw error;
   }
+  // The request owner checks cancellation after awaiting this reducer, before tool ends.
+  return directMode ? finishDirectStream : undefined;
 }
 
 // One hint per provider/model per process, capped so a long-lived Gateway that

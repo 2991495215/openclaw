@@ -1,11 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type {
-  AssistantMessageEvent,
-  Context,
-  Model,
-  SimpleStreamOptions,
-  StreamFn,
-} from "@openclaw/llm-core";
+import type { Context, Model, SimpleStreamOptions, StreamFn } from "@openclaw/llm-core";
 import OpenAI from "openai";
 import type { ChatCompletion, ChatCompletionChunk } from "openai/resources/chat/completions.js";
 import { getEnvApiKey } from "../env-api-keys.js";
@@ -195,76 +189,6 @@ function buildOpenAICompletionsClientConfig(
     baseURL: resolveOpenAIClientBaseUrl(model, baseURL),
     defaultHeaders: headers,
     defaultQuery: Object.keys(defaultQuery).length > 0 ? defaultQuery : undefined,
-  };
-}
-
-function createDirectCompletionsEventStream(
-  output: MutableAssistantOutput,
-  stream: { push(event: AssistantMessageEvent): void },
-) {
-  type StreamingBlock = MutableAssistantOutput["content"][number];
-  const finishedBlocks = new Set<StreamingBlock>();
-  const contentIndices = new WeakMap<StreamingBlock, number>();
-  let openTextBlock: StreamingBlock | undefined;
-  let openThinkingBlock: StreamingBlock | undefined;
-  const finishBlock = (block: StreamingBlock) => {
-    const contentIndex = contentIndices.get(block);
-    if (contentIndex === undefined || finishedBlocks.has(block)) {
-      return;
-    }
-    finishedBlocks.add(block);
-    if (block.type === "text") {
-      openTextBlock = undefined;
-      stream.push({ type: "text_end", contentIndex, content: block.text, partial: output });
-    } else if (block.type === "thinking") {
-      openThinkingBlock = undefined;
-      stream.push({
-        type: "thinking_end",
-        contentIndex,
-        content: block.thinking,
-        partial: output,
-      });
-    } else if (block.type === "toolCall") {
-      stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: output });
-    }
-  };
-  const eventStream = {
-    push(event: Parameters<typeof stream.push>[0]) {
-      if (
-        event.type === "text_start" ||
-        event.type === "thinking_start" ||
-        event.type === "toolcall_start"
-      ) {
-        const block = output.content[event.contentIndex];
-        if (block) {
-          contentIndices.set(block, event.contentIndex);
-          if (block.type === "text") {
-            openTextBlock = block;
-          } else if (block.type === "thinking") {
-            openThinkingBlock = block;
-          }
-        }
-      }
-      stream.push(event);
-    },
-  };
-  return {
-    stream: eventStream,
-    beforeContentBlock: (nextType: "text" | "thinking" | "toolCall") => {
-      if (openThinkingBlock) {
-        finishBlock(openThinkingBlock);
-      }
-      if (openTextBlock && nextType !== "toolCall") {
-        finishBlock(openTextBlock);
-      }
-    },
-    finish(includeToolCalls: boolean) {
-      for (const block of output.content) {
-        if (block.type !== "toolCall" || includeToolCalls) {
-          finishBlock(block);
-        }
-      }
-    },
   };
 }
 
@@ -523,21 +447,15 @@ export function streamOpenAICompletionsRequest(
       if (buffered && !discardCandidate) {
         stream.push({ type: "start", partial: output });
       }
-      const directEvents =
-        mode === "direct" ? createDirectCompletionsEventStream(output, stream) : undefined;
+      let finishDirect: Awaited<ReturnType<typeof processCompletionsStream>> = undefined;
       try {
-        await processCompletionsStream(
+        finishDirect = await processCompletionsStream(
           buffered?.stream ?? providerStream,
           output,
           model,
-          discardCandidate ? { push() {} } : (directEvents?.stream ?? stream),
+          discardCandidate ? { push() {} } : stream,
           {
-            ...(directEvents
-              ? {
-                  mode: "direct" as const,
-                  beforeContentBlock: directEvents.beforeContentBlock,
-                }
-              : { mode: "managed" as const }),
+            mode,
             signal: discardCandidate ? undefined : options?.signal,
             emitReasoning,
             strictReasoningTags: reasoningTagTextPolicy.isStrict(options),
@@ -549,7 +467,7 @@ export function streamOpenAICompletionsRequest(
             `Context length exceeded: automatic output budget of ${contextOutputBudget} tokens exhausted before completion.`,
           );
         }
-        if (directEvents) {
+        if (mode === "direct") {
           if (options?.signal?.aborted) {
             throw transportAbortError(options.signal);
           }
@@ -563,10 +481,10 @@ export function streamOpenAICompletionsRequest(
           }
         }
       } catch (error) {
-        directEvents?.finish(false);
+        finishDirect?.(false);
         throw error;
       }
-      directEvents?.finish(output.stopReason === "toolUse");
+      finishDirect?.(output.stopReason === "toolUse");
       finalizeTransportStream({ stream, output, signal: options?.signal });
     } catch (error) {
       if (discardCandidate) {

@@ -104,7 +104,7 @@ describe("openai completions stream", () => {
             }
           },
         },
-        direct ? { mode: "direct", beforeContentBlock() {} } : undefined,
+        direct ? { mode: "direct" } : undefined,
       );
       expect(snapshots).toEqual([
         expect.objectContaining({ id: "write-progress", partialJson: '{"content":"first' }),
@@ -520,7 +520,7 @@ describe("OpenAI-compatible provider processing timing", () => {
           makeCompletionsChunk({}, "stop", { timings: { prompt_ms: 3, predicted_ms: 5 } }),
           { ...usageChunk(2), timings: { prompt_ms: 1.25, predicted_ms: 2.5 } },
         ],
-        direct ? { mode: "direct", beforeContentBlock() {} } : undefined,
+        direct ? { mode: "direct" } : undefined,
       );
       expect(output.diagnostics).toEqual([
         previousDiagnostic,
@@ -565,9 +565,7 @@ describe("OpenAI-compatible provider processing timing", () => {
           output,
           model,
           { push() {} },
-          direct
-            ? { signal: abort.signal, mode: "direct", beforeContentBlock() {} }
-            : { signal: abort.signal },
+          direct ? { signal: abort.signal, mode: "direct" } : { signal: abort.signal },
         ),
       ).rejects.toThrow("Request was aborted");
       expect(output.diagnostics).toBeUndefined();
