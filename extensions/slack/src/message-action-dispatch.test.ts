@@ -4,7 +4,7 @@ import {
   resetPluginRuntimeStateForTest,
   setActivePluginRegistry,
 } from "openclaw/plugin-sdk/channel-test-helpers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { slackSetupPlugin } from "./channel.setup.js";
 import { createInvokeSpy, dispatch } from "./message-action-dispatch.test-support.js";
 import { extractSlackToolSend } from "./message-actions.js";
