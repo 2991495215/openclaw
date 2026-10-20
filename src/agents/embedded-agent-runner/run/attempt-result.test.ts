@@ -152,6 +152,7 @@ function createResultFixture(params?: {
       }),
     },
     prepared: {
+      toolBase: { requestedCompaction: undefined },
       toolCatalog: {
         toolSearchRunPlan: { liveAllowedToolNames: new Set(params?.allowedToolNames) },
       },

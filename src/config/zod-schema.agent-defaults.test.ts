@@ -23,11 +23,10 @@ function expectSchemaFailurePath(result: SchemaParseResult, prefix: string): voi
 
 describe("agent defaults schema", () => {
   it("keeps cache-expiry compaction opt-in and rejects invented timer settings", () => {
-    expect(AgentDefaultsSchema.parse({ compaction: {} }).compaction?.cacheExpiry).toBeUndefined();
-    expect(
-      AgentDefaultsSchema.parse({ compaction: { cacheExpiry: { enabled: true } } }).compaction
-        ?.cacheExpiry,
-    ).toEqual({ enabled: true });
+    expect(AgentDefaultsSchema.parse({ compaction: {} })).toEqual({ compaction: {} });
+    expect(AgentDefaultsSchema.parse({ compaction: { cacheExpiry: { enabled: true } } })).toEqual({
+      compaction: { cacheExpiry: { enabled: true } },
+    });
     expect(
       AgentDefaultsSchema.safeParse({ compaction: { cacheExpiry: { enabled: "yes" } } }).success,
     ).toBe(false);
