@@ -16,16 +16,12 @@ import {
   projectBundleMcpCatalogFailure,
 } from "./agent-bundle-mcp-catalog-projection.js";
 import {
-  createCombinedSessionMcpRuntime,
-  mergeMcpToolCatalogs,
-} from "./agent-bundle-mcp-combined.js";
-import {
-  disposeAllSessionMcpRuntimes,
-  getSessionMcpRuntimeManagerForTesting,
-} from "./agent-bundle-mcp-manager-api.js";
-import { getSessionMcpRequestSignal } from "./agent-bundle-mcp-request-context.js";
-import { loadSessionMcpConfig } from "./agent-bundle-mcp-runtime-config.js";
-import { sessionMcpRuntimeOwners } from "./agent-bundle-mcp-runtime-owner.js";
+  getSessionMcpRequestSignal,
+  runWithSessionMcpRequestSignal,
+  withSessionMcpCallerAuthority,
+} from "./agent-bundle-mcp-request-context.js";
+import type { loadSessionMcpConfig } from "./agent-bundle-mcp-runtime-config.js";
+import { createSessionMcpRuntimeParts } from "./agent-bundle-mcp-runtime-parts.js";
 import type { CreateSessionMcpRuntime } from "./agent-bundle-mcp-runtime-shared.js";
 import type {
   McpRequestOptions,
@@ -577,32 +573,20 @@ function createServerMcpRuntime(
     session: BundleMcpSession,
     request: (signal: AbortSignal, holdForHumanInput: () => () => void) => Promise<T>,
     options?: McpRequestOptions,
-  ) => runGuardedServerRequest(session, () => requests.run(session, request), options);
-  const collectServerItems = (session: BundleMcpSession, kind: "prompts" | "resources") => {
-    const callerSignal = getSessionMcpRequestSignal();
-    return collectMcpPaginatedItems({
-      label: `MCP ${kind === "resources" ? "resource" : "prompt"} listing`,
-      itemLabel: kind,
+  ) =>
+    runGuardedServerRequest(
+      session,
+      () => requests.run(session, withSessionMcpCallerAuthority(request)),
+      options,
+    );
+  const collectServerItems = (session: BundleMcpSession, kind: "prompts" | "resources") =>
+    listMcpServerItems(kind, {
+      client: session.client,
       timeoutMs: session.requestTimeoutMs,
-      ...MCP_CATALOG_LIST_LIMITS,
-      signal: callerSignal
-        ? AbortSignal.any([lifecycleAbortController.signal, callerSignal])
-        : lifecycleAbortController.signal,
-      loadPage: ({ cursor, requestTimeoutMs: timeout, signal }) =>
-        requests.run(
-          session,
-          async (requestSignal) => {
-            const requestParams = cursor === undefined ? undefined : { cursor };
-            const requestOptions = { timeout, maxTotalTimeout: timeout, signal: requestSignal };
-            const page =
-              kind === "resources"
-                ? await session.client.listResources(requestParams, requestOptions)
-                : await session.client.listPrompts(requestParams, requestOptions);
-            const items = page[kind] as unknown[];
-            return { items, nextCursor: page.nextCursor, serializedValue: page };
-          },
-          signal,
-        ),
+      signal: lifecycleAbortController.signal,
+      callerSignal: getSessionMcpRequestSignal(),
+      runRequest: (request, signal) =>
+        requests.run(session, withSessionMcpCallerAuthority(request), signal),
     });
   };
 
@@ -791,6 +775,17 @@ function createServerMcpRuntime(
           serverName,
           safeServerName,
           launchDescription,
+          rawServer,
+          listedTools,
+          schemaValidator,
+          denialMap: params.toolOverrides?.mcpToolsDeny,
+          capabilities,
+          serverVersion: session.client.getServerVersion(),
+          serverCapabilities: session.client.getServerCapabilities(),
+          // Served whole, as Claude's native connection received them.
+          instructions: session.client.getInstructions()?.trim() || undefined,
+          pluginId: loaded.pluginIdsByServer?.[serverName],
+          connection: resolved,
         });
         return {
           version: 1,

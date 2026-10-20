@@ -364,25 +364,39 @@ describe("claudeCliSessionTranscriptHasOrphanedToolUse", () => {
           { type: "text", text: "found it" },
         ]),
       ],
-    },
-    {
-      name: "a string assistant superseding an orphan past record 500",
-      expected: false,
-      lines: [
-        message("assistant", [tool("old")]),
-        ...longPrefix,
-        message("assistant", "moving on"),
+    ],
+    [
+      "a string assistant superseding an orphan past record 500",
+      false,
+      [message("assistant", [tool("old")]), ...longPrefix, message("assistant", "moving on")],
+    ],
+    [
+      "answered calls repeated by a request echo before the final reply",
+      false,
+      [
+        message("assistant", [tool("spawn")]),
+        message("user", [result("spawn")]),
+        { type: "api-request-blob", message: { role: "assistant", content: [tool("spawn")] } },
+        { type: "api-request" },
       ],
-    },
-    {
-      name: "main-conversation orphans with sidechain results",
-      expected: true,
-      lines: [message("assistant", [tool("main")]), message("user", [result("main")], true)],
-    },
-    {
-      name: "a trailing orphan past record 500",
-      expected: true,
-      lines: [
+    ],
+    [
+      "an orphan followed only by a request echo",
+      true,
+      [
+        message("assistant", [tool("orphan")]),
+        { type: "api-request-blob", message: { role: "user", content: [result("orphan")] } },
+      ],
+    ],
+    [
+      "main-conversation orphans with sidechain results",
+      true,
+      [message("assistant", [tool("main")]), message("user", [result("main")], true)],
+    ],
+    [
+      "a trailing orphan past record 500",
+      true,
+      [
         ...longPrefix,
         message("assistant", [tool("resolved")]),
         message("user", [result("resolved")]),
