@@ -262,6 +262,30 @@ describe("loadManifestContractSnapshot", () => {
     );
   });
 
+  it.each([false, true])("resolves aliases with a supplied registry=%s", async (supplied) => {
+    const { resolveManifestCommandAliasOwner } =
+      await import("./manifest-command-aliases.runtime.js");
+    const registry = {
+      plugins: [{ id: "supplied-owner", commandAliases: [{ name: "legacy-command" }] }],
+    };
+    mocks.resolvePluginMetadataSnapshot.mockReturnValue({
+      manifestRegistry: {
+        plugins: [{ id: "snapshot-owner", commandAliases: [{ name: "legacy-command" }] }],
+      },
+    });
+
+    expect(
+      resolveManifestCommandAliasOwner({
+        command: "legacy-command",
+        config: {},
+        ...(supplied ? { registry } : {}),
+      }),
+    ).toEqual({
+      name: "legacy-command",
+      pluginId: supplied ? "supplied-owner" : "snapshot-owner",
+    });
+  });
+
   it.each([false, true])(
     "resolves scoped or default-discovery metadata (configless=%s)",
     (configless) => {

@@ -230,6 +230,36 @@ describe("listOpenClawPluginManifestMetadata", () => {
     ]);
   });
 
+  it("orders a higher-priority physical duplicate at its winning source position", async () => {
+    const { home, bundledRoot, pluginDir, manifestPath, env } = createPluginFixture(
+      "zeta-owner",
+      { id: "zeta-owner" },
+      "extensions",
+    );
+    const alphaDir = path.join(bundledRoot, "alpha-owner");
+    writeJson(path.join(alphaDir, "openclaw.plugin.json"), { id: "alpha-owner" });
+    const index = makePluginMetadataIndex("zeta-owner");
+    Object.assign(index.plugins[0]!, {
+      rootDir: pluginDir,
+      manifestPath,
+      origin: "bundled",
+    });
+    await writePersistedInstalledPluginIndex(index, { stateDir: path.join(home, ".openclaw") });
+
+    expect(
+      listOpenClawPluginManifestMetadata(env)
+        .filter((record) => ["alpha-owner", "zeta-owner"].includes(String(record.manifest.id)))
+        .map((record) => ({
+          id: record.manifest.id,
+          pluginDir: record.pluginDir,
+          origin: record.origin,
+        })),
+    ).toEqual([
+      { id: "alpha-owner", pluginDir: alphaDir, origin: "bundled" },
+      { id: "zeta-owner", pluginDir, origin: "bundled" },
+    ]);
+  });
+
   it("keeps source manifest metadata when the active bundled tree is partial", () => {
     const { env } = createPluginFixture(
       "qa-lab",

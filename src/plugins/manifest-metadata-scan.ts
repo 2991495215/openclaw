@@ -35,7 +35,6 @@ type PluginManifestMetadataRecord = {
 type CandidateDir = {
   pluginDir: string;
   rank: number;
-  order: number;
   origin?: string;
 };
 
@@ -43,21 +42,19 @@ const PLUGIN_MANIFEST_FILENAME = "openclaw.plugin.json";
 function listChildPluginDirs(
   root: string | undefined,
   rank: number,
-  startOrder: number,
   origin: string,
 ): CandidateDir[] {
   if (!root || !pluginCacheExistsSync(root)) {
     return [];
   }
   const dirs: CandidateDir[] = [];
-  let order = startOrder;
   try {
     const entries = readPluginCacheDirectory(root).toSorted((left, right) =>
       left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
     );
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        dirs.push({ pluginDir: path.join(root, entry.name), rank, order: order++, origin });
+        dirs.push({ pluginDir: path.join(root, entry.name), rank, origin });
       }
     }
   } catch {
@@ -110,14 +107,13 @@ function readManifestObject(pluginDir: string): Record<string, unknown> | undefi
   return parsed;
 }
 
-function listPersistedIndexPluginDirs(env: NodeJS.ProcessEnv, startOrder: number): CandidateDir[] {
+function listPersistedIndexPluginDirs(env: NodeJS.ProcessEnv): CandidateDir[] {
   const index = readPersistedInstalledPluginIndexSync({ env });
   if (!index) {
     return [];
   }
 
   const dirs: CandidateDir[] = [];
-  let order = startOrder;
   for (const plugin of index.plugins) {
     const rootDir = normalizeTrimmedString(plugin.rootDir);
     if (!rootDir) {
@@ -126,7 +122,6 @@ function listPersistedIndexPluginDirs(env: NodeJS.ProcessEnv, startOrder: number
     dirs.push({
       pluginDir: resolveHomeRelativePath(rootDir, { env }),
       rank: plugin.origin === "bundled" ? 3 : 1,
-      order: order++,
       origin: normalizeTrimmedString(plugin.origin),
     });
   }
@@ -147,31 +142,26 @@ function resolvePackageRootsForSourceManifestMetadata(): string[] {
   return roots;
 }
 
-function listSourceCheckoutPluginDirs(startOrder: number): CandidateDir[] {
+function listSourceCheckoutPluginDirs(): CandidateDir[] {
   const dirs: CandidateDir[] = [];
-  let order = startOrder;
   for (const packageRoot of resolvePackageRootsForSourceManifestMetadata()) {
     if (!isSourceCheckoutRoot(packageRoot)) {
       continue;
     }
-    dirs.push(...listChildPluginDirs(path.join(packageRoot, "extensions"), 3, order, "source"));
-    order = startOrder + dirs.length;
+    dirs.push(...listChildPluginDirs(path.join(packageRoot, "extensions"), 3, "source"));
   }
   return dirs;
 }
 
 function uniqueCandidateDirs(candidates: CandidateDir[]): CandidateDir[] {
   const byPath = new Map<string, CandidateDir>();
-  for (const candidate of candidates) {
+  for (const candidate of candidates.toSorted((left, right) => left.rank - right.rank)) {
     const key = pluginCacheRealpathSync(candidate.pluginDir) ?? path.resolve(candidate.pluginDir);
-    const existing = byPath.get(key);
-    if (!existing || candidate.rank < existing.rank || candidate.order < existing.order) {
+    if (!byPath.has(key)) {
       byPath.set(key, candidate);
     }
   }
-  return [...byPath.values()].toSorted(
-    (left, right) => left.rank - right.rank || left.order - right.order,
-  );
+  return [...byPath.values()];
 }
 
 /** Lists plugin manifest metadata from installed, bundled, and global plugin roots. */
@@ -190,17 +180,12 @@ export function listOpenClawPluginManifestMetadata(
       return manifest ? [{ pluginDir: plugin.rootDir, manifest, origin: plugin.origin }] : [];
     });
   }
-  const candidates: CandidateDir[] = [];
-  let order = 0;
-  candidates.push(...listPersistedIndexPluginDirs(env, order));
-  order = candidates.length;
-  candidates.push(...listChildPluginDirs(resolveBundledPluginsDir(env), 2, order, "bundled"));
-  order = candidates.length;
-  candidates.push(...listSourceCheckoutPluginDirs(order));
-  order = candidates.length;
-  candidates.push(
-    ...listChildPluginDirs(resolveDefaultPluginExtensionsDir(env), 4, order, "global"),
-  );
+  const candidates: CandidateDir[] = [
+    ...listPersistedIndexPluginDirs(env),
+    ...listChildPluginDirs(resolveBundledPluginsDir(env), 2, "bundled"),
+    ...listSourceCheckoutPluginDirs(),
+    ...listChildPluginDirs(resolveDefaultPluginExtensionsDir(env), 4, "global"),
+  ];
   const uniqueCandidates = uniqueCandidateDirs(candidates);
   const seenManifestIds = new Set<string>();
   const records: PluginManifestMetadataRecord[] = [];
