@@ -25,6 +25,7 @@ import {
   installModelPromptProjection,
   installRuntimeContextMessageForPrompt,
   normalizeMessagesForLlmBoundary,
+  resolveModelPromptText,
 } from "./attempt-llm-boundary.js";
 import {
   isSessionsYieldAbortError,
@@ -278,22 +279,30 @@ export async function submitEmbeddedAttemptPrompt(input: {
     inFlightPrompt: input.transcriptPrompt,
   });
 
+  // An internal prompt has no transcript recorder to capture a model-facing projection,
+  // so it is submitted and persisted as the exact text the model receives.
+  const internalPrompt = attempt.skipPreparedUserTurnMessage === true;
+  const submittedPrompt = internalPrompt
+    ? resolveModelPromptText({ ...input, text: input.transcriptPrompt })
+    : input.transcriptPrompt;
   let captureCurrentPromptForModel = false;
-  const cleanupModelPromptTransform = installModelPromptProjection({
-    session: activeSession,
-    transcriptPrompt: input.transcriptPrompt,
-    modelPrompt: input.modelPrompt,
-    prependContext: input.prependContext,
-    appendContext: input.appendContext,
-    shouldCapturePrompt: () => captureCurrentPromptForModel,
-    recorder: projectionRecorder,
-    withTranscriptWrite: input.withTranscriptWrite,
-    getUserTranscriptContexts: input.getUserTranscriptContexts,
-    assertCurrent: () => {
-      assertSteeringCurrent();
-      input.assertHostActive?.();
-    },
-  });
+  const cleanupModelPromptTransform = internalPrompt
+    ? () => {}
+    : installModelPromptProjection({
+        session: activeSession,
+        transcriptPrompt: input.transcriptPrompt,
+        modelPrompt: input.modelPrompt,
+        prependContext: input.prependContext,
+        appendContext: input.appendContext,
+        shouldCapturePrompt: () => captureCurrentPromptForModel,
+        recorder: projectionRecorder,
+        withTranscriptWrite: input.withTranscriptWrite,
+        getUserTranscriptContexts: input.getUserTranscriptContexts,
+        assertCurrent: () => {
+          assertSteeringCurrent();
+          input.assertHostActive?.();
+        },
+      });
   const armModelPromptTransform = (submitted: boolean) => {
     captureCurrentPromptForModel ||= submitted;
   };
@@ -304,8 +313,10 @@ export async function submitEmbeddedAttemptPrompt(input: {
   };
   attachPromptCompactionRequestBudget(promptOptions, input.compactionRequestBudget);
   const cleanupProviderPromptHistoryTransform = installProviderPromptHistoryTransform();
-  // Retain the model prefix without attributing its synthetic continuation to a human.
-  if (input.runtimeOnly) {
+  // Retain the model prefix without attributing a synthetic or internal prompt to a human;
+  // suppressing it would orphan the runtime context persisted after it.
+  const modelOnlyPrompt = input.runtimeOnly || internalPrompt;
+  if (modelOnlyPrompt) {
     input.setNextUserMessagePersistence?.("runtime");
   }
   try {
@@ -320,7 +331,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
             persistedUserIdempotencyKey,
           });
     try {
-      await input.promptActiveSession(input.transcriptPrompt, promptOptions);
+      await input.promptActiveSession(submittedPrompt, promptOptions);
     } finally {
       cleanupRuntimeContextMessage();
     }
@@ -329,7 +340,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
       input.onSteeringAcknowledged();
     }
   } finally {
-    if (input.runtimeOnly) {
+    if (modelOnlyPrompt) {
       // Preflight can fail before consuming the one-shot persistence mode.
       input.setNextUserMessagePersistence?.("normal");
     }
