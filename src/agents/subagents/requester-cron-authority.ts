@@ -601,8 +601,8 @@ export function consumeRequesterCronAuthorityAdmission(params: RequesterAdmissio
         dispatch.pause.scope = scope;
         return;
       }
-      // Queue acceptance can retire the child outbox before the parent finishes.
-      // Its fresh run scope now owns the entitlement and all per-operation grants.
+      // The admitted run scope now owns the entitlement and per-operation grants.
+      // Its lifetime is independent of later cohort cleanup; queue ACK alone is not delivery.
       dispatch.authority.runScopeBound = true;
       if (dispatch.authority.kind === "yield") {
         for (const entry of dispatch.authority.batch) {
