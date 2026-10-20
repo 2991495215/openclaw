@@ -40,14 +40,14 @@ function createPreparedSsh(): PreparedWorkerSsh {
 
 function createWorkspaceActions(
   run: (argv: string[], options: CommandOptions) => Promise<SpawnResult>,
-  waitForPrepared?: () => Promise<PreparedWorkerSsh>,
+  getPrepared?: () => PreparedWorkerSsh,
 ) {
   const prepared = createPreparedSsh();
   return createWorkerWorkspaceActions({
     bundleHash: "a".repeat(64),
     environmentId: "worker:test",
     ownerSignal: new AbortController().signal,
-    waitForPrepared: waitForPrepared ?? (async () => prepared),
+    getPrepared: getPrepared ?? (() => prepared),
     runner: { run },
     tasks: new Set(),
   });
@@ -57,8 +57,7 @@ const retries = ["never", "idempotent"] as const;
 it.each(retries)("rejects stale %s authority after preparation", async (transportRetry) => {
   const run = vi.fn(async () => result());
   let current = true;
-  const actions = createWorkspaceActions(run, async () => {
-    await Promise.resolve();
+  const actions = createWorkspaceActions(run, () => {
     current = false;
     return createPreparedSsh();
   });

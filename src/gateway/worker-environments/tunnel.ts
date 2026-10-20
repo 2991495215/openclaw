@@ -60,7 +60,7 @@ export function createWorkerTunnelManager(options: WorkerTunnelManagerOptions = 
       environmentId: entry.environmentId,
       sharedHost: entry.sharedHost,
       ownerSignal: entry.abortController.signal,
-      waitForPrepared: async () => {
+      getPrepared: () => {
         if (isCurrent(entry) && entry.status === "connected" && entry.prepared) {
           return entry.prepared;
         }

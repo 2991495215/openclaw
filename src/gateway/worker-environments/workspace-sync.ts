@@ -1,8 +1,6 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
-import { withTimeout } from "../../infra/fs-safe.js";
 import { resolvePreferredOpenClawTmpDir } from "../../infra/tmp-openclaw-dir.js";
 import type { CommandOptions, SpawnResult } from "../../process/exec.js";
 import { withGitProcessOperation } from "../../process/spawn-diagnostics.js";
@@ -99,20 +97,6 @@ export function createWorkerWorkspaceActions(
     return task;
   };
 
-  const waitForPrepared = async (
-    timeoutMs: number,
-    message: string,
-    signal?: AbortSignal,
-  ): Promise<PreparedWorkerSsh> => {
-    signal?.throwIfAborted();
-    const operation = withTimeout(options.waitForPrepared(), timeoutMs, { message });
-    return await racePromiseWithAbortSignal(operation, signal, (abortedSignal) =>
-      abortedSignal.reason instanceof Error
-        ? abortedSignal.reason
-        : new Error("Worker workspace command aborted", { cause: abortedSignal.reason }),
-    );
-  };
-
   const runTask = (argv: string[], opts: CommandOptions) =>
     withGitProcessOperation(
       "workspace.sync",
@@ -160,13 +144,8 @@ export function createWorkerWorkspaceActions(
     const signal = command.signal
       ? AbortSignal.any([options.ownerSignal, command.signal])
       : options.ownerSignal;
-    // Waiting before first dispatch is safe for every command. `transportRetry` only controls
-    // whether an ambiguous SSH result may be replayed after dispatch.
-    const prepared = await waitForPrepared(
-      timeoutMs,
-      "Worker tunnel did not reconnect within the workspace command timeout",
-      command.signal,
-    );
+    command.signal?.throwIfAborted();
+    const prepared = options.getPrepared();
     signal.throwIfAborted();
     command.assertCurrent?.();
     const remainingCommandTimeoutMs = () => Math.max(0, deadlineMs - performance.now());
@@ -221,10 +200,7 @@ export function createWorkerWorkspaceActions(
   ): Promise<WorkerWorkspaceSyncResult> => {
     validateWorkspaceSyncRequest(request);
     request.authorize?.();
-    const prepared = await waitForPrepared(
-      WORKSPACE_TIMEOUT_MS,
-      "Worker tunnel did not reconnect within the workspace synchronization timeout",
-    );
+    const prepared = options.getPrepared();
     const remoteRelative = [
       REMOTE_WORKSPACE_ROOT,
       stableWorkerPathComponent(options.environmentId, 16),
@@ -470,10 +446,7 @@ export function createWorkerWorkspaceActions(
       request.remoteWorkspaceDir,
       request.baseManifestRef,
     );
-    const prepared = await waitForPrepared(
-      WORKSPACE_TIMEOUT_MS,
-      "Worker tunnel did not reconnect within the workspace reconciliation timeout",
-    );
+    const prepared = options.getPrepared();
     const temporaryDirectory = await fs.mkdtemp(
       path.join(resolvePreferredOpenClawTmpDir(), "openclaw-worker-workspace-reconcile-"),
     );

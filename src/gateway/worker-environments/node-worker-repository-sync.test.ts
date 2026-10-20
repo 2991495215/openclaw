@@ -65,12 +65,12 @@ it.each([
 
 it("rejects repository sources on SSH before invoking any remote command", async () => {
   const run = vi.fn();
-  const waitForPrepared = vi.fn();
+  const getPrepared = vi.fn();
   const actions = createWorkerWorkspaceActions({
     environmentId: "environment-ssh",
     ownerSignal: new AbortController().signal,
     runner: { run },
-    waitForPrepared,
+    getPrepared,
     tasks: new Set(),
     bundleHash: "a".repeat(64),
   });
@@ -96,7 +96,7 @@ it("rejects repository sources on SSH before invoking any remote command", async
       },
     }),
   ).rejects.toThrow("managed node");
-  expect(waitForPrepared).not.toHaveBeenCalled();
+  expect(getPrepared).not.toHaveBeenCalled();
   expect(run).not.toHaveBeenCalled();
 });
 

@@ -1,5 +1,6 @@
 import { ChildProcess } from "node:child_process";
 import { tracingChannel } from "node:diagnostics_channel";
+import fsSync from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -161,7 +162,43 @@ describe("runWorkspaceInventoryCommandToFile", () => {
   it("fully persists bounded stdout after a positive short write", async () => {
     const { outputPath } = commandFixture();
     const expected = Buffer.from("bounded workspace inventory output\n");
-    const shortWriteObserved = injectPositiveShortWrite(outputPath);
+    let outputDescriptor: number | undefined;
+    interceptOutput(outputPath, (handle) => {
+      outputDescriptor = handle.fd;
+    });
+    const write = fsSync.writeSync.bind(fsSync);
+    let shortWriteObserved = false;
+    vi.spyOn(fsSync, "writeSync").mockImplementation(
+      (
+        descriptor: number,
+        content: string | NodeJS.ArrayBufferView,
+        offset?: number | null,
+        lengthOrEncoding?: number | BufferEncoding | null,
+        position?: number | null,
+      ) => {
+        if (typeof content === "string") {
+          return write(
+            descriptor,
+            content,
+            offset,
+            typeof lengthOrEncoding === "string" ? lengthOrEncoding : undefined,
+          );
+        }
+        const length =
+          typeof lengthOrEncoding === "number"
+            ? lengthOrEncoding
+            : content.byteLength - (offset ?? 0);
+        const shortened = descriptor === outputDescriptor && !shortWriteObserved && length > 1;
+        shortWriteObserved ||= shortened;
+        return write(
+          descriptor,
+          content,
+          offset,
+          shortened ? Math.floor(length / 2) : length,
+          position,
+        );
+      },
+    );
 
     await inventoryCommand(
       [process.execPath, "-e", "process.stdout.write(process.argv[1])", expected.toString()],
@@ -169,7 +206,7 @@ describe("runWorkspaceInventoryCommandToFile", () => {
       { maxOutputBytes: expected.length },
     );
 
-    expect(shortWriteObserved()).toBe(true);
+    expect(shortWriteObserved).toBe(true);
     await expect(fs.readFile(outputPath)).resolves.toEqual(expected);
   });
 
@@ -427,18 +464,12 @@ describe("runWorkspaceInventoryCommandToFile", () => {
           : "setInterval(() => {}, 1000);",
         "}));",
       ].join("");
-      if (timeout) {
-        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-      }
       const producing = inventoryCommand([process.execPath, "-e", script, marker], outputPath, {
         signal: controller.signal,
       });
       void producing.then(settled, settled);
       try {
         await ready.promise;
-        if (timeout) {
-          await vi.advanceTimersByTimeAsync(10_000);
-        }
         if (mode !== "abort-exit") {
           expect(await exited.promise, observedStderr).toEqual({ code: exitCode, signal: null });
         }
@@ -446,9 +477,6 @@ describe("runWorkspaceInventoryCommandToFile", () => {
         expect(settled).not.toHaveBeenCalled();
         if (mode !== "timeout-clean-exit") {
           controller.abort(cancellation);
-        }
-        if (timeout) {
-          await vi.advanceTimersByTimeAsync(300);
         }
         const error = await producing.catch((value: unknown) => value);
         expect(await exited.promise, observedStderr).toEqual({ code: exitCode, signal: null });
@@ -467,10 +495,6 @@ describe("runWorkspaceInventoryCommandToFile", () => {
         }
       } finally {
         controller.abort(cancellation);
-        if (timeout) {
-          await vi.runOnlyPendingTimersAsync();
-          vi.useRealTimers();
-        }
         await producing.catch(() => undefined);
         spawnChannel.unsubscribe(observeSpawn);
       }
