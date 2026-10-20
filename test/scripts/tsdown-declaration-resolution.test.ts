@@ -218,9 +218,7 @@ assert.equal(round, 2, "watch exited before both completed builds");
     }),
 );
 
-it.concurrent("honors canonical DTS precedence without overriding custom configs", ({
-  command,
-}) =>
+it.concurrent("honors canonical DTS precedence without overriding custom configs", ({ command }) =>
   command.lifetime.run(async () => {
     const { root, write } = createFixture(command, TSDOWN_UNIFIED_DTS_CONFIG_GROUPS, undefined, [
       "tsdown.ai.config.ts",
@@ -243,9 +241,7 @@ it.concurrent("honors canonical DTS precedence without overriding custom configs
         ...switches,
       ]);
       expect(result.status, result.stdout + result.stderr).toBe(0);
-      expect(fs.readFileSync(path.join(root, "packages/ai/dist/index.mjs"), "utf8")).toContain(
-        marker,
-      );
+      expect(fs.readFileSync(path.join(root, "packages/ai/dist/index.mjs"), "utf8")).toContain(marker);
       const declaration = path.join(root, "packages/ai/dist/index.d.mts");
       const contents = fs.existsSync(declaration) ? fs.readFileSync(declaration, "utf8") : undefined;
       if (declarations) {

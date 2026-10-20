@@ -177,9 +177,7 @@ describe("write-unified-entry-dts", () => {
         );
       const expected = snapshot();
       const unified = treeHashes(path.join(root, "dist"));
-      const unifiedLabels = TSDOWN_UNIFIED_DTS_CONFIG_GROUPS.map(
-        (group) => `tsdown-unified-${group}`,
-      );
+      const unifiedLabels = TSDOWN_UNIFIED_DTS_CONFIG_GROUPS.map((group) => `tsdown-unified-${group}`);
       const declarationLabels = ["tsdown-ai", "tsdown-packages", ...unifiedLabels];
       const signatures = (labels: string[]) =>
         Object.fromEntries(
@@ -202,9 +200,7 @@ describe("write-unified-entry-dts", () => {
           .digest("hex");
       expect(unified["build-cache-inputs.json"]).toBe(expectedInputHash(declarationLabels));
       for (const files of Object.values(expected)) {
-        expect(Object.keys(files).some((name) => /cache-shared-.*\.[cm]?js$/u.test(name))).toBe(
-          true,
-        );
+        expect(Object.keys(files).some((name) => /cache-shared-.*\.[cm]?js$/u.test(name))).toBe(true);
         expect(Object.keys(files).some((name) => /\.d\.[cm]?ts$/u.test(name))).toBe(true);
       }
       expect(Object.keys(expected["llm-core"]!).some((name) => name.endsWith(".map"))).toBe(true);
@@ -264,9 +260,7 @@ for (const name of ["ai", "llm-core"]) {
         await expectReuse(result, [
           ...declarationLabels,
           ...runtimeLabels.filter((label) =>
-            hit === "tsdown-ai"
-              ? label === "tsdown-runtime-ai"
-              : label !== "tsdown-runtime-ai",
+            hit === "tsdown-ai" ? label === "tsdown-runtime-ai" : label !== "tsdown-runtime-ai",
           ),
         ]);
       }
