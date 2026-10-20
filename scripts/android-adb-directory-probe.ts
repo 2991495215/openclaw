@@ -30,6 +30,7 @@ const emulator = path.join(sdk, "emulator/emulator");
 const filter = "adbd:V libc:F DEBUG:V init:I tombstoned:I lmkd:I *:S";
 const run = promisify(execFile);
 const started = Date.now();
+let stage = "sdk";
 const events: Record<string, unknown>[] = [];
 const proof = {
   schema: 1,
@@ -43,7 +44,7 @@ const proof = {
   events,
 };
 function record(kind: string, facts: Record<string, unknown>) {
-  events.push({ kind, elapsedMs: Date.now() - started, ...facts });
+  events.push({ kind, stage, elapsedMs: Date.now() - started, ...facts });
 }
 async function command(bin: string, args: string[], timeout = 20_000, input?: string) {
   try {
@@ -191,6 +192,7 @@ try {
     const logcat = path.join(root, `${cycle}-logcat.private.log`);
     const services: Owned[] = [];
     try {
+      stage = "avd-create";
       await command(
         path.join(sdk, "cmdline-tools/latest/bin/avdmanager"),
         [
@@ -206,6 +208,7 @@ try {
         60_000,
         "no\n",
       );
+      stage = "boot";
       const phone = service(
         "phone",
         emulator,
@@ -250,6 +253,7 @@ try {
       if (!booted) {
         throw new Error("boot-failed");
       }
+      stage = "guest-diagnostics";
       const identity = await command(adb, ["-s", serial, "emu", "avd", "name"]);
       if (!identity.stdout.split(/\r?\n/u).includes(name)) {
         throw new Error("emulator-identity-mismatch");
@@ -268,9 +272,29 @@ try {
       ) {
         throw new Error("guest-logging-unavailable");
       }
+      stage = "shared-storage-ready";
+      const storageDeadline = Date.now() + 60_000;
+      while (
+        !(await command(
+          adb,
+          ["-s", serial, "shell", "test -d /sdcard && test -w /sdcard"],
+          5000,
+        ).then(
+          () => true,
+          () => false,
+        ))
+      ) {
+        if (!running(phone) || Date.now() >= storageDeadline) {
+          throw new Error("shared-storage-not-ready");
+        }
+        await sleep(500);
+      }
+      record("storage-ready", { cycle });
+      stage = "fixture-setup";
       const remote = "/sdcard/Download/directory-probe";
       await command(adb, ["-s", serial, "shell", "mkdir", "-p", remote]);
       await command(adb, ["-s", serial, "push", `${fixtures}/.`, remote]);
+      stage = "idle-shell";
       const idleLog = path.join(root, `${cycle}-idle.private.log`);
       const idle = service(
         "idle-shell",
@@ -287,6 +311,7 @@ try {
         await sleep(100);
       }
       await snapshot(serial, cycle, "before-pulls");
+      stage = "pull";
       for (let iteration = 1; iteration <= 100; iteration++) {
         const destination = path.join(root, "pulled");
         await mkdir(destination);
@@ -323,6 +348,7 @@ try {
         "boot-failed",
         "emulator-identity-mismatch",
         "guest-logging-unavailable",
+        "shared-storage-not-ready",
         "idle-shell-not-ready",
         "concurrent-service-exit",
         "file-count-mismatch",
