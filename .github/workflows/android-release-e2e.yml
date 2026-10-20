@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       # Temporary controller: pin the reviewed diagnostic candidate independently of this workflow.
-      TARGET_SHA: d4d3db41b15d1924e6c9553cd5efcea1494f5435
+      TARGET_SHA: 72c587c91be88ad652b22712d53cf34c77934cb8
     steps:
       - name: Initialize failure proof and validate target
         shell: bash
