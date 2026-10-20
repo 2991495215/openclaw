@@ -1,6 +1,6 @@
 // Temporary SDK-only reproduction probe; it does not build or qualify the app.
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -57,6 +57,22 @@ async function command(bin: string, args: string[], timeout = 20_000, input?: st
       ...androidReleaseCommandFacts(bin, args, failure.stdout ?? "", failure.stderr ?? ""),
       code: typeof failure.code === "number" ? failure.code : null,
       killed: failure.killed === true,
+      syncErrors: [
+        "failed to read copy response: EOF",
+        "failed to read copy response",
+        "failed to read reason",
+        "couldn't create file",
+        "fchown() failed",
+        "secure_mkdirs() failed",
+        "decompress failed",
+        "Operation not permitted",
+        "Read-only file system",
+        "Bad file descriptor",
+        "Invalid argument",
+        "Input/output error",
+        "Connection reset by peer",
+        "Broken pipe",
+      ].filter((message) => failure.stderr?.includes(message)),
     });
     throw new Error("probe-command-failed", { cause: error });
   }
@@ -174,16 +190,6 @@ try {
     path.join(sdk, "system-images/android-36/google_apis/x86_64/package.xml"),
   );
   record("system-image", { packageXmlSha256: digest(imageMetadata) });
-  const fixtures = path.join(root, "fixtures");
-  await mkdir(fixtures);
-  const expected = new Map<string, string>();
-  for (let index = 0; index < 3; index++) {
-    const name = `screenshot-${index}.png`;
-    // Synthetic bytes only; match the failed run's aggregate screenshot payload size.
-    const bytes = randomBytes(index === 2 ? 165839 : 166000);
-    await writeFile(path.join(fixtures, name), bytes);
-    expected.set(name, digest(bytes));
-  }
   for (let cycle = 1; cycle <= 2; cycle++) {
     const name = `directory-probe-${cycle}`;
     const port = 5580 + (cycle - 1) * 2;
@@ -293,7 +299,37 @@ try {
       stage = "fixture-setup";
       const remote = "/sdcard/Download/directory-probe";
       await command(adb, ["-s", serial, "shell", "mkdir", "-p", remote]);
-      await command(adb, ["-s", serial, "push", `${fixtures}/.`, remote]);
+      const expected = new Map<string, string>();
+      for (let index = 0; index < 3; index++) {
+        const file = `screenshot-${index}.png`;
+        const size = index === 2 ? 165839 : 166000;
+        // Screenshots originate in the guest. Avoid introducing a host-to-guest transfer.
+        await command(adb, [
+          "-s",
+          serial,
+          "shell",
+          "dd",
+          "if=/dev/urandom",
+          `of=${remote}/${file}`,
+          `bs=${size}`,
+          "count=1",
+        ]);
+        const stat = await command(adb, [
+          "-s",
+          serial,
+          "shell",
+          "stat",
+          "-c",
+          "%s",
+          `${remote}/${file}`,
+        ]);
+        const sha = await command(adb, ["-s", serial, "shell", "sha256sum", `${remote}/${file}`]);
+        const hash = /^([a-f0-9]{64})\s/u.exec(sha.stdout)?.[1];
+        if (Number(stat.stdout.trim()) !== size || !hash) {
+          throw new Error("fixture-invalid");
+        }
+        expected.set(file, hash);
+      }
       stage = "idle-shell";
       const idleLog = path.join(root, `${cycle}-idle.private.log`);
       const idle = service(
@@ -349,6 +385,7 @@ try {
         "emulator-identity-mismatch",
         "guest-logging-unavailable",
         "shared-storage-not-ready",
+        "fixture-invalid",
         "idle-shell-not-ready",
         "concurrent-service-exit",
         "file-count-mismatch",
