@@ -47,7 +47,11 @@ const adapters = [
 
 it.each(
   adapters.flatMap((adapter) =>
-    ["name", "parameters", "description"].map((field) => ({ ...adapter, field })),
+    ["name", "parameters", "description"].map((field) => ({
+      name: adapter.name,
+      stream: adapter.stream,
+      field,
+    })),
   ),
 )("$name reports an unreadable tool $field before request handoff", async ({ stream, field }) => {
   const tool = { name: "broken", description: "Broken", parameters: {} };
