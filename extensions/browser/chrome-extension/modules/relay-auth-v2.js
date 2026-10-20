@@ -62,17 +62,11 @@ function assertSafeTimestamp(value, field) {
  * One connection-bound client state machine. Any invalid or out-of-order
  * security frame permanently fails this instance; callers must close the socket.
  */
-export async function createExtensionRelayAuthClient({
-  token,
-  relayUrl,
-  cryptoApi = globalThis.crypto,
-  now = () => Date.now(),
-  clientNonce,
-}) {
-  const runtime = requireRelayCrypto(cryptoApi);
+export async function createExtensionRelayAuthClient({ token, relayUrl }) {
+  const runtime = requireRelayCrypto(globalThis.crypto);
   const keyId = await deriveRelayAuthKeyId(token, runtime);
   const key = await importRelayHmacKey(token, runtime);
-  const nonce = clientNonce ?? randomRelayBase64Url(runtime, 32);
+  const nonce = randomRelayBase64Url(runtime, 32);
   relayBytesFromBase64Url(nonce, 32, "clientNonce");
   const resource = extensionRelayAuthResource(relayUrl);
   let state = "new";
@@ -124,7 +118,7 @@ export async function createExtensionRelayAuthClient({
         const serverProofBytes = relayBytesFromBase64Url(message.serverProof, 32, "serverProof");
         assertSafeTimestamp(message.issuedAtMs, "issuedAtMs");
         assertSafeTimestamp(message.expiresAtMs, "expiresAtMs");
-        const currentTime = now();
+        const currentTime = Date.now();
         assertSafeTimestamp(currentTime, "current time");
         if (
           message.expiresAtMs <= message.issuedAtMs ||

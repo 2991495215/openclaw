@@ -54,7 +54,7 @@ let nativeBootstrap = null;
 let retiredCopilotCustodyBlocked = true;
 let tabsSyncTimer = null;
 const runAccessMutation = createSerialQueue();
-const pairingConfigStore = createPairingConfigStore(chrome.storage.local);
+const pairingConfigStore = createPairingConfigStore();
 const tabAccessPolicy = createTabAccessPolicy({
   isSelectedTab: isTabSelected,
   getGroupColor: async () => (await getConfig()).groupColor,
@@ -503,7 +503,7 @@ async function maybeEnsureRelayDaemon(relayUrl, connectionIsCurrent) {
     return;
   }
   lastRelayEnsureAtMs = now;
-  await requestRelayEnsure(relayPort, chrome);
+  await requestRelayEnsure(relayPort);
 }
 
 function scheduleReconnect() {

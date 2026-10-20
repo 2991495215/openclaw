@@ -51,9 +51,10 @@ function isHostMissing(error) {
   return RETRYABLE_HOST_ERRORS.some((candidate) => message.includes(candidate));
 }
 
-function sendNativeBootstrap(chromeApi, request) {
+function sendNativeBootstrap(request) {
+  const runtime = chrome.runtime;
   return new Promise((resolve, reject) => {
-    const port = chromeApi.runtime.connectNative(NATIVE_HOST_NAME);
+    const port = runtime.connectNative(NATIVE_HOST_NAME);
     let settled = false;
     const finish = (callback, value) => {
       if (settled) {
@@ -70,7 +71,7 @@ function sendNativeBootstrap(chromeApi, request) {
     );
     port.onMessage.addListener((response) => finish(resolve, response));
     port.onDisconnect.addListener(() => {
-      const message = chromeApi.runtime.lastError?.message;
+      const message = runtime.lastError?.message;
       finish(reject, new Error(message || "Native messaging host disconnected."));
     });
     try {
@@ -84,11 +85,11 @@ function sendNativeBootstrap(chromeApi, request) {
 const RELAY_ENSURE_STATUSES = new Set(["spawned", "running", "skipped"]);
 
 /** Ask the native host to start the standalone relay daemon when nothing serves the relay port. */
-export async function requestRelayEnsure(relayPort, chromeApi = chrome) {
+export async function requestRelayEnsure(relayPort) {
   const nonce = randomRelayBase64Url(crypto, 16);
   let response;
   try {
-    response = await sendNativeBootstrap(chromeApi, { v: 1, op: "ensure_relay", nonce, relayPort });
+    response = await sendNativeBootstrap({ v: 1, op: "ensure_relay", nonce, relayPort });
   } catch {
     return { status: "unavailable" };
   }
@@ -105,13 +106,14 @@ export async function requestRelayEnsure(relayPort, chromeApi = chrome) {
 }
 
 /** Own coalescing, retry policy, opt-out, and late-response revocation. */
-export function createNativeBootstrapController({ chromeApi = chrome, getPairing, applyPairing }) {
+export function createNativeBootstrapController({ getPairing, applyPairing }) {
+  const storage = chrome.storage.local;
   let inFlight = null;
   let disabledNow = false;
   let generation = 0;
 
   async function readState() {
-    const stored = await chromeApi.storage.local.get([DISABLED_KEY, STATE_KEY, FAILURE_KEY]);
+    const stored = await storage.get([DISABLED_KEY, STATE_KEY, FAILURE_KEY]);
     disabledNow ||= stored[DISABLED_KEY] === true;
     return {
       disabled: disabledNow,
@@ -123,12 +125,12 @@ export function createNativeBootstrapController({ chromeApi = chrome, getPairing
   }
 
   async function writeState(state, failureCode = "") {
-    await chromeApi.storage.local.set({
+    await storage.set({
       [STATE_KEY]: state,
       ...(failureCode ? { [FAILURE_KEY]: failureCode } : {}),
     });
     if (!failureCode) {
-      await chromeApi.storage.local.remove([FAILURE_KEY]);
+      await storage.remove([FAILURE_KEY]);
     }
     return { status: state, ...(failureCode ? { code: failureCode } : {}) };
   }
@@ -155,7 +157,7 @@ export function createNativeBootstrapController({ chromeApi = chrome, getPairing
       const nonce = randomRelayBase64Url(crypto, 16);
       let response;
       try {
-        response = await sendNativeBootstrap(chromeApi, {
+        response = await sendNativeBootstrap({
           v: 1,
           op: "bootstrap",
           nonce,
@@ -213,7 +215,7 @@ export function createNativeBootstrapController({ chromeApi = chrome, getPairing
   function disableSynchronously() {
     disabledNow = true;
     generation += 1;
-    return chromeApi.storage.local.set({
+    return storage.set({
       [DISABLED_KEY]: true,
       [STATE_KEY]: "disabled",
     });
@@ -222,7 +224,7 @@ export function createNativeBootstrapController({ chromeApi = chrome, getPairing
   async function enable({ attemptNow = true } = {}) {
     disabledNow = false;
     generation += 1;
-    await chromeApi.storage.local.remove([DISABLED_KEY, STATE_KEY, FAILURE_KEY]);
+    await storage.remove([DISABLED_KEY, STATE_KEY, FAILURE_KEY]);
     return attemptNow ? await attempt() : { status: "enabled" };
   }
 
@@ -260,21 +262,20 @@ function canClearRetiredCopilotRegistry(value) {
 }
 
 /** Explicitly discard every retired copilot key. */
-export async function discardRetiredCopilotState(chromeApi = chrome) {
-  await chromeApi.storage.local.set({ [RETIRED_COPILOT_CUSTODY_BLOCKED_KEY]: true });
-  await chromeApi.storage.session.remove(COPILOT_SESSION_KEYS);
-  await chromeApi.storage.local.remove(COPILOT_LOCAL_KEYS);
-  await chromeApi.storage.local.remove([RETIRED_COPILOT_CUSTODY_BLOCKED_KEY]);
+export async function discardRetiredCopilotState() {
+  const { local, session } = chrome.storage;
+  await local.set({ [RETIRED_COPILOT_CUSTODY_BLOCKED_KEY]: true });
+  await session.remove(COPILOT_SESSION_KEYS);
+  await local.remove(COPILOT_LOCAL_KEYS);
+  await local.remove([RETIRED_COPILOT_CUSTODY_BLOCKED_KEY]);
 }
 
 /** Clear harmless retired state, or preserve custody and fail closed. */
-export async function prepareRetiredCopilotState(chromeApi = chrome) {
+export async function prepareRetiredCopilotState() {
+  const { local, session } = chrome.storage;
   let stored;
   try {
-    stored = await chromeApi.storage.local.get([
-      RETIRED_COPILOT_CUSTODY_BLOCKED_KEY,
-      COPILOT_LOCAL_KEYS[0],
-    ]);
+    stored = await local.get([RETIRED_COPILOT_CUSTODY_BLOCKED_KEY, COPILOT_LOCAL_KEYS[0]]);
   } catch {
     return { blocked: true };
   }
@@ -293,8 +294,8 @@ export async function prepareRetiredCopilotState(chromeApi = chrome) {
   try {
     // No custody remains, so partial cleanup is safe to retry on the next worker.
     // Reserve the durable marker for explicit discard of potentially live custody.
-    await chromeApi.storage.session.remove(COPILOT_SESSION_KEYS);
-    await chromeApi.storage.local.remove(COPILOT_LOCAL_KEYS);
+    await session.remove(COPILOT_SESSION_KEYS);
+    await local.remove(COPILOT_LOCAL_KEYS);
   } catch {
     return { blocked: true };
   }

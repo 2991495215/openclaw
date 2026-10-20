@@ -3,9 +3,6 @@ export function parseRelayAuthJson(raw: string): Record<string, unknown> | null;
 export function createExtensionRelayAuthClient(params: {
   token: string;
   relayUrl: string;
-  cryptoApi?: Crypto;
-  now?: () => number;
-  clientNonce?: string;
 }): Promise<{
   readonly keyId: string;
   readonly clientNonce: string;

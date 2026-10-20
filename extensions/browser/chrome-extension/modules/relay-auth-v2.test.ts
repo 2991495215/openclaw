@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extensionRelayAuthResource, type RelayAuthProofFields } from "./relay-auth-v2-crypto.js";
 import { createExtensionRelayAuthClient, parseRelayAuthJson } from "./relay-auth-v2.js";
 
@@ -37,10 +37,20 @@ async function client() {
   return await createExtensionRelayAuthClient({
     token: VECTOR.token,
     relayUrl: "ws://127.0.0.1:18797/extension?profile=chrome",
-    clientNonce: VECTOR.fields.clientNonce,
-    now: () => VECTOR.fields.issuedAtMs + 1,
   });
 }
+
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(VECTOR.fields.issuedAtMs + 1);
+  vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((bytes) => {
+    if (bytes instanceof Uint8Array) {
+      bytes.fill(0x33);
+    }
+    return bytes;
+  });
+});
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("Browser Relay Authentication v2 WebCrypto vectors", () => {
   it("verifies server proof before producing client proof and verifies accept proof", async () => {

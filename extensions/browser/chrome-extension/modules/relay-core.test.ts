@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { storageArea } from "./browser.test-support.js";
 import {
   createPairingConfigStore,
@@ -13,8 +13,11 @@ const pairingKeys = ["relayUrl", "gatewayUrl", "token", "authVersion"];
 
 function pairingStore(stored: Record<string, unknown> = {}) {
   const storage = storageArea(stored);
-  return { stored: storage.values, ...storage, store: createPairingConfigStore(storage) };
+  vi.stubGlobal("chrome", { storage: { local: storage } });
+  return { stored: storage.values, ...storage, store: createPairingConfigStore() };
 }
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("parsePairingString", () => {
   it("retains and canonicalizes the profile auth binding while stripping the Gateway hint", () => {
@@ -139,7 +142,7 @@ describe("persisted pairing storage", () => {
     expect(remove).toHaveBeenCalledWith(pairingKeys);
     expect(set).toHaveBeenCalledWith({ pairingStatus: "proxy-prefix-unsupported" });
 
-    const afterWorkerRestart = await createPairingConfigStore(storage).read();
+    const afterWorkerRestart = await createPairingConfigStore().read();
     expect(afterWorkerRestart.pairingStatusHint).toContain("openclaw browser extension pair");
   });
 
