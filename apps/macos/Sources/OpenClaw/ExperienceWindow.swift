@@ -15,6 +15,12 @@ class ExperienceWindow: NSWindow {
     @objc func zoomContentOut(_: Any?) { self.contentZoomWebView?.changeContentZoom(by: -1) }
     @objc func resetContentZoom(_: Any?) { self.contentZoomWebView?.setContentZoom(1) }
 
+    override func becomeKey() {
+        super.becomeKey()
+        guard !self.isHiddenForExperience else { return }
+        self.contentZoomWebView?.finishContentZoomInitialization()
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard self.contentZoomWebView != nil,
               event.type == .keyDown,

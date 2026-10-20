@@ -26,6 +26,12 @@ afterEach(() => {
   document.querySelectorAll('[id^="openclaw-theme-palette-"]').forEach((link) => link.remove());
   document.documentElement.removeAttribute("style");
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, "__OPENCLAW_NATIVE_CONTENT_ZOOM__");
+  Reflect.deleteProperty(window, "__OPENCLAW_NATIVE_WEB_CHROME__");
+  Reflect.deleteProperty(window, "__OPENCLAW_NATIVE_EMBED__");
+  Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+  Reflect.deleteProperty(window, "chrome");
 });
 
 function setup() {
@@ -52,6 +58,93 @@ function pendingPalette() {
 }
 
 describe("applied theme palette publication", () => {
+  it.each([
+    "native-desktop",
+    "browser-desktop",
+    "touch",
+    "native-mobile",
+    "unsupported-desktop",
+    "touch-with-pointer",
+    "unsupported-webview2",
+    "native-without-import",
+  ] as const)("uses one scaling owner without rewriting saved preferences on %s", (host) => {
+    const previous = loadSettings();
+    const touchDescriptor = Object.getOwnPropertyDescriptor(navigator, "maxTouchPoints");
+    disposals.push(() => {
+      saveSettings(previous);
+      if (touchDescriptor) {
+        Object.defineProperty(navigator, "maxTouchPoints", touchDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, "maxTouchPoints");
+      }
+    });
+    Object.defineProperty(navigator, "maxTouchPoints", {
+      configurable: true,
+      value: host === "touch-with-pointer" ? 5 : 0,
+    });
+    saveSettings({ ...previous, textScale: 125, navWidth: 333, chatShowThinking: false });
+    vi.stubGlobal("matchMedia", (query: string) =>
+      Object.assign(new EventTarget(), {
+        media: query,
+        matches:
+          [
+            "browser-desktop",
+            "unsupported-desktop",
+            "touch-with-pointer",
+            "unsupported-webview2",
+          ].includes(host) && query.includes("pointer: fine"),
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }),
+    );
+    const adoptLegacyTextScale = vi.fn().mockResolvedValue(undefined);
+    if (host.startsWith("native-")) {
+      Object.assign(window, {
+        __OPENCLAW_NATIVE_WEB_CHROME__: true,
+        __OPENCLAW_NATIVE_CONTENT_ZOOM__: {
+          supported: true,
+          ...(host === "native-without-import" ? {} : { adoptLegacyTextScale }),
+        },
+      });
+      if (host === "native-mobile") {
+        Object.assign(window, {
+          __OPENCLAW_NATIVE_EMBED__: { platform: "ios", formFactor: "phone" },
+        });
+      }
+    }
+    if (host === "unsupported-desktop") {
+      Object.assign(window, { __TAURI_INTERNALS__: {} });
+    }
+    if (host === "unsupported-webview2") {
+      Object.assign(window, { chrome: { webview: {} } });
+    }
+    const { theme } = setup();
+    const scale = () => document.documentElement.style.getPropertyValue("--control-ui-text-scale");
+    const expected = ["native-desktop", "native-without-import", "browser-desktop"].includes(host)
+      ? "1"
+      : "1.25";
+    expect(scale()).toBe(expected);
+    expect(loadSettings()).toMatchObject({
+      textScale: 125,
+      navWidth: 333,
+      chatShowThinking: false,
+    });
+    patchSettings({ themeMode: "dark" });
+    theme.refresh();
+    expect(scale()).toBe(expected);
+    expect(loadSettings()).toMatchObject({
+      textScale: 125,
+      navWidth: 333,
+      chatShowThinking: false,
+    });
+    if (host === "native-desktop") {
+      expect(adoptLegacyTextScale).toHaveBeenCalledExactlyOnceWith(125);
+    } else {
+      expect(adoptLegacyTextScale).not.toHaveBeenCalled();
+    }
+  });
+
   it("projects immediate preferences separately from the applied palette", () => {
     const { theme } = setup();
     const projection = projectTheme(theme);

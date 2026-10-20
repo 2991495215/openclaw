@@ -4,12 +4,46 @@ import WebKit
 final class DashboardWebView: WKWebView {
     static let contentZoomDefaultsKey = "openclaw.contentZoom"
     var onContentZoomChanged: (() -> Void)?
+    var canAdoptLegacyTextScale: () -> Bool = { false }
+
+    private enum ContentZoomInitialization {
+        case waitingForLegacyScale
+        case pending(Double)
+        case finished
+    }
+
+    private var contentZoomInitialization = ContentZoomInitialization.waitingForLegacyScale
+
+    func restoreContentZoom() {
+        guard let saved = AppDefaults.standard.object(forKey: Self.contentZoomDefaultsKey) as? Double else { return }
+        self.pageZoom = Self.boundedContentZoom(saved)
+        self.contentZoomInitialization = .finished
+    }
+
+    func offerLegacyTextScale(_ percent: Double) {
+        if case .finished = self.contentZoomInitialization { return }
+        self.contentZoomInitialization = .pending(percent / 100)
+        if self.window?.isKeyWindow == true { self.finishContentZoomInitialization() }
+    }
+
+    /// The first foreground window supplies the old, document-local choice.
+    /// Background preloads cannot choose the profile's new shared default.
+    func finishContentZoomInitialization() {
+        if case .finished = self.contentZoomInitialization { return }
+        guard self.canAdoptLegacyTextScale() else { return }
+        if let saved = AppDefaults.standard.object(forKey: Self.contentZoomDefaultsKey) as? Double {
+            self.setContentZoom(saved)
+        } else if case let .pending(zoom) = self.contentZoomInitialization {
+            self.setContentZoom(zoom)
+        }
+    }
 
     func changeContentZoom(by steps: Int) {
-        self.setContentZoom((self.pageZoom * 10).rounded() / 10 + Double(steps) / 10)
+        self.setContentZoom((self.pageZoom * 100).rounded() / 100 + Double(steps) / 10)
     }
 
     func setContentZoom(_ zoom: Double) {
+        self.contentZoomInitialization = .finished
         self.pageZoom = Self.boundedContentZoom(zoom)
         AppDefaults.standard.set(Double(self.pageZoom), forKey: Self.contentZoomDefaultsKey)
         self.onContentZoomChanged?()

@@ -103,6 +103,50 @@ struct ContentZoomShortcutTests {
         }
     }
 
+    @Test(arguments: ["legacy", "existing", "early-shortcut"])
+    func legacyScaleUsesTheNativeOwnerWithoutOverwritingZoom(_ scenario: String) async throws {
+        let saved: Double? = scenario == "existing" ? 1.4 : nil
+        try await TestIsolation.withUserDefaultsValues([
+            "openclaw.contentZoom": saved,
+            "content-zoom-unrelated": "keep",
+        ]) {
+            _ = AppKitTestSupport.application
+            let server = try await DashboardHTTPFixture.start(
+                html: Self.html, contentSecurityPolicy: "default-src 'none'; style-src 'unsafe-inline'")
+            defer { server.stop() }
+            let controller = self.makeController(server)
+            defer { controller.closeDashboard() }
+            try await DashboardTestWait.document(controller, "legacy zoom preference document")
+            let window = try #require(controller.window)
+            if scenario == "early-shortcut" { try self.press("=", in: window) }
+            _ = try await controller.webView.callAsyncJavaScript(
+                "await window.__OPENCLAW_NATIVE_CONTENT_ZOOM__.adoptLegacyTextScale(125); return true;",
+                in: nil, contentWorld: .page)
+            // The real window callback settles a deferred background document.
+            // Like performKeyEquivalent above, this does not claim physical OS input.
+            window.becomeKey()
+            let expected = scenario == "existing" ? 1.4 : scenario == "early-shortcut" ? 1.1 : 1.25
+            #expect(abs(controller.webView.pageZoom - expected) < 0.001)
+            #expect(abs(AppDefaults.standard.double(forKey: "openclaw.contentZoom") - expected) < 0.001)
+            #expect(AppDefaults.standard.string(forKey: "content-zoom-unrelated") == "keep")
+            if scenario == "legacy" {
+                try self.press("=", in: window)
+                #expect(abs(controller.webView.pageZoom - 1.35) < 0.001)
+            }
+            try self.press("0", in: window)
+            if scenario == "legacy" {
+                controller.webView.reload()
+                try await DashboardTestWait.document(controller, "reset legacy zoom document")
+            }
+            _ = try await controller.webView.callAsyncJavaScript(
+                "await window.__OPENCLAW_NATIVE_CONTENT_ZOOM__.adoptLegacyTextScale(140); return true;",
+                in: nil, contentWorld: .page)
+            window.becomeKey()
+            #expect(controller.webView.pageZoom == 1)
+            #expect(AppDefaults.standard.double(forKey: "openclaw.contentZoom") == 1)
+        }
+    }
+
     private func makeController(_ server: DashboardHTTPFixture) -> DashboardWindowController {
         let controller = DashboardWindowController(
             url: server.url(), auth: .unauthenticated, websiteDataStore: .nonPersistent(),

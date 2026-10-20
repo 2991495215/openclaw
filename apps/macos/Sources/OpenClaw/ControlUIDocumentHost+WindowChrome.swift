@@ -37,6 +37,12 @@ extension ControlUIDocumentHost {
         // Start before the web header measures its band; document.head may not
         // exist yet, so attach to the root as soon as the parser creates it.
         let script = """
+        window.__OPENCLAW_NATIVE_CONTENT_ZOOM__ = {
+          supported: true,
+          adoptLegacyTextScale: async textScale => {
+            await window.webkit.messageHandlers.openclawDeviceSettings.postMessage({type: 'adopt-legacy-text-scale', textScale});
+          }
+        };
         const install = () => {
           if (!document.documentElement) return false;
           const style = document.getElementById('openclaw-native-titlebar') || document.createElement('style');

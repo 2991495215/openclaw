@@ -43,6 +43,7 @@ final class ControlUIDocumentHost {
         browserSessionLease: DashboardBrowserSessionStore.Lease? = nil,
         nativeAuthProvider: DashboardNativeGatewayAuth.Provider? = nil,
         legacyNativeCredentials: DashboardNativeGatewayAuth.LegacyCredentials? = nil,
+        deviceSettingsMessageHandler: DashboardDeviceSettingsMessageHandler? = nil,
         installCapabilities: (WKUserContentController) -> Void)
     {
         self.currentURL = url
@@ -60,6 +61,9 @@ final class ControlUIDocumentHost {
         let nativeAuthHandler = ControlUINativeGatewayAuthMessageHandler()
         config.userContentController.addScriptMessageHandler(
             nativeAuthHandler, contentWorld: .page, name: ControlUINativeGatewayAuthMessageHandler.name)
+        let settingsHandler = deviceSettingsMessageHandler ?? DashboardDeviceSettingsMessageHandler()
+        config.userContentController.addScriptMessageHandler(
+            settingsHandler, contentWorld: .page, name: DashboardWindowController.deviceSettingsMessageHandlerName)
         installCapabilities(config.userContentController)
         self.webView = DashboardWebView(
             frame: NSRect(
@@ -72,10 +76,14 @@ final class ControlUIDocumentHost {
             forKey: "drawsBackground")
         self.webView.underPageBackgroundColor = .windowBackgroundColor
         self.webView.allowsBackForwardNavigationGestures = true
-        self.webView.pageZoom = DashboardWebView.boundedContentZoom(
-            AppDefaults.standard.object(forKey: DashboardWebView.contentZoomDefaultsKey) as? Double ?? 1)
+        self.webView.restoreContentZoom()
+        self.webView.canAdoptLegacyTextScale = { [weak self] in
+            guard let self else { return false }
+            return self.isAvailable() && self.hasCurrentBrowserSession
+        }
         self.webView.onContentZoomChanged = { [weak self] in self?.installWindowChromeScript() }
         nativeAuthHandler.owner = self
+        settingsHandler.contentZoomOwner = self
         self.registerWindowChromeHandler()
         self.installWindowChromeScript()
         self.installNativeAuthScript()
