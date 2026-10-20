@@ -77,7 +77,7 @@ function AdvancedEntryList(params: {
         <div class="dreams-advanced__list">
           <For each={params.entries} keyed={(entry) => entry.key}>
             {(entry) => {
-              const badge = createMemo(() => params.badge?.(entry()));
+              const badge = () => params.badge?.(entry());
               return (
                 <article class="dreams-advanced__item" data-entry-key={entry().key}>
                   {badge() ? <span class="dreams-advanced__badge">{badge()}</span> : undefined}
@@ -148,7 +148,10 @@ export function renderAdvancedSection(props: DreamingProps) {
       </div>
       {props.dreamDiaryActionMessage ? (
         <div
-          class={`callout ${props.dreamDiaryActionMessage.kind === "success" ? "success" : "danger"}`}
+          class={[
+            "callout",
+            props.dreamDiaryActionMessage.kind === "success" ? "success" : "danger",
+          ]}
           role="status"
         >
           <div class="row wrap items-center gap-2">
@@ -209,7 +212,10 @@ export function renderAdvancedSection(props: DreamingProps) {
                   const [sort, label] = entryValue;
                   return (
                     <button
-                      class={`dreams-advanced__sort-btn ${state().advancedWaitingSort === sort ? "dreams-advanced__sort-btn--active" : ""}`}
+                      class={[
+                        "dreams-advanced__sort-btn",
+                        state().advancedWaitingSort === sort && "dreams-advanced__sort-btn--active",
+                      ]}
                       onClick={() => {
                         props.onViewStateChange((draft) => {
                           draft.advancedWaitingSort = sort;

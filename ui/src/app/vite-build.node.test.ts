@@ -376,7 +376,10 @@ describe("Control UI Vite build", () => {
       if (!message.includes("Control UI precompression")) {
         return;
       }
-      const emitted = fsSync.readdirSync(path.join(outDir, "assets"));
+      const emitted = fsSync.readdirSync(path.join(outDir, "assets"), {
+        encoding: "utf8",
+        recursive: true,
+      });
       activity.push({
         message,
         elapsed: clockMs,
@@ -392,7 +395,7 @@ describe("Control UI Vite build", () => {
     });
     const fixtureAssets: [string, string][] = [
       ...Array.from({ length: 4 }, (_, index): [string, string] => [
-        "extra-" + index + ".txt",
+        "nested/extra-" + index + ".txt",
         "fixture content for beneficial compression\n".repeat(128),
       ]),
       ["br-only.txt", "a".repeat(20)],
@@ -412,7 +415,10 @@ describe("Control UI Vite build", () => {
 
     await build(config);
 
-    const emitted = await fs.readdir(path.join(outDir, "assets"));
+    const emitted = await fs.readdir(path.join(outDir, "assets"), {
+      encoding: "utf8",
+      recursive: true,
+    });
     const br = emitted.filter((name) => name.endsWith(".br"));
     const gz = emitted.filter((name) => name.endsWith(".gz"));
     const completed = new Set([...br, ...gz].map((name) => name.replace(/\.(br|gz)$/u, ""))).size;
