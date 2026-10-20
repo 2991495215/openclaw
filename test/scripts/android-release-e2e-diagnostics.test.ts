@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   androidReleaseAdbServerLineFacts,
+  androidReleaseAdbSyscallLineFacts,
   androidReleaseCommandFacts,
   androidReleaseConsoleLineFacts,
   androidReleaseDeviceFacts,
@@ -10,6 +11,51 @@ import {
 } from "../../scripts/lib/android-release-e2e-diagnostics.js";
 
 describe("Android release public failure diagnostics", () => {
+  it.each([
+    [
+      "read(0xd, 0x7fffeed, 0x18) = 0 <0.002000>",
+      { operation: "read", fd: 13, requestedBytes: 24, result: 0, eof: true },
+    ],
+    [
+      "read(13, 0x7fffeed, 24) = 24 <0.000020>",
+      { operation: "read", fd: 13, requestedBytes: 24, result: 24, eof: false },
+    ],
+    ["read(0xd, 0x7fffeed, 0x18) = 0x18 <0.000020>", { result: 24, eof: false }],
+    ["read(0xd, 0x7fffeed, 0) = 0 <0.000020>", { requestedBytes: 0, result: 0, eof: false }],
+    [
+      "read(0xd, 0x7fffeed, 0x18) = -1 ECONNRESET (Connection reset by peer) <0.000020>",
+      { result: -1, errno: "ECONNRESET", eof: false },
+    ],
+    [
+      "read(0xd, 0x7fffeed, 0x18) = -1 EPRIVATE (private-token) <0.000020>",
+      { result: -1, errno: undefined },
+    ],
+    [
+      "write(0xd, 0x7fffeed, 0x18) = -1 EPIPE (Broken pipe) <0.000020>",
+      { operation: "write", errno: "EPIPE", eof: false },
+    ],
+    [
+      "writev(0xd, 0x7fffeed, 0x2) = 0x100 <0.000020>",
+      { operation: "writev", requestedBytes: undefined, result: 256, eof: false },
+    ],
+    ["shutdown(0xd, 0x2) = 0 <0.000020>", { operation: "shutdown", fd: 13, result: 0, eof: false }],
+    ["close(0xd) = 0 <0.000020>", { operation: "close", fd: 13, result: 0, eof: false }],
+  ])("exports only numeric syscall metadata for %s", (line, expected) => {
+    const facts = androidReleaseAdbSyscallLineFacts(`1792466410.334000 ${line}`);
+    expect(facts).toMatchObject({ startedAtSeconds: 1792466410.334, ...expected });
+    expect(facts?.durationSeconds).toBeGreaterThan(0);
+    expect(JSON.stringify(facts)).not.toMatch(/private|7fffeed/u);
+  });
+
+  it.each([
+    '1792466410.334000 read(13, "private-token", 24) = 24 <0.000020>',
+    "1792466410.334000 read(0xd, 0x7fffeed, 0x18 <unfinished ...>",
+    "1792466410.334000 <... read resumed>) = 0 <0.000020>",
+    "1792466410.334000 read(0xd, 0x7fffeed, 0x18) = 0 <0.000020>\nprivate-token",
+  ])("does not export decoded, incomplete or multiline traces: %s", (line) => {
+    expect(androidReleaseAdbSyscallLineFacts(line)).toBeUndefined();
+  });
+
   it.each([
     ["read failed: EOF", "read-eof", undefined],
     ["read failed", "read-error", undefined],

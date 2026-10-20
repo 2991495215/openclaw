@@ -1,5 +1,43 @@
 import path from "node:path";
 
+/** strace raw mode prints pointers, never buffers; export only syscall metadata. */
+export function androidReleaseAdbSyscallLineFacts(line: string) {
+  const match =
+    /^(\d+\.\d+) (read|write|writev|close|shutdown)\((0x[\da-f]+|\d+)((?:, (?:0x[\da-f]+|\d+))*)\)\s+= (-1|0x[\da-f]+|\d+)(?: ([A-Z][A-Z\d]+) \([^\r\n]*\))? <(\d+\.\d+)>$/u.exec(
+      line,
+    );
+  if (!match) {
+    return undefined;
+  }
+  const operation = match[2]!;
+  const result = Number(match[5]);
+  const args = match[4]!.split(", ").slice(1).map(Number);
+  return {
+    startedAtSeconds: Number(match[1]),
+    durationSeconds: Number(match[7]),
+    operation,
+    fd: Number(match[3]),
+    requestedBytes: operation === "read" || operation === "write" ? args[1] : undefined,
+    result,
+    errno:
+      match[6] &&
+      [
+        "ECONNRESET",
+        "ECONNABORTED",
+        "EPIPE",
+        "EIO",
+        "EBADF",
+        "EINVAL",
+        "ETIMEDOUT",
+        "EINTR",
+        "EAGAIN",
+      ].includes(match[6])
+        ? match[6]
+        : undefined,
+    eof: operation === "read" && args[1]! > 0 && result === 0,
+  };
+}
+
 /** Normal ADB INFO records identify transport loss without enabling packet dumps. */
 export function androidReleaseAdbServerLineFacts(line: string) {
   const termination = /\bemulator-(\d+): connection terminated: ([^\r\n]+)$/u.exec(line);
