@@ -1,9 +1,10 @@
-import { render } from "lit";
 import { expect } from "vitest";
 import type { CronJob } from "../../api/types.ts";
 import { DEFAULT_CRON_FORM } from "../../test-helpers/cron.ts";
+import { mountSolid } from "../../test-helpers/mount-solid.ts";
+import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
 import type { CronProps } from "./view-types.ts";
-import { renderCron } from "./view.ts";
+import { CronView } from "./view.tsx";
 
 export function createCronViewJob(id: string, overrides: Partial<CronJob> = {}): CronJob {
   return {
@@ -20,12 +21,25 @@ export function createCronViewJob(id: string, overrides: Partial<CronJob> = {}):
   } as CronJob;
 }
 
-function createCronViewProps(overrides: Partial<CronProps> = {}): CronProps {
+export function scheduledJob(id: string, overrides: Partial<CronJob> = {}): CronJob {
+  return createCronViewJob(id, {
+    name: "Nightly digest",
+    schedule: { kind: "every", everyMs: 60_000 },
+    sessionTarget: "isolated",
+    wakeMode: "now",
+    payload: { kind: "agentTurn", message: "digest" },
+    state: {},
+    ...overrides,
+  });
+}
+
+export function createCronViewProps(overrides: Partial<CronProps> = {}): CronProps {
   return {
     loading: false,
     hasLoaded: true,
     listError: null,
     canManage: true,
+    connected: true,
     jobsLoadingMore: false,
     status: {
       enabled: true,
@@ -81,7 +95,7 @@ function createCronViewProps(overrides: Partial<CronProps> = {}): CronProps {
     onClone: () => undefined,
     onToggle: () => undefined,
     onRun: () => undefined,
-    onRemove: () => undefined,
+    onRemove: async () => undefined,
     onLoadMoreJobs: () => undefined,
     onJobsFiltersChange: () => undefined,
     onJobsFiltersReset: () => undefined,
@@ -92,9 +106,19 @@ function createCronViewProps(overrides: Partial<CronProps> = {}): CronProps {
 }
 
 export function renderCronView(overrides: Partial<CronProps> = {}) {
-  const container = document.createElement("div");
-  render(renderCron(createCronViewProps(overrides)), container);
+  const { container } = mountSolid(() => CronView(createCronViewProps(overrides)));
+  flush();
   return container;
+}
+
+export async function openCronMenu(container: Element, selector: string) {
+  const trigger = getElement(container, `${selector} .oc-menu-trigger`, HTMLButtonElement);
+  trigger.click();
+  await waitForSolid(() => {
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(trigger.getAttribute("data-state")).toBe("open");
+  });
+  return trigger;
 }
 
 export function getButtonByText(container: Element, text: string): HTMLButtonElement {
@@ -128,7 +152,7 @@ export function selectSegmented(control: HTMLElement) {
 export function findToggleByLabel(container: Element, label: string) {
   return (
     Array.from(container.querySelectorAll(".settings-toggle")).find((toggle) =>
-      toggle.textContent?.includes(label),
+      (toggle.closest(".settings-row--toggle") ?? toggle).textContent?.includes(label),
     ) ?? null
   );
 }

@@ -1,5 +1,6 @@
 import { isFutureDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import type { ChannelAccountSnapshot } from "../../channels/plugins/types.public.js";
+import { readChildRuntimeViability } from "../../infra/child-runtime-viability.js";
 import type { AgentDatabaseAdmissionRefusal } from "../../state/agent-database-admission.js";
 import type { AgentDatabaseCleanupFailure } from "../../state/openclaw-agent-execution.js";
 import {
@@ -10,7 +11,7 @@ import {
   type ChannelHealthEvaluation,
 } from "../channel-health-policy.js";
 import type { ChannelManager } from "../server-channels.js";
-import type { GatewayPluginReloadStatus } from "../server-plugin-runtime-generation.js";
+import type { GatewayPluginReloadStatus } from "../server-plugin-reload-status.types.js";
 import type { GatewayEventLoopHealth } from "./event-loop-health.js";
 
 type ReadinessResult = {
@@ -102,15 +103,12 @@ export function createReadinessChecker(
     getStateDatabaseFailure?: () => Error | undefined;
     getAgentDatabaseAdmissionRefusals?: () => readonly AgentDatabaseAdmissionRefusal[];
     getAgentDatabaseCleanupFailures?: () => readonly AgentDatabaseCleanupFailure[];
-    allowPendingAgentDatabases?: boolean;
     getPluginReloadStatus?: () => GatewayPluginReloadStatus | undefined;
     shouldSkipChannelReadiness?: () => boolean;
-    cacheTtlMs?: number;
   },
 ): ReadinessChecker {
   const { channelManager, startedAt } = deps;
   const getStartup = createStartupChecker(deps);
-  const cacheTtlMs = Math.max(0, deps.cacheTtlMs ?? DEFAULT_READINESS_CACHE_TTL_MS);
   let cachedAt = 0;
   let cachedState: Omit<ReadinessResult, "uptimeMs"> | null = null;
 
@@ -126,6 +124,9 @@ export function createReadinessChecker(
     if (startup.status === "draining") {
       return { ready: false, failing: ["gateway-draining"], uptimeMs };
     }
+    if (!readChildRuntimeViability().available) {
+      return { ready: false, failing: ["child-runtime"], uptimeMs };
+    }
     const stateDatabaseFailure = deps.getStateDatabaseFailure?.();
     if (stateDatabaseFailure) {
       cachedState = null;
@@ -136,16 +137,11 @@ export function createReadinessChecker(
         uptimeMs,
       };
     }
-    const failedAgents = agentDatabases?.filter(
-      (refusal) =>
-        deps.allowPendingAgentDatabases === false ||
-        refusal.code !== "agent-database-inspection-pending",
-    );
-    if (failedAgents?.length) {
+    if (agentDatabases?.length) {
       cachedState = null;
       return {
         ready: false,
-        failing: failedAgents.map(({ agentId }) => `agent-database:${agentId}`),
+        failing: agentDatabases.map(({ agentId }) => `agent-database:${agentId}`),
         uptimeMs,
       };
     }
@@ -157,7 +153,7 @@ export function createReadinessChecker(
     if (
       cachedState &&
       !isFutureDateTimestampMs(cachedAt, { nowMs: now }) &&
-      now - cachedAt < cacheTtlMs
+      now - cachedAt < DEFAULT_READINESS_CACHE_TTL_MS
     ) {
       return { ...cachedState, uptimeMs };
     }

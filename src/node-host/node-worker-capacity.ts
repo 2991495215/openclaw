@@ -4,7 +4,7 @@ import { NODE_WORKER_CAPACITY_MAX } from "../../packages/gateway-protocol/src/wo
 import { toErrorObject } from "../infra/errors.js";
 import { NODE_WORKER_CAPACITY_EXHAUSTED_ERROR_CODE } from "../infra/node-commands.js";
 import type { NodeWorkerCapacitySnapshot } from "../infra/node-runner-inventory.js";
-import type { NodeWorkerJournalAuthority } from "./node-worker-journal.types.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   NodeWorkerLaunchStore,
   type NodeWorkerLaunchClaim,
@@ -15,6 +15,7 @@ import type { NodeWorkerProcessIdentity } from "./node-worker-process-identity.j
 
 const DEFAULT_CAPACITY_WAIT_MS = 10_000;
 const CAPACITY_POLL_MS = 100;
+const log = createSubsystemLogger("node/worker");
 
 type NodeWorkerCapacityOptions = {
   capacity?: number;
@@ -126,10 +127,9 @@ export class NodeWorkerCapacity {
   async finish(
     params: Parameters<NodeWorkerLaunchStore["finish"]>[0],
     notify = true,
-    authority?: NodeWorkerJournalAuthority,
   ): Promise<NodeWorkerLaunchReceipt> {
     return this.update(async () => {
-      const receipt = await this.store.finish(params, authority);
+      const receipt = await this.store.finish(params);
       if (notify && receipt.state !== "pending" && receipt.state !== "running") {
         await this.changed();
       }
@@ -209,6 +209,9 @@ export class NodeWorkerCapacity {
       await this.refresh();
     } catch {
       this.publishCount(this.capacity);
+      log.warn(
+        "Worker capacity refresh failed; advertising no available slots. Restart the node host if capacity does not recover.",
+      );
     }
   }
 

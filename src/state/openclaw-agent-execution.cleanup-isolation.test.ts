@@ -135,9 +135,12 @@ it("keeps healthy agents usable while real worker lease cleanup fails, then reco
     await healthy.prepare(source);
     expect(
       await healthy.runExisting(source, (scope) =>
-        scope.execute({ type: "database.recordIntegrity", input: undefined }),
+        scope.execute({
+          type: "database.walMaintenance",
+          input: { maxPages: 0, checkpointMode: "PASSIVE" },
+        }),
       ),
-    ).toBeTypeOf("boolean");
+    ).toMatchObject({ reclaimedPages: 0 });
     await healthy.release();
 
     retry = captureOpenClawAgentDatabaseExecution({ agentId: "first", env });
@@ -153,9 +156,12 @@ it("keeps healthy agents usable while real worker lease cleanup fails, then reco
     await retry.prepare(source);
     expect(
       await retry.runExisting(source, (scope) =>
-        scope.execute({ type: "database.recordIntegrity", input: undefined }),
+        scope.execute({
+          type: "database.walMaintenance",
+          input: { maxPages: 0, checkpointMode: "PASSIVE" },
+        }),
       ),
-    ).toBeTypeOf("boolean");
+    ).toMatchObject({ reclaimedPages: 0 });
     const replacement = leases();
     expect(replacement).toHaveLength(1);
     const replacementLease = replacement[0];
