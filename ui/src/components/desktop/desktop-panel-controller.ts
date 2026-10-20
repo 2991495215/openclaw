@@ -34,6 +34,10 @@ import type { DesktopPanelState } from "./desktop-panel-state.ts";
 import { DesktopPictureInPicture } from "./desktop-picture-in-picture.ts";
 import { DesktopSessionController } from "./desktop-session-controller.ts";
 import { desktopSourceForEnvironment } from "./desktop-source.ts";
+import {
+  createDesktopHostSetupOwner,
+  type HostDesktopRuntimeConfig,
+} from "./host-desktop-setup.ts";
 
 registerDesktopEnglish();
 
@@ -56,6 +60,8 @@ export class DesktopPanelController extends SolidPanelController {
   presented = false;
   /** Whether a newly ready embedded presentation owns its initial inventory refresh. */
   refreshOnPresentation = true;
+  /** Host-owned config authority for Host Desktop setup; null hides the enable action. */
+  runtimeConfig: HostDesktopRuntimeConfig | null = null;
   onDocumentClose: (() => void) | null = null;
   onFocusTargetChange:
     | ((target: Extract<ControlUiFocusBuildTarget, { kind: "desktop" }>) => void)
@@ -97,6 +103,11 @@ export class DesktopPanelController extends SolidPanelController {
   private credentialAuth: "vnc-password" | "ard-account" | undefined;
   private pendingConnection: PendingDesktopConnection | null = null;
   private operationId = 0;
+  private readonly hostSetup = createDesktopHostSetupOwner(
+    this,
+    () => this.invalidate(),
+    () => void this.refreshEnvironments(undefined, undefined, true),
+  );
   private controlTakeoverRecoveryUsed = false;
   // Automatic resolution follows the session; an explicit choice owns its pop-out target.
   private sourceSelection: "pending" | "resolved" | "explicit" | "picker" = "pending";
@@ -296,6 +307,10 @@ export class DesktopPanelController extends SolidPanelController {
     return this.sourceSelection === "pending" || this.sourceSelection === "resolved";
   }
 
+  private get automaticPicker(): boolean {
+    return this.usesAutomaticSource && this.embedded && this.sessionKey !== null;
+  }
+
   private returnToPicker(sourceSelection: typeof this.sourceSelection = "picker"): void {
     this.disconnectConnection();
     this.state = "picker";
@@ -309,6 +324,7 @@ export class DesktopPanelController extends SolidPanelController {
     this.sizingMode = "fit";
     this.canResize = false;
     this.disconnectedReason = null;
+    this.hostSetup.clear();
     this.invalidate();
     this.sessionSource.clearDesktopSource();
   }
@@ -365,6 +381,7 @@ export class DesktopPanelController extends SolidPanelController {
       const inventory = await inventoryRequest.result;
       if (inventory && inventoryRequest.isCurrent()) {
         requestedSource = inventory.selectedSource;
+        this.hostSetup.set(this.automaticPicker ? (inventory.hostSetup ?? null) : null);
         this.environments = inventory.environments;
         this.invalidate();
         refreshed = true;
@@ -389,7 +406,7 @@ export class DesktopPanelController extends SolidPanelController {
         this.invalidate();
         await this.connectEnvironment(requestedSource, this.documentControl);
       } else if (this.requestedSource !== null || this.sessionKey !== null) {
-        this.noticeText = t("desktop.sourceUnavailable");
+        this.noticeText = this.hostSetup.view() ? null : t("desktop.sourceUnavailable");
         this.invalidate();
       }
     }
@@ -440,6 +457,7 @@ export class DesktopPanelController extends SolidPanelController {
       this.sizingMode = "fit";
     }
     this.canResize = false;
+    this.hostSetup.clear();
     const environment = this.environments.find((candidate) => candidate.id === environmentId);
     this.desktopApps = [...(environment?.worker?.desktopApps ?? [])];
     this.disconnectConnection(this.environmentId === environmentId);
@@ -657,8 +675,9 @@ export class DesktopPanelController extends SolidPanelController {
         noticeText: this.noticeText,
         availability: this.sessionSource.desktopAvailability,
         picker: {
-          automatic: this.usesAutomaticSource && this.embedded && this.sessionKey !== null,
+          automatic: this.automaticPicker,
           environments: this.environments,
+          hostSetup: this.hostSetup.view(),
           onRefresh: () => void this.refreshEnvironments(undefined, undefined, true),
           onConnect: (environmentId: string) => {
             this.sourceSelection = "explicit";
