@@ -4,7 +4,11 @@ import path from "node:path";
 import { json } from "node:stream/consumers";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it } from "vitest";
-import { readSessionEntryReadOnlyInWorker } from "../src/config/sessions/session-entry-read-runtime.js";
+import {
+  loadSessionEntryReadOnly,
+  readTranscriptStatsBatchReadOnlySync,
+  withSessionEntryReadOnlyScope,
+} from "../src/config/sessions/session-accessor.js";
 import { connectGatewayClient, disconnectGatewayClient } from "../src/gateway/test-helpers.e2e.js";
 import {
   createOpenAiResponsesModelConfig,
@@ -15,6 +19,7 @@ import {
   writeOpenAiResponsesText,
 } from "./helpers/openai-responses-sse.js";
 import { createOpenClawTestInstance } from "./helpers/openclaw-test-instance.js";
+import { awaitGateBeforeSettlement, createDeferred } from "./helpers/promise.js";
 
 const sessionKey = "agent:main:requested-compaction-proof";
 const summary =
@@ -39,6 +44,8 @@ it.each([
     let requestFinalEmitted = false;
     let continuationInput = "";
     let completedNextStep = false;
+    const continuationEntered = createDeferred();
+    const releaseContinuation = createDeferred();
     const events: string[] = [];
     const summaryInputs: string[] = [];
     const modelServer = await startOpenAiResponsesModelServer({
@@ -89,6 +96,7 @@ it.each([
                 yieldMs: 10000,
               },
             },
+            { id: "capture", name: "capture_compaction_capability", args: {} },
             {
               id: "compact",
               name: "session_compact",
@@ -99,6 +107,8 @@ it.each([
           nextStepRequested = true;
           continuationInput = encoded;
           events.push("next_step");
+          continuationEntered.resolve();
+          await releaseContinuation.promise;
           calls = [
             { id: "next_step", name: "read", args: { path: artifactPath } },
             { id: "compact_again", name: "session_compact", args: {} },
@@ -162,14 +172,18 @@ it.each([
     });
     config.plugins = {
       ...config.plugins,
-      allow: ["session-compaction"],
-      entries: { "session-compaction": { enabled: true } },
+      allow: ["session-compaction", "session-compaction-proof"],
+      load: { paths: [path.resolve("test/fixtures/plugins/session-compaction-proof")] },
+      entries: {
+        "session-compaction": { enabled: true },
+        "session-compaction-proof": { enabled: true },
+      },
     };
     config.tools = {
       ...config.tools,
       codeMode: false,
       toolSearch: false,
-      alsoAllow: ["session_compact", "exec", "read"],
+      alsoAllow: ["session_compact", "capture_compaction_capability", "exec", "read"],
       exec: { host: "gateway", mode: "full" },
     };
     config.agents = {
@@ -234,20 +248,70 @@ it.each([
           "Earlier topic: COMPACTION-CONTINUITY-427. Keep the migration pending. " +
             "Completed implementation detail. ".repeat(250),
         );
-        await turn(
-          "REQUEST_COMPACTION_NOW: a substantial step is finished, but keep the unresolved migration.",
-        );
-        expect(toolVisible).toBe(enabled);
+        // The Gateway writes from another process, so read persisted state rather
+        // than the test process's retained worker facts.
+        const entryScope = {
+          agentId: "main",
+          sessionKey,
+          storePath: path.join(instance.state.agentDir("main"), "openclaw-agent.sqlite"),
+          env: instance.state.env,
+        };
         const readEntry = () =>
-          readSessionEntryReadOnlyInWorker({
-            agentId: "main",
-            sessionKey,
-            storePath: path.join(instance.state.agentDir("main"), "openclaw-agent.sqlite"),
-            env: instance.state.env,
-          });
+          withSessionEntryReadOnlyScope(entryScope, () => loadSessionEntryReadOnly(entryScope));
+        let turnSettled = false;
+        const pendingTurn = turn(
+          "REQUEST_COMPACTION_NOW: a substantial step is finished, but keep the unresolved migration.",
+        ).finally(() => {
+          turnSettled = true;
+        });
+        if (enabled) {
+          try {
+            await awaitGateBeforeSettlement(
+              continuationEntered.promise,
+              pendingTurn,
+              "missing continuation boundary",
+            );
+            const entry = readEntry();
+            if (!entry) {
+              throw new Error("The allowed turn did not persist its session");
+            }
+            const target = {
+              agentId: "main",
+              sessionKey,
+              sessionId: entry.sessionId,
+              storePath: path.join(instance.state.agentDir("main"), "openclaw-agent.sqlite"),
+            };
+            const beforeRetiredCall = { requests: requests.length, summaries: summaryCalls };
+            const transcriptBefore = readTranscriptStatsBatchReadOnlySync([target])[0];
+            expect(transcriptBefore?.eventCount).toBeGreaterThan(0);
+            // Pause the continuation response, not the run. The current generation
+            // remains authorized while the exact capability retained from the old
+            // tool batch must refuse before any new provider request or append.
+            expect(turnSettled).toBe(false);
+            const retired = await client.request("compaction-proof.retained", {});
+            expect(retired).toMatchObject({
+              captured: true,
+              differentGeneration: true,
+              currentAllowed: true,
+              currentStatus: "already_requested",
+              rejected: true,
+            });
+            expect(turnSettled).toBe(false);
+            expect({ requests: requests.length, summaries: summaryCalls }).toEqual(
+              beforeRetiredCall,
+            );
+            expect(readTranscriptStatsBatchReadOnlySync([target])[0]).toEqual(transcriptBefore);
+            expect(readEntry()?.compactionCount).toBe(entry.compactionCount);
+          } finally {
+            releaseContinuation.resolve();
+            await Promise.allSettled([pendingTurn]);
+          }
+        }
+        await pendingTurn;
+        expect(toolVisible).toBe(enabled);
         if (enabled) {
           await expect
-            .poll(async () => (await readEntry())?.compactionCount ?? 0, {
+            .poll(() => readEntry()?.compactionCount ?? 0, {
               timeout: 30_000,
               interval: 100,
             })
@@ -271,7 +335,7 @@ it.each([
           expect(await fs.readFile(artifactPath, "utf8")).toBe("completed-action-427\n");
           expect(completedNextStep).toBe(true);
         } else {
-          expect((await readEntry())?.compactionCount ?? 0).toBe(0);
+          expect(readEntry()?.compactionCount ?? 0).toBe(0);
           expect(summaryCalls).toBe(0);
         }
         const before = requests.length;
@@ -282,7 +346,7 @@ it.each([
           expect(requests.at(-1)).toContain(
             rejectSummary ? "Completed implementation detail." : "## Goal",
           );
-          expect((await readEntry())?.compactionCount ?? 0).toBe(rejectSummary ? 0 : 1);
+          expect(readEntry()?.compactionCount ?? 0).toBe(rejectSummary ? 0 : 1);
         }
       } catch (error) {
         throw new Error(
@@ -293,6 +357,7 @@ it.each([
         await disconnectGatewayClient(client);
       }
     } finally {
+      releaseContinuation.resolve();
       await instance.cleanup();
       await modelServer.close();
     }
