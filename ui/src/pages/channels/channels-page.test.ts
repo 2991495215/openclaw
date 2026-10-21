@@ -1,5 +1,6 @@
+import { createRouter, definePage } from "@openclaw/uirouter";
 import { createComponent } from "solid-js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type {
   ControlUiChannelSettingsContext,
   ControlUiChannelSettingsSnapshot,
@@ -10,13 +11,19 @@ import type { ChannelsStatusSnapshot } from "../../api/types.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context.ts";
 import { createChannelCapability } from "../../lib/channels/index.ts";
 import { createRuntimeConfigCapability } from "../../lib/config/runtime-config-capability.ts";
-import type { PluginCatalogItem } from "../../lib/plugins/index.ts";
 import { ApplicationProvider } from "../../lib/reactive/context.ts";
 import type { ControlUiPluginDistribution } from "../../plugins/control-ui-distribution.ts";
 import { createApplicationGateway } from "../../test-helpers/application-context.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { updatePickers } from "../../test-helpers/select-picker.ts";
 import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
+import {
+  channelSnapshot,
+  channelStatus,
+  iconRequests,
+  mockIcon,
+  plugin,
+} from "./channels-page.test-support.ts";
 import { ChannelsPage } from "./channels-page.tsx";
 import { pairingSnapshot } from "./pairing.test-support.ts";
 
@@ -28,58 +35,6 @@ vi.mock("../../plugins/control-ui-distribution.ts", async (importOriginal) => ({
 
 const mountedPages = new Map<HTMLElement, () => void>();
 const sources: Array<Pick<ApplicationContext, "runtimeConfig" | "channels">> = [];
-
-const channelSnapshot = (
-  overrides: Partial<ChannelsStatusSnapshot> = {},
-): ChannelsStatusSnapshot => ({
-  ts: 0,
-  channelOrder: [],
-  channelLabels: {},
-  channels: {},
-  channelAccounts: {},
-  channelDefaultAccountId: {},
-  ...overrides,
-});
-
-function channelStatus(id: string, label: string, configured = false, description?: string) {
-  return channelSnapshot({
-    channelOrder: [id],
-    channelLabels: { [id]: label },
-    channels: { [id]: { configured } },
-    ...(description ? { channelDetailLabels: { [id]: description } } : {}),
-  });
-}
-
-const plugin = (id: string, name: string, overrides: Partial<PluginCatalogItem> = {}) => ({
-  id,
-  name,
-  installed: true,
-  enabled: true,
-  state: "enabled",
-  hasIcon: true,
-  ...overrides,
-});
-
-function mockIcon(url: string) {
-  const fetchMock = vi.fn(
-    async (_input: RequestInfo | URL) =>
-      new Response(new Uint8Array([137, 80, 78, 71]), {
-        status: 200,
-        headers: { "Content-Type": "image/png" },
-      }),
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  vi.spyOn(URL, "createObjectURL").mockReturnValue(url);
-  return fetchMock;
-}
-
-function iconRequests(fetchMock: ReturnType<typeof mockIcon>) {
-  return fetchMock.mock.calls
-    .map(([input]) =>
-      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-    )
-    .filter((url) => url.includes("/__openclaw__/plugin-icon/"));
-}
 
 function catalogFixture(plugins: object[], initial = channelSnapshot(), scopes?: string[]) {
   let refreshed: ReturnType<typeof channelSnapshot> | undefined;
@@ -194,12 +149,20 @@ function createContext(gateway: ApplicationContext["gateway"]) {
   const runtimeConfig = createRuntimeConfigCapability(gateway);
   runtimeConfig.state.configSnapshot = { config: {}, hash: "test" };
   vi.spyOn(runtimeConfig, "ensureSchemaLoaded").mockResolvedValue();
+  const router = createRouter({
+    routes: [
+      definePage({ id: "channels", path: "/channels", component: () => ({}) }),
+      definePage({ id: "dashboard", path: "/dashboard", component: () => ({}) }),
+    ],
+  });
+  onTestFinished(() => router.stop());
   const context = {
     basePath: "",
     resourceBasePath: "",
     gateway,
     channels,
     runtimeConfig,
+    router,
     navigate: vi.fn(),
     preload: vi.fn(async () => undefined),
   } as unknown as ApplicationContext;
@@ -549,15 +512,47 @@ describe("ChannelsPage lifecycle", () => {
     expect(filters[1]?.textContent).toContain("All accounts");
   });
 
+  it.each(["cancel", "disconnect"] as const)(
+    "releases a held pairing presentation on %s without cancelling its owner",
+    async (retirement) => {
+      const pending = createDeferred();
+      const gateway = createGateway(["operator.pairing"], {
+        "channels.pairing.dismiss": () => pending.promise,
+        "channels.pairing.list": () => pairingSnapshot({ commandOwnerConfigured: true }),
+      });
+      const source = createContext(gateway);
+      source.channels.state.pairingSnapshot = pairingSnapshot({ commandOwnerConfigured: true });
+      const request = vi.spyOn(gateway.snapshot.client!, "request");
+      const page = mountPage(source.context);
+      await settle();
+      profileButton(page, "Dismiss").click();
+      await settle();
+      const dialog = page.querySelector(".channels-pairing-dialog")!;
+      const confirm = dialog.querySelector<HTMLButtonElement>("button.danger")!;
+      confirm.click();
+      await waitForSolid(() => expect(confirm.disabled).toBe(true));
+      expect(page.querySelector(".channels-pairing-dialog")).toBe(dialog);
+
+      if (retirement === "cancel") {
+        dialog.closest("openclaw-modal-dialog")!.dispatchEvent(new CustomEvent("modal-cancel"));
+      } else {
+        gateway.emit({ phase: "connecting", client: null });
+      }
+      await waitForSolid(() => expect(page.querySelector(".channels-pairing-dialog")).toBeNull());
+      pending.resolve();
+      await settle();
+      expect(page.querySelector(".channels-pairing-dialog")).toBeNull();
+      expect(request).toHaveBeenCalledWith(
+        "channels.pairing.dismiss",
+        expect.objectContaining({ requestId: "opaque-request-id" }),
+      );
+    },
+  );
+
   it("keeps rejected channel configuration visible in its editor without reloading the draft", async () => {
+    const pending = createDeferred<never>();
     const gateway = createGateway(undefined, {
-      "config.set": () => {
-        throw new GatewayRequestError({
-          code: "INVALID_REQUEST",
-          message:
-            "channel rejected: OPENAI_API_KEY=sk-1234567890abcdef <img src=x onerror=alert(1)>",
-        });
-      },
+      "config.set": () => pending.promise,
     });
     gateway.emit({
       hello: {
@@ -617,6 +612,18 @@ describe("ChannelsPage lifecycle", () => {
     const save = page.querySelector<HTMLButtonElement>(".channels-detail .btn.primary")!;
     expect(save.disabled).toBe(false);
     save.click();
+    await waitForSolid(() => {
+      expect(save.disabled).toBe(true);
+      expect(save.textContent).toContain("Saving");
+    });
+    expect(page.querySelector(".channels-detail .btn.primary")).toBe(save);
+    pending.reject(
+      new GatewayRequestError({
+        code: "INVALID_REQUEST",
+        message:
+          "channel rejected: OPENAI_API_KEY=sk-1234567890abcdef <img src=x onerror=alert(1)>",
+      }),
+    );
 
     await waitForSolid(() => {
       const alert = page.querySelector<HTMLElement>(".channels-detail [role=alert]");
@@ -631,6 +638,8 @@ describe("ChannelsPage lifecycle", () => {
     });
     expect(refreshConfig).not.toHaveBeenCalled();
     expect(refreshChannels).not.toHaveBeenCalled();
+    expect(page.querySelector(".channels-detail .btn.primary")).toBe(save);
+    expect(save.disabled).toBe(false);
   });
 });
 

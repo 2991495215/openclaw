@@ -19,6 +19,7 @@ export type ChannelPairingPrompt = {
 };
 
 export type ChannelsProps = {
+  mutationBusy?: Readonly<{ config: boolean; pairing: boolean }>;
   channels: ChannelsState;
   config: RuntimeConfigState;
   presentation: {
