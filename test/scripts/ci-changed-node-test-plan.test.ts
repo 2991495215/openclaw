@@ -1368,6 +1368,14 @@ describe("CI changed Node test plan", () => {
       compactMode: "pull-request",
       includeReleaseOnlyPluginShards: false,
     });
+    // Group contracts come from the full inventory; row budgets follow selected packing.
+    const selectedCanonical = expectDefined(
+      createSelectedNodeTestShardBundles(
+        expectedTargets.filter((target) => target !== e2eTarget),
+        { includeReleaseOnlyRuntimeTests: true, includePrExemptRuntimeTests: true },
+      ),
+      "canonical selected group jobs",
+    );
     const selectedJobs = shards?.filter((shard) => shard.groups?.length) ?? [];
     expect(selectedJobs.length).toBeGreaterThan(0);
     for (const job of selectedJobs) {
@@ -1386,14 +1394,17 @@ describe("CI changed Node test plan", () => {
         expect(group.env).toEqual(owner.env);
         expect(group.fallbackMaxWorkers).toBe(owner.fallbackMaxWorkers);
         expect(group.minTotalMemoryBytes).toBe(owner.minTotalMemoryBytes);
-        const serialProjection = isSerialNodeTestProjection(job.groups, ownerJob);
+        const { job: selectedOwnerJob } = canonicalOwner(selectedCanonical, group.shard_name);
+        const serialProjection = isSerialNodeTestProjection(job.groups, selectedOwnerJob);
         expect(job.env).toEqual(
-          serialProjection && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
-            ? { ...ownerJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
-            : ownerJob.env,
+          serialProjection &&
+            owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined &&
+            selectedOwnerJob.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
+            ? { ...selectedOwnerJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
+            : selectedOwnerJob.env,
         );
-        expect(job.runner).toBe(ownerJob.runner);
-        expect(job.planConcurrency).toBe(serialProjection ? 1 : ownerJob.planConcurrency);
+        expect(job.runner).toBe(selectedOwnerJob.runner);
+        expect(job.planConcurrency).toBe(serialProjection ? 1 : selectedOwnerJob.planConcurrency);
       }
     }
     const cheapFiles = vi

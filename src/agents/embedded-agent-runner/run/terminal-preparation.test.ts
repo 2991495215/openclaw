@@ -46,6 +46,18 @@ describe("prepareEmbeddedRunTerminal", () => {
     payloadMocks.buildEmbeddedRunPayloads.mockReset().mockReturnValue([]);
   });
 
+  it("keeps an acknowledgement-only user reply aligned with presentation", async () => {
+    const payload = { text: "HEARTBEAT_OK" };
+    payloadMocks.buildEmbeddedRunPayloads.mockReturnValueOnce([payload]);
+
+    const prepared = await prepareAttempt({
+      attempt: attemptResult(),
+    });
+
+    expect(prepared.payloadsWithToolMedia).toEqual([payload]);
+    expect(prepared.payloadsForVisibleCompletion).toEqual([]);
+  });
+
   it.each([
     {
       name: "core-attested delivered media",

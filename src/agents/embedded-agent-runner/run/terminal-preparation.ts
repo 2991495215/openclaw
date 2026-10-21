@@ -11,6 +11,7 @@ import { estimateAggregateUsageCost } from "../../../utils/usage-format.js";
 import { projectAgentRunAttemptTerminal } from "../../agent-run-terminal-outcome.js";
 import type { AgentRunTerminalReceipt } from "../../agent-run-terminal-receipt.js";
 import {
+  filterAgentRunTerminalPayloadsForPresentation,
   prepareAgentRunTerminalReply,
   sanitizeAgentRunTerminalReply,
 } from "../../agent-run-terminal-reply.js";
@@ -357,6 +358,9 @@ export function prepareEmbeddedRunTerminal(input: {
     !attempt.didSendDeterministicApprovalPrompt &&
     !attempt.lastToolError &&
     (attempt.toolMetas?.length ?? 0) === 0;
+  const payloadsForVisibleCompletion = filterAgentRunTerminalPayloadsForPresentation({
+    payloads: recoveredFinalAssistantPayloadsAfterPromptTimeout ?? payloadsWithToolMedia,
+  });
   const attemptToolSummary = buildTraceToolSummary(attempt);
   // Cron execution denials must not look like successful silent completions.
   let failureSignal: EmbeddedRunFailureSignal | undefined;
@@ -391,6 +395,7 @@ export function prepareEmbeddedRunTerminal(input: {
     finalAssistantMessageRawText,
     payloads,
     payloadsWithToolMedia,
+    payloadsForVisibleCompletion,
     timedOutDuringPrompt,
     recoveredFinalAssistantPayloadsAfterPromptTimeout,
     hasSuccessfulFinalAssistantAfterPromptTimeout,
