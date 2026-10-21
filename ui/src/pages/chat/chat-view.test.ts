@@ -757,7 +757,7 @@ describe("retained input navigation", () => {
       type: "attachment_error",
       attachment: { kind: "video", label: "walkthrough.mp4", code: "file-not-found" },
     },
-  ])("names a queued $attachment.kind attachment without message text", (content) => {
+  ])("names a queued $attachment.kind attachment without message text", async (content) => {
     const historyState = makeChatHost({ currentSessionId: "attachment-session" });
     applyChatPendingInputs(historyState, {
       total: 1,
@@ -773,9 +773,9 @@ describe("retained input navigation", () => {
       ],
     });
     const container = renderChatView({ historyState });
-    expect(container.querySelector(".chat-queue__text")?.textContent).toBe(
-      content.attachment.label,
-    );
+    const queueText = () => container.querySelector(".chat-queue__text")?.textContent;
+    await vi.dynamicImportSettled();
+    await waitForSolid(() => expect(queueText()).toBe(content.attachment.label));
     expect(container.querySelector(".chat-group.user")).toBeNull();
   });
 
