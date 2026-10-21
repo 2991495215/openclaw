@@ -101,26 +101,24 @@ suite.define(() => {
         await animation.evaluate((current) => current.play());
         await page.clock.resume();
         const moving = async () => {
-          const movement = await status
-            .locator(".session-run-spinner")
-            .evaluate(async (element) => {
-              const current = element.getAnimations()[0]!;
-              const before = Number(current.currentTime);
-              const transform = getComputedStyle(element).transform;
-              await new Promise<void>((resolve) => {
-                element.addEventListener(
-                  "animationiteration",
-                  () => requestAnimationFrame(() => resolve()),
-                  { once: true },
-                );
-              });
-              return {
-                advanced: Number(current.currentTime) > before,
-                running: current.playState === "running",
-                changed: getComputedStyle(element).transform !== transform,
-              };
-            });
-          expect(movement).toEqual({ advanced: true, running: true, changed: true });
+          const spinner = status.locator(".session-run-spinner");
+          const before = await spinner.evaluate((element) => ({
+            time: Number(element.getAnimations()[0]!.currentTime),
+            transform: getComputedStyle(element).transform,
+          }));
+          // A full rotation can return to the same transform; observe an intermediate frame.
+          await expect
+            .poll(() =>
+              spinner.evaluate((element, before) => {
+                const current = element.getAnimations()[0]!;
+                return {
+                  advanced: Number(current.currentTime) > before.time,
+                  running: current.playState === "running",
+                  changed: getComputedStyle(element).transform !== before.transform,
+                };
+              }, before),
+            )
+            .toEqual({ advanced: true, running: true, changed: true });
         };
         await moving();
         await page.emulateMedia({ colorScheme: "light" });
