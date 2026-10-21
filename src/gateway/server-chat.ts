@@ -1103,7 +1103,7 @@ export function createAgentEventHandler({
 
     const { chatLink, sessionAgentId, sessionKey } = resolveEventSession(evt);
     const runContext = getAgentRunContext(evt.runId);
-    const activeLifecycleGeneration = resolveActiveLifecycleGenerationForRun(evt.runId);
+    const generation = lifecyclePhase !== null && resolveActiveLifecycleGenerationForRun(evt.runId);
     const isControlUiVisible = evt.controlUiVisible ?? runContext?.isControlUiVisible ?? true;
     const projectSessionLifecycle =
       evt.projectSessionLifecycle ?? runContext?.projectSessionLifecycle ?? true;
@@ -1131,11 +1131,7 @@ export function createAgentEventHandler({
 
     const suppressRestartRecoveryLifecycle =
       lifecyclePhase !== null &&
-      (Boolean(
-        evt.lifecycleGeneration &&
-        activeLifecycleGeneration &&
-        evt.lifecycleGeneration !== activeLifecycleGeneration,
-      ) ||
+      (Boolean(evt.lifecycleGeneration && generation && evt.lifecycleGeneration !== generation) ||
         restartRecoveryState?.suppress === true);
     if (suppressRestartRecoveryLifecycle) {
       clearPendingTerminalLifecycleError(evt.runId, evt.lifecycleGeneration);

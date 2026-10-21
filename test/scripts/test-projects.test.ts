@@ -2018,13 +2018,9 @@ export const single = {
   it("keeps the top-level extensions watch target on its aggregate owner", () => {
     expect(planRuns(["--watch", "extensions"])).toEqual([
       {
-        config: configFile("database-worker-watch"),
-        databaseWorkerWatchOwner: configFile("full-extensions"),
-        databaseWorkerWatchTests: databaseWorkerCoreTestFiles.filter((file) =>
-          file.startsWith("extensions/"),
-        ),
+        config: configFile("full-extensions"),
         forwardedArgs: [],
-        includePatterns: ["extensions/**/*.test.ts"],
+        includePatterns: null,
         watchMode: true,
       },
     ]);

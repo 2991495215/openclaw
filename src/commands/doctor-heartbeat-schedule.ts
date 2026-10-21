@@ -1,4 +1,4 @@
-// Preserves deterministic phase anchors while Doctor migrates legacy heartbeat schedules.
+// Computes deterministic phase anchors for Doctor-migrated heartbeat jobs.
 import { createHash } from "node:crypto";
 import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";

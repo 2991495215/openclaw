@@ -64,7 +64,7 @@ export type Logger = {
   error: (obj: unknown, msg?: string) => void;
 };
 
-export type CronSystemEventEnqueueResult =
+type CronSystemEventEnqueueResult =
   | boolean
   | void
   | {

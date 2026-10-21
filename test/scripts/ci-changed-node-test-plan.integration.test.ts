@@ -17,7 +17,11 @@ import {
   PR_PROTECTED_RUNTIME_TEST_FILES,
 } from "../../scripts/lib/ci-proof-test-inventory.mts";
 import * as testTimings from "../../scripts/lib/ci-test-timings.mts";
-import { fallbackGroups, selectedFiles } from "./ci-changed-node-test-plan.test-support.js";
+import {
+  fallbackGroups,
+  isSerialNodeTestProjection,
+  selectedFiles,
+} from "./ci-changed-node-test-plan.test-support.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -310,17 +314,10 @@ it.each(["node", "bun-all"])("keeps exact UI and core owners with %s timings", (
       ] as const) {
         expect(group[key], `${group.shard_name} group ${key}`).toEqual(selectedGroup[key]);
       }
-      // Singleton normalization precedes packing compatible serial rows from other owners.
-      const isolatedOwnerProjection =
-        selectedJob.planConcurrency === 2 &&
-        job.groups?.filter((candidate) =>
-          selectedJob.groups.some(
-            (selectedOwner) => selectedOwner.shard_name === candidate.shard_name,
-          ),
-        ).length === 1;
-      // Splitting an unpinned parallel owner must retain an exact two-worker singleton ceiling.
+      const serialProjection = isSerialNodeTestProjection(job.groups, selectedJob);
+      // Serial projections retain the same two-worker ceiling when they share setup.
       const expectedJobEnv =
-        isolatedOwnerProjection &&
+        serialProjection &&
         selectedGroup.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined &&
         selectedJob.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
           ? { ...selectedJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
@@ -337,7 +334,7 @@ it.each(["node", "bun-all"])("keeps exact UI and core owners with %s timings", (
         );
       }
       expect(job.planConcurrency, `${group.shard_name} job planConcurrency`).toBe(
-        isolatedOwnerProjection ? 1 : selectedJob.planConcurrency,
+        serialProjection ? 1 : selectedJob.planConcurrency,
       );
     }
   }
