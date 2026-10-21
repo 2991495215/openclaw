@@ -213,7 +213,8 @@ function CatalogProgress(props: DefaultModelsViewProps): JSX.Element {
           )}
         >
           <Loading on={props.catalogCompletion} fallback={<CatalogPending />}>
-            <Show when={isPending(discovery) || props.catalogDiscovering} fallback={discovery()}>
+            {discovery()}
+            <Show when={isPending(discovery) || props.catalogDiscovering}>
               <CatalogPending />
             </Show>
           </Loading>
