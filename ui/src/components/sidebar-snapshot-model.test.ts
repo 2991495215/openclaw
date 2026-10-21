@@ -167,41 +167,71 @@ it("omits incognito-only section metadata and counts while preserving existing e
   expect(JSON.stringify(admitted)).not.toContain("private");
 });
 
-it("restores old sidebar snapshots without duplicating personal pins in ordinary sections", () => {
-  const pinned = snapshotSessions([displayRow("agent:main:personal", "Personal pin")])[0]!;
-  const ordinary = snapshotSessions([displayRow("agent:main:shared", "Shared metadata", true)])[0]!;
-  const archived = { ...pinned, key: "agent:main:archived", label: "Archived pin", archived: true };
-  const rows = [pinned, ordinary, archived];
-  const saved = {
-    ...model,
-    entries: [`session:${pinned.key}`, `session:${archived.key}`, "route:usage"],
-    pinnedSessions: [pinned, archived],
-    sessions: rows,
-    sections: [
-      {
-        id: "ungrouped" as const,
-        rows,
-        totalRowCount: 3,
-        visibleRowCount: 3,
-        visibleLimit: 20,
-        collapsedVisibleRowCount: 3,
-        renderHeader: false,
-      },
-    ],
-  };
-  const restored = restoreSnapshotSections(saved, ordinary.key);
-  expect(restored.visibleRows.map((row) => row.key)).toEqual([ordinary.key, archived.key]);
-  expect(restored.sections[0]).toMatchObject({
-    totalRowCount: 2,
-    visibleRowCount: 2,
-    collapsedVisibleRowCount: 2,
-    renderHeader: true,
-  });
-  expect(restored.visibleRows[0]).toMatchObject({ visuallyActive: true, pinnable: false });
-  expect(saved.sections[0]?.rows).toEqual(rows);
-  expect(saved.entries).toEqual([
-    `session:${pinned.key}`,
-    `session:${archived.key}`,
-    "route:usage",
-  ]);
-});
+it.each([
+  ["category", "visible", true],
+  ["category", "missing", false],
+  ["category", "archived", false],
+  ["none", "visible", false],
+  ["none", "missing", false],
+  ["none", "archived", false],
+] as const)(
+  "restores %s snapshots with %s pins without duplicates or a false collapse header",
+  (grouping, pinState, renderHeader) => {
+    const pinned = snapshotSessions([displayRow("agent:main:personal", "Personal pin")])[0]!;
+    const ordinary = snapshotSessions([
+      displayRow("agent:main:shared", "Shared metadata", true),
+    ])[0]!;
+    const archived = {
+      ...pinned,
+      key: "agent:main:archived",
+      label: "Archived pin",
+      archived: true,
+    };
+    const rows =
+      pinState === "visible"
+        ? [pinned, ordinary, archived]
+        : pinState === "archived"
+          ? [ordinary, archived]
+          : [ordinary];
+    const entries =
+      pinState === "archived"
+        ? [`session:${archived.key}`, "route:usage"]
+        : [
+            `session:${pinned.key}`,
+            ...(pinState === "visible" ? [`session:${archived.key}`] : []),
+            "route:usage",
+          ];
+    const expected = pinState === "missing" ? [ordinary.key] : [ordinary.key, archived.key];
+    const saved = {
+      ...model,
+      entries,
+      pinnedSessions:
+        pinState === "visible" ? [pinned, archived] : pinState === "archived" ? [archived] : [],
+      sessions: rows,
+      collapsedSections: ["ungrouped"],
+      sections: [
+        {
+          id: "ungrouped" as const,
+          rows,
+          totalRowCount: rows.length,
+          visibleRowCount: rows.length,
+          visibleLimit: 20,
+          collapsedVisibleRowCount: rows.length,
+          renderHeader: false,
+        },
+      ],
+    };
+    const restored = restoreSnapshotSections(saved, ordinary.key, grouping);
+    expect(restored.visibleRows.map((row) => row.key)).toEqual(expected);
+    expect(restored.sections[0]).toMatchObject({
+      totalRowCount: expected.length,
+      visibleRowCount: expected.length,
+      collapsedVisibleRowCount: expected.length,
+      renderHeader,
+    });
+    expect(restored.visibleRows[0]).toMatchObject({ visuallyActive: true, pinnable: false });
+    expect(saved.sections[0]?.rows).toEqual(rows);
+    expect(saved.entries).toEqual(entries);
+    expect(saved.collapsedSections).toEqual(["ungrouped"]);
+  },
+);

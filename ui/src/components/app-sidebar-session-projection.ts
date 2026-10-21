@@ -47,6 +47,7 @@ type SidebarSubtitleValue = ReturnType<typeof resolveSidebarSessionSubtitle>;
 type SidebarProjectionInput = {
   rows: SidebarRecentSession[];
   pinnedKeys?: ReadonlySet<string>;
+  hasPinnedRows?: boolean;
   sections?: SidebarSessionSection<SidebarRecentSession>[];
   grouping: SidebarSessionsGrouping;
   knownGroups: string[] | undefined;
@@ -575,8 +576,8 @@ export class SidebarSessionProjection {
         ? sections.find((section) => section.id.startsWith("person:"))?.id
         : undefined;
     const ungroupedHasPeerHeader =
-      Boolean(input.pinnedKeys?.size) ||
-      (input.grouping !== "none" &&
+      input.grouping !== "none" &&
+      (input.hasPinnedRows ||
         sections.some(
           (section) =>
             section.id !== "ungrouped" &&

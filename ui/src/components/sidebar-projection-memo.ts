@@ -1,6 +1,6 @@
 import type { SessionObserverDigest } from "../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { GatewaySessionRow, SessionsListResult } from "../api/types.ts";
-import { parseSidebarEntry } from "../app-navigation.ts";
+import { parseSidebarEntry, type SidebarZoneEntry } from "../app-navigation.ts";
 import { isSessionRouteId, type RouteId } from "../app-route-paths.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { i18n } from "../i18n/index.ts";
@@ -16,9 +16,10 @@ import {
   buildSidebarSessionNavigationState,
   type SidebarSessionNavigationState,
 } from "./app-sidebar-session-navigation-logic.ts";
-import type {
-  SidebarSessionProjection,
-  SidebarVisibleSections,
+import {
+  sidebarPinnedSessionRows,
+  type SidebarSessionProjection,
+  type SidebarVisibleSections,
 } from "./app-sidebar-session-projection.ts";
 import { projectSidebarSnoozeCatalogs } from "./app-sidebar-session-snooze-visibility.ts";
 import type {
@@ -32,9 +33,11 @@ import type {
   SidebarProjectionMemo,
   SidebarSessionRowProjection,
 } from "./sidebar-projection-cache.ts";
+import { restoreSnapshotSections, type SidebarSnapshotModel } from "./sidebar-snapshot-model.ts";
 
 export type SidebarProjectionHost = {
   readonly sidebarEntries: readonly string[];
+  readonly sidebarSnapshot: SidebarSnapshotModel | null;
   readonly sessionData: SessionDataOwner;
   readonly sessionDataContext: ApplicationContext | undefined;
   readonly sessionProjection: SidebarSessionProjection;
@@ -63,6 +66,10 @@ export type SidebarProjectionHost = {
   resolveSessionAttention: Parameters<typeof projectSidebarHomeSession>[0]["resolveAttention"];
   getRouteSessionKey(): string;
   getSessionNavigationState(): SidebarSessionNavigationState;
+  reconciledSidebarZone(): {
+    entries: readonly SidebarZoneEntry[];
+    sessionRows: ReadonlyMap<string, SidebarRecentSession>;
+  };
   effectiveSessionSortMode(): SidebarSessionSortMode;
   effectiveSessionsGrouping(): SidebarSessionsGrouping;
   expandedAgentId(): string;
@@ -120,12 +127,24 @@ export function memoizedSidebarSections(
   catalogs: SidebarSessionCatalog[],
   rosterLimits: ReadonlyMap<string, number>,
 ): SidebarVisibleSections {
+  if (host.sidebarSnapshot) {
+    return restoreSnapshotSections(
+      host.sidebarSnapshot,
+      host.getRouteSessionKey(),
+      host.effectiveSessionsGrouping(),
+    );
+  }
   const context = host.sessionDataContext;
   const roster = host.sidebarAgentsMode === "roster" ? host.rosterSessionSource : null;
+  const hasPinnedRows =
+    sidebarPinnedSessionRows(host.reconciledSidebarZone(), (key) =>
+      context?.sessions.archiveVisibility(key),
+    ).length > 0;
   return memo.read(
     () => [
       rows,
       host.sidebarEntries,
+      hasPinnedRows,
       catalogs,
       roster,
       host.collapsedSessionSections,
@@ -164,6 +183,7 @@ export function memoizedSidebarSections(
       return host.sessionProjection.project({
         rows,
         pinnedKeys,
+        hasPinnedRows,
         sections,
         grouping,
         knownGroups: grouping === "category" ? host.knownSessionGroups() : [],

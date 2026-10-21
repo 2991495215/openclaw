@@ -12,6 +12,7 @@ import {
   captureFrame,
   seedStorage,
 } from "./sidebar-assertions.test-support.ts";
+import { chooseSidebarMenuOption, closeSidebarMenu } from "./sidebar-session-menu.test-support.ts";
 
 const suite = createControlUiE2eSuite({ name: "Personal rail pins" });
 suite.define(() => {
@@ -215,6 +216,36 @@ suite.define(() => {
             .first()
             .getAttribute("data-session-section"),
         ).toBe("pinned");
+        if (view.name === "desktop-dark") {
+          const ordinary = sidebar.locator('[data-session-section="ungrouped"]');
+          const ordinaryHeader = ordinary.locator(".sidebar-recent-sessions__head");
+          const ordinaryToggle = ordinary.locator(".sidebar-session-group-toggle");
+          await ordinaryToggle.click();
+          await row(1).waitFor({ state: "hidden" });
+          await chooseSidebarMenuOption(page, "Group by", "None");
+          await closeSidebarMenu(page);
+          await shot("none");
+          expect(await ordinaryHeader.count()).toBe(0);
+          await row(1).waitFor({ state: "visible" });
+          await row(2).waitFor({ state: "visible" });
+
+          await page.reload();
+          await gateway.waitForRequest("connect");
+          await preferences();
+          await gateway.resolveDeferred("connect");
+          await row(1).waitFor({ state: "visible" });
+          await row(2).waitFor({ state: "visible" });
+          expect(await ordinaryHeader.count()).toBe(0);
+
+          await chooseSidebarMenuOption(page, "Group by", "Custom groups");
+          await closeSidebarMenu(page);
+          await ordinaryToggle.waitFor({ state: "visible" });
+          await row(1).waitFor({ state: "hidden" });
+          await row(2).waitFor({ state: "hidden" });
+          await ordinaryToggle.click();
+          await row(1).waitFor({ state: "visible" });
+          await row(2).waitFor({ state: "visible" });
+        }
         // A session drag cannot add a rail shortcut or expose the old rail dropzone.
         await row(1).dragTo(rail.locator(".sidebar-rail__pins"));
         expect(await rail.locator('[data-sidebar-entry^="session:"]').count()).toBe(0);

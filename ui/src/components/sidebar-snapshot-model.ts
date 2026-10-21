@@ -1,5 +1,6 @@
 import { isIncognitoSessionKey } from "../../../src/shared/incognito-session-key.js";
 import { parseSidebarEntry } from "../app-navigation.ts";
+import type { SidebarSessionsGrouping } from "../lib/sessions/grouping.ts";
 import type { SidebarVisibleSections } from "./app-sidebar-session-projection.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
 import type { SidebarSnapshotModel, SidebarSnapshotSession } from "./sidebar-snapshot-data.ts";
@@ -83,6 +84,7 @@ export function snapshotSections(
 export function restoreSnapshotSections(
   model: SidebarSnapshotModel,
   selected: string,
+  grouping: SidebarSessionsGrouping,
 ): SidebarVisibleSections {
   const pinnedKeys = new Set(
     model.entries.flatMap((value) => {
@@ -104,7 +106,10 @@ export function restoreSnapshotSections(
       totalRowCount: section.totalRowCount - removed,
       visibleRowCount: Math.min(section.visibleRowCount, rows.length),
       collapsedVisibleRowCount: Math.min(section.collapsedVisibleRowCount, rows.length),
-      renderHeader: section.renderHeader || (section.id === "ungrouped" && hasPinnedRows),
+      renderHeader:
+        section.id === "ungrouped"
+          ? grouping !== "none" && (section.renderHeader || hasPinnedRows)
+          : section.renderHeader,
     });
   }
   return { sections, visibleRows: sections.flatMap((section) => section.rows) };

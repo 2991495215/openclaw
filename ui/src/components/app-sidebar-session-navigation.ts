@@ -102,7 +102,7 @@ import {
   sidebarRowsInputs,
   type SidebarProjectionHost,
 } from "./sidebar-projection-memo.ts";
-import { restoreSnapshotSections, restoreSnapshotSession } from "./sidebar-snapshot-model.ts";
+import { restoreSnapshotSession } from "./sidebar-snapshot-model.ts";
 import { mountedViewerSessionKeys } from "./solid/viewer-facepile.tsx";
 
 export abstract class AppSidebarSessionNavigationElement extends AppSidebarBase {
@@ -467,9 +467,6 @@ export abstract class AppSidebarSessionNavigationElement extends AppSidebarBase 
 
   /** Collapsed zones keep full rows for true header counts and status dots. */
   protected zonedVisibleSections(rows: SidebarRecentSession[]): SidebarVisibleSections {
-    if (this.sidebarSnapshot) {
-      return restoreSnapshotSections(this.sidebarSnapshot, this.getRouteSessionKey());
-    }
     return memoizedSidebarSections(
       this.sectionsMemo,
       this,

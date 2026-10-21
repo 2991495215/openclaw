@@ -138,6 +138,33 @@ it("renders a single selected owner's sessions inline instead of under a person 
   ]);
 });
 
+it.each([
+  ["none", "visible"],
+  ["none", "missing"],
+  ["none", "archived"],
+  ["category", "missing"],
+  ["category", "archived"],
+] as const)(
+  "keeps %s ordinary rows headerless with a %s personal pin despite saved collapse",
+  (grouping, pinState) => {
+    const ordinary = sessionRow("ordinary");
+    const pin = sessionRow("pin", { archived: pinState === "archived" });
+    const result = project(pinState === "missing" ? [ordinary] : [ordinary, pin], {
+      grouping,
+      statusFilter: "all",
+      pinnedKeys: new Set([pin.key]),
+      hasPinnedRows: pinState === "visible",
+      collapsedSections: new Set(["ungrouped"]),
+    });
+    const expected = pinState === "archived" ? ["ordinary", "pin"] : ["ordinary"];
+    expect(result.sections.find((section) => section.id === "ungrouped")).toMatchObject({
+      renderHeader: false,
+      visibleRowCount: expected.length,
+    });
+    expect(result.visibleRows.map((row) => row.key)).toEqual(expected);
+  },
+);
+
 it("prunes only absent rows when the bounded registry exceeds its cap", () => {
   const original = Array.from({ length: 1_000 }, (_, index) => ({ key: `original-${index}` }));
   projection.observeRows([{ sessions: original }]);
