@@ -1,6 +1,8 @@
-import { createEffect, onMount } from "solid-js";
+import { createDeferred, createEffect, createResource, onMount } from "solid-js";
 
 export function invalidLifecycle(read: () => string) {
+  createDeferred(read);
+  createResource(read);
   createEffect(() => {
     document.title = read();
   });

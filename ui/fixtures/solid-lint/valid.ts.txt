@@ -1,4 +1,4 @@
-import { createEffect, onSettled } from "solid-js";
+import { createDeferred as defer, createEffect, onSettled } from "solid-js";
 
 export function validLifecycle(read: () => string) {
   createEffect(read, (value) => {
@@ -9,4 +9,8 @@ export function validLifecycle(read: () => string) {
     document.addEventListener("example", listener);
     return () => document.removeEventListener("example", listener);
   });
+}
+
+export function validDeferred(read: () => string) {
+  return defer(read);
 }
