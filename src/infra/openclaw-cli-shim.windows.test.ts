@@ -112,12 +112,13 @@ describe.skipIf(process.platform !== "win32")("native Windows source CLI shim", 
         const sourceParent = parent === "bare TSX source parent";
         const execArgv = sourceParent ? ["--import", "tsx"] : f.execArgv;
         f.control(["probe"], execArgv);
-        const invocation = resolveCurrentOpenClawCliInvocation(["probe"], {
-          argv1: sourceParent ? f.entryPath : hostEntry,
-          cwd: f.callerCwd,
-          execArgv: sourceParent ? execArgv : [],
-          execPath: process.execPath,
-        });
+        const invocation = withSourceCliParent(
+          {
+            entryPath: sourceParent ? f.entryPath : hostEntry,
+            execArgv: sourceParent ? execArgv : [],
+          },
+          () => resolveCurrentOpenClawCliInvocation(["probe"]),
+        );
         f.check(
           runSourceCliProbe(invocation.command, invocation.args, f.callerCwd, {
             env: invocation.env,

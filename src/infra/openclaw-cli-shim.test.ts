@@ -13,6 +13,7 @@ import * as cli from "./openclaw-cli-invocation.js";
 import {
   createSourceCliFixture,
   runSourceCliProbe,
+  withSourceCliParent,
 } from "./openclaw-cli-invocation.test-support.js";
 import { clearGatewayAgentCliShim, prepareGatewayAgentCliShim } from "./openclaw-cli-shim.js";
 
@@ -59,12 +60,9 @@ describe.skipIf(process.platform === "win32")("Gateway agent CLI shim", () => {
           OPENCLAW_STATE_DIR: stateDir,
           OPENCLAW_CONFIG_PATH: path.join(stateDir, "openclaw.json"),
         };
-        const invocation = cli.resolveCurrentOpenClawCliInvocation([], {
-          argv1: entryPath,
-          cwd: checkout,
-          execArgv,
-          execPath: process.execPath,
-        });
+        const invocation = withSourceCliParent({ entryPath, execArgv }, () =>
+          cli.resolveCurrentOpenClawCliInvocation([]),
+        );
         const control = runSourceCliProbe(
           invocation.command,
           [...execArgv, entryPath, "--version"],
