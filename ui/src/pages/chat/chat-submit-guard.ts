@@ -80,7 +80,9 @@ export async function withChatSubmitHandoff(
       : undefined;
   try {
     let current = queued;
-    if (options.yieldToInput) {
+    // Settings already yield through their settlement owner. Enter it before a
+    // connection or pane change can abandon the handoff with a waiting-model row.
+    if (options.yieldToInput && !options.pendingSettings) {
       // The shared outbox retains foreground custody while the browser accepts
       // input, including when terminal history settles before this task resumes.
       await yieldChatSubmitToInput();
