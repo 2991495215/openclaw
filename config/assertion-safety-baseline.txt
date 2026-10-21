@@ -991,7 +991,6 @@ packages/gateway-protocol/src/protocol-validator.ts	1
 packages/gateway-protocol/src/schema/audit-activity.ts	1
 packages/gateway-protocol/src/schema/devices.ts	1
 packages/gateway-protocol/src/schema/failover-reason.ts	1
-packages/gateway-protocol/src/schema/protocol-schema-composer.ts	1
 packages/gateway-protocol/src/startup-unavailable.ts	3
 packages/llm-core/src/utils/diagnostics.ts	1
 packages/llm-core/src/utils/event-stream.ts	1
