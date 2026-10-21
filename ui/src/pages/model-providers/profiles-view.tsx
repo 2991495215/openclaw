@@ -501,12 +501,13 @@ function ProviderProfileRow(
 ) {
   let rowElement!: HTMLElement;
   const drag = createPointerDrag();
-  onSettled(() => {
-    const registeredId = profile().profileId;
-    props.rowElements.set(registeredId, rowElement);
-    return () => props.rowElements.delete(registeredId);
-  });
   const profile = () => props.row.profile;
+  onSettled(() => {
+    const initialProfileId = profile().profileId;
+    const rowElements = props.rowElements;
+    rowElements.set(initialProfileId, rowElement);
+    return () => rowElements.delete(initialProfileId);
+  });
   const group = () => props.row.group;
   const provider = () => group().provider;
   const order = () => group().order;
@@ -614,7 +615,7 @@ function ProviderProfileRow(
       </span>
       <ProfileIdentity profile={profile()} identity={props.identity} showDetails />
       <Show when={provider() === "openai" && profile().type !== "api_key"}>
-        {(_visible) => {
+        {(_shown) => {
           let usageElement!: ModelAccountUsageElement;
           onSettled(() => props.registerAccountUsage?.(usageElement));
           return (
