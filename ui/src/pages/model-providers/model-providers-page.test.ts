@@ -328,7 +328,7 @@ describe("ModelProvidersPage agent scope", () => {
       );
       await drainPageUpdates(page);
       expect(page.view.props.authStatus).toBeNull();
-      expect(page.view.props.refreshing).toBe(false);
+      expect(page.view.props.coreReceipt).toBeNull();
       expect(page.renderRoot.textContent).not.toContain("retired@example.test");
 
       request.mockImplementation(originalRequest);
@@ -496,6 +496,8 @@ describe("ModelProvidersPage agent scope", () => {
     });
     await page.updateComplete;
     expect(page.renderRoot.textContent).toContain(page.view.props.messages.openai?.warning);
+    expect(page.view.props.error).toBeNull();
+    expect(page.querySelector(".model-providers__provider-list .provider-usage-error")).toBeNull();
   });
 
   it("removes stored API keys through the rendered action and retains its warning", async () => {
