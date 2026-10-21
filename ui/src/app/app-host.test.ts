@@ -443,9 +443,11 @@ describe("OpenClaw shell source initialization", () => {
 
 describe("OpenClaw shell route session commits", () => {
   it("settles shell commits after the invalidating caller is disposed", async () => {
+    const runtime = bootstrapApplication();
+    onTestFinished(() => runtime.stop());
     const shell = createShellOwner();
-    const unmount = shell.mountPresentation();
-    onTestFinished(unmount);
+    shell.runtime = runtime;
+    const view = mountShellView(shell);
     flush();
 
     let disposeCaller!: () => void;
@@ -462,7 +464,7 @@ describe("OpenClaw shell route session commits", () => {
 
     shell.invalidate();
     const retiredCommit = shell.updateComplete;
-    unmount();
+    view.unmount();
     flush();
     await expect(retiredCommit).resolves.toBe(false);
   });
