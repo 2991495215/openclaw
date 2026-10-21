@@ -22,7 +22,7 @@ it.each([true, false])("shows device settings only with the capability, admin=%s
   const capability: Device = {
     snapshot: createNativeDeviceSettingsSnapshot(),
     subscribe: () => () => undefined,
-    set: () => undefined,
+    set: () => Promise.resolve(),
     requestPermission: () => undefined,
     openSystemSettings: () => undefined,
     openPanel: () => undefined,

@@ -1,32 +1,27 @@
 /* @vitest-environment jsdom */
 
 import type { TalkCatalogResult } from "@openclaw/gateway-protocol";
-import { createComponent, createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context.ts";
 import type { NativeDeviceSettingsCapability } from "../../app/native-device-settings.ts";
-import type { SelectPicker } from "../../components/select-picker.ts";
 import { t } from "../../i18n/index.ts";
-import { cleanupSolid, mountSolid } from "../../test-helpers/mount-solid.ts";
+import { cleanupSolid } from "../../test-helpers/mount-solid.ts";
 import {
   createIosNativeDeviceSettingsSnapshot,
   createNativeDeviceSettingsSnapshot,
 } from "../../test-helpers/native-device-settings.ts";
-import { createSolidApplicationContextProvider } from "../../test-helpers/solid-application-context.tsx";
 import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
-import { TalkSettingsPage } from "./talk-page.tsx";
+import {
+  expectVoiceState,
+  mountTalkPage,
+  readVoiceOptions,
+  setTalkRealtimeConfig,
+} from "./talk.test-support.tsx";
 
 const ACTIVE_VOICES = ["", "cove", "spruce", "custom-voice"];
 const DEFAULT_VOICES = ["", "marin", "custom-voice"];
-
-type TalkPageElement = HTMLElement & {
-  context: ApplicationContext;
-  configObject: Record<string, unknown>;
-  changeModel: (model: string | null) => void;
-  changeProvider: (providerId: string | null) => void;
-};
 
 type TalkMutationHarnessOptions = {
   nativeDeviceSettings?: NativeDeviceSettingsCapability;
@@ -195,68 +190,6 @@ function createTalkMutationHarness(options: TalkMutationHarnessOptions = {}) {
       gatewayListeners.forEach((notify) => notify());
     },
   };
-}
-
-function mountTalkPage(context: ApplicationContext, initialConfig: Record<string, unknown>) {
-  const page: TalkPageElement = Object.assign(document.createElement("div"), {
-    context,
-    configObject: initialConfig,
-    changeModel: (value: string | null) => {
-      flush();
-      const picker = page.querySelector<SelectPicker>("openclaw-select-picker");
-      if (!picker) {
-        throw new Error("Talk model picker is unavailable");
-      }
-      picker.params.onChange(value ?? "");
-    },
-    changeProvider: (value: string | null) => {
-      const input = [...page.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
-        (entry) => entry.value === (value ?? ""),
-      );
-      if (!input) {
-        throw new Error("Talk provider choice is unavailable");
-      }
-      input.click();
-    },
-  });
-  const [config, setConfig] = createSignal(initialConfig);
-  document.body.append(page);
-  const provider = createSolidApplicationContextProvider(context);
-  const view = mountSolid(
-    () =>
-      createComponent(TalkSettingsPage, {
-        get configObject() {
-          return config();
-        },
-      }),
-    { container: page, wrapper: provider.wrapper },
-  );
-  const remove = page.remove.bind(page);
-  Object.defineProperties(page, {
-    context: { value: context },
-    configObject: { get: config, set: setConfig },
-  });
-  page.remove = () => {
-    view.unmount();
-    remove();
-  };
-  flush();
-  return page;
-}
-
-function readVoiceOptions(page: HTMLElement): string[] {
-  return [...page.querySelectorAll("select option")].map(
-    (option) => option.getAttribute("value") ?? "",
-  );
-}
-
-function setTalkRealtimeConfig(page: TalkPageElement, realtime: Record<string, unknown>) {
-  page.configObject = { talk: { realtime } };
-}
-
-function expectVoiceState(page: TalkPageElement, options: string[], unsupported: boolean) {
-  expect(readVoiceOptions(page)).toEqual(options);
-  expect(page.textContent?.includes(t("talkPage.voice.unsupportedDefault"))).toBe(unsupported);
 }
 
 async function selectModel(model: string, options: TalkMutationHarnessOptions = {}) {
@@ -758,7 +691,10 @@ describe("Talk device and voice wake settings", () => {
         };
       },
       set: vi.fn<NativeDeviceSettingsCapability["set"]>(
-        () => new Promise<void>((resolve) => completions.push(resolve)),
+        () =>
+          new Promise<void>((resolve) => {
+            completions.push(resolve);
+          }),
       ),
       requestPermission: vi.fn(),
       openSystemSettings: vi.fn(),
@@ -828,7 +764,6 @@ describe("Talk device and voice wake settings", () => {
     await waitForSolid(() =>
       expect(
         page.querySelector('select[aria-label="Add language…"] option[value="es-ES"]'),
-        page.querySelector('select[aria-label="Add language…"]')?.outerHTML,
       ).not.toBeNull(),
     );
     add("es-ES");

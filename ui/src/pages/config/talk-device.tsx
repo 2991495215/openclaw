@@ -201,6 +201,8 @@ function DeviceVoiceSettings(props: {
     void props.snapshot;
     return deviceLocaleSelection(props.capability);
   });
+  // Keep the controls owned by availability, not each optimistic selection frame.
+  const hasLocale = createMemo(() => locale() !== null);
   // Choices and selection share one optimistic frame during overlapping native edits.
   const languageOptions = () =>
     (locale()?.available ?? []).map(({ id, name }) => ({ value: id, label: name }));
@@ -248,7 +250,7 @@ function DeviceVoiceSettings(props: {
           onChange={(value) => void props.capability.set("voice.microphone", value || null)}
         />
       )}
-      {locale() && (
+      {hasLocale() && (
         <SettingsSelectRow
           title={t("configPage.deviceTalk.primaryLanguage")}
           value={locale()!.primary}
@@ -266,7 +268,7 @@ function DeviceVoiceSettings(props: {
           }}
         />
       )}
-      {locale() && (
+      {hasLocale() && (
         <SettingsRow
           title={t("configPage.deviceTalk.additionalLanguages")}
           stacked
@@ -318,14 +320,14 @@ function DeviceVoiceSettings(props: {
                 }}
               >
                 <option value="">{t("configPage.deviceTalk.addLanguage")}</option>
-                {languageOptions()
-                  .filter(
-                    ({ value }) =>
-                      value !== locale()!.primary && !locale()!.additional.includes(value),
-                  )
-                  .map((option) => (
-                    <option value={option.value}>{option.label}</option>
-                  ))}
+                <For
+                  each={locale()!.available.filter(
+                    ({ id }) => id !== locale()!.primary && !locale()!.additional.includes(id),
+                  )}
+                  keyed={false}
+                >
+                  {(option) => <option value={option().id}>{option().name}</option>}
+                </For>
               </select>
             </>
           }
