@@ -85,6 +85,61 @@ function formatCodeSafetyDetails(findings: SkillScanFinding[], rootDir: string):
     .join("\n");
 }
 
+async function appendCodeSafetyScanFindings(
+  findings: SecurityAuditFinding[],
+  scan: Promise<SkillScanSummary>,
+  subject: { kind: "Plugin" | "Skill"; name: string; dirPath: string },
+): Promise<void> {
+  const { kind, name, dirPath } = subject;
+  const plugin = kind === "Plugin";
+  const checkId = plugin ? "plugins.code_safety" : "skills.code_safety";
+  const summary = await scan.catch((err: unknown) => {
+    findings.push({
+      checkId: `${checkId}.scan_failed`,
+      severity: "warn",
+      title: `${kind} "${name}" code scan failed`,
+      detail: `Static code scan could not complete${plugin ? "" : ` for ${dirPath}`}: ${String(err)}`,
+      remediation: `Check file permissions and ${plugin ? "plugin" : "skill"} layout, then rerun \`openclaw security audit --deep\`.`,
+    });
+    return null;
+  });
+  if (!summary) {
+    return;
+  }
+  if (summary.truncated) {
+    findings.push({
+      checkId: `${checkId}.scan_truncated`,
+      severity: "warn",
+      title: `${kind} "${name}" code scan is incomplete`,
+      detail: `Static code scan reached its file or directory-entry budget under ${dirPath}. Some files were not checked.`,
+      remediation:
+        "Review the remaining files manually; this bounded scan is not a full code audit.",
+    });
+  }
+
+  const severity = summary.critical > 0 ? "critical" : summary.warn > 0 ? "warn" : undefined;
+  if (severity) {
+    const details = formatCodeSafetyDetails(
+      summary.findings.filter((finding) => finding.severity === severity),
+      dirPath,
+    );
+    const critical = severity === "critical";
+    findings.push({
+      checkId,
+      severity,
+      title: `${kind} "${name}" contains ${critical ? "dangerous" : "suspicious"} code patterns`,
+      detail: `Found ${summary[severity]} ${critical ? "critical issue(s)" : "warning(s)"} in ${summary.scannedFiles} scanned file(s)${plugin ? "" : ` under ${dirPath}`}:\n${details}`,
+      remediation: plugin
+        ? critical
+          ? "Review the plugin source code carefully before use. If untrusted, remove the plugin from your OpenClaw extensions state directory."
+          : "Check that the flagged code is intentional and safe."
+        : critical
+          ? `Review the skill source code before use. If untrusted, remove "${dirPath}".`
+          : "Check that the behavior in flagged lines is intentional and safe.",
+    });
+  }
+}
+
 async function getCodeSafetySummary(params: {
   dirPath: string;
   includeFiles?: string[];
@@ -208,52 +263,15 @@ export async function collectPluginsCodeSafetyFindings(params: {
       });
     }
 
-    const summary = await getCodeSafetySummary({
-      dirPath: pluginPath,
-      includeFiles: forcedScanEntries,
-      summaryCache: params.summaryCache,
-    }).catch((err: unknown) => {
-      findings.push({
-        checkId: "plugins.code_safety.scan_failed",
-        severity: "warn",
-        title: `Plugin "${pluginName}" code scan failed`,
-        detail: `Static code scan could not complete: ${String(err)}`,
-        remediation:
-          "Check file permissions and plugin layout, then rerun `openclaw security audit --deep`.",
-      });
-      return null;
-    });
-    if (!summary) {
-      continue;
-    }
-    if (summary.truncated) {
-      findings.push({
-        checkId: "plugins.code_safety.scan_truncated",
-        severity: "warn",
-        title: `Plugin "${pluginName}" code scan is incomplete`,
-        detail: `Static code scan reached its file or directory-entry budget under ${pluginPath}. Some files were not checked.`,
-        remediation:
-          "Review the remaining files manually; this bounded scan is not a full code audit.",
-      });
-    }
-
-    const severity = summary.critical > 0 ? "critical" : summary.warn > 0 ? "warn" : undefined;
-    if (severity) {
-      const details = formatCodeSafetyDetails(
-        summary.findings.filter((finding) => finding.severity === severity),
-        pluginPath,
-      );
-      const critical = severity === "critical";
-      findings.push({
-        checkId: "plugins.code_safety",
-        severity,
-        title: `Plugin "${pluginName}" contains ${critical ? "dangerous" : "suspicious"} code patterns`,
-        detail: `Found ${summary[severity]} ${critical ? "critical issue(s)" : "warning(s)"} in ${summary.scannedFiles} scanned file(s):\n${details}`,
-        remediation: critical
-          ? "Review the plugin source code carefully before use. If untrusted, remove the plugin from your OpenClaw extensions state directory."
-          : "Check that the flagged code is intentional and safe.",
-      });
-    }
+    await appendCodeSafetyScanFindings(
+      findings,
+      getCodeSafetySummary({
+        dirPath: pluginPath,
+        includeFiles: forcedScanEntries,
+        summaryCache: params.summaryCache,
+      }),
+      { kind: "Plugin", name: pluginName, dirPath: pluginPath },
+    );
   }
 
   return findings;
@@ -331,53 +349,15 @@ export async function collectInstalledSkillsCodeSafetyFindings(params: {
     }
     scannedSkillDirs.add(skillDir);
 
-    const skillName = entry.skill.name;
-    const summary = await getSkillCodeSafetySummary({
-      dirPath: skillDir,
-      skillFilePath: entry.skill.filePath,
-      summaryCache: params.summaryCache,
-    }).catch((err: unknown) => {
-      findings.push({
-        checkId: "skills.code_safety.scan_failed",
-        severity: "warn",
-        title: `Skill "${skillName}" code scan failed`,
-        detail: `Static code scan could not complete for ${skillDir}: ${String(err)}`,
-        remediation:
-          "Check file permissions and skill layout, then rerun `openclaw security audit --deep`.",
-      });
-      return null;
-    });
-    if (!summary) {
-      continue;
-    }
-    if (summary.truncated) {
-      findings.push({
-        checkId: "skills.code_safety.scan_truncated",
-        severity: "warn",
-        title: `Skill "${skillName}" code scan is incomplete`,
-        detail: `Static code scan reached its file or directory-entry budget under ${skillDir}. Some files were not checked.`,
-        remediation:
-          "Review the remaining files manually; this bounded scan is not a full code audit.",
-      });
-    }
-
-    const severity = summary.critical > 0 ? "critical" : summary.warn > 0 ? "warn" : undefined;
-    if (severity) {
-      const details = formatCodeSafetyDetails(
-        summary.findings.filter((finding) => finding.severity === severity),
-        skillDir,
-      );
-      const critical = severity === "critical";
-      findings.push({
-        checkId: "skills.code_safety",
-        severity,
-        title: `Skill "${skillName}" contains ${critical ? "dangerous" : "suspicious"} code patterns`,
-        detail: `Found ${summary[severity]} ${critical ? "critical issue(s)" : "warning(s)"} in ${summary.scannedFiles} scanned file(s) under ${skillDir}:\n${details}`,
-        remediation: critical
-          ? `Review the skill source code before use. If untrusted, remove "${skillDir}".`
-          : "Check that the behavior in flagged lines is intentional and safe.",
-      });
-    }
+    await appendCodeSafetyScanFindings(
+      findings,
+      getSkillCodeSafetySummary({
+        dirPath: skillDir,
+        skillFilePath: entry.skill.filePath,
+        summaryCache: params.summaryCache,
+      }),
+      { kind: "Skill", name: entry.skill.name, dirPath: skillDir },
+    );
   }
 
   return findings;

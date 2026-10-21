@@ -37,10 +37,11 @@ export function matchCommandPrefix(
       : null;
 }
 
-/** Keeps matching, text-command enablement, and sender authorization in one owner. */
+/** Keeps matching, command enablement, and sender authorization in one owner. */
 export function defineAuthorizedTextCommand<T>(
   options: {
     label: string;
+    configKey?: CommandFlagKey;
     match: (body: string, params: HandleCommandsParams) => T | null;
     ownerOnly?: boolean | ((params: HandleCommandsParams, match: T) => boolean);
     silentUnauthorized?: boolean;
@@ -66,9 +67,17 @@ export function defineAuthorizedTextCommand<T>(
       typeof options.ownerOnly === "function"
         ? options.ownerOnly(params, match)
         : options.ownerOnly;
-    return ownerOnly
-      ? (rejectNonOwnerCommand(params, options.label) ?? run(params, match))
-      : run(params, match);
+    const ownerDenied = ownerOnly ? rejectNonOwnerCommand(params, options.label) : null;
+    if (ownerDenied) {
+      return ownerDenied;
+    }
+    const disabled = options.configKey
+      ? requireCommandFlagEnabled(params.cfg, {
+          label: options.label,
+          configKey: options.configKey,
+        })
+      : null;
+    return disabled ?? run(params, match);
   };
 }
 

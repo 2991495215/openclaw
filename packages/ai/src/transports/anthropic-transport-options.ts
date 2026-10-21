@@ -1,4 +1,5 @@
 import type { Model, SimpleStreamOptions } from "@openclaw/llm-core";
+import { floorPositiveFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import type { AnthropicOptions } from "../provider-options.js";
 import {
   defaultsClaudeAdaptiveThinking,
@@ -20,25 +21,17 @@ export type AnthropicTransportOptions = AnthropicOptions &
     authProfileId?: string;
   };
 
-function resolvePositiveAnthropicTokenLimit(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return undefined;
-  }
-  const floored = Math.floor(value);
-  return floored > 0 ? floored : undefined;
-}
-
 export function resolveAnthropicMessagesMaxTokens(params: {
   modelContextWindow: number | undefined;
   modelMaxTokens: number | undefined;
   requestedMaxTokens: number | undefined;
   useModelDefault?: boolean;
 }): number | undefined {
-  const requested = resolvePositiveAnthropicTokenLimit(params.requestedMaxTokens);
+  const requested = floorPositiveFiniteNumber(params.requestedMaxTokens) || undefined;
   if (requested !== undefined) {
     return requested;
   }
-  const modelMax = resolvePositiveAnthropicTokenLimit(params.modelMaxTokens);
+  const modelMax = floorPositiveFiniteNumber(params.modelMaxTokens) || undefined;
   if (modelMax !== undefined) {
     return params.useModelDefault ? modelMax : Math.min(modelMax, 32_000);
   }
@@ -47,7 +40,7 @@ export function resolveAnthropicMessagesMaxTokens(params: {
   }
   // Anthropic requires max_tokens even when an optional custom-model row has no output cap.
   // Use a conservative compatibility baseline; higher model limits require explicit metadata.
-  const contextWindow = resolvePositiveAnthropicTokenLimit(params.modelContextWindow);
+  const contextWindow = floorPositiveFiniteNumber(params.modelContextWindow) || undefined;
   return contextWindow === undefined
     ? ANTHROPIC_MESSAGES_DEFAULT_MAX_TOKENS
     : Math.max(
@@ -133,7 +126,7 @@ export function applyAnthropicThinkingOptions(
   }
   const adjusted = adjustMaxTokensForThinking(
     resolved.maxTokens,
-    (managed ? resolvePositiveAnthropicTokenLimit(model.maxTokens) : model.maxTokens) ??
+    (managed ? floorPositiveFiniteNumber(model.maxTokens) || undefined : model.maxTokens) ??
       resolved.maxTokens,
     managed && reasoning === "max" ? "high" : reasoning,
     options?.thinkingBudgets,
@@ -175,7 +168,7 @@ export function resolveCompletionTokenReservation(
   // The standalone provider keeps `max`; the managed transport narrows it to `high`.
   return adjustMaxTokensForThinking(
     maxTokens,
-    resolvePositiveAnthropicTokenLimit(model.maxTokens) ?? Number.POSITIVE_INFINITY,
+    floorPositiveFiniteNumber(model.maxTokens) || Number.POSITIVE_INFINITY,
     reasoning,
   ).maxTokens;
 }

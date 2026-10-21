@@ -285,9 +285,7 @@ export async function loadOfficialCatalog(): Promise<OfficialCatalogResult> {
     });
     cache.officialCatalog = promise;
     void promise.catch(() => {
-      if (cache.officialCatalog === promise) {
-        cache.officialCatalog = undefined;
-      }
+      cache.officialCatalog = undefined;
     });
   }
   return cache.officialCatalog;

@@ -25,6 +25,7 @@ import {
 import type { CompletedAgentAuthSelection } from "./agent-runner-execution.types.js";
 import type { AgentFallbackCandidateCommonParams } from "./agent-runner-fallback-cycle.types.js";
 import { buildFallbackCandidateTurnParams } from "./agent-runner-run-params.js";
+import { startScheduledCandidate } from "./agent-runner-scheduled-start.js";
 import { buildEmbeddedRunExecutionParams } from "./agent-runner-utils.js";
 import type { DirectBlockDelivery } from "./reply-delivery.js";
 import { resolveReplyOperationTerminationFields } from "./reply-operation-abort.js";
@@ -194,33 +195,11 @@ export async function runEmbeddedFallbackCandidate(
             await params.prepareAgentRunStart();
           }
           if (turn.followupRun.run.scheduledAutomation) {
-            try {
-              await turn.followupRun.run.internalEventExecution?.beforeScheduledStart?.(
-                params.runId,
-              );
-              params.runAbortSignal?.throwIfAborted();
-              turn.followupRun.run.internalEventExecution?.assertCurrent?.();
-              const automation = turn.followupRun.run.scheduledAutomation;
-              const sessionKey = turn.sessionKey ?? turn.followupRun.run.sessionKey;
-              if (automation && sessionKey) {
-                automation.onExecutionStarted?.({
-                  runId: params.runId,
-                  sessionId: turn.followupRun.run.sessionId,
-                  sessionKey,
-                  provider: params.provider,
-                  model: params.model,
-                  ...(params.isFallbackRetry ? { isFallback: true } : {}),
-                });
-              }
-            } catch (error) {
-              if (!params.hasAgentRunStarted()) {
-                lifecycleBackstop.note({
-                  stream: "lifecycle",
-                  data: { phase: "finishing", executionStarted: false, providerStarted: false },
-                });
-              }
-              throw error;
-            }
+            await startScheduledCandidate(
+              params,
+              lifecycleBackstop,
+              () => turn.sessionKey ?? turn.followupRun.run.sessionKey,
+            );
           }
         },
         onExecutionPhase: (info) => {

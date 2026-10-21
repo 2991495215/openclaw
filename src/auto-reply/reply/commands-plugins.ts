@@ -39,7 +39,6 @@ import {
   defineAuthorizedTextCommand,
   rejectNonOwnerCommand,
   renderCommandJsonBlock,
-  requireCommandFlagEnabled,
   requireGatewayClientScope,
 } from "./command-gates.js";
 import type { CommandHandler } from "./commands-types.js";
@@ -103,15 +102,8 @@ function hasGatewayAdminScope(params: Parameters<CommandHandler>[0]): boolean {
 }
 
 export const handlePluginsCommand: CommandHandler = defineAuthorizedTextCommand(
-  { label: "/plugins", match: parsePluginsCommand },
+  { label: "/plugins", configKey: "plugins", match: parsePluginsCommand },
   async (params, pluginsCommand) => {
-    const disabled = requireCommandFlagEnabled(params.cfg, {
-      label: "/plugins",
-      configKey: "plugins",
-    });
-    if (disabled) {
-      return disabled;
-    }
     if (pluginsCommand.action === "error") {
       return commandReply(`⚠️ ${pluginsCommand.message}`);
     }

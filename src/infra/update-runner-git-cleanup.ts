@@ -1,5 +1,8 @@
 import fs from "node:fs/promises";
-import { hasCommandProcessCleanupError } from "../process/exec-result.js";
+import {
+  hasCommandProcessCleanupError,
+  ignoreNonCleanupCommandError,
+} from "../process/exec-result.js";
 import { formatErrorMessage } from "./errors.js";
 import { trimLogTail } from "./restart-sentinel.js";
 import { createUpdateErrorFact } from "./update-failure-facts.js";
@@ -115,12 +118,7 @@ export async function cleanupGitPreflight(
   }
   await runCleanupCommand(["git", "-C", options.cwd, "worktree", "prune"], {
     cwd: options.cwd,
-  }).catch((error: unknown) => {
-    if (hasCommandProcessCleanupError(error)) {
-      throw error;
-    }
-    return null;
-  });
+  }).catch(ignoreNonCleanupCommandError);
   const removed = await fs
     .rm(preflightRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
     .then(

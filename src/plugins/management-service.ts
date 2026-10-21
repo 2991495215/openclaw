@@ -146,7 +146,6 @@ export async function refreshManagedPluginMetadata(params: {
 }): Promise<PluginMetadataSnapshot> {
   const env = params.env ?? process.env;
   const boot = getProcessGatewayPluginMetadataSnapshot();
-  const processCache = getProcessPluginCache();
   const assertCurrent = params.assertCurrent;
   // Install writes may have replaced package bytes already seen by the operation.
   // Publish only a completely prepared generation; retained readers keep their original facts.
@@ -155,12 +154,8 @@ export async function refreshManagedPluginMetadata(params: {
     loadFreshManagedPluginMetadata(params.config, env),
   );
   assertCurrent?.();
-  if (
-    boot &&
-    getProcessGatewayPluginMetadataSnapshot() === boot &&
-    getProcessPluginCache() === processCache
-  ) {
-    processCache.desiredMetadata = { boot, cache, snapshot };
+  if (boot) {
+    getProcessPluginCache().desiredMetadata = { boot, cache, snapshot };
   }
   return snapshot;
 }
@@ -443,9 +438,7 @@ export const listManagedPlugins = withManagedPluginCache(
           );
           categoryCache.set(baseUrl, load);
           void load.catch(() => {
-            if (categoryCache.get(baseUrl) === load) {
-              categoryCache.delete(baseUrl);
-            }
+            categoryCache.delete(baseUrl);
           });
         }
         const resolved = await load;

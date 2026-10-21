@@ -239,17 +239,20 @@ describe("command gating", () => {
     expect(result.text).toContain(expected);
   });
 
-  it("blocks a stale owner snapshot before reading or writing config", async () => {
-    const params = buildParams("/config show", { commands: { config: true, text: true } });
-    params.command.senderIsOwner = true;
-    params.command.assertOwnerCurrent = () => {
-      throw new Error("requester revoked during dispatch");
-    };
-    const result = await handleConfigCommand(params, true);
-    expect(result?.reply?.text).toContain("owner authority changed");
-    expect(readConfigFileSnapshotMock).not.toHaveBeenCalled();
-    expect(replaceConfigFileMock).not.toHaveBeenCalled();
-  });
+  it.each([true, false])(
+    "checks live owner authority before the config flag (enabled=%s)",
+    async (enabled) => {
+      const params = buildParams("/config show", { commands: { config: enabled, text: true } });
+      params.command.senderIsOwner = true;
+      params.command.assertOwnerCurrent = () => {
+        throw new Error("requester revoked during dispatch");
+      };
+      const result = await handleConfigCommand(params, true);
+      expect(result?.reply?.text).toContain("owner authority changed");
+      expect(readConfigFileSnapshotMock).not.toHaveBeenCalled();
+      expect(replaceConfigFileMock).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ["config", handleConfigCommand],
@@ -261,14 +264,22 @@ describe("command gating", () => {
     });
     params.command.senderIsOwner = true;
     const result = await handler(params, true);
-    expect(result?.reply?.text).toContain(`/${name} is disabled`);
+    expect(result).toEqual({
+      shouldContinue: false,
+      reply: { text: `⚠️ /${name} is disabled. Set commands.${name}=true to enable.` },
+    });
+    expect(readConfigFileSnapshotMock).not.toHaveBeenCalled();
+    expect(getConfigOverridesMock).not.toHaveBeenCalled();
   });
 
   it.each([
-    ["config", handleConfigCommand],
-    ["debug", handleDebugCommand],
-  ] as const)("blocks authorized non-owners from /%s show", async (name, handler) => {
+    ["config", true, handleConfigCommand],
+    ["config", false, handleConfigCommand],
+    ["debug", true, handleDebugCommand],
+    ["debug", false, handleDebugCommand],
+  ] as const)("keeps /%s owner denial with flag enabled=%s", async (name, enabled, handler) => {
     const params = ownerParams(`/${name} show`);
+    params.cfg.commands = { ...params.cfg.commands, [name]: enabled };
     params.command.senderIsOwner = false;
     expect(await handler(params, true)).toEqual({
       shouldContinue: false,

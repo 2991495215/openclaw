@@ -23,6 +23,18 @@ export function clawAddCapabilityChange(
   };
 }
 
+export function clawPreflightCapabilityEvidence(preflight: ClawPackagePreflightResult) {
+  return {
+    ...(preflight.declaredCapabilities
+      ? { declaredCapabilities: preflight.declaredCapabilities }
+      : {}),
+    ...(preflight.capabilityGrants ? { capabilityGrants: preflight.capabilityGrants } : {}),
+    ...(preflight.capabilityGrantsByPluginId
+      ? { capabilityGrantsByPluginId: preflight.capabilityGrantsByPluginId }
+      : {}),
+  };
+}
+
 export function clawAgentCapabilityChange(
   agentId: string,
   settings: ClawOpenClawProfile["agent"],
@@ -199,13 +211,7 @@ export async function planClawExtensions(params: {
       ...(preflight.integrity ? { integrity: preflight.integrity } : {}),
       ...(preflight.installId ? { installId: preflight.installId } : {}),
       ...(preflight.action ? { ownerAction: preflight.action } : {}),
-      ...(preflight.declaredCapabilities
-        ? { declaredCapabilities: preflight.declaredCapabilities }
-        : {}),
-      ...(preflight.capabilityGrants ? { capabilityGrants: preflight.capabilityGrants } : {}),
-      ...(preflight.capabilityGrantsByPluginId
-        ? { capabilityGrantsByPluginId: preflight.capabilityGrantsByPluginId }
-        : {}),
+      ...clawPreflightCapabilityEvidence(preflight),
       requirementState,
       mapped: preflight.mapped ?? [],
       unavailable: preflight.unavailable ?? [],
@@ -227,13 +233,7 @@ export async function planClawExtensions(params: {
         ...(preflight.integrity ? { integrity: preflight.integrity } : {}),
         ...(preflight.installId ? { installId: preflight.installId } : {}),
         ...(preflight.action ? { ownerAction: preflight.action } : {}),
-        ...(preflight.declaredCapabilities
-          ? { declaredCapabilities: preflight.declaredCapabilities }
-          : {}),
-        ...(preflight.capabilityGrants ? { capabilityGrants: preflight.capabilityGrants } : {}),
-        ...(preflight.capabilityGrantsByPluginId
-          ? { capabilityGrantsByPluginId: preflight.capabilityGrantsByPluginId }
-          : {}),
+        ...clawPreflightCapabilityEvidence(preflight),
         requirementState,
         ...(preflight.requirements ? { prerequisites: preflight.requirements } : {}),
         ...(completeProvenance

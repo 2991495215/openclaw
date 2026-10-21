@@ -17,9 +17,20 @@ import {
   createSolidPngBuffer,
   createTinyJpegBuffer,
 } from "../plugin-sdk/test-helpers/image-fixtures.js";
+import { sealSecretSentinel } from "../secrets/sentinel.js";
 import "./ai-transport-host.js";
 
 afterEach(resetSecretRedactionRegistryForTest);
+
+it("unwraps provider-client credentials and refuses unknown sentinels through the installed host", () => {
+  const host = getAiTransportHost();
+  const sentinel = sealSecretSentinel("transport-host-fixture", { label: "transport-host-test" });
+  expect(host.resolveSecretSentinel(`Bearer ${sentinel}`)).toBe("Bearer transport-host-fixture");
+  const unknown = "oc-sent-v2.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.end";
+  expect(() => host.resolveSecretSentinel(unknown)).toThrow(
+    `Secret sentinel ${unknown} is not registered in this process; refusing to construct provider client`,
+  );
+});
 
 const anthropicModel = makeProviderModelFixture<"anthropic-messages">({
   id: "claude-test",
