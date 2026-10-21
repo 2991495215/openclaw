@@ -3144,7 +3144,7 @@ describe("image lightbox lifecycle", () => {
     mounted.unmount();
   });
 
-  it("clears the mounted preview when beginning a deferred image open", () => {
+  it("clears the mounted preview when beginning a deferred image open", async () => {
     onTestFinished(installDialogPolyfill());
     const state = createPageState(
       createChatPageStateContext(),
@@ -3168,13 +3168,13 @@ describe("image lightbox lifecycle", () => {
     onTestFinished(mounted.unmount);
     expect(mounted.container.querySelector("openclaw-image-lightbox")).not.toBeNull();
 
-    const requestVersion = state.beginImageOpen();
-
-    expect(requestVersion).toBe(1);
+    expect(state.beginImageOpen()).toBe(1);
     expect(state.imageLightbox).toBeNull();
     expect(release).toHaveBeenCalledOnce();
     flush();
     expect(mounted.container.querySelector("openclaw-image-lightbox")).toBeNull();
+    // Keep the dismissed lightbox's lazy import within this test's lifetime.
+    await vi.dynamicImportSettled();
   });
 });
 
