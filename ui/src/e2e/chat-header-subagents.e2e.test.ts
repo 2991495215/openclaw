@@ -37,6 +37,8 @@ suite.define(() => {
           kind: "direct",
           sharingRole: "owner",
           label: "Review the backend",
+          // Empty Details sections have no height; seed visible lazy-content proof.
+          createdActor: { type: "human", id: "ada", label: "Ada" },
           status: "done",
           hasActiveRun: false,
           hasActiveSubagentRun: false,
@@ -120,6 +122,7 @@ suite.define(() => {
         ).toBe(0);
         detailsChunk.resolve();
         await detailsDialog.locator(".chat-details-session").waitFor();
+        await detailsDialog.getByText("People", { exact: true }).waitFor();
         expect(
           await detailsDialog.getByRole("status", { name: "Loading…", exact: true }).count(),
         ).toBe(0);
