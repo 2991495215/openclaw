@@ -46,16 +46,8 @@ export type PlainTextToolCallStreamNormalizerOptions = {
   createPromotedToolCallEvents(message: Record<string, unknown>): Iterable<unknown>;
   /** Tool-name matcher scoped to the exact request being normalized. */
   matcher: PlainTextToolCallNameMatcher;
-  /** Resolves source ranges that must remain literal user-visible text. */
+  /** Resolves CommonMark code ranges that must remain literal user-visible text. */
   resolveProtectedRanges?: PlainTextToolCallProtectedRangeResolver;
-  /**
-   * Opts a fence-based `resolveProtectedRanges` into the incremental fast path so a
-   * candidate-shaped delta can skip a full re-parse (see protection-fast-path.ts's safety
-   * contract). Leave unset for any resolver whose protected ranges are not exactly CommonMark
-   * fenced/indented/inline code spans — the fast path only tracks fence state, so trusting it
-   * for a differently defined resolver would silently drop that resolver's protection.
-   */
-  protectedRangesFenceCompatible?: boolean;
   /** Promotes an eligible terminal snapshot or scrubs every recognized candidate. */
   normalizeTerminalMessage(params: {
     allowPromotion: boolean;
@@ -934,8 +926,6 @@ export async function* normalizePlainTextToolCallStreamEvents(
                 // authoritative terminal snapshot decide instead of deleting literal content.
                 callStart = null;
               } else {
-                // Only opted-in CommonMark resolvers can use carried fence state.
-                // Otherwise the caller's full parse remains authoritative.
                 const carriedScan = authoritative ? protectionScanAtBlockStart : protectionScan;
                 // Compare content-order context before trusting event-order fence state.
                 const precedingContextTrust = resolvePrecedingContextTrust(
@@ -948,7 +938,7 @@ export async function* normalizePlainTextToolCallStreamEvents(
                 protectionBlockPrefixVerdict = precedingContextTrust.cache;
                 const untrackedPrecedingContext = !precedingContextTrust.trusted;
                 let isProtectedAt: ((offset: number) => boolean) | undefined =
-                  !untrackedPrecedingContext && options.protectedRangesFenceCompatible
+                  !untrackedPrecedingContext
                     ? resolveProtectionFastPath(carriedScan, incoming)
                     : undefined;
                 if (!isProtectedAt) {

@@ -89,7 +89,7 @@ export async function collectNormalizedEvents(
 
 export async function normalize(
   events: readonly unknown[],
-  options: Pick<NormalizeOptions, "resolveProtectedRanges" | "protectedRangesFenceCompatible"> & {
+  options: Pick<NormalizeOptions, "resolveProtectedRanges"> & {
     protectFences?: boolean;
   } = {},
 ): Promise<Events> {
@@ -107,9 +107,6 @@ export async function normalize(
       });
       return scrubbed ? { kind: "scrubbed", ...scrubbed } : undefined;
     },
-    // Custom resolvers must explicitly opt into the carried fence scan.
-    protectedRangesFenceCompatible:
-      options.protectedRangesFenceCompatible ?? options.protectFences === true,
     resolveProtectedRanges,
   });
 }

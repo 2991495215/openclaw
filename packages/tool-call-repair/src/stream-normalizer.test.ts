@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { findMarkdownCodeRegions } from "../../markdown-core/src/reasoning-tags.js";
 import {
   normalizePlainTextToolCallStreamEvents as normalizeStream,
   projectScrubbedPlainTextToolCallMessage as scrubMessage,
@@ -457,7 +458,6 @@ function protectedDeltas(
 ) {
   return collect(events, {
     ...streamOptions,
-    protectedRangesFenceCompatible: true,
     resolveProtectedRanges,
   });
 }
@@ -575,23 +575,16 @@ describe("normalizePlainTextToolCallStreamEvents protected ranges", () => {
     expect(textDeltas(events).join("")).toBe(preceding + fenced);
   });
 
-  it("honors custom unfenced ranges without a fast-path opt-in", async () => {
-    const resolveMarkedRanges = (text: string) => {
-      const start = text.indexOf("<<PROTECT>>");
-      const close = text.indexOf("<<END>>", start + "<<PROTECT>>".length);
-      return start === -1
-        ? []
-        : [{ start, end: close === -1 ? text.length : close + "<<END>>".length }];
-    };
-    const text = `<<PROTECT>>\n${literalCall}<<END>>\n`;
+  it("preserves inline code through the canonical Markdown fallback", async () => {
+    const text = `\`literal\n${literalCall}\`\n`;
     const events = await collect([textEvent(text), finish("stop", text)], {
       ...streamOptions,
-      resolveProtectedRanges: resolveMarkedRanges,
+      resolveProtectedRanges: findMarkdownCodeRegions,
       normalizeTerminalMessage: ({ message }) => {
         const scrubbed = scrubMessage({
           matcher,
           message,
-          resolveProtectedRanges: resolveMarkedRanges,
+          resolveProtectedRanges: findMarkdownCodeRegions,
         });
         return scrubbed ? { kind: "scrubbed", ...scrubbed } : undefined;
       },

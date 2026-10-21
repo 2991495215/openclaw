@@ -423,7 +423,6 @@ export function nextAtLineStart(previous: boolean, text: string): boolean {
 export function createForcedScrubSnapshot(options: {
   matcher: PlainTextToolCallNameMatcher;
   resolveProtectedRanges?: PlainTextToolCallProtectedRangeResolver;
-  protectedRangesFenceCompatible?: boolean;
 }) {
   // Reuse completed removal ranges while appended text preserves grammar and code ownership.
   // Ambiguous Markdown and unfinished removal boundaries keep the canonical full scrub.
@@ -447,11 +446,10 @@ export function createForcedScrubSnapshot(options: {
       return false;
     }
     // Only proven fences have immutable protection. Inline code inside an unresolved image
-    // reference can lose ownership when a later definition arrives; custom resolvers can too.
-    const protectedAt =
-      options.resolveProtectedRanges && options.protectedRangesFenceCompatible
-        ? resolveProtectionFastPath(createProtectionScanState(), candidate.text)
-        : undefined;
+    // reference can lose ownership when a later definition arrives.
+    const protectedAt = options.resolveProtectedRanges
+      ? resolveProtectionFastPath(createProtectionScanState(), candidate.text)
+      : undefined;
     if (options.resolveProtectedRanges && !protectedAt) {
       return false;
     }

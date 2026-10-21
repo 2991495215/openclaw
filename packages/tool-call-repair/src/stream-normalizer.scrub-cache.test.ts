@@ -24,7 +24,6 @@ function normalizeChunks(terminal: "done" | "error", ...chunks: string[]) {
 function normalize(events: Record<string, unknown>[], protectCode = true) {
   return normalizeEvents(events, {
     resolveProtectedRanges: protectCode ? findMarkdownCodeRegions : undefined,
-    protectedRangesFenceCompatible: true,
   });
 }
 
