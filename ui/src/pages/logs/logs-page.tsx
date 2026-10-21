@@ -44,7 +44,7 @@ export function LogsPage() {
   const [file, setFile] = createSignal<string | null>(null, { ownedWrite: true });
   const [entries, setEntries] = createStore<LogEntry[]>([], { shallow: true });
   const [filterText, setFilterText] = createSignal("");
-  const [levelFilters, setLevelFilters] = createSignal<Record<LogLevel, boolean>>({
+  const [levelFilters, setLevelFilters] = createStore<Record<LogLevel, boolean>>({
     ...DEFAULT_LOG_LEVEL_FILTERS,
   });
   const [autoFollow, setAutoFollow] = createSignal(true);
@@ -133,9 +133,15 @@ export function LogsPage() {
       }
       const nextEntries = payload.lines.map(parseLogLine);
       const reset = resetCursor || sourceChanged || payload.reset || previousCursor === null;
-      setEntries((draft): LogEntry[] | void => {
+      // Truncation belongs to the displayed history until a complete tail replaces it.
+      setTruncated(
+        Boolean(payload.truncated) ||
+          (!reset && truncated()) ||
+          (reset ? nextEntries.length : entries.length + nextEntries.length) > LOG_BUFFER_LIMIT,
+      );
+      setEntries((draft) => {
         if (reset) {
-          return nextEntries;
+          draft.length = 0;
         }
         draft.push(...nextEntries);
         draft.splice(0, Math.max(0, draft.length - LOG_BUFFER_LIMIT));
@@ -143,7 +149,6 @@ export function LogsPage() {
       cursor = payload.cursor;
       cursorBootId = bootId;
       setFile(payload.file);
-      setTruncated(Boolean(payload.truncated));
       setStatus(completePanelRefresh());
       follow.schedule();
       return true;
@@ -153,6 +158,7 @@ export function LogsPage() {
       }
       if (isMissingOperatorReadScopeError(error)) {
         setEntries(() => []);
+        setTruncated(false);
         const failed = failPanelRefresh(createPanelRefreshStatus(), error, gateway.snapshot);
         setStatus(
           failed.error
@@ -210,13 +216,15 @@ export function LogsPage() {
             file={file()}
             entries={entries}
             filterText={filterText()}
-            levelFilters={levelFilters()}
+            levelFilters={levelFilters}
             autoFollow={autoFollow()}
             truncated={truncated()}
             onStreamRef={(element) => (stream = element)}
             onFilterTextChange={setFilterText}
             onLevelToggle={(level, enabled) =>
-              setLevelFilters((previous) => ({ ...previous, [level]: enabled }))
+              setLevelFilters((draft) => {
+                draft[level] = enabled;
+              })
             }
             onToggleAutoFollow={(enabled) => {
               setAutoFollow(enabled);
