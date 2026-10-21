@@ -10,6 +10,7 @@ import type { ThinkLevel } from "../thinking.js";
 import { emptyAliasIndex, withFastReplyConfig } from "./get-reply-fast-path.test-support.js";
 import * as fixtures from "./get-reply.test-fixtures.js";
 import { loadGetReplyModuleForTest } from "./get-reply.test-loader.js";
+import "./get-reply.test-runtime-mocks.js";
 
 const mocks = vi.hoisted(() => ({
   resolveReplyDirectives: vi.fn(),

@@ -876,7 +876,11 @@ describe("CI changed Node test plan", () => {
           "selected commands job",
         );
         expect(selectedJob.runner).toBe(ownerJob.runner);
-        const singleton = selectedJob.groups?.length === 1 && ownerJob.planConcurrency === 2;
+        // Serial coalescing can add other owners after singleton normalization.
+        const selectedOwnerGroups = selectedJob.groups?.filter((selectedGroup) =>
+          ownerJob.groups.some((ownerGroup) => ownerGroup.shard_name === selectedGroup.shard_name),
+        );
+        const singleton = selectedOwnerGroups?.length === 1 && ownerJob.planConcurrency === 2;
         expect(selectedJob.env).toEqual(
           singleton && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
             ? { ...ownerJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }

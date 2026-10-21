@@ -3,6 +3,7 @@ import {
   getFollowupTurnTestState,
   resetFollowupTurnTestState,
 } from "./followup-turn-execution.test-support.js";
+import "./get-reply-run.runtime-mocks.test-support.js";
 
 // Queue admission and channel policy have their own coverage; this seam exercises cron custody through ingress and drain.
 vi.mock("./reply-tool-authority.js", async (importOriginal) => ({
@@ -70,6 +71,7 @@ import {
   cleanupPreparedReplyFixtures,
   createInboundBody,
   createInboundTurn,
+  createPreparedReplyTurn as turn,
   createSessionBody,
   createSessionTurn,
   createProviderSurface,
@@ -472,18 +474,6 @@ async function prepareActiveQueue(mode: "steer" | "collect" | "interrupt" | "fol
     .mockReturnValueOnce("active-session");
   vi.mocked(sessionQueries.isSessionRunActive).mockReturnValueOnce(true);
   return runtime;
-}
-
-function turn(
-  body: string,
-  common: ReplyRunParams["ctx"],
-  session: Partial<ReplyRunParams["sessionCtx"]> = {},
-  inbound: Partial<ReplyRunParams["ctx"]> = {},
-) {
-  return {
-    ctx: { ...createInboundBody(body), ...common, ...inbound },
-    sessionCtx: { ...createSessionBody(body), ...common, ...session },
-  };
 }
 
 function preparedTarget(sessionId: string) {
@@ -2176,7 +2166,7 @@ describe("runPreparedReply media-only handling", () => {
       vi.mocked(buildInboundUserContextPrefix).mockReturnValueOnce(syntheticConversationInfo);
 
       await runPrepared({
-        opts: {},
+        opts: { internalEventExecution: { onStarted: vi.fn(), onTerminal: vi.fn() } },
         ...turn(
           eventPrompt,
           {
@@ -2389,7 +2379,10 @@ describe("runPreparedReply media-only handling", () => {
           : createTelegramGroupSession(),
         ...turn(
           "scheduled wake",
-          { InternalTurnSource: "heartbeat" },
+          {
+            InternalTurnSource: "event",
+            InputProvenance: { kind: "internal_system", sourceTool: "background-task" },
+          },
           originless ? { ChatType: "direct" } : {},
           { SessionKey: originless ? "agent:main:main" : "agent:main:telegram:-100123" },
         ),

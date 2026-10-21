@@ -1,4 +1,4 @@
-title: Heartbeat shared runtime live contract
+title: Automation shared runtime live contract
 scenario:
   id: heartbeat-shared-runtime-live-contract
   surface: cron
@@ -8,46 +8,33 @@ scenario:
       - automation.manual-cron-runs
       - automation.chat-announce-delivery
     secondary:
-      - automation.heartbeat-scheduling
-      - automation.wake-and-cooldown-handling
       - gateway.agent-and-automation-apis
   gatewayConfigPatch:
     logging:
       consoleStyle: json
-    agents:
-      defaults:
-        heartbeat:
-          every: 24h
-          isolatedSession: true
-          target: qa-channel
-          to: dm:qa-heartbeat-live-contract
-          directPolicy: allow
-          prompt: Follow the current heartbeat monitor scratch instructions exactly. Finish with the available heartbeat_respond tool. Do not use a message tool or change automation configuration.
     session:
       dmScope: main
     tools:
-      allow: [message, heartbeat_respond]
-    messages:
-      visibleReplies: message_tool
-  objective: Prove structured heartbeat silence, alert delivery, scratch replacement, and natural main-session cron execution through the same real isolated Gateway.
+      allow: [message, automations]
+  objective: Prove ordinary automation silence, alert delivery, scratch replacement, and natural main-session cron execution through the same real isolated Gateway.
   successCriteria:
-    - Structured quiet and alert results replace monitor scratch through the runtime owner.
+    - Self-scoped automation actions replace job scratch and record quiet and alert results.
     - Quiet completion records an intentional non-outcome and sends no channel message.
     - A subsequent user turn recalls the isolated silent outcome without reading automation state.
     - Alert completion delivers exactly once to the configured synthetic DM.
     - Empty scratch skips the monitor without an agent transcript turn.
     - A natural main-session cron reminder bypasses empty monitor scratch and delivers once.
   docsRefs:
-    - docs/gateway/heartbeat.md
     - docs/automation/cron-jobs.md
+    - docs/automation/cron-jobs/payloads.md
   codeRefs:
-    - src/infra/heartbeat-runner-run.ts
+    - src/cron/isolated-agent/run-automation-context.ts
     - src/cron/service/timer-execution.ts
-    - src/agents/tools/heartbeat-response-tool.ts
+    - src/agents/tools/cron-tool-automation.ts
   execution:
     kind: flow
     suiteIsolation: isolated
-    isolationReason: Owns heartbeat policy, scratch, and a main-session route in an ephemeral Gateway.
+    isolationReason: Owns an ordinary automation, its scratch, and a main-session route in an ephemeral Gateway.
     channel: qa-channel
     retryCount: 0
     timeoutMs: 600000
@@ -55,12 +42,11 @@ scenario:
       Run with --provider-mode live-frontier --scenario
       heartbeat-shared-runtime-live-contract, optionally adding
       --runtime-pair openclaw,codex. Use source-owned model defaults.
-      Verify structured quiet and alert outcomes, scratch replacement,
+      Verify recorded quiet and alert outcomes, scratch replacement,
       silent-outcome recall through the message tool, empty-scratch suppression,
       natural main-session cron delivery, and transcript mirror diagnostics.
     config:
       requiredProviderMode: live-frontier
-      monitorReadyTimeoutMs: 30000
       conversationId: qa-heartbeat-live-contract
       sessionKey: agent:qa:main
       cases:
@@ -70,7 +56,7 @@ scenario:
           notify: true
 flow:
   steps:
-    - name: exercises structured monitor results and exact delivery
+    - name: exercises recorded automation results and exact delivery
       actions:
         - assert:
             expr: "env.providerMode === config.requiredProviderMode"
@@ -79,22 +65,53 @@ flow:
           args: [{ ref: env }, 120000]
         - call: waitForQaChannelReady
           args: [{ ref: env }, 120000]
-        # Request readiness can precede scheduled-service startup and monitor reconciliation.
-        - set: monitorReadyDeadline
-          value:
-            expr: "Date.now() + config.monitorReadyTimeoutMs"
+        - sendInbound:
+            conversation:
+              id: { expr: config.conversationId }
+              kind: direct
+              title: QA Automation Context
+            senderId: qa-heartbeat-context-user
+            senderName: QA Context User
+            text: "Reply exactly: QA-AUTOMATION-CONTEXT-READY"
+        - call: waitForOutboundMessage
+          args:
+            - ref: state
+            - lambda:
+                params: [message]
+                expr: "message.direction === 'outbound' && message.conversation.id === config.conversationId && message.text.trim() === 'QA-AUTOMATION-CONTEXT-READY'"
+            - expr: "liveTurnTimeoutMs(env, 120000)"
         - call: waitForCondition
-          saveAs: monitor
           args:
             - lambda:
                 async: true
                 params: []
-                expr: "env.gateway.call('cron.list', {includeDisabled: true}, {deadlineMs: monitorReadyDeadline}).then((inventory) => inventory.jobs.find((job) => Boolean(job.id) && job.agentId === 'qa' && job.payload?.kind === 'heartbeat' && job.declarationKey === 'heartbeat:qa' && job.enabled === true))"
-            - ref: config.monitorReadyTimeoutMs
-            - 250
+                expr: "env.gateway.call('sessions.list', {}, {timeoutMs: 30000}).then((result) => result.sessions?.find((session) => session.key === config.sessionKey && session.hasActiveRun === false))"
+            - expr: "liveTurnTimeoutMs(env, 120000)"
+            - 100
+        - call: env.gateway.call
+          saveAs: monitor
+          args:
+            - cron.add
+            - agentId: qa
+              name: qa-shared-runtime-contract
+              enabled: true
+              schedule: { kind: every, everyMs: 86400000 }
+              sessionTarget: isolated
+              sessionKey: { expr: config.sessionKey }
+              wakeMode: now
+              payload:
+                kind: agentTurn
+                message: Follow the current job scratch instructions exactly. Use the automations tool for self-scoped scratch and result actions. Do not use a message tool or change automation configuration.
+                skipIfScratchEmpty: true
+                toolsAllow: [automations]
+              delivery:
+                mode: announce
+                channel: qa-channel
+                to: { expr: "`dm:${config.conversationId}`" }
+                directPolicy: allow
         - assert:
-            expr: "Boolean(monitor?.id) && monitor.enabled"
-            message: Expected the existing config-owned heartbeat monitor.
+            expr: "Boolean(monitor?.id) && monitor.enabled && monitor.payload.kind === 'agentTurn' && monitor.sessionTarget === 'isolated'"
+            message: Expected an ordinary isolated automation.
         - set: verdicts
           value: { expr: "[]" }
         - forEach:
@@ -116,7 +133,7 @@ flow:
                   - id: { ref: monitor.id }
                     expectedRevision: { ref: priorScratch.currentRevision }
                     content:
-                      expr: "'For this check, call heartbeat_respond exactly once with these arguments: ' + JSON.stringify({outcome: 'done', notify: phase.notify, summary: marker, ...(phase.notify ? {notificationText: marker} : {}), scratch: replacementScratch}) + '. Do not call other tools. Do not send any separate assistant message.'"
+                      expr: "'For this check, call automations with action scratch_get. Then call automations with action scratch_set, expectedRevision from that read, and content ' + JSON.stringify(replacementScratch) + '. Then call automations with action record_result, outcome done, and summary ' + JSON.stringify(marker) + '. Do not call other tools. Finish with exactly ' + (phase.notify ? marker : 'NO_REPLY') + '.'"
               - assert:
                   expr: "seeded.ok === true"
                   message: Scratch setup lost its revision race.
@@ -144,12 +161,9 @@ flow:
               - assert:
                   expr: "scratch.scratch?.content === replacementScratch && scratch.currentRevision === seeded.currentRevision + 1"
                   message: The structured result did not commit its exact scratch replacement.
-              - call: env.gateway.call
-                saveAs: heartbeat
-                args: [last-heartbeat, {}]
               - assert:
-                  expr: "heartbeat.ts >= startedAt && heartbeat.status === (phase.notify ? 'sent' : 'ok-token')"
-                  message: { expr: "JSON.stringify(heartbeat)" }
+                  expr: "completed.summary === `done: ${marker}` && completed.deliveryStatus === (phase.notify ? 'delivered' : 'not-delivered')"
+                  message: { expr: "JSON.stringify(completed)" }
               - call: sleep
                 args: [2000]
               - set: outbound
@@ -176,7 +190,7 @@ flow:
                           title: QA Heartbeat Context
                         senderId: qa-heartbeat-context-user
                         senderName: QA Context User
-                        text: "What is the exact QA-HEARTBEAT marker recorded in the latest silent heartbeat outcome? Send only that marker as your reply using the available message tool. Do not run tools to inspect files, scratch, or automation state."
+                        text: "What is the exact QA-HEARTBEAT marker recorded in the latest silent automation outcome? Send only that marker as your reply using the available message tool, then finish with NO_REPLY. Do not run tools to inspect files, scratch, or automation state."
                     - call: waitForOutboundMessage
                       saveAs: recalledOutcome
                       args:
@@ -209,20 +223,14 @@ flow:
               - set: recorded
                 value:
                   {
-                    expr: "verdicts.push({phase: phase.name, status: heartbeat.status, scratchRevision: scratch.currentRevision, outboundCount: outbound.length})",
+                    expr: "verdicts.push({phase: phase.name, status: completed.status, deliveryStatus: completed.deliveryStatus, scratchRevision: scratch.currentRevision, outboundCount: outbound.length})",
                   }
       detailsExpr: "JSON.stringify(verdicts)"
     - name: skips empty monitor scratch without executing another model turn
       actions:
         - call: reset
-        - call: readRawQaSessionStore
-          saveAs: monitorSessions
-          args: [{ ref: env }]
         - set: monitorRunSessionKey
-          value:
-            {
-              expr: "Object.entries(monitorSessions).find(([, entry]) => entry.heartbeatIsolatedBaseSessionKey === config.sessionKey)?.[0]",
-            }
+          value: { expr: "completed.sessionKey" }
         - assert:
             expr: "Boolean(monitorRunSessionKey) && monitorRunSessionKey !== config.sessionKey"
             message: Expected an isolated monitor transcript distinct from the user session.
@@ -244,7 +252,7 @@ flow:
               afterTs: { ref: emptyStartedAt }
               timeoutMs: { expr: "liveTurnTimeoutMs(env, 120000)" }
         - assert:
-            expr: "emptyRun.status === 'skipped' && String(emptyRun.error ?? '').includes('empty-heartbeat-file')"
+            expr: "emptyRun.status === 'skipped' && emptyRun.summary === 'Automation scratch is explicitly empty'"
             message: { expr: "JSON.stringify(emptyRun)" }
         - call: readSessionTranscriptSummary
           saveAs: afterEmpty
@@ -257,13 +265,6 @@ flow:
       detailsExpr: "JSON.stringify({status: emptyRun.status, transcriptUnchanged: true})"
     - name: naturally fires a main-session reminder despite empty monitor scratch
       actions:
-        - call: readRawQaSessionStore
-          saveAs: sessions
-          args: [{ ref: env }]
-        - call: seedQaSessionEntries
-          args:
-            - ref: env
-            - expr: "[{agentId: 'qa', sessionKey: config.sessionKey, entry: {...sessions[config.sessionKey], delivery: {...sessions[config.sessionKey]?.delivery, kind: 'external', route: {channel: 'qa-channel', target: {to: `dm:${config.conversationId}`, chatType: 'direct'}}, context: {channel: 'qa-channel', to: `dm:${config.conversationId}`}, origin: {provider: 'qa-channel', surface: 'qa-channel', chatType: 'direct', to: `dm:${config.conversationId}`}}}}]"
         - set: reminderMarker
           value: { expr: "`QA-MAIN-CRON-${randomUUID().slice(0, 8)}`" }
         - set: reminderStartedAt
@@ -286,7 +287,7 @@ flow:
                 kind: systemEvent
                 text:
                   {
-                    expr: "'Send this reminder by calling heartbeat_respond once with outcome=done, notify=true, summary and notificationText both exactly ' + reminderMarker + '. Do not use a separate message tool.'",
+                    expr: "'Send this reminder by calling the message tool once with action send, channel qa-channel, target dm:' + config.conversationId + ', and message exactly ' + reminderMarker + '. Then finish with NO_REPLY.'",
                   }
             - timeoutMs: 30000
         - call: waitForCronRunCompletion

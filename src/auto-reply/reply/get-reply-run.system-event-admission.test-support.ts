@@ -1,6 +1,10 @@
 import { expect, it, vi } from "vitest";
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
-import { enqueueSystemEvent, peekSystemEventEntries } from "../../infra/system-events.js";
+import {
+  claimSystemEventTurn,
+  enqueueSystemEvent,
+  peekSystemEventEntries,
+} from "../../infra/system-events.js";
 import type { runReplyAgent } from "./agent-runner-run.js";
 import type { runPreparedReply } from "./get-reply-run.js";
 import { drainFormattedSystemEvents } from "./session-system-events.js";
@@ -28,30 +32,21 @@ export function registerSystemEventAdmissionCases({
       contextKey: "task:restart-sentinel:admission-proof",
     });
     const captured = peekSystemEventEntries(sessionKey);
-    const deferredEventIds = captured.map((event) => event.id!).filter(Boolean);
+    const claim = claimSystemEventTurn(sessionKey, captured, vi.fn());
+    expect(claim).toBeDefined();
     enqueueSystemEvent("Notification arrived after capture", { sessionKey });
-    await runPrepared({
-      agentId: "main",
-      sessionKey,
-      opts: withReplySystemEventContext(
-        {},
-        {
-          sessionKey,
-          events: captured,
-          deferredEventIds,
-        },
-      ),
-    });
-    expect(requireRunReplyAgentCall().followupRun.currentInboundContext?.text).toContain(
-      "Restart continuation retained for delivery",
-    );
-    expect(requireRunReplyAgentCall().followupRun.currentInboundContext?.text).not.toContain(
-      "Notification arrived after capture",
-    );
-    expect(peekSystemEventEntries(sessionKey).map((event) => event.text)).toEqual([
-      "Restart continuation retained for delivery",
-      "Notification arrived after capture",
-    ]);
+    try {
+      await runPrepared({ agentId: "main", sessionKey });
+      expect(requireRunReplyAgentCall().followupRun.currentInboundContext?.text).not.toContain(
+        "Restart continuation retained for delivery",
+      );
+      expect(requireRunReplyAgentCall().followupRun.currentInboundContext?.text).toContain(
+        "Notification arrived after capture",
+      );
+      expect(peekSystemEventEntries(sessionKey)).toEqual(captured);
+    } finally {
+      claim?.release();
+    }
   });
 
   it("admits only system events visible to the prepared agent", async () => {

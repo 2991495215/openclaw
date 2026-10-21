@@ -25,7 +25,7 @@ function eventOptions() {
 }
 
 describe("Slack interaction lifecycle", () => {
-  it.each(["accepted", "refused"] as const)(
+  it.each(["accepted", "refused", "duplicate"] as const)(
     "keeps the captured destination through plugin dispatch and confirms only when %s",
     async (admission) => {
       const dispatchStarted = createDeferred<void>();
@@ -45,6 +45,11 @@ describe("Slack interaction lifecycle", () => {
       });
       enqueueSessionEventMock.mockImplementationOnce(() => {
         enqueued.resolve();
+        if (admission === "duplicate") {
+          throw new Error(
+            "Session event was not enqueued: an identical occurrence is already pending",
+          );
+        }
         return {
           id: "interaction",
           cancel: () => false,

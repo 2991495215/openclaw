@@ -1,4 +1,4 @@
-title: Isolated group heartbeat keeps configured MCP after a policy note
+title: Isolated group scheduled check keeps configured MCP after a policy note
 
 scenario:
   id: heartbeat-isolated-group-mcp-policy-note
@@ -6,7 +6,7 @@ scenario:
   category: automation.heartbeat
   coverage:
     secondary:
-      - automation.wake-and-cooldown-handling
+      - automation.manual-cron-runs
       - channels.qa-channel-final-reply
   regressionRefs:
     - openclaw/openclaw#140279
@@ -20,41 +20,30 @@ scenario:
         host: node
     channels:
       qa-channel:
-        # A provider-qualified sender makes the isolated heartbeat carry the caller
-        # group id that the final policy pass drops, which is the reported trigger.
         allowFrom:
           - qa-channel:group:qa-heartbeat-mcp-room
-    agents:
-      defaults:
-        heartbeat:
-          every: 5m
-          target: qa-channel
-          to: group:qa-heartbeat-mcp-room
-          directPolicy: block
-          isolatedSession: true
-          prompt: "Isolated group heartbeat MCP proof. Reply exactly: QA-HEARTBEAT-MCP-OK"
-  objective: Verify an isolated heartbeat addressed to a group keeps its configured MCP tool and does not receive the incomplete-MCP blocker when the only policy input is the dropped caller-provided group id.
+  objective: Verify an isolated scheduled check addressed to a group keeps its configured MCP tools and does not receive the incomplete-MCP blocker.
   successCriteria:
-    - The heartbeat monitor job runs the isolated group heartbeat through a real Gateway, the Codex app-server harness, a real stdio MCP server, and the mock provider boundary.
-    - The heartbeat provider request offers the configured MCP server's tool.
+    - An ordinary cron job runs the isolated group check through a real Gateway, the Codex app-server harness, a real stdio MCP server, and the mock provider boundary.
+    - The scheduled provider request offers the configured MCP server's tools.
     - That request carries no "Configured MCP is incomplete" blocker in its developer instructions or input.
-    - The heartbeat reply is delivered to the configured qa-channel group.
+    - The scheduled reply is delivered to the configured qa-channel group.
   docsRefs:
-    - docs/gateway/heartbeat.md
+    - docs/automation/cron-jobs/payloads.md
     - docs/tools/mcp.md
   codeRefs:
     - src/agents/agent-bundle-mcp-harness.ts
-    - src/infra/heartbeat-runner-execution.ts
+    - src/cron/isolated-agent/run-prompt-executor.ts
     - extensions/codex/src/app-server/run-attempt-tool-setup.ts
   execution:
     kind: flow
     runtime: codex
     suiteIsolation: isolated
-    isolationReason: Configures an isolated group heartbeat with an MCP server and forces the heartbeat monitor job on the real Gateway.
+    isolationReason: Creates and forces an isolated group cron job with an MCP server on the real Gateway.
     channel: qa-channel
     retryCount: 0
     timeoutMs: 300000
-    summary: Prove an isolated group heartbeat with configured MCP reaches its normal assessment instead of a warning-only MCP blocker.
+    summary: Prove an isolated group scheduled check with configured MCP reaches its normal assessment instead of a warning-only MCP blocker.
     config:
       requiredProviderMode: mock-openai
       heartbeatPromptNeedle: Isolated group heartbeat MCP proof
@@ -64,12 +53,11 @@ scenario:
       mcpServerName: proof
       expectedMcpTools: [proof__resources_list, proof__resources_read, proof__show]
       mcpServerScript: scripts/e2e/mcp-app-conformance-server.mjs
-      bridgedToolName: heartbeat_respond
       blockerNeedle: Configured MCP is incomplete
 
 flow:
   steps:
-    - name: runs the isolated group heartbeat with its MCP tool and no warning-only blocker
+    - name: runs the isolated group check with its MCP tools and no warning-only blocker
       actions:
         - assert:
             expr: "env.providerMode === config.requiredProviderMode"
@@ -100,13 +88,34 @@ flow:
           args:
             - ref: env
             - 60000
-        - call: waitForCondition
+        - call: env.gateway.call
           saveAs: heartbeatJob
           args:
-            - lambda:
-                expr: "(async () => { const listed = await env.gateway.call('cron.list', { includeDisabled: true }, { timeoutMs: 30000 }); const jobs = Array.isArray(listed) ? listed : (listed?.jobs ?? []); return jobs.find((job) => job?.name === config.heartbeatJobName || job?.payload?.kind === 'heartbeat'); })()"
-            - 60000
-            - 500
+            - cron.add
+            - agentId: qa
+              name:
+                expr: config.heartbeatJobName
+              enabled: true
+              schedule:
+                kind: at
+                at:
+                  expr: "new Date(Date.now() + 10 * 60 * 1000).toISOString()"
+              sessionTarget: isolated
+              wakeMode: now
+              payload:
+                kind: agentTurn
+                message:
+                  expr: "`${config.heartbeatPromptNeedle}. Reply exactly: ${config.heartbeatMarker}`"
+              delivery:
+                mode: announce
+                channel: qa-channel
+                to:
+                  expr: "`group:${config.heartbeatRoom}`"
+                directPolicy: block
+            - timeoutMs: 30000
+        - assert:
+            expr: "Boolean(heartbeatJob.id) && heartbeatJob.agentId === 'qa' && heartbeatJob.sessionTarget === 'isolated' && heartbeatJob.payload?.kind === 'agentTurn'"
+            message: Cron did not retain the isolated group MCP job contract.
         - set: heartbeatRequestCursor
           value:
             expr: "(await fetchJson(`${env.mock.baseUrl}/debug/request-cursor`)).cursor"
@@ -121,12 +130,12 @@ flow:
         - assert:
             expr: "runResponse?.ok === true && runResponse?.ran !== false"
             message:
-              expr: "`expected cron.run to start the heartbeat monitor job, got ${JSON.stringify(runResponse)}`"
+              expr: "`expected cron.run to start the group MCP check, got ${JSON.stringify(runResponse)}`"
         - call: waitForCondition
           saveAs: heartbeatRequest
           args:
             - lambda:
-                expr: "(async () => (await fetchJson(`${env.mock.baseUrl}/debug/requests?after=${heartbeatRequestCursor}`)).find((request) => String(request.allInputText ?? '').includes(config.heartbeatPromptNeedle) && JSON.stringify(request.body?.tools ?? []).includes(config.bridgedToolName)))()"
+                expr: "(async () => (await fetchJson(`${env.mock.baseUrl}/debug/requests?after=${heartbeatRequestCursor}`)).find((request) => String(request.allInputText ?? '').includes(config.heartbeatPromptNeedle)))()"
             - expr: "liveTurnTimeoutMs(env, 150000)"
             - 200
         - set: heartbeatToolNames

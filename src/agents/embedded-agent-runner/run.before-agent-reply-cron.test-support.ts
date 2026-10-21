@@ -105,9 +105,21 @@ describe("runEmbeddedAgent before_agent_reply seam", () => {
     const onExecutionPhase = vi.fn();
 
     await runEmbeddedAgent({
-      ...createOverflowRunParams(state),
-      trigger: "cron",
-      sessionKey: "agent:main:cron:scheduled",
+      ...(await prepareHookSession("agent:main:cron:scheduled")),
+      provider: "test-local",
+      model: "test-model",
+      config: {
+        models: {
+          providers: {
+            "test-local": {
+              baseUrl: "http://127.0.0.1:11434/v1",
+              api: "openai-completions",
+              auth: "none",
+              models: [],
+            },
+          },
+        },
+      },
       onExecutionPhase,
     });
 

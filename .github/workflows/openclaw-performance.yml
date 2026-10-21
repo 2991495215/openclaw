@@ -981,7 +981,7 @@ jobs:
           fi
           cat > "$gateway_config" <<EOF
           {
-            "agents": { "defaults": { "heartbeat": { "every": "0m" } } },
+            "cron": { "enabled": false },
             "browser": { "enabled": false },
           ${catalog_refresh_config}
             "update": { "checkOnStart": false },

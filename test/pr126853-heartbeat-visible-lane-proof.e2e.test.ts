@@ -93,25 +93,26 @@ function writeAssistantResponse(response: ServerResponse, text: string): void {
 
 describe("PR #126853 real Gateway lane proof", () => {
   it(
-    "starts a visible turn while an independent heartbeat is held",
+    "starts a visible turn while an independent automation is held",
     { timeout: 90_000 },
     async () => {
       const envSnapshot = captureEnv([...envKeys]);
       let providerServer: ReturnType<typeof createServer> | undefined;
       let gateway: Awaited<ReturnType<typeof startGatewayWithClient>> | undefined;
+      let jobId: string | undefined;
       let releaseProviderResponses!: () => void;
       const providerResponsesReleased = new Promise<void>((resolve) => {
         releaseProviderResponses = resolve;
       });
-      let heartbeatRequestStarted!: () => void;
-      const heartbeatRequest = new Promise<void>((resolve) => {
-        heartbeatRequestStarted = resolve;
+      let scheduledRequestStarted!: () => void;
+      const scheduledRequest = new Promise<void>((resolve) => {
+        scheduledRequestStarted = resolve;
       });
       let visibleRequestStarted!: () => void;
       const visibleRequest = new Promise<void>((resolve) => {
         visibleRequestStarted = resolve;
       });
-      const heartbeatMarker = "PR126853_HEARTBEAT_HELD";
+      const scheduledMarker = "PR126853_AUTOMATION_HELD";
       const visibleMarker = "PR126853_VISIBLE_TURN";
       const providerOrder: string[] = [];
 
@@ -126,10 +127,6 @@ describe("PR #126853 real Gateway lane proof", () => {
           fs.mkdir(bundledPluginsDir, { recursive: true }),
           fs.mkdir(path.dirname(configPath), { recursive: true }),
         ]);
-        await fs.writeFile(
-          path.join(workspaceDir, "HEARTBEAT.md"),
-          "Handle pending system events and reply with a concise acknowledgement.\n",
-        );
         const token = "pr126853-proof-token";
         for (const [key, value] of Object.entries({
           HOME: tempHome,
@@ -159,25 +156,23 @@ describe("PR #126853 real Gateway lane proof", () => {
               return;
             }
             const body = Buffer.concat(chunks).toString("utf8");
-            const kind = body.includes(heartbeatMarker)
-              ? "heartbeat"
+            const kind = body.includes(scheduledMarker)
+              ? "scheduled"
               : body.includes(visibleMarker)
                 ? "visible"
                 : undefined;
-            // Startup heartbeats share this provider; hold only the two explicit turns.
             if (!kind) {
-              writeAssistantResponse(response, "HEARTBEAT_OK");
-              return;
+              throw new Error("proof provider received an unexpected request");
             }
             providerOrder.push(kind);
             console.log(`PR126853_PROVIDER_REQUEST ${kind}`);
-            if (kind === "heartbeat") {
-              heartbeatRequestStarted();
+            if (kind === "scheduled") {
+              scheduledRequestStarted();
             } else if (kind === "visible") {
               visibleRequestStarted();
             }
             await providerResponsesReleased;
-            writeAssistantResponse(response, kind === "heartbeat" ? "HEARTBEAT_OK" : "VISIBLE_OK");
+            writeAssistantResponse(response, kind === "scheduled" ? "SCHEDULED_OK" : "VISIBLE_OK");
           })().catch((error: unknown) => {
             response.writeHead(500).end(error instanceof Error ? error.message : String(error));
           });
@@ -200,7 +195,6 @@ describe("PR #126853 real Gateway lane proof", () => {
               workspace: workspaceDir,
               skipBootstrap: true,
               maxConcurrent: 1,
-              heartbeat: { every: "5m", target: "none" },
               model: { primary: provider.modelRef },
               models: {
                 [provider.modelRef]: {
@@ -233,31 +227,23 @@ describe("PR #126853 real Gateway lane proof", () => {
         }
         withFastReplyConfig(runtimeConfig);
 
-        const heartbeatSessionKey = "agent:main:pr126853-heartbeat";
-        await gateway.client.request("sessions.create", {
-          key: heartbeatSessionKey,
+        const job = await gateway.client.request<{ id: string }>("cron.add", {
+          name: "PR126853 independent automation",
           agentId: "main",
-          cwd: workspaceDir,
+          enabled: true,
+          schedule: { kind: "every", everyMs: 3_600_000 },
+          sessionTarget: "isolated",
+          wakeMode: "now",
+          payload: { kind: "agentTurn", message: scheduledMarker },
+          delivery: { mode: "none" },
         });
-        await expect(
-          gateway.client.request<{ ok: boolean }>("wake", {
-            mode: "now",
-            text: heartbeatMarker,
-            sessionKey: heartbeatSessionKey,
-            agentId: "main",
-          }),
-        ).resolves.toEqual({ ok: true });
-        await within(heartbeatRequest, "waiting for the heartbeat provider request").catch(
-          async (error: unknown) => {
-            const lastHeartbeat = await gateway?.client
-              .request("last-heartbeat", {})
-              .catch((lookupError: unknown) => ({ lookupError: String(lookupError) }));
-            throw new Error(
-              `heartbeat did not reach provider; order=${JSON.stringify(providerOrder)} last=${JSON.stringify(lastHeartbeat)}`,
-              { cause: error },
-            );
-          },
-        );
+        jobId = job.id;
+        const run = await gateway.client.request<{ runId: string }>("cron.run", {
+          id: job.id,
+          mode: "force",
+        });
+        expect(run).toMatchObject({ ok: true, enqueued: true, runId: expect.any(String) });
+        await within(scheduledRequest, "waiting for the scheduled provider request");
 
         const visibleSessionKey = "agent:main:pr126853-visible";
         const visibleRunId = "pr126853-visible-run";
@@ -278,10 +264,10 @@ describe("PR #126853 real Gateway lane proof", () => {
           {},
         );
         const main = diagnostics.lanes.find((lane) => lane.lane === "main");
-        const heartbeat = diagnostics.lanes.find((lane) => lane.lane === "cron-nested");
-        expect(providerOrder.slice(0, 2)).toEqual(["heartbeat", "visible"]);
+        const scheduled = diagnostics.lanes.find((lane) => lane.lane === "cron-nested");
+        expect(providerOrder.slice(0, 2)).toEqual(["scheduled", "visible"]);
         expect(main).toMatchObject({ lane: "main", activeCount: 1, queuedCount: 0 });
-        expect(heartbeat).toMatchObject({
+        expect(scheduled).toMatchObject({
           lane: "cron-nested",
           activeCount: 1,
           queuedCount: 0,
@@ -289,8 +275,8 @@ describe("PR #126853 real Gateway lane proof", () => {
         console.log(
           `PR126853_RUNTIME_TRACE ${JSON.stringify({
             providerOrder: providerOrder.slice(0, 2),
-            lanes: [main, heartbeat],
-            heartbeatSessionKey,
+            lanes: [main, scheduled],
+            jobId: job.id,
             visibleSessionKey,
           })}`,
         );
@@ -306,16 +292,22 @@ describe("PR #126853 real Gateway lane proof", () => {
         await expect
           .poll(
             async () =>
-              await gateway?.client.request<{ status: string; preview?: string }>(
-                "last-heartbeat",
-                {},
-              ),
+              await gateway?.client.request("cron.runs", {
+                id: job.id,
+                runId: run.runId,
+                limit: 1,
+              }),
             { timeout: 15_000, interval: 50 },
           )
-          .toMatchObject({ status: "ok-empty" });
+          .toMatchObject({
+            entries: [{ runId: run.runId, status: "ok", summary: "SCHEDULED_OK" }],
+          });
       } finally {
         releaseProviderResponses();
         if (gateway) {
+          if (jobId) {
+            await gateway.client.request("cron.remove", { id: jobId }).catch(() => undefined);
+          }
           await disconnectGatewayClient(gateway.client).catch(() => undefined);
           await gateway.server.close().catch(() => undefined);
         }

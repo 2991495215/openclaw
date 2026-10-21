@@ -183,7 +183,7 @@ exit "$RG_STATUS"
       models?: { catalogRefresh?: { enabled?: boolean } };
     };
     expect(parsedConfig).toMatchObject({
-      agents: { defaults: { heartbeat: { every: "0m" } } },
+      cron: { enabled: false },
       browser: { enabled: false },
       update: { checkOnStart: false },
       gateway: {
@@ -196,6 +196,7 @@ exit "$RG_STATUS"
       plugins: { enabled: true, entries: { browser: { enabled: false } } },
     });
     expect(JSON.stringify(parsedConfig)).not.toContain('"dreaming":');
+    expect(parsedConfig).not.toHaveProperty("agents");
     expect(parsedConfig.gateway?.auth).toEqual({ mode: "token" });
     if (expectsCatalogRefresh) {
       expect(parsedConfig.models?.catalogRefresh?.enabled).toBe(false);

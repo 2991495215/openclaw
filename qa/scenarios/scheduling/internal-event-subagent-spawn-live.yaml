@@ -15,13 +15,6 @@ scenario:
   regressionRefs:
     - openclaw/openclaw#132890
   gatewayConfigPatch:
-    agents:
-      defaults:
-        heartbeat:
-          every: 24h
-          target: qa-channel
-          to: dm:qa-operator
-          directPolicy: allow
     tools:
       codeMode: false
       exec:
@@ -38,10 +31,8 @@ scenario:
   docsRefs:
     - docs/automation/cron-jobs.md
     - docs/gateway/background-process.md
-    - docs/gateway/heartbeat.md
     - docs/tools/subagents.md
   codeRefs:
-    - src/infra/heartbeat-runner-execution.ts
     - src/agents/bash-tools.exec-runtime.ts
     - src/agents/subagents/spawn/subagent-spawn.ts
   execution:
@@ -298,5 +289,5 @@ flow:
                   message: Child spawn chronology does not follow the real event producer.
               - set: appendVerdict
                 value:
-                  expr: "verdicts.push({ source: eventKind, providerMode: env.providerMode, model: env.primaryModel, parent: config.parentSessionKey, child: completedChild.childSessionKey, spawnAccepted: true, childSucceeded: true, childReadVerified: true, heartbeatTarget: 'qa-channel' })"
+                  expr: "verdicts.push({ source: eventKind, providerMode: env.providerMode, model: env.primaryModel, parent: config.parentSessionKey, child: completedChild.childSessionKey, spawnAccepted: true, childSucceeded: true, childReadVerified: true })"
       detailsExpr: JSON.stringify(verdicts)

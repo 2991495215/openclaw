@@ -214,45 +214,46 @@ describe("CronService one-shot lifecycle", () => {
     }
   });
 
-  it("retries skipped one-shot session work and removes the job after success", async () => {
-    let now = atMs;
-    const runSessionEvent = vi
-      .fn<NonNullable<CronServiceDeps["runSessionEvent"]>>()
-      .mockResolvedValueOnce({ status: "skipped", error: "disabled" })
-      .mockResolvedValueOnce({ status: "skipped", error: "disabled" })
-      .mockResolvedValue({ status: "ok" });
-    const { cron, deps, cleanup } = await fixture({ runSessionEvent, nowMs: () => now });
-    try {
-      const job = await cron.add(mainJob());
-      for (const [attempt, delay] of [
-        [1, 30_000],
-        [2, 90_000],
-      ] as const) {
+  it.each(["disabled", "session paused"])(
+    "consumes a skipped one-shot without replaying it after restart (%s)",
+    async (error) => {
+      let now = atMs;
+      const runSessionEvent = vi
+        .fn<NonNullable<CronServiceDeps["runSessionEvent"]>>()
+        .mockResolvedValue({ status: "skipped", error });
+      const { cron, deps, cleanup } = await fixture({ runSessionEvent, nowMs: () => now });
+      let current = cron;
+      try {
+        const job = await cron.add(mainJob());
         await cron.run(job.id, "due");
         expect(cron.getJob(job.id)).toMatchObject({
-          enabled: true,
+          enabled: false,
           state: {
             lastStatus: "skipped",
-            lastError: "disabled",
-            consecutiveSkipped: attempt,
-            nextRunAtMs: atMs + delay,
+            lastError: error,
+            consecutiveSkipped: 1,
+            nextRunAtMs: undefined,
           },
         });
-        now = atMs + delay;
+        cron.stop();
+        await cron.waitForIdle();
+        now += 90_000;
+        const restarted = createCronServiceWithStateForTest({
+          ...deps,
+          scheduler: createTestGatewayScheduler(),
+        });
+        current = restarted.cron;
+        await current.start();
+        await onTimer(restarted.state);
+        expect(runSessionEvent).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ text: "hello" }),
+        );
+        expect(deps.enqueueSystemEvent).not.toHaveBeenCalled();
+      } finally {
+        await cleanup(current);
       }
-      await cron.run(job.id, "due");
-      expect(cron.getJob(job.id)).toBeUndefined();
-      expect(runSessionEvent).toHaveBeenCalledTimes(3);
-      expect(runSessionEvent.mock.calls.map(([request]) => request.text)).toEqual([
-        "hello",
-        "hello",
-        "hello",
-      ]);
-      expect(deps.enqueueSystemEvent).not.toHaveBeenCalled();
-    } finally {
-      await cleanup();
-    }
-  });
+    },
+  );
 
   it.each([false, true])(
     "retries lifecycle claim conflicts only before execution starts (started=%s)",

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -191,21 +190,16 @@ async function runChat(
 async function forceHeartbeat(runtime: Runtime, gateway: QaGatewayChild, proof: ProofCase) {
   const listed = await gateway.call("cron.list", { includeDisabled: true });
   assert.ok(runtime.isRecord(listed) && Array.isArray(listed.jobs), "cron.list omitted jobs");
-  const monitor = listed.jobs.find(
-    (job) => runtime.isRecord(job) && job.declarationKey === "heartbeat:qa",
-  );
+  const monitor = listed.jobs.find((job) => runtime.isRecord(job) && job.name === SCENARIO_ID);
   assert.ok(
     runtime.isRecord(monitor) && typeof monitor.id === "string",
-    "heartbeat monitor missing",
+    "compaction automation missing",
   );
   assert.equal(monitor.agentId, "qa", "Heartbeat monitor changed agent ownership");
-  assert.equal(monitor.declarationKey, "heartbeat:qa", "Heartbeat declaration changed");
-  assert.equal(monitor.sessionTarget, "main", "Heartbeat monitor changed its target mode");
-  const configuredSession = gateway.cfg.agents?.defaults?.heartbeat?.session;
   assert.equal(
-    `agent:qa:${configuredSession}`,
-    proof.sessionKey,
-    "Heartbeat config does not resolve to the canonical proof session",
+    monitor.sessionTarget,
+    `session:${proof.sessionKey}`,
+    "Automation does not target the canonical proof session",
   );
   const targetEntry = readCompactionEntry(runtime, gateway, proof);
   assert.equal(
@@ -226,7 +220,7 @@ async function forceHeartbeat(runtime: Runtime, gateway: QaGatewayChild, proof: 
     runId: started.runId,
     target: {
       agentId: monitor.agentId,
-      declarationKey: monitor.declarationKey,
+      name: monitor.name,
       sessionTarget: monitor.sessionTarget,
       sessionKey: proof.sessionKey,
       sessionId: proof.sessionId,
@@ -314,7 +308,6 @@ async function runCase(params: {
   let caseFailure: unknown;
   let pendingReset: Promise<unknown> | undefined;
   try {
-    const sessionName = proof.sessionKey.split(":").slice(2).join(":");
     gateway = await owner.start({
       repoRoot,
       command: {
@@ -341,10 +334,6 @@ async function runCase(params: {
       mutateConfig: (config) => {
         const workspaceDir = config.agents?.defaults?.workspace;
         assert.ok(workspaceDir && path.isAbsolute(workspaceDir), "QA workspace must be explicit");
-        writeFileSync(
-          path.join(workspaceDir, "HEARTBEAT.md"),
-          "Process pending system events and report what was handled.\n",
-        );
         const heartbeatHookName = stageHeartbeatCompactionProofHook(workspaceDir, provider.baseUrl);
         const afterHookName =
           mode === "heartbeat-upgraded-native-failure"
@@ -391,7 +380,6 @@ async function runCase(params: {
               ...config.agents?.defaults,
               // Keep Activity recaps off the controlled compaction provider.
               utilityModel: "",
-              heartbeat: { every: "24h", session: sessionName, target: "last" },
               compaction: {
                 ...config.agents?.defaults?.compaction,
                 mode: "default",
@@ -405,6 +393,20 @@ async function runCase(params: {
     });
     await transport.waitReady({ gateway, timeoutMs: CHECKPOINT_TIMEOUT_MS });
     await waitForCompactionProofCheckpoint(provider.hookReady, "heartbeat proof hook startup");
+
+    await gateway.call("cron.add", {
+      agentId: "qa",
+      name: SCENARIO_ID,
+      enabled: false,
+      schedule: { kind: "every", everyMs: 86_400_000 },
+      sessionTarget: `session:${proof.sessionKey}`,
+      wakeMode: "now",
+      payload: {
+        kind: "agentTurn",
+        message: "Process pending system events and report what was handled.",
+      },
+      delivery: { mode: "none" },
+    });
 
     const setup = await runChat(runtime, state, gateway, proof, setupMarker);
     evidence.setup = setup;
@@ -905,10 +907,11 @@ async function runCase(params: {
         "failed",
         "Substituted heartbeat completion status changed",
       );
-      assert.equal(
+      assert.ok(typeof terminal.error === "string", "Substituted automation omitted its error");
+      assert.match(
         terminal.error,
-        "heartbeat failed: agent-runner-failure",
-        "Substituted heartbeat reason changed",
+        /^(?:SessionTranscriptWriterClaimReboundError: )?session writer claim changed before transcript persistence$/,
+        "Substituted automation did not report the rejected writer claim",
       );
       assert.deepEqual(
         snapshotProviderCounters(proof),
@@ -923,11 +926,14 @@ async function runCase(params: {
       assertUncommittedCompactionHistory(before, afterTerminal);
     } else {
       assert.equal(terminal.runId, heartbeat.runId, "Cron terminal changed heartbeat run identity");
-      assert.equal(terminal.status, "skipped", "Revoked heartbeat did not skip");
-      assert.equal(
+      assert.equal(terminal.status, "error", "Revoked automation did not fail");
+      assert.equal(terminal.completionStatus, "failed", "Revoked automation did not settle failed");
+      assert.ok(typeof terminal.error === "string", "Revoked automation omitted its error");
+      // Reset can settle through either the run abort or the event handoff first.
+      assert.match(
         terminal.error,
-        "heartbeat skipped: agent-runner-cancelled",
-        "Revoked heartbeat reason changed",
+        /^(?:(?:Error|AbortError): )?(?:agent run aborted|Session event execution (?:was )?aborted|Automation session turn was cancelled)$/,
+        "Revoked automation did not report an owner cancellation",
       );
       assert.equal(
         nativeCompactRequests.length,
@@ -1158,7 +1164,7 @@ export async function runGatewayCodexHeartbeatCompaction(argv: readonly string[]
     repoRoot,
     target: {
       id: SCENARIO_ID,
-      title: "Codex heartbeat compaction preserves exact runtime authority",
+      title: "Codex automation compaction preserves exact runtime authority",
       sourcePath: `qa/scenarios/runtime/${SCENARIO_ID}.yaml`,
     },
   });

@@ -712,6 +712,52 @@ describe("session event target custody", () => {
     expect(peekSystemEventEntries(sessionKey)).toEqual([]);
   });
 
+  it("deduplicates keyed plugin retries while preserving distinct pending occurrences", async ({
+    state: { env },
+  }) => {
+    const target = await captureSessionEventTargetForHost("main", sessionKey, { env });
+    const text = "Slack interaction: approve report";
+    for (const scenario of [
+      { source: "plugin", contextKey: "slack:interaction:1", duplicate: true },
+      { source: "plugin", contextKey: "slack:interaction:1", text: `${text} updated` },
+      { source: "plugin", contextKey: "slack:interaction:1", to: "another-channel" },
+      { source: "plugin" },
+      { source: "exec", contextKey: "host:completion:1" },
+    ] as const) {
+      const receipts: ReturnType<typeof enqueueSessionEventForHost>[] = [];
+      const options = {
+        ...eventScope,
+        source: scenario.source,
+        contextKey: "contextKey" in scenario ? scenario.contextKey : undefined,
+        expectedTarget: target,
+      };
+      try {
+        receipts.push(enqueueSessionEventForHost(text, options));
+        const retry = () =>
+          receipts.push(
+            enqueueSessionEventForHost("text" in scenario ? (scenario.text ?? text) : text, {
+              ...options,
+              ...("to" in scenario ? { deliveryContext: { ...route, to: scenario.to } } : {}),
+            }),
+          );
+        if ("duplicate" in scenario) {
+          expect(retry).toThrow("an identical occurrence is already pending");
+        } else {
+          retry();
+        }
+        expect(peekSystemEventEntries(sessionKey).map((event) => event.id)).toEqual(
+          receipts.map((receipt) => receipt.id),
+        );
+      } finally {
+        for (const receipt of receipts) {
+          receipt.cancel();
+        }
+        await Promise.all(receipts.map((receipt) => expectStopped(receipt, "cancelled")));
+      }
+      expect(peekSystemEventEntries(sessionKey)).toEqual([]);
+    }
+  });
+
   it("cancels pending occurrences when queues close", async ({ state: { env } }) => {
     const target = await captureSessionEventTargetForHost("main", sessionKey, { env });
     const suspension = gatewayWork.tryBeginGatewaySuspendAdmission(() => {});
