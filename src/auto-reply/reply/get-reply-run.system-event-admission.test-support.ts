@@ -57,14 +57,17 @@ export function registerSystemEventAdmissionCases({
       actualSystemEvents.drainFormattedSystemEvents,
     );
     enqueueSystemEvent(
-      "Alpha hook finished",
+      "Reminder: review heartbeat poll results",
       withSystemEventOwner({ sessionKey: "global" }, "alpha"),
     );
     enqueueSystemEvent(
       "Beta hook finished",
       withSystemEventOwner({ sessionKey: "global" }, "beta"),
     );
-    enqueueSystemEvent("Alpha follow-up", withSystemEventOwner({ sessionKey: "global" }, "alpha"));
+    enqueueSystemEvent(
+      "Cron: investigate heartbeat wake failures",
+      withSystemEventOwner({ sessionKey: "global" }, "alpha"),
+    );
 
     await runPrepared({
       agentId: "alpha",
@@ -78,7 +81,10 @@ export function registerSystemEventAdmissionCases({
     const call = requireRunReplyAgentCall();
     const context = call.followupRun.currentInboundContext;
     expect(call.followupRun.prompt).toBe("[User sent media without caption]");
-    for (const event of ["Alpha hook finished", "Alpha follow-up"]) {
+    for (const event of [
+      "Reminder: review heartbeat poll results",
+      "Cron: investigate heartbeat wake failures",
+    ]) {
       expect(context?.text).toContain(event);
       expect(context?.fragments).toContainEqual({
         kind: "conversation-data",

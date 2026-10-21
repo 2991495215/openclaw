@@ -38,8 +38,7 @@ function compactSystemEvent(event: SystemEvent): string | null {
   if (
     lower.includes("reason periodic") ||
     lower.startsWith("read heartbeat.md") ||
-    lower.includes("heartbeat poll") ||
-    lower.includes("heartbeat wake")
+    /^heartbeat (?:poll|wake)/i.test(trimmed)
   ) {
     return null;
   }

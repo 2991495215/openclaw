@@ -204,7 +204,7 @@ export async function executeFollowupTurn(params: {
   };
   const progressOpts: InternalGetReplyOptions = {
     ...sourceOpts,
-    // Presentation defaults can belong to another source or an already settled ingress.
+    // Derived follow-ups take execution capabilities from their queued input.
     cronCreatorAuthorityCapability: undefined,
     sourceReplyDeliveryMode: turn.queued.run.sourceReplyDeliveryMode,
     bootstrapContextMode: turn.queued.run.bootstrapContextMode,
@@ -212,7 +212,7 @@ export async function executeFollowupTurn(params: {
     scheduledAutomation: turn.queued.run.scheduledAutomation,
     internalEventExecution: turn.queued.run.internalEventExecution,
     userTurnTranscriptRecorder: turn.queued.userTurnTranscriptRecorder,
-    // A refreshed runner owns presentation defaults, never another source's authority or callbacks.
+    // The source runner owns callbacks; the queued input owns this execution's authority.
     operatorAuthority: turn.queued.operatorAuthority,
     abortSignal: turn.operation.abortSignal,
     toolsAllow: turn.queued.toolsAllow,
@@ -487,7 +487,7 @@ export async function executeFollowupTurn(params: {
       },
     };
   }
-  // Runner defaults may be newer; only the queued sources own this execution result.
+  // Only the queued sources own this execution result.
   recordReplyOperationAgentTurn(
     turn.queued.replyOperationRunStates,
     turn.operation,
