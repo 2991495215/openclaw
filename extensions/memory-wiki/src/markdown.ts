@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import {
@@ -21,6 +22,23 @@ export const WIKI_PAGE_GROUPS = [
   { kind: "report", dir: "reports", heading: "Reports" },
 ] as const;
 export const WIKI_RAW_SOURCE_MARKER = "<!-- openclaw:wiki:raw-source -->";
+
+class WikiPageNotUtf8Error extends Error {
+  constructor(displayPath: string) {
+    super(
+      `Wiki page is not valid UTF-8 and cannot be rewritten safely: ${displayPath}. ` +
+        "The file was left unchanged. Keep a byte-for-byte backup, convert a copy to UTF-8 with its original encoding, then retry.",
+    );
+    this.name = "WikiPageNotUtf8Error";
+  }
+}
+
+export function decodeWikiPageUtf8(bytes: Buffer, displayPath: string): string {
+  if (!isUtf8(bytes)) {
+    throw new WikiPageNotUtf8Error(displayPath);
+  }
+  return bytes.toString("utf8");
+}
 
 export type WikiPageKind = (typeof WIKI_PAGE_GROUPS)[number]["kind"];
 type GeneratedSourceBody = "bridge" | "unsafe-local" | "local-file" | "chatgpt-export";
@@ -350,8 +368,11 @@ function findNotesHumanBlock(
   return { start: bodyOffset + start, end: bodyOffset + endMarker + HUMAN_END_MARKER.length };
 }
 
-export function extractHumanNotesBlock(page: string): string | null {
-  const block = findNotesHumanBlock(page);
+export function extractHumanNotesBlock(
+  page: string,
+  options?: { producerMarkdown?: boolean },
+): string | null {
+  const block = findNotesHumanBlock(page, options?.producerMarkdown);
   if (!block) {
     return null;
   }
