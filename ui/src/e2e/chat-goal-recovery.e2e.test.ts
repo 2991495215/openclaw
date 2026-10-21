@@ -70,7 +70,13 @@ suite.define(() => {
         .toBe(true);
       expect(await gateway.getRequests(method)).toHaveLength(0);
       expect(await invalid.isVisible()).toBe(true);
-      expect(await exactButton(page, "Check outcome").count()).toBe(0);
+      expect(
+        await page
+          .locator(".agent-chat__goal-recovery-action-row button")
+          .filter({ visible: true })
+          .last()
+          .count(),
+      ).toBe(0);
 
       const corrected = "Verify only the sample deployment";
       await objective.fill(corrected);
@@ -159,7 +165,13 @@ suite.define(() => {
           ).toHaveLength(0);
           await page.reload();
           await original.waitFor();
-          expect(await exactButton(page, "Check outcome").count()).toBe(0);
+          expect(
+            await page
+              .locator(".agent-chat__goal-recovery-action-row button")
+              .filter({ visible: true })
+              .last()
+              .count(),
+          ).toBe(0);
           expect(await gateway.getRequests(method)).toHaveLength(0);
           return;
         }
@@ -168,7 +180,7 @@ suite.define(() => {
         if (action === "resume") {
           await page.locator(".agent-chat__goal-label").waitFor({ state: "visible" });
           expect(await page.locator(".agent-chat__goal-label").textContent()).toBe(
-            "Checking goal update…",
+            "Resuming goal…",
           );
         }
         // Commit and publish the authoritative state while withholding only this RPC's ACK.
@@ -202,14 +214,21 @@ suite.define(() => {
             message: "ACK still unavailable",
           });
         } else if (committed) {
-          await page.getByText("Goal update not confirmed", { exact: true }).waitFor();
+          await page
+            .getByText(action === "pause" ? "Pause not confirmed" : "Resume not confirmed", {
+              exact: true,
+            })
+            .waitFor();
         } else {
           await expect.poll(() => page.locator(".agent-chat__goal").count()).toBe(0);
         }
         if (committed) {
           await exactButton(page, "Show goal details").click();
         }
-        const checkOutcome = exactButton(page, "Check outcome");
+        const checkOutcome = page
+          .locator(".agent-chat__goal-recovery-action-row button")
+          .filter({ visible: true })
+          .last();
         await expect.poll(() => checkOutcome.isEnabled()).toBe(true);
         expect(await gateway.getSocketCount()).toBe(sockets);
         expect(await gateway.getRequests(method)).toHaveLength(action === "resume" ? 2 : 1);
@@ -220,7 +239,7 @@ suite.define(() => {
           await goalEntry.click();
           const mobileGoal = page.locator('.chat-mobile-details-page[data-details-page="goal"]');
           await mobileGoal.getByText(goal.objective, { exact: true }).waitFor();
-          await mobileGoal.getByRole("button", { name: "Check outcome", exact: true }).waitFor();
+          await mobileGoal.getByRole("button", { name: "Retry resume", exact: true }).waitFor();
           expect(await checkOutcome.isVisible()).toBe(true);
           await closeChatDetails(page);
           await page.setViewportSize(viewport);
@@ -233,7 +252,7 @@ suite.define(() => {
         expect(await gateway.getRequests(method)).toHaveLength(0);
         expect(await original.count()).toBe(0);
         if (committed) {
-          await page.locator(".agent-chat__goal--resuming").waitFor();
+          await page.locator(".agent-chat__goal--recovery").waitFor();
         } else {
           expect(await page.locator(".agent-chat__goal").count()).toBe(0);
         }
@@ -297,7 +316,10 @@ suite.define(() => {
       await gateway.waitForRequest(method, { after: beforeRetry });
       await gateway.rejectDeferred(method, unavailable);
       await exactButton(page, "Show goal details").click();
-      const checkOutcome = exactButton(page, "Check outcome");
+      const checkOutcome = page
+        .locator(".agent-chat__goal-recovery-action-row button")
+        .filter({ visible: true })
+        .last();
       await checkOutcome.waitFor();
       await page.reload();
       await admitHistory();

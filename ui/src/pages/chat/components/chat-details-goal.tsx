@@ -15,8 +15,7 @@ import {
   ChatGoalActions,
   ChatGoalBody,
   ChatGoalMetrics,
-  ChatGoalRecoveryAction,
-  ChatGoalRecoveryMessage,
+  ChatGoalRecoveryPanel,
   GoalIcon,
 } from "./chat-composer-goal.tsx";
 
@@ -199,7 +198,13 @@ export function ChatDetailsGoal(props: ChatDetailsGoalProps) {
   };
 
   return (
-    <div class="chat-details-goal" aria-busy={props.recovery?.pending ? "true" : "false"}>
+    <div
+      class={[
+        "chat-details-goal",
+        { "chat-details-goal--compact": Boolean(props.recovery) || !props.connected },
+      ]}
+      aria-busy={props.recovery?.pending ? "true" : "false"}
+    >
       <Show when={props.presented && goalIdentity()} keyed>
         {(identity) => {
           onSettled(() => () => {
@@ -211,50 +216,56 @@ export function ChatDetailsGoal(props: ChatDetailsGoalProps) {
         }}
       </Show>
       <div class="chat-details-goal__body" ref={[elementRef(props.onScrollPortRef)]}>
-        <Show when={props.recovery}>
-          <div class="chat-details-goal__recovery" role="status">
-            <strong>
-              {t(props.recovery!.pending ? "chat.goals.checking" : "chat.goals.recoveryTitle")}
-            </strong>
-            <ChatGoalRecoveryMessage recovery={props.recovery!} />
-          </div>
-        </Show>
         <Show
-          when={props.goal}
+          when={props.recovery}
           fallback={
-            <PanelEmptyState icon={<GoalIcon />} heading={t("chat.goals.empty")} description="" />
+            <Show
+              when={props.goal}
+              fallback={
+                <PanelEmptyState
+                  icon={<GoalIcon />}
+                  heading={t("chat.goals.empty")}
+                  description=""
+                />
+              }
+            >
+              <ChatGoalBody goal={props.goal!} offline={!props.connected} />
+              <Show when={!props.connected}>
+                <ChatGoalMetrics goal={props.goal!} />
+              </Show>
+            </Show>
           }
         >
-          <ChatGoalBody goal={props.goal!} recovery={props.recovery} />
+          <ChatGoalRecoveryPanel
+            recovery={props.recovery!}
+            goal={props.goal}
+            connected={props.connected && props.presented}
+          />
         </Show>
       </div>
-      <div class="chat-details-goal__tools">
-        <Show when={props.goal}>
-          <div class="chat-details-goal__capsule chat-details-goal__metrics">
-            <ChatGoalMetrics goal={props.goal!} live={props.presented} />
-          </div>
-        </Show>
-        <Show when={props.recovery || (props.goal && canAct() && props.onGoalAction)}>
-          <div class="chat-details-goal__capsule chat-details-goal__actions">
-            <Show when={props.recovery}>
-              <ChatGoalRecoveryAction
-                recovery={props.recovery!}
-                connected={props.connected && props.presented}
-              />
-            </Show>
-            <Show when={props.goal}>
-              <ChatGoalActions
-                goal={props.goal!}
-                canAct={canAct()}
-                connected={props.connected && props.presented}
-                recovery={props.recovery}
-                onGoalAction={props.onGoalAction}
-                onGoalEdit={props.onGoalSubmit ? (goal) => void editGoal(goal) : undefined}
-              />
-            </Show>
-          </div>
-        </Show>
-      </div>
+      <Show when={!props.recovery && props.connected}>
+        <div class="chat-details-goal__tools">
+          <Show when={props.goal}>
+            <div class="chat-details-goal__capsule chat-details-goal__metrics">
+              <ChatGoalMetrics goal={props.goal!} live={props.presented} />
+            </div>
+          </Show>
+          <Show when={props.goal && canAct() && props.onGoalAction}>
+            <div class="chat-details-goal__capsule chat-details-goal__actions">
+              <Show when={props.goal}>
+                <ChatGoalActions
+                  goal={props.goal!}
+                  canAct={canAct()}
+                  connected={props.connected && props.presented}
+                  recovery={props.recovery}
+                  onGoalAction={props.onGoalAction}
+                  onGoalEdit={props.onGoalSubmit ? (goal) => void editGoal(goal) : undefined}
+                />
+              </Show>
+            </div>
+          </Show>
+        </div>
+      </Show>
     </div>
   );
 }

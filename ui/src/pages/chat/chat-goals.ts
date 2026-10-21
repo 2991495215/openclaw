@@ -247,6 +247,10 @@ export function chatGoalRecovery(host: ChatHost): ChatGoalRecovery | undefined {
     return {
       pending: operation.pending,
       error: operation.error,
+      requestedObjective:
+        operation.params && "objective" in operation.params
+          ? operation.params.objective
+          : undefined,
       goalId: operation.params?.goalId,
       action: operation.params
         ? "action" in operation.params

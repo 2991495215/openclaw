@@ -61,32 +61,40 @@ beforeEach(async () => {
 
 afterEach(() => vi.useRealTimers());
 
-it("keeps an unconfirmed update and its recovery action in the expanded goal", () => {
-  const onCheck = vi.fn(async () => true);
-  const view = mountGoal(
-    { ...goal, status: "paused", lastStatusNote: "Previous pause" },
-    {
-      expanded: true,
-      connected: true,
-      recovery: { pending: true, onCheck },
-    },
-  );
-  const { query } = view;
-  expect(query('[role="status"]')).toMatchObject({ textContent: "Checking goal update…" });
-  expect(query('[aria-busy="true"]')).not.toBeNull();
-  expect(query(".session-run-spinner")).not.toBeNull();
-  expect(view.container.textContent).not.toContain("Previous pause");
-  view.update({ recovery: { pending: false, onCheck } });
-  expect(query('[role="status"]')).toMatchObject({ textContent: "Goal update not confirmed" });
-  const retry = query<HTMLButtonElement>(".agent-chat__goal-recovery-detail button")!;
-  expect(retry.textContent).toBe("Check outcome");
-  expect(query(".agent-chat__goal-command-actions")?.textContent).toBe("");
-  retry.click();
-  expect(onCheck).toHaveBeenCalledOnce();
-  view.update({ connected: false });
-  expect(retry.disabled).toBe(true);
-  expect(query(".session-run-spinner")).toBeNull();
-});
+it.each([
+  ["pause", "Pause not confirmed", "Pausing goal…", "Retry pause"],
+  ["resume", "Resume not confirmed", "Resuming goal…", "Retry resume"],
+  ["edit", "Edit not confirmed", "Saving goal…", "Retry save"],
+  ["clear", "Removal not confirmed", "Removing goal…", "Retry removal"],
+] as const)(
+  "keeps the %s recovery decision with its goal",
+  (action, title, pending, retryLabel) => {
+    const onCheck = vi.fn(async () => true);
+    const view = mountGoal(
+      { ...goal, status: "paused", lastStatusNote: "Previous pause" },
+      {
+        expanded: true,
+        connected: true,
+        recovery: { action, pending: true, onCheck },
+      },
+    );
+    const { query } = view;
+    expect(query('[role="status"]')).toMatchObject({ textContent: pending });
+    expect(query('[aria-busy="true"]')).not.toBeNull();
+    expect(query(".session-run-spinner")).not.toBeNull();
+    expect(view.container.textContent).not.toContain("Previous pause");
+    view.update({ recovery: { action, pending: false, onCheck } });
+    expect(query('[role="status"]')).toMatchObject({ textContent: title });
+    const retry = query<HTMLButtonElement>(".agent-chat__goal-recovery-detail button")!;
+    expect(retry.textContent).toBe(retryLabel);
+    expect(query(".agent-chat__goal-command-actions")?.textContent).toBe("");
+    retry.click();
+    expect(onCheck).toHaveBeenCalledOnce();
+    view.update({ connected: false });
+    expect(retry.disabled).toBe(true);
+    expect(query(".session-run-spinner")).toBeNull();
+  },
+);
 
 it.each([
   ["active", "2m 00s"],

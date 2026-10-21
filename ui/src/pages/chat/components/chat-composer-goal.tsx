@@ -6,6 +6,7 @@ import { useScrollState } from "../../../components/solid/scroll-state.ts";
 import { StrokeIcon } from "../../../components/solid/stroke-icon.tsx";
 import { registerChatGoalsEnglish } from "../../../i18n/locales/en-chat-goals.ts";
 import type { ChatGoalAction, ChatGoalRecovery } from "../../../lib/chat/chat-types.ts";
+import { goalRecoveryPresentation } from "../../../lib/chat/goal-recovery-presentation.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { createInterval } from "../../../lib/reactive/timers.ts";
 import {
@@ -119,6 +120,7 @@ export function ChatGoalBody(props: {
   goal: SessionGoal;
   recovery?: ChatGoalRecovery;
   objectiveRef?: (element: HTMLDivElement) => void;
+  offline?: boolean;
 }) {
   return (
     <>
@@ -127,6 +129,9 @@ export function ChatGoalBody(props: {
         ref={props.objectiveRef}
         textContent={props.goal.objective}
       />
+      <Show when={props.offline}>
+        <p class="agent-chat__goal-offline">{t("chat.goals.offline")}</p>
+      </Show>
       {props.goal.lastStatusNote && !props.recovery ? (
         <div class="agent-chat__goal-detail-note">{props.goal.lastStatusNote}</div>
       ) : null}
@@ -160,18 +165,22 @@ function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
     canResume() && !props.expanded && !props.recovery ? props.goal.lastStatusNote : undefined;
   const statusLabel = () =>
     props.recovery
-      ? t(props.recovery.pending ? "chat.goals.checking" : "chat.goals.recoveryTitle")
-      : formatGoalStatusLabel(props.goal.status);
+      ? goalRecoveryPresentation(props.recovery).title
+      : props.connected === false
+        ? t("chat.goals.offlineStatus")
+        : formatGoalStatusLabel(props.goal.status);
   return (
     <div
       class={[
         "agent-chat__goal",
-        `agent-chat__goal--${props.recovery ? "resuming" : props.goal.status}`,
+        `agent-chat__goal--${props.recovery || props.connected === false ? "recovery" : props.goal.status}`,
       ]}
       data-expanded={String(props.expanded)}
       role="group"
       aria-label={
-        props.recovery ? `${statusLabel()}: ${props.goal.objective}` : formatGoalDetail(props.goal)
+        props.recovery || props.connected === false
+          ? `${statusLabel()}: ${props.goal.objective}`
+          : formatGoalDetail(props.goal)
       }
       aria-busy={props.recovery?.pending ? "true" : "false"}
     >
@@ -179,7 +188,7 @@ function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
         <span class="agent-chat__goal-icon" aria-hidden="true">
           {props.recovery?.pending ? (
             <span class="session-run-spinner" />
-          ) : props.recovery ? (
+          ) : props.recovery || props.connected === false ? (
             <Icon name="alertTriangle" />
           ) : props.goal.status === "active" ? (
             <GoalIcon />
@@ -227,21 +236,28 @@ function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
         inert={!props.expanded}
       >
         <div class="agent-chat__goal-detail-content">
-          <ChatGoalBody
-            goal={props.goal}
-            recovery={props.recovery}
-            objectiveRef={useScrollState(false, true, { revision: () => props.goal.objective })}
-          />
-          <Show when={props.recovery}>
-            <div class="agent-chat__goal-recovery-detail">
-              <ChatGoalRecoveryMessage recovery={props.recovery!} />
-              <ChatGoalRecoveryAction
-                recovery={props.recovery!}
-                connected={Boolean(props.connected)}
-              />
-            </div>
+          <Show
+            when={props.recovery}
+            fallback={
+              <>
+                <ChatGoalBody
+                  goal={props.goal}
+                  offline={props.connected === false}
+                  objectiveRef={useScrollState(false, true, {
+                    revision: () => props.goal.objective,
+                  })}
+                />
+                <ChatGoalMetrics goal={props.goal} />
+              </>
+            }
+          >
+            <ChatGoalRecoveryPanel
+              recovery={props.recovery!}
+              goal={props.goal}
+              connected={Boolean(props.connected)}
+              heading={false}
+            />
           </Show>
-          <ChatGoalMetrics goal={props.goal} />
         </div>
       </div>
     </div>
@@ -273,53 +289,80 @@ export function renderChatGoalRecoverySolid(
     return null;
   }
   return (
-    <div class="chat-composer-neighbor-card chat-composer-neighbor-card--warn" role="status">
-      <span class="chat-composer-neighbor-card__icon" aria-hidden="true">
-        <Icon name="alertTriangle" />
-      </span>
-      <div class="chat-composer-neighbor-card__copy">
-        <strong>{t(recovery.pending ? "chat.goals.checking" : "chat.goals.recoveryTitle")}</strong>
-        <ChatGoalRecoveryMessage recovery={recovery} />
-      </div>
-      <ChatGoalRecoveryAction recovery={recovery} connected={connected} />
+    <div class="chat-composer-neighbor-card chat-composer-neighbor-card--warn">
+      <ChatGoalRecoveryPanel recovery={recovery} connected={connected} />
     </div>
   );
 }
 
-export function ChatGoalRecoveryMessage(props: { recovery: ChatGoalRecovery }) {
+export function ChatGoalRecoveryPanel(props: {
+  recovery: ChatGoalRecovery;
+  goal?: SessionGoal;
+  connected: boolean;
+  heading?: boolean;
+}) {
+  const copy = () => goalRecoveryPresentation(props.recovery);
+  const changedObjective = () =>
+    props.recovery.requestedObjective &&
+    props.recovery.requestedObjective !== props.goal?.objective;
   return (
-    <>
-      <span>
-        {t(
-          props.recovery.retired === "expired"
-            ? "chat.goals.recoveryExpired"
-            : props.recovery.retired === "invalid"
-              ? "chat.goals.recoveryInvalid"
-              : "chat.goals.recoveryHint",
-        )}
-      </span>
-      <Show when={props.recovery.error}>
-        <details class="agent-chat__goal-recovery-error">
-          <summary>
-            <span>{t("chat.goals.technicalDetails")}</span>
-            <Icon name="chevronDown" />
-          </summary>
-          <div class="agent-chat__goal-recovery-error-body">{props.recovery.error}</div>
-        </details>
-      </Show>
-    </>
-  );
-}
-
-export function ChatGoalRecoveryAction(props: { recovery: ChatGoalRecovery; connected: boolean }) {
-  return (
-    <button
-      class="btn btn--sm"
-      type="button"
-      disabled={!props.connected || props.recovery.pending}
-      onClick={() => void props.recovery.onCheck()}
+    <section
+      class="agent-chat__goal-recovery-detail"
+      aria-busy={props.recovery.pending ? "true" : "false"}
     >
-      {t(props.recovery.retired ? "chat.goals.refreshCurrent" : "chat.goals.checkOutcome")}
-    </button>
+      <Show when={props.heading !== false}>
+        <div class="agent-chat__goal-recovery-title" role="status">
+          <Show when={props.recovery.pending} fallback={<Icon name="alertTriangle" />}>
+            <span class="session-run-spinner" />
+          </Show>
+          <strong>{copy().title}</strong>
+        </div>
+      </Show>
+      <Show when={props.goal || changedObjective()}>
+        <div class="agent-chat__goal-recovery-objective">
+          <Show when={props.goal}>
+            <ChatGoalBody goal={props.goal!} recovery={props.recovery} />
+          </Show>
+          <Show when={changedObjective()}>
+            <div class="agent-chat__goal-requested-objective">
+              <span>{t("chat.goals.requestedObjective")}</span>
+              <div>{props.recovery.requestedObjective}</div>
+            </div>
+          </Show>
+        </div>
+      </Show>
+      <div class="agent-chat__goal-recovery-decision">
+        <Show when={copy().description}>
+          <p>{copy().description}</p>
+        </Show>
+        <div class="agent-chat__goal-recovery-action-row">
+          <button
+            class="btn btn--sm"
+            type="button"
+            disabled={!props.connected || props.recovery.pending}
+            onClick={() => void props.recovery.onCheck()}
+          >
+            {copy().action}
+          </button>
+          <Show when={!props.connected}>
+            <span>{t("chat.goals.reconnectRecovery")}</span>
+          </Show>
+        </div>
+      </div>
+      <div class="agent-chat__goal-recovery-footer">
+        <Show when={props.goal}>
+          <ChatGoalMetrics goal={props.goal!} />
+        </Show>
+        <Show when={props.recovery.error && !props.recovery.pending}>
+          <details class="agent-chat__goal-recovery-error">
+            <summary>
+              <span>{t("chat.goals.technicalDetails")}</span>
+              <Icon name="chevronDown" />
+            </summary>
+            <div class="agent-chat__goal-recovery-error-body">{props.recovery.error}</div>
+          </details>
+        </Show>
+      </div>
+    </section>
   );
 }
