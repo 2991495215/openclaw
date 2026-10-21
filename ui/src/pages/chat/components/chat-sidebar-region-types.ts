@@ -96,6 +96,12 @@ export type RegionMethods = {
 };
 export type RegionElement = SolidBridgeElement<RegionProps, RegionMethods>;
 
+declare global {
+  interface HTMLElementTagNameMap {
+    "openclaw-chat-sidebar-region": RegionElement;
+  }
+}
+
 export type SidebarRegionParams = {
   onRegionElementRef?: (element: HTMLElement) => void | (() => void);
   onHeaderElementRef?: (element: HTMLElement) => void | (() => void);
