@@ -608,7 +608,6 @@ export function createModelProviders(
       setMessage("defaults", null);
       void saveDefaults();
     };
-    const advertised = isGatewayMethodAdvertised(gatewaySnapshot, "models.probe");
     const usageAvailable = isGatewayMethodAdvertised(gatewaySnapshot, "codex.accountUsage");
     const pageLogin = login.pageActions;
     const props = {
@@ -633,14 +632,15 @@ export function createModelProviders(
       credentialAgentLabel: agentLabel,
       cards: noSelectableAgents ? [] : installedAgents.filterProviders(cards),
       ...values,
-      catalogDiscovering: core.catalogLoading || Boolean(catalog?.pendingProviders?.length),
+      catalogReceipt: core.catalogReceipt,
+      catalogDiscovering: Boolean(catalog?.pendingProviders?.length),
       catalogDiscoveryError: core.catalogLoading ? null : (core.catalogError ?? data.catalogError),
       configBusy: modelProviderConfigBusy(context),
       canViewProfiles: profilesVisible,
       mutationBlockedReason: mutationBlockedReason(),
       defaultsMutationBlockedReason: modelProviderConfigMutationBlockedReason(context),
       providerUsageStalled: refreshPolicy.incompleteUsageExhausted,
-      probeAvailable: advertised !== false,
+      probeAvailable: isGatewayMethodAdvertised(gatewaySnapshot, "models.probe") !== false,
       busy: state.busy,
       messages: state.messages,
       probeResults: state.probeResults,

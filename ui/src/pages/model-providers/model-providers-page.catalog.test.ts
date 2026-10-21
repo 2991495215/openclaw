@@ -528,6 +528,7 @@ describe("Models page catalog publication", () => {
     const page = appendPage(context);
     await waitForProviders(page, savedModelConfig);
 
+    const retainedPicker = modelPicker(page, "primary");
     await retryCatalog(page);
     await waitForSolid(() =>
       expect(
@@ -538,6 +539,7 @@ describe("Models page catalog publication", () => {
     await retryCatalog(page);
     expect(discover).toHaveBeenCalledTimes(2);
     expect(page.querySelector('.model-providers__catalog-progress[role="status"]')).not.toBeNull();
+    expect(modelPicker(page, "primary")).toBe(retainedPicker);
     await openModelPicker(page);
     expect(discover).toHaveBeenCalledTimes(2);
     pending.resolve({
@@ -549,6 +551,7 @@ describe("Models page catalog publication", () => {
     await waitForSolid(() => expect(displayedCatalog(page)?.models?.at(-1)?.id).toBe("recovered"));
     await drainPageUpdates(page);
     expect(page.querySelector(".model-providers__catalog-progress")).toBeNull();
+    expect(modelPicker(page, "primary")).toBe(retainedPicker);
     expect(page.querySelector('[role="option"][data-value="openai/recovered"]')).not.toBeNull();
     expect(page.view.props.catalogDiscoveryError).toBeNull();
     expect(currentConfigObject(page.context.runtimeConfig.state)).toEqual(savedModelConfig);
