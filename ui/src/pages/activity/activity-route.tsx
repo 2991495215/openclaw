@@ -1,5 +1,5 @@
 import type { RouteLocation } from "@openclaw/uirouter";
-import type { SolidRouteProps } from "../../app-route-types.ts";
+import type { SolidRouteProps } from "../../app-route-types.tsx";
 import { ShellLayoutBoundary } from "../../app/shell-layout-traits-solid.tsx";
 import { ActivityPage } from "./activity-page.tsx";
 
