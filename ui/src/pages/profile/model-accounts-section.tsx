@@ -233,6 +233,12 @@ function ModelAccountRows(props: StateProps) {
   const state = () => props.readState();
   return (
     <>
+      <Show when={!state().target?.canEnroll}>
+        <SettingsRow
+          title={t("profilePage.modelAccounts.signInUnavailable")}
+          description={t("profilePage.modelAccounts.unavailable.write")}
+        />
+      </Show>
       <Show
         when={state().links.length}
         fallback={<SettingsEmpty message={t("profilePage.modelAccounts.empty")} />}
@@ -349,7 +355,7 @@ export function ModelAccountsSection(props: StateProps) {
             <button
               type="button"
               class="btn btn--sm primary profile-auth-add-account"
-              disabled={state().busy}
+              disabled={state().busy || !state().target?.canEnroll}
               onClick={() => state().openSignIn()}
             >
               {t("profilePage.modelAccounts.addAccount")}

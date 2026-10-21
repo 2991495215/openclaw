@@ -219,7 +219,9 @@ export function createBrowserTool(
         const dashboardScopes = sessionScoped
           ? operatorScopes.includes("operator.write")
             ? ["operator.write" as const]
-            : ["operator.sessions.write" as const]
+            : operatorScopes.includes("operator.write.no-provider-enrollment")
+              ? ["operator.write.no-provider-enrollment" as const]
+              : ["operator.sessions.write" as const]
           : ["operator.admin" as const];
         if (
           binding ||

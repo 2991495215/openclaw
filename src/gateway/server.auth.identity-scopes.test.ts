@@ -371,6 +371,10 @@ test.each([
   roleCase("admin-only without identity grants", "admin-only", NARROW_SCOPES, NARROW_SCOPES, []),
   roleCase("read-only from an admin-only identity grant", "read-only", ["operator.read"], []),
   roleCase("empty", "denied", [], NARROW_SCOPES),
+  roleCase("write without provider enrollment", "non-enrolling", [
+    "operator.read",
+    "operator.write.no-provider-enrollment",
+  ]),
 ])("applies the $label role ceiling after device and identity grants", async (scenario) => {
   await configureGatewayAuth(proxyAuth({ "admin@example.com": scenario.identityScopes }), {
     default: "guest",
@@ -379,6 +383,7 @@ test.each([
       "admin-only": role(["operator.admin"], "write"),
       "read-only": role(["operator.read"]),
       denied: role([], "none", []),
+      "non-enrolling": role(["operator.write.no-provider-enrollment"]),
     },
   });
   const profile = ensureProfileForEmail("admin@example.com");
@@ -391,6 +396,25 @@ test.each([
     try {
       expectScopes(connected, scenario.expectedScopes);
       expect((await rpcReq(ws, "status")).ok).toBe(scenario.expectedScopes.length > 0);
+      if (scenario.assignedRole === "non-enrolling") {
+        expect(
+          (
+            await rpcReq(ws, "users.setDisplayName", {
+              profileId: profile.id,
+              displayName: "Restricted teammate",
+            })
+          ).ok,
+        ).toBe(true);
+        const enrollment = await rpcReq(ws, "users.authConnect.start", {
+          profileId: profile.id,
+          provider: "openai",
+          method: "oauth",
+        });
+        expect(enrollment).toMatchObject({
+          ok: false,
+          error: { code: "FORBIDDEN", message: expect.stringContaining("operator.write") },
+        });
+      }
       if (scenario.assignedRole === "read-only") {
         await expectWriteDenied(ws, "agent:main:denied");
       }

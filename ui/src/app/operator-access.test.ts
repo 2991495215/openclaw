@@ -6,6 +6,7 @@ import type { ApplicationGatewaySnapshot } from "./gateway.ts";
 import {
   canReactToSession,
   hasOperatorReadAccess,
+  hasOperatorWriteAccess,
   readGatewayOperatorAccess,
 } from "./operator-access.ts";
 
@@ -39,6 +40,13 @@ describe("readGatewayOperatorAccess", () => {
     {
       name: "write access",
       snapshot: { hello: { auth: { role: "operator", scopes: ["operator.write"] } } },
+      expected: [true, false, false, false, false],
+    },
+    {
+      name: "write access without provider enrollment",
+      snapshot: {
+        hello: { auth: { role: "operator", scopes: ["operator.write.no-provider-enrollment"] } },
+      },
       expected: [true, false, false, false, false],
     },
     {
@@ -79,10 +87,33 @@ describe("hasOperatorReadAccess", () => {
     expect(hasOperatorReadAccess(null)).toBe(true);
     expect(hasOperatorReadAccess({ role: "operator", scopes: ["operator.read"] })).toBe(true);
     expect(hasOperatorReadAccess({ role: "operator", scopes: ["operator.write"] })).toBe(true);
+    expect(
+      hasOperatorReadAccess({
+        role: "operator",
+        scopes: ["operator.write.no-provider-enrollment"],
+      }),
+    ).toBe(true);
     expect(hasOperatorReadAccess({ role: "operator", scopes: ["operator.admin"] })).toBe(true);
     expect(hasOperatorReadAccess({ role: "operator" })).toBe(true);
     expect(hasOperatorReadAccess({ role: "operator", scopes: ["operator.pairing"] })).toBe(false);
   });
+});
+
+it("keeps provider enrollment strict while ordinary profile writes accept the restricted grant", () => {
+  for (const scopes of [
+    ["operator.write.no-provider-enrollment"],
+    ["operator.write"],
+    ["operator.admin"],
+    ["operator.write.no-provider-enrollment", "operator.write"],
+  ]) {
+    const auth = { role: "operator", scopes };
+    expect(hasOperatorWriteAccess(auth)).toBe(true);
+    for (const method of ["users.authConnect.start", "users.authConnect.answer"]) {
+      expect(hasOperatorWriteAccess(auth, method)).toBe(
+        scopes.includes("operator.write") || scopes.includes("operator.admin"),
+      );
+    }
+  }
 });
 
 // The hello cap and row role are independent grants; neither can substitute for the other.

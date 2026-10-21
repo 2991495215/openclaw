@@ -128,9 +128,8 @@ class ProfileState {
     const writeAccessLost =
       nextConnected &&
       !nextCanWrite &&
-      this.connectionScopes?.some(
-        (scope) => scope === "operator.write" || scope === "operator.admin",
-      );
+      this.connectionScopes !== null &&
+      hasOperatorWriteAccess({ role: "operator", scopes: this.connectionScopes });
     const readAccessLost = nextConnected && this.canRead && !nextCanRead;
     const identitySourceChanged =
       clientChanged || selfProfileChanged || writeAccessLost || readAccessLost;
@@ -356,6 +355,7 @@ function accessSummary(scopes: readonly string[] | null) {
       [
         ["operator.admin", "admin"],
         ["operator.write", "write"],
+        ["operator.write.no-provider-enrollment", "write"],
         ["operator.sessions.write", "sessionWrite"],
         ["operator.read", "read"],
         ["operator.sessions.read", "sessionRead"],

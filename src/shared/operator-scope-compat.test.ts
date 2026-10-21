@@ -15,6 +15,18 @@ it("does not broaden session write authority to general writes", () => {
   expect(allows("operator", ["operator.write"], ["operator.sessions.write"])).toBe(false);
 });
 
+it("caps full write to non-enrolling write without granting enrollment back", () => {
+  const restricted = "operator.write.no-provider-enrollment";
+  expect(allows("operator", [restricted], ["operator.write"])).toBe(true);
+  expect(allows("operator", ["operator.write"], [restricted])).toBe(false);
+  expect(
+    allows("operator", ["operator.read", "operator.talk", "operator.sessions.write"], [restricted]),
+  ).toBe(true);
+  expect(intersect(["operator.write"], [restricted])).toEqual([restricted]);
+  expect(intersect([restricted], ["operator.write"])).toEqual([restricted]);
+  expect(allows("operator", ["operator.write"], [restricted, "operator.write"])).toBe(true);
+});
+
 it.each([
   [["read", "write"], ["sessions.write"], ["sessions.write"]],
   [["admin"], ["sessions.read"], ["sessions.read"]],

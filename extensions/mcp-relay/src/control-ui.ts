@@ -18,7 +18,11 @@ type Consent = {
 };
 type Pairing = { code: string; expiresAt: number; mcpUrl: string };
 
-const READ_WRITE = new Set(["operator.read", "operator.write"]);
+const READ_WRITE = new Set([
+  "operator.read",
+  "operator.write",
+  "operator.write.no-provider-enrollment",
+]);
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, className?: string) {
   const node = document.createElement(tag);
@@ -38,7 +42,10 @@ function accessLabel(scopes: readonly string[]) {
   if (scopes.some((scope) => !READ_WRITE.has(scope))) {
     return "Full role access";
   }
-  return scopes.includes("operator.write") ? "Read and write" : "Read only";
+  return scopes.includes("operator.write") ||
+    scopes.includes("operator.write.no-provider-enrollment")
+    ? "Read and write"
+    : "Read only";
 }
 
 const mountConnectedApps: ControlUiView = (container, initialContext) => {
@@ -93,9 +100,11 @@ const mountConnectedApps: ControlUiView = (container, initialContext) => {
       {
         full: false,
         label: accessLabel(basic),
-        detail: basic.includes("operator.write")
-          ? "Read conversations and send messages within your access."
-          : "Read conversations within your access.",
+        detail:
+          basic.includes("operator.write") ||
+          basic.includes("operator.write.no-provider-enrollment")
+            ? "Read conversations and send messages within your access."
+            : "Read conversations within your access.",
       },
     ];
     if (scopes.some((scope) => !READ_WRITE.has(scope))) {

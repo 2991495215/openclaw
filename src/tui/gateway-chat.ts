@@ -60,7 +60,7 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { readActiveGatewayLockPort } from "../infra/gateway-lock.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { createDeferredCore } from "../shared/deferred.js";
-import { roleScopesAllow } from "../shared/operator-scope-compat.js";
+import { operatorActionScope, roleScopesAllow } from "../shared/operator-scope-compat.js";
 import { VERSION } from "../version.js";
 import {
   readTuiGatewayModelCatalog,
@@ -547,7 +547,7 @@ export class GatewayChatClient implements TuiBackend {
         auth &&
         roleScopesAllow({
           role: auth.role,
-          requestedScopes: [scope],
+          requestedScopes: [operatorActionScope(scope, method)],
           allowedScopes: auth.scopes,
         }),
       );

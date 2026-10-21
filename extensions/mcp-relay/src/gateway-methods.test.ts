@@ -266,6 +266,15 @@ describe("MCP relay Gateway consent and grant ownership", () => {
     expect(() => relayCaller(client, TEAM)).toThrow("Connected apps");
   });
 
+  it("allows non-enrolling writers to pair without granting full write", () => {
+    const restricted = "operator.write.no-provider-enrollment";
+    const person = relayCaller(caller([restricted], "person-alice"), TEAM);
+    expect(person.canPair).toBe(true);
+    expect(person.ceiling).not.toContain("operator.write");
+    expect(consentAuthority(person, undefined).ceiling).toEqual(["operator.read", restricted]);
+    expect(() => consentAuthority(person, ["operator.write"])).toThrow("Choose access permitted");
+  });
+
   it("requires admin for single-user owner pairing and defaults to read/write", () => {
     const config: OpenClawConfig = { gateway: { auth: { mode: "token" } } };
     expect(() => consentAuthority(relayCaller(caller(), config), undefined)).toThrow(

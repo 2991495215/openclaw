@@ -88,6 +88,7 @@ describe("readSessionMethodAccess", () => {
       "operator.sessions.read",
       "operator.sessions.write",
       "operator.write",
+      "operator.write.no-provider-enrollment",
       "operator.admin",
     ]) {
       expect(
@@ -96,8 +97,11 @@ describe("readSessionMethodAccess", () => {
           params: { key: "agent:main:main", model: null },
         }),
       ).toMatchObject({
-        allowed: scope === "operator.write" || scope === "operator.admin",
-        requiredScope: "operator.write",
+        allowed:
+          scope === "operator.write" ||
+          scope === "operator.write.no-provider-enrollment" ||
+          scope === "operator.admin",
+        requiredScope: "operator.write.no-provider-enrollment",
       });
     }
   });
@@ -107,7 +111,11 @@ describe("readSessionMethodAccess", () => {
     const scoped = snapshot({ methods: [request.method], scopes: ["operator.sessions.write"] });
     expect(
       readSessionMethodAccess(scoped, { ...request, session: { sharingRole: "owner" } }),
-    ).toMatchObject({ allowed: false, requiredScope: "operator.write", cause: "missing-scope" });
+    ).toMatchObject({
+      allowed: false,
+      requiredScope: "operator.write.no-provider-enrollment",
+      cause: "missing-scope",
+    });
     expect(
       readSessionMethodAccess(scoped, {
         ...request,
@@ -128,13 +136,15 @@ describe("readSessionMethodAccess", () => {
         cause: "session-not-owned",
       });
     }
-    expect(
-      access(["operator.write"], {
-        ...request,
-        sessionScope: true,
-        session: { sharingRole: "viewer" },
-      }),
-    ).toEqual({ allowed: true, requiredScope: "operator.sessions.write" });
+    for (const scope of ["operator.write", "operator.write.no-provider-enrollment"]) {
+      expect(
+        access([scope], {
+          ...request,
+          sessionScope: true,
+          session: { sharingRole: "viewer" },
+        }),
+      ).toEqual({ allowed: true, requiredScope: "operator.sessions.write" });
+    }
   });
 
   it("keeps context-window changes separate from write-scoped effort access", () => {
@@ -153,6 +163,7 @@ describe("readSessionMethodAccess", () => {
           "operator.read",
           "operator.sessions.write",
           "operator.write",
+          "operator.write.no-provider-enrollment",
           "operator.admin",
         ]) {
           const result = access([scope], {
@@ -162,7 +173,8 @@ describe("readSessionMethodAccess", () => {
           });
           expect(result.allowed).toBe(
             scope === "operator.admin" ||
-              (scope === "operator.write" && (sharingRole === "owner" || sharingRole === "admin")),
+              ((scope === "operator.write" || scope === "operator.write.no-provider-enrollment") &&
+                (sharingRole === "owner" || sharingRole === "admin")),
           );
         }
       }

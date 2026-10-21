@@ -89,7 +89,7 @@ There are four separate pieces:
 
 ### Adding an account
 
-Open **Settings → Profile → Connected accounts**, select **Add account**, then choose a provider and sign-in method. Adding an account needs an identified connection with `operator.write`.
+Open **Settings → Profile → Connected accounts**, select **Add account**, then choose a provider and sign-in method. Adding an account needs an identified connection with `operator.write`. Operators can instead grant [`operator.write.no-provider-enrollment`](/gateway/operator-scopes#write-access-without-provider-enrollment) to retain write access and personal GitHub connections while disabling personal model-provider sign-in. Existing saved-account selection and use remain available.
 
 - **Anthropic** accepts an API key for personal setup, not a Claude subscription token.
 - **OpenAI** offers API key, ChatGPT/Codex browser sign-in, and device-code sign-in.

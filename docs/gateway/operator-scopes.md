@@ -42,6 +42,30 @@ require the `node` role.
 | `operator.talk`           | Creating, steering, and closing Talk sessions without general Gateway write access. `operator.write` also satisfies this scope.                               |
 | `operator.talk.secrets`   | Reading Talk configuration with secrets included.                                                                                                             |
 
+### Write access without provider enrollment
+
+Grant `operator.write.no-provider-enrollment` instead of `operator.write` to
+retain ordinary write access without allowing personal model-provider credential
+enrollment. This includes the same read, Talk, and session access as write.
+Personal GitHub connection management and publication remain available. Saved
+model accounts can still be selected and used; clearing their new-chat default
+remains available. The scope blocks starting or answering provider sign-in,
+including API keys, tokens, OAuth, and reconnecting an account. Pending sign-in
+cannot save credentials after its full-write authority is withdrawn.
+
+This is an additive grant, not a deny flag: `operator.write` and
+`operator.admin` retain their existing behavior, including enrollment, even when
+the narrower scope is also present. No existing default grants change. A role
+ceiling can narrow full write to this scope without retaining enrollment.
+
+For trusted-proxy deployments, device and identity grants are unioned before
+role ceilings are applied. Set device auto-approval scopes explicitly and review
+existing device grants: a full-write device grant restores enrollment unless a
+role ceiling caps it. Update the Gateway before configuring the new scope;
+older versions do not recognize it. This controls Gateway enrollment APIs, not
+credentials entered through unrestricted shell execution, and does not revoke
+already-saved provider credentials or existing session selections.
+
 Personal GitHub connection management is a narrowly self-scoped exception to
 read-only behavior: `users.github.*` requires `operator.read` plus the exact
 authenticated durable profile. That person can connect, poll, cancel,

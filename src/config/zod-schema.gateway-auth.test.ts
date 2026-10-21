@@ -125,6 +125,18 @@ test.each([
   expect(OpenClawSchema.safeParse(withRole(role)).success).toBe(false);
 });
 
+test("accepts non-enrolling write as an opt-in identity grant and role ceiling", () => {
+  const scopes = ["operator.write.no-provider-enrollment"];
+  expect(
+    OpenClawSchema.safeParse({
+      gateway: {
+        auth: { identityScopes: { "teammate@example.test": scopes } },
+        roles: { default: "guest", definitions: { guest: { ...validRole, scopes } } },
+      },
+    }).success,
+  ).toBe(true);
+});
+
 test("rejects a default role that has no definition", () => {
   expectSchemaIssue(rolesConfig({ default: "missing" }), ["gateway", "roles", "default"]);
 });

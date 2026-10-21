@@ -9,15 +9,18 @@ class OperatorScopeAccessTest {
   fun operatorAuthorityFollowsGatewayReadWriteAdminHierarchy() {
     assertTrue(operatorScopesAllowRead(listOf("operator.read")))
     assertTrue(operatorScopesAllowRead(listOf("operator.write")))
+    assertTrue(operatorScopesAllowRead(listOf("operator.write.no-provider-enrollment")))
     assertTrue(operatorScopesAllowRead(listOf("operator.admin")))
     assertFalse(operatorScopesAllowRead(emptyList()))
 
     assertTrue(operatorScopesAllowWrite(listOf("operator.write")))
+    assertTrue(operatorScopesAllowWrite(listOf("operator.write.no-provider-enrollment")))
     assertTrue(operatorScopesAllowWrite(listOf("operator.admin")))
     assertFalse(operatorScopesAllowWrite(listOf("operator.read")))
 
     assertTrue(operatorScopesAllowAdmin(listOf("operator.admin")))
     assertFalse(operatorScopesAllowAdmin(listOf("operator.write")))
+    assertFalse(operatorScopesAllowAdmin(listOf("operator.write.no-provider-enrollment")))
   }
 
   @Test
@@ -26,6 +29,7 @@ class OperatorScopeAccessTest {
 
     assertTrue(sessionCatalogAvailableFor(catalogMethods, listOf("operator.read")))
     assertTrue(sessionCatalogAvailableFor(catalogMethods, listOf("operator.write")))
+    assertTrue(sessionCatalogAvailableFor(catalogMethods, listOf("operator.write.no-provider-enrollment")))
     assertTrue(sessionCatalogAvailableFor(catalogMethods, listOf("operator.admin")))
     assertFalse(sessionCatalogAvailableFor(catalogMethods, emptyList()))
     assertFalse(sessionCatalogAvailableFor(emptySet(), listOf("operator.read")))

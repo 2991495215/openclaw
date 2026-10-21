@@ -278,7 +278,7 @@ describe("Team Reports HTTP responses", () => {
     },
   );
 
-  it.each(["operator.write", "operator.admin"])(
+  it.each(["operator.write", "operator.write.no-provider-enrollment", "operator.admin"])(
     "allows GET and HEAD with %s authority",
     async (scope) => {
       runtimeScopeMock.mockReturnValue({ client: { connect: { scopes: [scope] } } });

@@ -35,6 +35,25 @@ function snapshot(params: {
 
 describe("canCallGatewayMethod", () => {
   it.each([
+    ["sessions.create", true],
+    ["chat.send", true],
+    ["session.reactions.set", true],
+    ["users.selectModelAccount", true],
+    ["users.unlinkAuthProfile", true],
+    ["sessions.github.publish", true],
+    ["users.authConnect.cancel", true],
+    ["users.authConnect.start", false],
+    ["users.authConnect.answer", false],
+  ] as const)("projects restricted write authority for %s", (method, allowed) => {
+    const restricted = snapshot({
+      methods: [method],
+      scopes: ["operator.write.no-provider-enrollment"],
+    });
+    expect(canCallGatewayMethod(restricted, method, "operator.write")).toBe(allowed);
+    expect(canPresentGatewayMethod(restricted, method, "operator.write")).toBe(allowed);
+  });
+
+  it.each([
     ["models.list", "operator.read", true],
     ["chat.metadata", "operator.read", true],
     ["chat.startup", "operator.read", true],

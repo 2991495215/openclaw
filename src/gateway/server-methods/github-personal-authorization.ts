@@ -2,6 +2,7 @@ import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import {
+  operatorActionScope,
   intersectOperatorScopes,
   operatorScopeSatisfied,
   roleScopesAllow,
@@ -80,7 +81,7 @@ function currentGitHubClient(
     client.connect.role !== "operator" ||
     !roleScopesAllow({
       role: "operator",
-      requestedScopes: [scope],
+      requestedScopes: [operatorActionScope(scope)],
       allowedScopes: scopes,
     })
   ) {

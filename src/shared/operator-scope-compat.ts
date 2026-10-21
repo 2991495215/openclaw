@@ -3,9 +3,24 @@ const OPERATOR_ADMIN_SCOPE = "operator.admin";
 const OPERATOR_READ_SCOPE = "operator.read";
 const OPERATOR_TALK_SCOPE = "operator.talk";
 const OPERATOR_WRITE_SCOPE = "operator.write";
+const OPERATOR_WRITE_NO_PROVIDER_ENROLLMENT_SCOPE = "operator.write.no-provider-enrollment";
 const OPERATOR_SESSION_READ_SCOPE = "operator.sessions.read";
 const OPERATOR_SESSION_WRITE_SCOPE = "operator.sessions.write";
 const OPERATOR_SCOPE_PREFIX = "operator.";
+
+/** Ordinary write actions accept the narrower grant; enrollment retains full write authority.
+ * Never use this projection to compare or manufacture grants.
+ */
+export function operatorActionScope<T extends string>(
+  scope: T,
+  method?: string,
+): T | typeof OPERATOR_WRITE_NO_PROVIDER_ENROLLMENT_SCOPE {
+  return scope === OPERATOR_WRITE_SCOPE &&
+    method !== "users.authConnect.start" &&
+    method !== "users.authConnect.answer"
+    ? OPERATOR_WRITE_NO_PROVIDER_ENROLLMENT_SCOPE
+    : scope;
+}
 
 export function operatorScopeSatisfied(
   requestedScope: string,
@@ -17,11 +32,14 @@ export function operatorScopeSatisfied(
   return (
     granted.includes(requestedScope) ||
     granted.includes(OPERATOR_ADMIN_SCOPE) ||
+    (requestedScope === OPERATOR_WRITE_NO_PROVIDER_ENROLLMENT_SCOPE &&
+      granted.includes(OPERATOR_WRITE_SCOPE)) ||
     ((requestedScope === OPERATOR_READ_SCOPE ||
       requestedScope === OPERATOR_TALK_SCOPE ||
       requestedScope === OPERATOR_SESSION_READ_SCOPE ||
       requestedScope === OPERATOR_SESSION_WRITE_SCOPE) &&
-      granted.includes(OPERATOR_WRITE_SCOPE)) ||
+      (granted.includes(OPERATOR_WRITE_SCOPE) ||
+        granted.includes(OPERATOR_WRITE_NO_PROVIDER_ENROLLMENT_SCOPE))) ||
     (requestedScope === OPERATOR_SESSION_READ_SCOPE &&
       (granted.includes(OPERATOR_READ_SCOPE) || granted.includes(OPERATOR_SESSION_WRITE_SCOPE)))
   );
