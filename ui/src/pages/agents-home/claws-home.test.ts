@@ -3,9 +3,10 @@
 import { getQueriesForElement } from "@solidjs/testing-library";
 import { createComponent, createSignal } from "solid-js";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { createDeferredCore } from "../../../../src/shared/deferred.js";
 import { pathForClawCatalogEntry } from "../../app-route-paths.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
-import { waitForSolid } from "../../test-helpers/solid-settle.ts";
+import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { ClawsPage } from "../claws/page.tsx";
 import {
   cleanupAgentsHomePageTest,
@@ -13,6 +14,7 @@ import {
   setupAgentsHomePageTest,
   workflowOperator,
 } from "./agents-home-page.test-helpers.ts";
+import type { ClawCatalogEntry } from "./claws-catalog-client.ts";
 
 beforeEach(setupAgentsHomePageTest);
 afterEach(cleanupAgentsHomePageTest);
@@ -107,6 +109,142 @@ it("updates Explore results when the search changes", async () => {
     await vi.waitFor(() => expect(page.querySelectorAll("[data-claws-entry]")).toHaveLength(count));
     await vi.waitFor(() => expect(request).toHaveBeenCalledWith("claws.catalog.search", { query }));
   }
+});
+
+it("debounces catalog searches and retires superseded replies without replacing the input", async () => {
+  const { page, request } = createPage();
+  (
+    await getQueriesForElement(page).findByRole<HTMLButtonElement>("button", {
+      name: "Search Claws",
+    })
+  ).click();
+  await waitForSolid(() =>
+    expect(page.querySelectorAll(".claws-catalog [data-claws-entry]")).toHaveLength(1),
+  );
+  const original = request.getMockImplementation()!;
+  const stale = createDeferredCore<{ entries: ClawCatalogEntry[] }>();
+  request.mockImplementation((method, params, options) => {
+    const query = params && typeof params === "object" ? Reflect.get(params, "query") : undefined;
+    if (method === "claws.catalog.search" && query === "stale") {
+      return stale.promise;
+    }
+    if (method === "claws.catalog.search" && query === "fresh") {
+      return { entries: [{ ...workflowOperator, displayName: "Fresh result" }] };
+    }
+    return original(method, params, options);
+  });
+  vi.useFakeTimers();
+  const search = page.querySelector<HTMLInputElement>(".claws-catalog [data-claws-search]")!;
+  const enter = (query: string) => {
+    search.value = query;
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    flush();
+  };
+  enter("cancelled");
+  enter("stale");
+  expect(page.querySelector(".claws-catalog [role=status]")).not.toBeNull();
+  expect(page.querySelector(".claws-catalog__empty")).toBeNull();
+  await vi.advanceTimersByTimeAsync(149);
+  expect(request).not.toHaveBeenCalledWith("claws.catalog.search", { query: "stale" });
+  await vi.advanceTimersByTimeAsync(1);
+  expect(request).toHaveBeenCalledWith("claws.catalog.search", { query: "stale" });
+  expect(request).not.toHaveBeenCalledWith("claws.catalog.search", { query: "cancelled" });
+  enter("fresh");
+  await vi.advanceTimersByTimeAsync(150);
+  await waitForSolid(() =>
+    expect(page.querySelector(".claws-catalog__list")?.textContent).toContain("Fresh result"),
+  );
+  stale.resolve({ entries: [workflowOperator] });
+  await stale.promise;
+  flush();
+  expect(page.querySelector(".claws-catalog__list")?.textContent).toContain("Fresh result");
+  expect(page.querySelector(".claws-catalog__list")?.textContent).not.toContain(
+    "Workflow Operator",
+  );
+  expect(page.querySelector(".claws-catalog [data-claws-search]")).toBe(search);
+  expect(search.value).toBe("fresh");
+});
+
+it("retains the catalog query while retrying a failed search", async () => {
+  const { page, request } = createPage();
+  (
+    await getQueriesForElement(page).findByRole<HTMLButtonElement>("button", {
+      name: "Search Claws",
+    })
+  ).click();
+  await waitForSolid(() =>
+    expect(page.querySelectorAll(".claws-catalog [data-claws-entry]")).toHaveLength(1),
+  );
+  const original = request.getMockImplementation()!;
+  const recovered = createDeferredCore<{ entries: ClawCatalogEntry[] }>();
+  let attempts = 0;
+  request.mockImplementation((method, params, options) => {
+    const query = params && typeof params === "object" ? Reflect.get(params, "query") : undefined;
+    if (method === "claws.catalog.search" && query === "retry") {
+      if (++attempts === 1) {
+        throw new Error("Search temporarily unavailable");
+      }
+      return recovered.promise;
+    }
+    return original(method, params, options);
+  });
+  vi.useFakeTimers();
+  const search = page.querySelector<HTMLInputElement>(".claws-catalog [data-claws-search]")!;
+  search.value = "retry";
+  search.dispatchEvent(new Event("input", { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(150);
+  await waitForSolid(() =>
+    expect(page.querySelector(".claws-catalog [role=alert]")?.textContent).toContain(
+      "Search temporarily unavailable",
+    ),
+  );
+  page.querySelector<HTMLButtonElement>(".claws-catalog [role=alert] button")!.click();
+  await waitForSolid(() =>
+    expect(page.querySelector(".claws-catalog [role=status]")).not.toBeNull(),
+  );
+  expect(page.querySelector(".claws-catalog [role=alert]")).toBeNull();
+  recovered.resolve({ entries: [workflowOperator] });
+  await waitForSolid(() =>
+    expect(page.querySelectorAll(".claws-catalog [data-claws-entry]")).toHaveLength(1),
+  );
+  expect(attempts).toBe(2);
+  expect(page.querySelector(".claws-catalog [data-claws-search]")).toBe(search);
+  expect(search.value).toBe("retry");
+  expect(page.querySelector(".claws-catalog [role=alert]")).toBeNull();
+});
+
+it("refreshes a selected Claw after reconnect and ignores the retired catalog reply", async () => {
+  const { request, setPhase, find, calls } = createDetail();
+  await waitForSolid(() => expect(find(".plugin-capabilities")).not.toBeNull());
+  const original = request.getMockImplementation()!;
+  const stale = createDeferredCore<{ entries: ClawCatalogEntry[] }>();
+  let searches = 0;
+  request.mockImplementation((method, params, options) => {
+    if (
+      method === "claws.catalog.search" &&
+      params &&
+      typeof params === "object" &&
+      Reflect.get(params, "limit") === 100 &&
+      ++searches === 1
+    ) {
+      return stale.promise;
+    }
+    return original(method, params, options);
+  });
+  setPhase("reconnecting");
+  flush();
+  setPhase("connected");
+  await waitForSolid(() => expect(searches).toBe(1));
+  setPhase("reconnecting");
+  flush();
+  setPhase("connected");
+  await waitForSolid(() => expect(calls("claws.catalog.detail")).toHaveLength(2));
+  await waitForSolid(() => expect(find(".plugin-capabilities")).not.toBeNull());
+  stale.resolve({ entries: [{ ...workflowOperator, latestVersion: "9.9.9" }] });
+  await stale.promise;
+  flush();
+  expect(calls("claws.catalog.detail")).toHaveLength(2);
+  expect(find(".plugin-capabilities")).not.toBeNull();
 });
 
 it("retains the selected Claw on revalidation and clears it when the package changes", async () => {
