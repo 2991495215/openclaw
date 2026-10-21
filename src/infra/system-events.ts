@@ -556,10 +556,6 @@ export async function prepareAutomationSystemEvents(
   };
 }
 
-export type PreparedAutomationSystemEvents = Awaited<
-  ReturnType<typeof prepareAutomationSystemEvents>
->;
-
 /** Enqueues one occurrence and returns one-use removal ownership for its UUID. */
 export function enqueueSystemEventWithReceipt(
   text: string,
