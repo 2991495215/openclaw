@@ -1,6 +1,6 @@
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import type { JSX } from "@solidjs/web";
-import { createMemo, Errored, For, isPending, latest, Loading, Show } from "solid-js";
+import { createMemo, Errored, For, isPending, Loading, Show } from "solid-js";
 import type { SkillStatusEntry } from "../../api/types.ts";
 import { handleMarkdownCodeBlockClick } from "../../components/markdown-code-blocks.ts";
 import { HubTabs } from "../../components/solid/hub-tabs.tsx";
@@ -242,14 +242,7 @@ function SkillsToolbar(props: {
 
 function SkillRow(props: { skill: SkillStatusEntry; view: SkillsProps }) {
   const verdict = createMemo(() => verdictForSkill(props.skill, props.view.state.clawhubVerdicts));
-  const status = () =>
-    verdictStatus(
-      verdictForSkill(
-        props.skill,
-        verdict() ? latest(props.view.readClawHubVerdicts) : props.view.readClawHubVerdicts(),
-      ),
-      isPending(props.view.readClawHubVerdicts),
-    );
+  const status = () => verdictStatus(verdict(), isPending(props.view.readClawHubVerdicts));
   return (
     <div class="settings-row plugins-item plugins-item--clickable">
       <button
@@ -533,14 +526,7 @@ function InstalledClawHubOverview(props: {
       ? formatUiExternalText(props.verdict.reasons.join(", "))
       : null;
   });
-  const status = () =>
-    verdictStatus(
-      verdictForSkill(
-        props.skill,
-        props.verdict ? latest(props.view.readClawHubVerdicts) : props.view.readClawHubVerdicts(),
-      ),
-      isPending(props.view.readClawHubVerdicts),
-    );
+  const status = () => verdictStatus(props.verdict, isPending(props.view.readClawHubVerdicts));
   return (
     <Show when={link()}>
       {(current) => (

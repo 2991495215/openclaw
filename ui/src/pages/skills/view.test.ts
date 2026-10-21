@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { expectDefined } from "@openclaw/normalization-core";
-import { createMemo } from "solid-js";
+import { createMemo, createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
 import type { SkillStatusReport } from "../../api/types.ts";
@@ -911,17 +911,21 @@ describe("renderSkills", () => {
 
     const pending = createDeferred<Record<string, ClawHubSkillSecurityVerdict>>();
     let read = () => verdicts;
+    let beginRead: (() => void) | undefined;
     const owner = mountSolid(() => {
-      read = createMemo(() => pending.promise);
-      renderView(container, {
-        report,
-        detailKey: "agentreceipt",
-        clawhubVerdicts: verdicts,
-        readClawHubVerdicts: read,
-      });
+      const [refreshing, setRefreshing] = createSignal(false);
+      read = createMemo(() => (refreshing() ? pending.promise : verdicts));
+      beginRead = () => setRefreshing(true);
       return null;
     });
     dialogRestores.push(owner.unmount);
+    renderView(container, {
+      report,
+      detailKey: "agentreceipt",
+      clawhubVerdicts: verdicts,
+      readClawHubVerdicts: read,
+    });
+    expectDefined(beginRead)();
     await waitForFast(() => expect(normalizeText(dialog)).toContain("Refreshing"));
     renderView(container, {
       report,
