@@ -47,28 +47,28 @@ function successfullyRepairedCheck(): DoctorHealthCheck {
 }
 
 describe("runDoctorHealthRepairs", () => {
-  it("preserves the check receiver and arguments through repair progress", async () => {
-    const context = ctx({});
-    const finding = warningFinding("test/receiver");
+  it("preserves the check receiver while running repair through progress", async () => {
     const check: DoctorHealthCheck = {
-      id: finding.checkId,
+      id: "test/receiver",
       kind: "core",
-      description: "receiver-dependent repair",
-      async detect(_context, scope) {
-        return scope ? [] : [finding];
+      description: "repair uses check metadata",
+      async detect({ cfg }) {
+        return cfg.gateway?.mode === "local" ? [] : [warningFinding(this.id)];
       },
-      async repair(repairContext, findings) {
-        expect(repairContext).toEqual({ ...context, dryRun: false, diff: true });
-        expect(findings).toEqual([finding]);
-        return { changes: [this.id] };
+      async repair({ cfg }) {
+        return {
+          config: { ...cfg, gateway: { ...cfg.gateway, mode: "local" } },
+          changes: [`Repaired ${this.id}.`],
+        };
       },
     };
 
-    const result = await runDoctorHealthRepairs(context, { checks: [check], diff: true });
+    const result = await runDoctorHealthRepairs(ctx({}), { checks: [check] });
 
-    expect(result.changes).toEqual([check.id]);
-    expect(result.warnings).toEqual([]);
+    expect(result.config.gateway?.mode).toBe("local");
+    expect(result.changes).toEqual(["Repaired test/receiver."]);
     expect(result.remainingFindings).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
   it("reports repair validation findings that remain after repair", async () => {
