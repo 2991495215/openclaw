@@ -40,9 +40,9 @@ type FilePreviewModalProps = {
   layout: "files" | "document";
   directories: string[];
   readInventory: () => void;
-  inventoryRequest: Promise<void> | undefined;
+  inventoryRequest: () => Promise<void> | undefined;
   readFile: () => void;
-  fileRequest: Promise<void> | undefined;
+  fileRequest: () => Promise<void> | undefined;
   notice: string;
 };
 type OpenClawFilePreviewModal = SolidBridgeElement<FilePreviewModalProps>;
@@ -92,6 +92,13 @@ function FilePreviewContent(props: FilePreviewModalProps, host: OpenClawFilePrev
         ? "markdown"
         : "code",
   );
+  // Sibling responses must not replace the settled leaf for the same request.
+  const inventoryRequest = createMemo(() => ({ request: props.inventoryRequest() }), {
+    equals: (previous, next) => previous.request === next.request,
+  });
+  const fileRequest = createMemo(() => ({ request: props.fileRequest() }), {
+    equals: (previous, next) => previous.request === next.request,
+  });
   const label = () => props.label || t("filePreview.label");
   const fileCount = () =>
     filteredFiles().length === props.files.length
@@ -324,129 +331,133 @@ function FilePreviewContent(props: FilePreviewModalProps, host: OpenClawFilePrev
                   {props.listLabel || t("filePreview.listLabel")} · {filteredFiles().length}
                 </div>
               </Show>
-              {/* Keep request identity opaque to async computations; retry replaces only this leaf. */}
-              <Show when={latest(() => ({ request: props.inventoryRequest }))} keyed>
-                <Errored fallback={() => null}>
+              {/* Request accessors bypass held bridge props; keyed Show requires a callback argument. */}
+              <Show when={latest(inventoryRequest)} keyed>
+                {(_request) => (
+                  <Errored fallback={() => null}>
+                    <Loading
+                      fallback={
+                        <PanelLoadingSkeleton
+                          variant="file-list"
+                          label={t("common.loading")}
+                          compact
+                        />
+                      }
+                    >
+                      {
+                        (props.readInventory(),
+                        filteredFiles().length === 0 ? (
+                          <div class="empty-list">{t("filePreview.noMatches")}</div>
+                        ) : props.layout === "document" ? (
+                          folder("")
+                        ) : (
+                          <For each={filteredFiles()}>{item}</For>
+                        ))
+                      }
+                    </Loading>
+                  </Errored>
+                )}
+              </Show>
+            </aside>
+            <Show when={latest(fileRequest)} keyed>
+              {(_request) => (
+                <Errored
+                  fallback={(error) => (
+                    <section class="detail empty">
+                      <p role="alert">{formatUiError(error())}</p>
+                      <button
+                        ref={capture("button")}
+                        class="button"
+                        onClick={() => emit("file-preview-retry")}
+                      >
+                        {t("common.retry")}
+                      </button>
+                    </section>
+                  )}
+                >
                   <Loading
                     fallback={
-                      <PanelLoadingSkeleton
-                        variant="file-list"
-                        label={t("common.loading")}
-                        compact
-                      />
+                      <section class="detail">
+                        <div ref={capture("body")} class="detail-body">
+                          <PanelLoadingSkeleton
+                            variant="document"
+                            label={t("common.loading")}
+                            compact
+                          />
+                        </div>
+                      </section>
                     }
                   >
                     {
-                      (props.readInventory(),
-                      filteredFiles().length === 0 ? (
-                        <div class="empty-list">{t("filePreview.noMatches")}</div>
-                      ) : props.layout === "document" ? (
-                        folder("")
-                      ) : (
-                        <For each={filteredFiles()}>{item}</For>
+                      (props.readFile(),
+                      (
+                        <Show
+                          when={activeFile()}
+                          fallback={
+                            <section class="detail empty">
+                              <p class="empty-title">
+                                {props.emptyTitle || t("filePreview.emptyTitle")}
+                              </p>
+                              <p class="empty-subtitle">
+                                {props.emptySubtitle || t("filePreview.emptySubtitle")}
+                              </p>
+                            </section>
+                          }
+                        >
+                          {(file) => (
+                            <section class="detail">
+                              <Show when={props.layout === "files"}>
+                                <div class="detail-head">
+                                  <div class="detail-title-row">
+                                    <h2 class="title">{file().path}</h2>
+                                    <Show when={file().contents}>
+                                      <CopyButton
+                                        text={file().contents}
+                                        idleLabel={props.copyLabel || t("filePreview.copyFile")}
+                                        bare
+                                      />
+                                    </Show>
+                                  </div>
+                                  <div class="chips">
+                                    <span class="chip accent">{fileKind(file().path)}</span>
+                                    <span class="chip">{file().size}</span>
+                                    <span class="chip">{t("filePreview.readOnly")}</span>
+                                    <Show when={props.contextLabel}>
+                                      <span class="chip ok">{props.contextLabel}</span>
+                                    </Show>
+                                  </div>
+                                </div>
+                              </Show>
+                              <div ref={capture("body")} class="detail-body">
+                                {contentMode() === "message" ? (
+                                  <p role="status">{file().message}</p>
+                                ) : contentMode() === "markdown" ? (
+                                  <SanitizedHtml
+                                    tag="article"
+                                    class="markdown"
+                                    onClick={handleDocumentLink}
+                                    html={documentHtml()}
+                                  />
+                                ) : (
+                                  <div class="code-content">
+                                    <For each={codeChunks()}>
+                                      {(chunk, index) => (
+                                        <pre class="code-chunk" data-chunk={index()}>
+                                          {chunk}
+                                        </pre>
+                                      )}
+                                    </For>
+                                  </div>
+                                )}
+                              </div>
+                            </section>
+                          )}
+                        </Show>
                       ))
                     }
                   </Loading>
                 </Errored>
-              </Show>
-            </aside>
-            <Show when={latest(() => ({ request: props.fileRequest }))} keyed>
-              <Errored
-                fallback={(error) => (
-                  <section class="detail empty">
-                    <p role="alert">{formatUiError(error())}</p>
-                    <button
-                      ref={capture("button")}
-                      class="button"
-                      onClick={() => emit("file-preview-retry")}
-                    >
-                      {t("common.retry")}
-                    </button>
-                  </section>
-                )}
-              >
-                <Loading
-                  fallback={
-                    <section class="detail">
-                      <div ref={capture("body")} class="detail-body">
-                        <PanelLoadingSkeleton
-                          variant="document"
-                          label={t("common.loading")}
-                          compact
-                        />
-                      </div>
-                    </section>
-                  }
-                >
-                  {
-                    (props.readFile(),
-                    (
-                      <Show
-                        when={activeFile()}
-                        fallback={
-                          <section class="detail empty">
-                            <p class="empty-title">
-                              {props.emptyTitle || t("filePreview.emptyTitle")}
-                            </p>
-                            <p class="empty-subtitle">
-                              {props.emptySubtitle || t("filePreview.emptySubtitle")}
-                            </p>
-                          </section>
-                        }
-                      >
-                        {(file) => (
-                          <section class="detail">
-                            <Show when={props.layout === "files"}>
-                              <div class="detail-head">
-                                <div class="detail-title-row">
-                                  <h2 class="title">{file().path}</h2>
-                                  <Show when={file().contents}>
-                                    <CopyButton
-                                      text={file().contents}
-                                      idleLabel={props.copyLabel || t("filePreview.copyFile")}
-                                      bare
-                                    />
-                                  </Show>
-                                </div>
-                                <div class="chips">
-                                  <span class="chip accent">{fileKind(file().path)}</span>
-                                  <span class="chip">{file().size}</span>
-                                  <span class="chip">{t("filePreview.readOnly")}</span>
-                                  <Show when={props.contextLabel}>
-                                    <span class="chip ok">{props.contextLabel}</span>
-                                  </Show>
-                                </div>
-                              </div>
-                            </Show>
-                            <div ref={capture("body")} class="detail-body">
-                              {contentMode() === "message" ? (
-                                <p role="status">{file().message}</p>
-                              ) : contentMode() === "markdown" ? (
-                                <SanitizedHtml
-                                  tag="article"
-                                  class="markdown"
-                                  onClick={handleDocumentLink}
-                                  html={documentHtml()}
-                                />
-                              ) : (
-                                <div class="code-content">
-                                  <For each={codeChunks()}>
-                                    {(chunk, index) => (
-                                      <pre class="code-chunk" data-chunk={index()}>
-                                        {chunk}
-                                      </pre>
-                                    )}
-                                  </For>
-                                </div>
-                              )}
-                            </div>
-                          </section>
-                        )}
-                      </Show>
-                    ))
-                  }
-                </Loading>
-              </Errored>
+              )}
             </Show>
           </div>
           <Show when={props.layout === "files"}>
@@ -485,9 +496,9 @@ export const FilePreviewModal = defineSolidBridge<FilePreviewModalProps>(
       layout: { default: "files" },
       directories: { default: [], attribute: false },
       readInventory: { default: () => {}, attribute: false },
-      inventoryRequest: { default: undefined, attribute: false },
+      inventoryRequest: { default: () => undefined, attribute: false },
       readFile: { default: () => {}, attribute: false },
-      fileRequest: { default: undefined, attribute: false },
+      fileRequest: { default: () => undefined, attribute: false },
       notice: { default: "" },
     },
   },

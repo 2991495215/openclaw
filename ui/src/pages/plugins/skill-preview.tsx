@@ -224,9 +224,9 @@ export function PluginSkillPreview(props: {
           activePath={props.state.activePath}
           layout="document"
           readInventory={readInventory}
-          inventoryRequest={props.state.inventoryRequest}
+          inventoryRequest={() => props.state?.inventoryRequest}
           readFile={readFile}
-          fileRequest={fileRequest()}
+          fileRequest={fileRequest}
           notice={incomplete() ? t("filePreview.bundle.incomplete") : ""}
           onFile-preview-select={(event: CustomEvent<string>) =>
             void props.preview.select(event.detail)

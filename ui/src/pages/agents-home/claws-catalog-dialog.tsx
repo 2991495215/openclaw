@@ -579,9 +579,9 @@ export function ClawsCatalogDialog(props: ClawsDialogProps) {
             activePath={previewPath()}
             layout="document"
             readInventory={readInventory}
-            inventoryRequest={current().kind === "skill" ? current().request : undefined}
+            inventoryRequest={() => (current().kind === "skill" ? current().request : undefined)}
             readFile={readFile}
-            fileRequest={current().request}
+            fileRequest={() => current().request}
             onFile-preview-select={(event: CustomEvent<string>) => {
               if (current().kind === "instruction" && event.detail !== current().name) {
                 void model.openPreview("instruction", event.detail);

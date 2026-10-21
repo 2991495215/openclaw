@@ -137,18 +137,36 @@ it("opens before inventory settles and retains its shell across inventory failur
 
 it("keeps selected-file failures retryable without refetching the entry or losing the inventory", async () => {
   const { preview, request, container } = setup();
+  const selected = createDeferred<PluginsSkillsReadResult>();
   const retry = createDeferred<PluginsSkillsReadResult>();
   request
-    .mockResolvedValueOnce(lazyResult)
-    .mockRejectedValueOnce(new Error("Read failed"))
+    .mockResolvedValueOnce({
+      ...lazyResult,
+      files: [
+        { ...lazyResult.files[0]!, content: "[Configuration](a.md)" },
+        ...lazyResult.files.slice(1),
+      ],
+    })
+    .mockReturnValueOnce(selected.promise)
     .mockReturnValueOnce(retry.promise);
   await preview.open(params);
-  await preview.select("a.md");
+  await waitForSolid(() => expect(container.querySelector(".markdown a")).not.toBeNull());
+  const modal = container.querySelector("openclaw-file-preview-modal");
+  container.querySelector<HTMLAnchorElement>(".markdown a")!.click();
+  await waitForSolid(() => expect(request).toHaveBeenCalledTimes(2));
+  await waitForSolid(() =>
+    expect(
+      container.querySelectorAll('openclaw-panel-loading-skeleton[data-panel-skeleton="document"]'),
+    ).toHaveLength(1),
+  );
+  expect(container.querySelectorAll(".item")).toHaveLength(3);
+  expect(container.querySelector("openclaw-file-preview-modal")).toBe(modal);
+  selected.reject(new Error("Read failed"));
   await waitForSolid(() =>
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Read failed"),
   );
   expect(container.querySelectorAll(".item")).toHaveLength(3);
-  expect(preview.state?.result?.files[0]?.content).toBe("Full instructions.");
+  expect(preview.state?.result?.files[0]?.content).toBe("[Configuration](a.md)");
   container.querySelector<HTMLButtonElement>(".detail button")!.click();
   await waitForSolid(() =>
     expect(container.querySelector(".body")?.getAttribute("aria-busy")).toBe("true"),
