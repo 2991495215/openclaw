@@ -23,6 +23,7 @@ import {
 } from "../../lib/reactive/format.ts";
 import { t } from "../../lib/reactive/i18n.ts";
 import { projectSource } from "../../lib/reactive/projection.ts";
+import "../../styles/product-page.css";
 import "../../styles/about.css";
 import "../../styles/settings.css";
 

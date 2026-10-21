@@ -116,19 +116,6 @@
 
 .about-hero__name {
   margin: 14px 0 0;
-  color: var(--text-strong);
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-}
-
-.about-hero__tagline {
-  max-width: 460px;
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: var(--control-ui-text-sm);
-  line-height: 1.45;
 }
 
 .about-hero__version {
@@ -149,48 +136,6 @@
   justify-content: center;
   gap: 10px;
   margin-top: 20px;
-}
-
-.about-hero__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 15px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--card);
-  color: var(--text);
-  font-size: var(--control-ui-text-sm);
-  font-weight: 550;
-  transition:
-    transform 140ms ease,
-    background 140ms ease,
-    border-color 140ms ease;
-}
-
-.about-hero__link:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--border) 40%, var(--text) 60%);
-  background: var(--bg-hover);
-}
-
-.about-hero__link-icon {
-  display: inline-flex;
-}
-
-.about-hero__link svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-}
-
-.about-hero__link svg.icon--filled {
-  fill: currentColor;
-  stroke: none;
 }
 
 .about-footer {

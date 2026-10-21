@@ -323,7 +323,8 @@ openclaw-file-preview-modal {
     color: var(--muted);
   }
 
-  .chat-copy-btn:hover {
+  /* CopyButton owns result colors; this surface owns idle hover chrome. */
+  .chat-copy-btn:hover:where(:not([data-copy-state="error"], [data-copy-state="copied"])) {
     border-color: var(--border-strong);
     color: var(--text-strong);
   }
@@ -345,32 +346,6 @@ openclaw-file-preview-modal {
     position: absolute;
     inset: 0;
     transition: opacity 150ms ease;
-  }
-
-  .chat-copy-btn__icon-check,
-  .chat-copy-btn[data-copy-state="copied"] .chat-copy-btn__icon-copy {
-    opacity: 0;
-  }
-
-  .chat-copy-btn[data-copy-state="copied"] .chat-copy-btn__icon-check {
-    opacity: 1;
-  }
-
-  .chat-copy-btn[data-copy-state="copying"] {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .chat-copy-btn[data-copy-state="error"] {
-    border-color: var(--danger-subtle);
-    background: var(--danger-subtle);
-    color: var(--danger);
-  }
-
-  .chat-copy-btn[data-copy-state="copied"] {
-    border-color: var(--ok-subtle);
-    background: var(--ok-subtle);
-    color: var(--ok);
   }
 
   .chips {

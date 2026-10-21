@@ -198,7 +198,10 @@ describe("AppSidebar session catalog pagination", () => {
       sessions: backingRows,
     };
     data.sessionsResult = backingResult;
-    data.sessionResultsByAgent = { main: backingResult };
+    // The current result precedes stale agent rows for adopted catalog activity.
+    data.sessionResultsByAgent = {
+      main: { ...backingResult, sessions: patchRows(backingRows, { unread: false }) },
+    };
     data.requestSessionDataUpdate();
     await settleLitElement(sidebar);
 

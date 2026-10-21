@@ -6,6 +6,7 @@ import { NativeChromeSetup } from "../../components/native-chrome-setup.tsx";
 import { BrandIcon, Icon } from "../../components/solid/icon.tsx";
 import { registerAppsEnglish } from "../../i18n/locales/en-apps.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
+import "../../styles/product-page.css";
 import "../../styles/apps.css";
 import { COMMUNITY_DISCORD_URL } from "../../lib/product-links.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
@@ -20,7 +21,7 @@ function filledIcon(path: string, fillRule?: "evenodd") {
   );
 }
 
-// Apps-only platform marks; apps.css fills .icon--filled and strokes the other glyphs.
+// Apps-only platform marks; shared product-page styles fill/stroke the glyphs.
 const appsBrandIcons = {
   watch: () => (
     <svg viewBox="0 0 24 24">

@@ -8,6 +8,7 @@ import { createSolidApplicationContextProvider } from "../../test-helpers/solid-
 import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { createContext, createRuntimeConfigStub } from "./skill-workshop-page.test-support.ts";
 import { SkillWorkshopPage } from "./skill-workshop-page.tsx";
+import { sortWorkshopSkills } from "./view.tsx";
 
 const SKILL = "actual-budget-operations";
 const VERSION = "20260929T010000000Z-patch";
@@ -40,6 +41,20 @@ const list: SkillsWorkshopListResult = {
   skills: [skill],
   archived: [{ name: SKILL, live: true, versions: [version] }],
 };
+
+it("sorts recency by the first change in the newest-first feed", () => {
+  const first = { ...skill, updatedAtMs: 0 };
+  const second = { ...skill, name: "second-skill", updatedAtMs: 2_000 };
+  const changes = [
+    { ...change, createdAtMs: 3_000 },
+    { ...change, id: "older-change", createdAtMs: 1_000 },
+  ];
+
+  expect(sortWorkshopSkills([second, first], changes, "recent").map((entry) => entry.name)).toEqual(
+    [SKILL, "second-skill"],
+  );
+});
+
 type RequestParams = { agentId: string; versionId?: string };
 type Replies = Record<string, object | ((params: RequestParams) => unknown)>;
 function requests(replies: Replies) {
