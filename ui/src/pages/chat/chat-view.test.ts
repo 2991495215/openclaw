@@ -773,9 +773,11 @@ describe("retained input navigation", () => {
       ],
     });
     const container = renderChatView({ historyState });
-    const queueText = () => container.querySelector(".chat-queue__text")?.textContent;
     await vi.dynamicImportSettled();
-    await waitForSolid(() => expect(queueText()).toBe(content.attachment.label));
+    flush();
+    expect(container.querySelector(".chat-queue__text")?.textContent).toBe(
+      content.attachment.label,
+    );
     expect(container.querySelector(".chat-group.user")).toBeNull();
   });
 
@@ -2902,7 +2904,7 @@ describe("chat attachment picker", () => {
       preview.querySelector(".chat-attachment-file--video .chat-attachment-file__preview svg"),
     ).not.toBeNull();
     expect(preview.querySelector(".chat-attachment-file__preview img")).toBeNull();
-    expect(preview.querySelector(".chat-attachment-file__type")?.textContent).toBe("MP4");
+    expect(preview.querySelector(".chat-attachment-file__type")?.textContent).toBe("MP4 · 5 B");
   });
 });
 describe("chat welcome", () => {
