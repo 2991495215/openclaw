@@ -1,12 +1,17 @@
-import { usesOpenAIMinimumCacheLifetime } from "@openclaw/ai/internal/openai";
+import {
+  resolveOpenAIPromptCacheParams,
+  usesOpenAIMinimumCacheLifetime,
+} from "@openclaw/ai/internal/openai";
 import {
   isDirectAnthropicModel,
   isNativeOpenAIEndpoint,
   resolveAnthropicCacheOptions,
+  resolveOpenAICompletionsCompat,
   usesNativeOpenAICodexResponsesBackend,
 } from "@openclaw/ai/transports";
 import type { Model } from "../../llm/types.js";
 import type { NormalizedUsage } from "../usage.js";
+import { parsePromptCacheTtl } from "./prompt-cache-retention.js";
 
 /** A scheduling estimate, not proof that an entry exists or expires at this instant. */
 export type PromptCacheExpiryEstimate = {
@@ -20,6 +25,7 @@ export function estimatePromptCacheExpiry(params: {
   model: Model;
   authMode?: string;
   retention?: "none" | "short" | "long";
+  promptCacheTtl?: unknown;
   usage?: NormalizedUsage;
   requestStartedAt?: number;
   now?: number;
@@ -69,7 +75,22 @@ export function estimatePromptCacheExpiry(params: {
     isNativeOpenAIEndpoint(model) &&
     usesOpenAIMinimumCacheLifetime(model.id)
   ) {
-    return { observedAt: requestStartedAt, windowMs: 1_800_000, basis: "openai-minimum" };
+    const compat = resolveOpenAICompletionsCompat(model);
+    if (!compat.supportsPromptCacheKey) {
+      return undefined;
+    }
+    const policy = resolveOpenAIPromptCacheParams(
+      model,
+      retention ?? "short",
+      compat,
+      model.api === "openai-responses" ? parsePromptCacheTtl(params.promptCacheTtl) : undefined,
+    );
+    // Omitted or unsupported overrides retain the native model's default minimum.
+    return {
+      observedAt: requestStartedAt,
+      windowMs: policy.prompt_cache_options?.ttl === "12h" ? 43_200_000 : 1_800_000,
+      basis: "openai-minimum",
+    };
   }
   // Legacy OpenAI lifetimes are variable, not 24h deadlines. Proxies,
   // Bedrock and Vertex have distinct contracts; Gemini resources cache

@@ -98,6 +98,7 @@ afterEach(() => {
 it.each([
   "expiry",
   "expiry-30m",
+  "expiry-12h",
   "heuristic",
   "activity-reset",
   "window-elapsed-during-flush",
@@ -117,7 +118,11 @@ it.each([
 ] as const)("serves optional compaction safely for %s", async (mode) => {
   vi.useFakeTimers();
   const halfHour = mode === "expiry-30m" || mode === "heuristic" || mode === "activity-reset";
-  const expectExpiry = halfHour || mode === "expiry" || mode === "window-elapsed-during-flush";
+  const expectExpiry =
+    halfHour ||
+    mode === "expiry-12h" ||
+    mode === "expiry" ||
+    mode === "window-elapsed-during-flush";
   requireActivePluginRegistry();
   const sessionKey = "agent:main:idle-compaction";
   const entry: SessionEntry = {
@@ -170,13 +175,15 @@ it.each([
           ? 60_000
           : mode === "short-window" || mode === "self-request"
             ? 300_000
-            : halfHour
-              ? 1_800_000
-              : 3_600_000,
+            : mode === "expiry-12h"
+              ? 43_200_000
+              : halfHour
+                ? 1_800_000
+                : 3_600_000,
       basis:
         mode === "heuristic" || mode === "activity-reset"
           ? "codex-idle-heuristic"
-          : mode === "expiry-30m"
+          : mode === "expiry-30m" || mode === "expiry-12h"
             ? "openai-minimum"
             : "anthropic-ttl",
     },
@@ -221,7 +228,7 @@ it.each([
   if (mode === "expired-before-admission") {
     vi.setSystemTime(Date.now() + 3_600_000);
   }
-  const delay = halfHour ? 1_500_000 : 3_300_000;
+  const delay = mode === "expiry-12h" ? 42_900_000 : halfHour ? 1_500_000 : 3_300_000;
   await vi.advanceTimersByTimeAsync(delay - 1);
   await waitForSessionMaintenance(sessionKey);
   expect(maintenanceRuntime.requestedCompactions).toEqual(

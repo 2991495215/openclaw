@@ -1,3 +1,5 @@
+import { resolveOpenAIPromptCacheParams } from "@openclaw/ai/internal/openai";
+import { resolveOpenAICompletionsCompat } from "@openclaw/ai/transports";
 import { describe, expect, it } from "vitest";
 import type { Model } from "../../llm/types.js";
 import { planCacheExpiryCompaction } from "../session-maintenance/cache-expiry.js";
@@ -84,6 +86,71 @@ describe("cache-expiry qualification", () => {
       ).toBeUndefined();
     },
   );
+
+  it.each([
+    { retention: "long", promptCacheTtl: "12h", wireTtl: "12h", windowMs: 43_200_000 },
+    { retention: "short", promptCacheTtl: "12h", wireTtl: "12h", windowMs: 43_200_000 },
+    { retention: "long", promptCacheTtl: "30m", wireTtl: "30m", windowMs: 1_800_000 },
+    { retention: "none", promptCacheTtl: "12h", wireTtl: undefined, windowMs: undefined },
+    { retention: "long", promptCacheTtl: undefined, wireTtl: "30m", windowMs: 1_800_000 },
+    { retention: "short", promptCacheTtl: undefined, wireTtl: undefined, windowMs: 1_800_000 },
+    {
+      retention: "short",
+      promptCacheTtl: "12h",
+      compat: { supportsLongCacheRetention: false },
+      wireTtl: undefined,
+      windowMs: 1_800_000,
+    },
+    {
+      retention: "long",
+      promptCacheTtl: "12h",
+      compat: { supportsPromptCacheKey: false },
+      wireTtl: undefined,
+      windowMs: undefined,
+    },
+  ] as const)("follows the actual API lifetime policy: %j", (scenario) => {
+    const model = { ...openai, ...("compat" in scenario ? { compat: scenario.compat } : {}) };
+    const policy = resolveOpenAIPromptCacheParams(
+      model,
+      scenario.retention,
+      resolveOpenAICompletionsCompat(model),
+      scenario.promptCacheTtl,
+    );
+    expect(policy.prompt_cache_options?.ttl).toBe(scenario.wireTtl);
+    const estimate = estimatePromptCacheExpiry({ ...observation, model, ...scenario });
+    expect(estimate?.windowMs).toBe(scenario.windowMs);
+    if (estimate && scenario.windowMs !== undefined) {
+      expect(planCacheExpiryCompaction(estimate, now)).toEqual({
+        notBefore: now + scenario.windowMs - 300_000,
+        expiresAt: now + scenario.windowMs,
+      });
+    }
+  });
+
+  it("does not project Responses-only TTLs onto Completions, OAuth, or custom endpoints", () => {
+    const lifetime = { promptCacheTtl: "12h" } as const;
+    expect(
+      estimatePromptCacheExpiry({
+        ...observation,
+        ...lifetime,
+        model: { ...openai, api: "openai-completions" },
+      })?.windowMs,
+    ).toBe(1_800_000);
+    expect(
+      estimatePromptCacheExpiry({ ...observation, ...lifetime, model: codex, authMode: "oauth" }),
+    ).toEqual({ observedAt: now, windowMs: 1_800_000, basis: "codex-idle-heuristic" });
+    expect(
+      estimatePromptCacheExpiry({
+        ...observation,
+        ...lifetime,
+        model: {
+          ...openai,
+          baseUrl: "https://proxy.example/v1",
+          compat: { supportsPromptCacheKey: true, supportsLongCacheRetention: true },
+        },
+      }),
+    ).toBeUndefined();
+  });
 
   it("labels the subscription idle assumption separately from provider lifetime facts", () => {
     expect(

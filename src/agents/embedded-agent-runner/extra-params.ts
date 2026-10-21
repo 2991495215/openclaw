@@ -51,6 +51,7 @@ import type { SettingsManager } from "../sessions/index.js";
 import { log } from "./logger.js";
 import {
   parseCacheRetention,
+  parsePromptCacheTtl,
   resolveCacheRetention,
   resolveExplicitCachedContent,
 } from "./prompt-cache-retention.js";
@@ -294,6 +295,12 @@ function createStreamFnWithExtraParams(
   }
 
   const streamParams: CacheRetentionStreamOptions = {};
+  const configuredPromptCacheTtl = parsePromptCacheTtl(extraParams.promptCacheTtl);
+  if (configuredPromptCacheTtl) {
+    streamParams.promptCacheTtl = configuredPromptCacheTtl;
+  } else if (extraParams.promptCacheTtl !== undefined) {
+    log.warn('ignoring invalid promptCacheTtl param; expected "30m" or "12h"');
+  }
   if (typeof extraParams.temperature === "number") {
     streamParams.temperature = extraParams.temperature;
   }
@@ -369,11 +376,13 @@ function createStreamFnWithExtraParams(
       return underlying(callModel, context, options);
     }
     const effectiveCacheRetention = options?.cacheRetention ?? cacheRetention;
+    const promptCacheTtl = options?.promptCacheTtl ?? streamParams.promptCacheTtl;
     return underlying(callModel, context, {
       ...streamParams,
       ...options,
       // Own undefined means no request override; explicit none/short/long still wins.
       ...(effectiveCacheRetention ? { cacheRetention: effectiveCacheRetention } : {}),
+      ...(promptCacheTtl ? { promptCacheTtl } : {}),
     });
   };
 }

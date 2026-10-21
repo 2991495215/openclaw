@@ -110,6 +110,7 @@ export async function settleEmbeddedAttemptStream(input: {
   cache: {
     getObservation?: () => PromptCacheRequestObservation | undefined;
     retention: PromptCacheRetention;
+    promptCacheTtl?: unknown;
   };
   shouldFlushForContextEngine: boolean;
 }) {
@@ -286,6 +287,7 @@ export async function settleEmbeddedAttemptStream(input: {
             model: attempt.model,
             authMode: attempt.runtimePlan?.auth.selectedAuthMode,
             retention: input.cache.retention,
+            promptCacheTtl: input.cache.promptCacheTtl,
             usage: lastCallUsage,
             requestStartedAt: usageAssistant?.timestamp,
           })

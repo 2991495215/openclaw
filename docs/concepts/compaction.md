@@ -181,7 +181,8 @@ The timer requires positive cache-read or cache-write usage from the actual
 request, its start time, and a supported model, endpoint, and authentication mode.
 Provider-backed estimates count generation time toward the window. Every eligible
 window uses a five-minute lead: a 30-minute window schedules at 25 minutes and
-a one-hour window at 55 minutes. Already expired observations are skipped, and
+a one-hour window at 55 minutes; an effective 12-hour Responses window schedules
+at 11 hours 55 minutes. Already expired observations are skipped, and
 maintenance yields to foreground work. A changed
 session, model selection, credentials, configuration, or an intervening compaction
 invalidates pending work. Once started, maintenance uses the bounded compaction
@@ -189,7 +190,10 @@ timeout rather than discarding a paid summary when the estimated cache window pa
 
 Currently qualified routes are direct Anthropic API-key requests with an effective
 one-hour marker TTL and direct OpenAI API-key requests on GPT-5.6 and newer (the
-documented 30-minute minimum). An Anthropic `long` preference that the transport
+documented 30-minute minimum, or 12 hours when the Responses request policy accepts
+`promptCacheTtl: "12h"`). The timer uses the same lifetime selection and compatibility
+policy as the request builder; Completions and OAuth do not inherit Responses-only
+TTLs. An Anthropic `long` preference that the transport
 downgrades to a five-minute marker does not qualify. These are scheduling estimates,
 not exact expiry promises.
 
