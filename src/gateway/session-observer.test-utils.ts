@@ -74,7 +74,9 @@ beforeEach(async () => {
   });
   vi.spyOn(observerModel, "defaultPersistDigest").mockImplementation((params) =>
     trackNativeIo(() => {
-      const persist = params.storePath && persisters.get(path.resolve(params.storePath));
+      const persist =
+        params.storePath &&
+        persisters.get(resolveUnsuffixedSqliteTargetFromSessionStorePath(params.storePath).path);
       return (persist || nativePersist)(params);
     }),
   );
