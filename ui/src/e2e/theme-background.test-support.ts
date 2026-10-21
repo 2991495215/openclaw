@@ -37,7 +37,10 @@ export async function readArtwork(shell: Locator) {
     const style = getComputedStyle(element);
     const probe = document.createElement("div");
     probe.style.backgroundImage = "var(--app-background-image)";
-    probe.style.backgroundColor = "var(--bg-content, var(--bg))";
+    probe.style.backgroundColor =
+      document.documentElement.dataset.themeMode === "light"
+        ? "var(--bg)"
+        : "var(--bg-content, var(--bg))";
     probe.style.color = "var(--muted)";
     element.appendChild(probe);
     const tokenImage = getComputedStyle(probe).backgroundImage;
