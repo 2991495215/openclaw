@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo, createSignal, onCleanup, onSettled, Show, For } from "solid-js";
+import { createMemo, createSignal, onSettled, Show, For } from "solid-js";
 import type { CapabilityConsentErrorDetails } from "../../../../packages/gateway-protocol/src/capability-consent-error-details.js";
 import {
   PLUGIN_DECLARED_SURFACE_GROUPS,
@@ -74,7 +74,6 @@ type ArtTileProps = {
 
 export function PluginArtTile(props: ArtTileProps): JSX.Element {
   const slug = () => props.slug;
-  onSettled(() => props.registerIcon?.(slug));
   type ImageState = { source: string | undefined; status: "loading" | "ready" | "failed" };
   const [packageImage, setPackageImage] = createSignal<ImageState>((previous) => {
     const source = props.iconUrl;
@@ -85,8 +84,12 @@ export function PluginArtTile(props: ArtTileProps): JSX.Element {
     return previous && previous.source === source ? previous : { source, status: "loading" };
   });
   let disposed = false;
-  onCleanup(() => {
-    disposed = true;
+  onSettled(() => {
+    const releaseIcon = props.registerIcon?.(slug);
+    return () => {
+      disposed = true;
+      releaseIcon?.();
+    };
   });
   const currentImage = () =>
     packageImage().source && packageImage().status !== "failed"

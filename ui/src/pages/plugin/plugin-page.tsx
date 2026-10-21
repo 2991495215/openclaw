@@ -1,4 +1,4 @@
-import { createEffect, createMemo, Match, onCleanup, Show, Switch } from "solid-js";
+import { createEffect, createMemo, Match, onCleanup, onSettled, Show, Switch } from "solid-js";
 import { ShellLayoutBoundary } from "../../app/shell-layout-traits-solid.tsx";
 import { isStaleChunkImportError } from "../../app/stale-chunk-reload.ts";
 import { LazyViewError } from "../../components/solid/lazy-view-error.tsx";
@@ -135,14 +135,18 @@ function PluginPageContent(props: PluginPageProps, host: HTMLElement) {
           <section class="plugin-tab-embed">
             <Show when={view().generation} keyed>
               {(_generation) => {
-                onCleanup(() => lifecycle.syncPluginThemeFrame(null));
+                let frame!: HTMLIFrameElement;
+                onSettled(() => {
+                  lifecycle.syncPluginThemeFrame(frame);
+                  return () => lifecycle.syncPluginThemeFrame(null);
+                });
                 return (
                   <iframe
                     class="plugin-tab-embed__frame"
                     src={view().info?.path}
                     title={view().info?.label}
                     sandbox={resolveEmbedSandbox(context.config.current.embedSandboxMode)}
-                    ref={(frame) => lifecycle.syncPluginThemeFrame(frame)}
+                    ref={(element) => (frame = element)}
                     onLoad={lifecycle.handlePluginThemeLoad}
                   />
                 );

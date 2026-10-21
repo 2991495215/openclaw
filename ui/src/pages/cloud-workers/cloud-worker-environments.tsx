@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo, createSignal, createStore, For, Show, onCleanup, onSettled } from "solid-js";
+import { createMemo, createSignal, createStore, For, Show, onSettled } from "solid-js";
 import type {
   EnvironmentSummary,
   EnvironmentsListResult,
@@ -139,10 +139,11 @@ export function CloudWorkerEnvironments(props: { machines: () => JSX.Element }) 
     // Config and permission receipts invalidate the inventory at their synchronous owners.
     const stop = runtime.subscribe(syncInventoryInputs);
     syncInventoryInputs();
-    return stop;
+    return () => {
+      stop();
+      activeConfirmation?.abort();
+    };
   });
-
-  onCleanup(() => activeConfirmation?.abort());
 
   function canCall(method: string) {
     return canCallGatewayMethod(gateway.snapshot, method, "operator.admin");

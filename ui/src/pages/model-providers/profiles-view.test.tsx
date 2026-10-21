@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { i18n } from "../../i18n/index.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
+import type { ModelAccountUsageElement } from "./account-usage.tsx";
 import type { ModelProviderCard } from "./data.ts";
 import { ProviderProfiles, type ProviderProfilesViewProps } from "./profiles-view.tsx";
 import { card as viewCard, props as makeViewProps } from "./view.test-support.tsx";
@@ -277,6 +278,38 @@ it("releases a removed row's drag without handling the next Escape", () => {
   expect(stopPropagation).not.toHaveBeenCalled();
   expect(hitTest).not.toHaveBeenCalled();
   expect(onProfileOrderChange).not.toHaveBeenCalled();
+});
+
+it("keeps only mounted account usage controls registered when a retained profile changes type", () => {
+  const registered = new Set<ModelAccountUsageElement>();
+  const providerCard = orderedCard({ openai: ["openai:one"] });
+  const { container, update } = mount(
+    providerCard,
+    props({
+      registerAccountUsage: (element) => {
+        registered.add(element);
+        return () => registered.delete(element);
+      },
+    }),
+  );
+  const row = rowFor(container, "openai:one");
+  const initialUsage = row.querySelector("openclaw-model-account-usage")!;
+  expect([...registered]).toEqual([initialUsage]);
+
+  update({
+    ...providerCard,
+    profiles: [{ ...providerCard.profiles[0]!, type: "api_key" }],
+  });
+  expect(rowFor(container, "openai:one")).toBe(row);
+  expect(row.querySelector("openclaw-model-account-usage")).toBeNull();
+  expect([...registered]).toEqual([]);
+
+  update(providerCard);
+  const replacementUsage = row.querySelector("openclaw-model-account-usage")!;
+  expect(replacementUsage).not.toBe(initialUsage);
+  expect([...registered]).toEqual([replacementUsage]);
+  update({ ...providerCard, profiles: [] });
+  expect([...registered]).toEqual([]);
 });
 
 it("prevents both pointer and keyboard reordering without write access", () => {

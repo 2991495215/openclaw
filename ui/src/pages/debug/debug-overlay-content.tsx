@@ -1,4 +1,4 @@
-import { createComponent, createSignal, createStore, For, onSettled, Show } from "solid-js";
+import { createSignal, createStore, For, onSettled, Show } from "solid-js";
 import type { ApplicationContext } from "../../app/context.ts";
 import type { ApplicationGateway } from "../../app/gateway.ts";
 import { createGatewayConnectionLifecycle } from "../../lib/gateway-connection-lifecycle.ts";
@@ -167,6 +167,9 @@ function Content(
   });
   const state = (id: string) => sections[id] ?? { status: "loading" as const };
   const value = (id: string) => {
+    if (id === "events") {
+      eventRevision();
+    }
     const current = state(id);
     return current.status === "ready" ? current.value : undefined;
   };
@@ -211,17 +214,7 @@ function Content(
                 when={state(entry.id).status === "ready"}
                 fallback={<div class="debug-overlay__empty">{t("debug.overlay.unavailable")}</div>}
               >
-                {createComponent(entry.render, {
-                  get value() {
-                    if (entry.id === "events") {
-                      eventRevision();
-                    }
-                    return value(entry.id);
-                  },
-                  get history() {
-                    return history();
-                  },
-                })}
+                <entry.render value={value(entry.id)} history={history()} />
               </Show>
             </Show>
           </section>

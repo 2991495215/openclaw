@@ -147,7 +147,7 @@ it.each(
   [
     [],
     ["ui/src/pages/activity/deleted.test.ts"],
-    ["ui/src/pages/activity/activity-page.test.ts", "ui/src/pages/activity/activity-page.ts"],
+    ["ui/src/pages/activity/activity-page.test.ts", "ui/src/pages/activity/activity-page.tsx"],
     ["ui/src/test-helpers/control-ui-e2e.test.ts"],
     ["ui/src/app/gateway-store.test-support.ts"],
     ["ui/src/styles/cursor-policy.browser.test.ts"],

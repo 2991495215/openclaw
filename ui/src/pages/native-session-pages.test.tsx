@@ -12,7 +12,7 @@ import { createNavigationPreferencesFixture } from "../test-helpers/application-
 import { mountSolid } from "../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../test-helpers/solid-application-context.tsx";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
-import { ActivityPage } from "./activity/activity-page.ts";
+import { ActivityPage } from "./activity/activity-page.tsx";
 import { pageContext } from "./agents/agents-page.test-support.ts";
 import { AgentsPage } from "./agents/agents-page.tsx";
 

@@ -547,16 +547,20 @@ export function MeetingsPage(props: { routeSearch?: string }) {
       onSettled(focusCurrentTarget);
     },
   );
-  const timer = globalThis.setInterval(() => refreshLive(), 3_000);
-  const activate = () => refreshLive(true);
-  onCleanup(listen(document, "visibilitychange", activate));
-  onCleanup(listen(globalThis, "focus", activate));
-  onCleanup(() => {
-    active = false;
-    gateway.dispose();
-    cancelSummaryGeneration();
-    cancelExport();
-    globalThis.clearInterval(timer);
+  onSettled(() => {
+    const timer = globalThis.setInterval(() => refreshLive(), 3_000);
+    const activate = () => refreshLive(true);
+    const stopVisibility = listen(document, "visibilitychange", activate);
+    const stopFocus = listen(globalThis, "focus", activate);
+    return () => {
+      stopVisibility();
+      stopFocus();
+      active = false;
+      gateway.dispose();
+      cancelSummaryGeneration();
+      cancelExport();
+      globalThis.clearInterval(timer);
+    };
   });
 
   const activeReaderTask = () => (readerTab() === "summary" ? summaryTask : readerTask);
