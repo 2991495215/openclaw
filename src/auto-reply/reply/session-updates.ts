@@ -24,45 +24,6 @@ import { getRemoteSkillEligibility } from "../../skills/runtime/remote.js";
 import { resolveReusableWorkspaceSkillSnapshot } from "../../skills/runtime/session-snapshot.js";
 import { publishReplySessionEntry, type ReplySessionEntryHandle } from "./session-entry-handle.js";
 
-async function persistSkillSnapshot(params: {
-  sessionEntryHandle?: ReplySessionEntryHandle;
-  sessionStore?: Record<string, SessionEntry>;
-  sessionKey: string;
-  storePath?: string;
-  currentEntry: SessionEntry;
-  skillsSnapshot: SessionEntry["skillsSnapshot"];
-  isFirstTurnInSession: boolean;
-  assertCurrent?: SessionSourceAssertion;
-}): Promise<SessionEntry | undefined> {
-  params.assertCurrent?.();
-  const updates = {
-    updatedAt: Date.now(),
-    ...(params.isFirstTurnInSession ? { systemSent: true } : {}),
-    skillsSnapshot: params.skillsSnapshot,
-  };
-  if (!params.storePath) {
-    const current = params.sessionEntryHandle
-      ? params.sessionEntryHandle.get(params.sessionKey)
-      : params.sessionStore?.[params.sessionKey];
-    // Preparation can yield to session management. Apply only the owned fields
-    // to its current row, including field removals such as unpinning.
-    const nextEntry = { ...(current ?? params.currentEntry), ...updates };
-    publishReplySessionEntry(params, nextEntry);
-    return nextEntry;
-  }
-  const persistedEntry = await applySessionEntryOperation(
-    {
-      storePath: params.storePath,
-      sessionKey: params.sessionKey,
-    },
-    { kind: "fields", patch: updates },
-    sessionEntryCommitGuardOptions(params.assertCurrent),
-  );
-  params.assertCurrent?.();
-  publishReplySessionEntry(params, persistedEntry ?? undefined);
-  return persistedEntry ?? undefined;
-}
-
 function readSkillSnapshotState(entry: SessionEntry | undefined) {
   return {
     sessionEntry: entry,
@@ -170,7 +131,7 @@ export async function ensureSkillSnapshot(params: {
     sessionKey &&
     (isFirstTurnInSession || !existingSnapshot || snapshotState.shouldRefresh)
   ) {
-    nextEntry = await persistSkillSnapshot({
+    const persistence = {
       ...params,
       sessionKey,
       currentEntry: nextEntry ?? {
@@ -178,7 +139,36 @@ export async function ensureSkillSnapshot(params: {
         updatedAt: Date.now(),
       },
       skillsSnapshot,
-    });
+    };
+    nextEntry = await (async () => {
+      persistence.assertCurrent?.();
+      const updates = {
+        updatedAt: Date.now(),
+        ...(persistence.isFirstTurnInSession ? { systemSent: true } : {}),
+        skillsSnapshot: persistence.skillsSnapshot,
+      };
+      if (!persistence.storePath) {
+        const current = persistence.sessionEntryHandle
+          ? persistence.sessionEntryHandle.get(persistence.sessionKey)
+          : persistence.sessionStore?.[persistence.sessionKey];
+        // Preparation can yield to session management. Apply only the owned fields
+        // to its current row, including field removals such as unpinning.
+        const persistedEntry = { ...(current ?? persistence.currentEntry), ...updates };
+        publishReplySessionEntry(persistence, persistedEntry);
+        return persistedEntry;
+      }
+      const persistedEntry = await applySessionEntryOperation(
+        {
+          storePath: persistence.storePath,
+          sessionKey: persistence.sessionKey,
+        },
+        { kind: "fields", patch: updates },
+        sessionEntryCommitGuardOptions(persistence.assertCurrent),
+      );
+      persistence.assertCurrent?.();
+      publishReplySessionEntry(persistence, persistedEntry ?? undefined);
+      return persistedEntry ?? undefined;
+    })();
     if (!nextEntry) {
       return readSkillSnapshotState(undefined);
     }

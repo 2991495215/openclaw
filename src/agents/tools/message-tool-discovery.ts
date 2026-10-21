@@ -104,58 +104,6 @@ type MessageToolDeliveryRequest = {
   preparedMessageToolCatalog?: PreparedMessageToolCatalog;
 };
 
-async function recoverSessionCanonicalPeerId(params: {
-  channel: string;
-  peerId: string;
-  sessionKey?: string;
-  sessionId?: string;
-  request?: MessageToolDeliveryRequest;
-}): Promise<string> {
-  const { request } = params;
-  if (
-    !request ||
-    normalizeOptionalString(request.params.target) ||
-    (Array.isArray(request.params.targets) && request.params.targets.length > 0) ||
-    actionHasTarget(request.action, request.params, {
-      channel: params.channel,
-      aliasSpec: request.preparedMessageToolCatalog
-        ? (request.preparedMessageToolCatalog.getChannel(params.channel)?.actions
-            ?.messageActionTargetAliases?.[request.action] ?? null)
-        : undefined,
-    })
-  ) {
-    return params.peerId;
-  }
-  const plugin = getChannelPlugin(params.channel);
-  if (plugin?.messaging?.targetIdComparison !== "case-sensitive") {
-    return params.peerId;
-  }
-  const delivery = await readExactSessionDeliveryContext({
-    cfg: request.config,
-    sessionKey: params.sessionKey,
-    sessionId: params.sessionId,
-  });
-  const accountId =
-    request.accountId ??
-    resolveChannelDefaultAccountId({
-      plugin,
-      cfg: request.config,
-    });
-  if (
-    normalizeMessageChannel(delivery?.channel) !== params.channel ||
-    normalizeAccountId(delivery?.accountId) !== normalizeAccountId(accountId)
-  ) {
-    return params.peerId;
-  }
-  const storedTo = normalizeOptionalString(delivery?.to);
-  const canonical = storedTo
-    ? stripTargetProviderPrefix(storedTo, params.channel, delivery?.channel ?? "")
-    : undefined;
-  return canonical && canonical.toLowerCase() === params.peerId.toLowerCase()
-    ? canonical
-    : params.peerId;
-}
-
 function inferDeliveryFromSessionKey(
   sessionKey: string | undefined,
   canonicalPeerId?: string,
@@ -221,13 +169,52 @@ export async function resolveEffectiveCurrentChannelContextForRequest(
     route &&
     channel &&
     normalizeMessageChannel(options?.currentChannelProvider) === INTERNAL_MESSAGE_CHANNEL
-      ? await recoverSessionCanonicalPeerId({
-          request,
-          channel,
-          peerId: route.peerId,
-          sessionKey: options?.agentSessionKey,
-          sessionId: options?.sessionId,
-        })
+      ? await (async () => {
+          const inferredPeerId = route.peerId;
+          const sessionKey = options?.agentSessionKey;
+          const sessionId = options?.sessionId;
+          if (
+            normalizeOptionalString(request.params.target) ||
+            (Array.isArray(request.params.targets) && request.params.targets.length > 0) ||
+            actionHasTarget(request.action, request.params, {
+              channel,
+              aliasSpec: request.preparedMessageToolCatalog
+                ? (request.preparedMessageToolCatalog.getChannel(channel)?.actions
+                    ?.messageActionTargetAliases?.[request.action] ?? null)
+                : undefined,
+            })
+          ) {
+            return inferredPeerId;
+          }
+          const plugin = getChannelPlugin(channel);
+          if (plugin?.messaging?.targetIdComparison !== "case-sensitive") {
+            return inferredPeerId;
+          }
+          const delivery = await readExactSessionDeliveryContext({
+            cfg: request.config,
+            sessionKey,
+            sessionId,
+          });
+          const accountId =
+            request.accountId ??
+            resolveChannelDefaultAccountId({
+              plugin,
+              cfg: request.config,
+            });
+          if (
+            normalizeMessageChannel(delivery?.channel) !== channel ||
+            normalizeAccountId(delivery?.accountId) !== normalizeAccountId(accountId)
+          ) {
+            return inferredPeerId;
+          }
+          const storedTo = normalizeOptionalString(delivery?.to);
+          const canonical = storedTo
+            ? stripTargetProviderPrefix(storedTo, channel, delivery?.channel ?? "")
+            : undefined;
+          return canonical && canonical.toLowerCase() === inferredPeerId.toLowerCase()
+            ? canonical
+            : inferredPeerId;
+        })()
       : undefined;
   return projectCurrentChannelContext(
     options,

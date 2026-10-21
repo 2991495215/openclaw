@@ -43,37 +43,6 @@ function formatMarkerOrSecret(value: string): string {
     : maskApiKey(value);
 }
 
-function formatProfileSecretLabel(params: {
-  value: string | undefined;
-  ref: { source: string; id: string } | undefined;
-  kind: "api-key" | "token";
-}): string {
-  const value = normalizeOptionalString(params.value) ?? "";
-  const display = value
-    ? formatMarkerOrSecret(value)
-    : params.ref
-      ? `ref(${params.ref.source}:${params.ref.id})`
-      : "missing";
-  return params.kind === "token" ? `token:${display}` : display;
-}
-
-function resolveProfileSourceAgentDir(params: {
-  agentDir?: string;
-  profileIds: string[];
-}): string | undefined {
-  if (!params.agentDir || params.profileIds.length === 0) {
-    return params.agentDir;
-  }
-  const localStore = loadPersistedAuthProfileStore(params.agentDir);
-  if (params.profileIds.some((profileId) => Boolean(localStore?.profiles[profileId]))) {
-    return params.agentDir;
-  }
-  const mainStore = loadPersistedAuthProfileStore(undefined);
-  return params.profileIds.every((profileId) => Boolean(mainStore?.profiles[profileId]))
-    ? undefined
-    : params.agentDir;
-}
-
 export function resolveProviderAuthOverview(params: {
   provider: string;
   cfg: OpenClawConfig;
@@ -108,12 +77,17 @@ export function resolveProviderAuthOverview(params: {
       return `${profileId}=missing`;
     }
     if (profile.type === "api_key" || profile.type === "token") {
+      const rawSecretValue = profile.type === "api_key" ? profile.key : profile.token;
+      const secretRef = profile.type === "api_key" ? profile.keyRef : profile.tokenRef;
+      const secretKind = profile.type === "api_key" ? "api-key" : "token";
+      const secretValue = normalizeOptionalString(rawSecretValue) ?? "";
+      const secretDisplay = secretValue
+        ? formatMarkerOrSecret(secretValue)
+        : secretRef
+          ? `ref(${secretRef.source}:${secretRef.id})`
+          : "missing";
       return withUnusableSuffix(
-        `${profileId}=${formatProfileSecretLabel({
-          value: profile.type === "api_key" ? profile.key : profile.token,
-          ref: profile.type === "api_key" ? profile.keyRef : profile.tokenRef,
-          kind: profile.type === "api_key" ? "api-key" : "token",
-        })}`,
+        `${profileId}=${secretKind === "token" ? `token:${secretDisplay}` : secretDisplay}`,
         profileId,
       );
     }
@@ -185,16 +159,23 @@ export function resolveProviderAuthOverview(params: {
       return { kind: "models.json", detail: formatMarkerOrSecret(providerEntryKey.apiKey) };
     }
     if (profiles.length > 0) {
+      const sourceAgentDir = (() => {
+        const agentDir = params.agentDir;
+        if (!agentDir || profiles.length === 0) {
+          return agentDir;
+        }
+        const localStore = loadPersistedAuthProfileStore(agentDir);
+        if (profiles.some((profileId) => Boolean(localStore?.profiles[profileId]))) {
+          return agentDir;
+        }
+        const mainStore = loadPersistedAuthProfileStore(undefined);
+        return profiles.every((profileId) => Boolean(mainStore?.profiles[profileId]))
+          ? undefined
+          : agentDir;
+      })();
       return {
         kind: "profiles",
-        detail: shortenHomePath(
-          resolveAuthStorePathForDisplay(
-            resolveProfileSourceAgentDir({
-              agentDir: params.agentDir,
-              profileIds: profiles,
-            }),
-          ),
-        ),
+        detail: shortenHomePath(resolveAuthStorePathForDisplay(sourceAgentDir)),
       };
     }
     if (env) {

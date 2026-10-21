@@ -208,49 +208,6 @@ export function resolveSelectedCapabilityProvider<T extends CapabilityProvider>(
   return undefined;
 }
 
-async function resolveCapabilityModelCandidatesForTool(params: {
-  cfg?: OpenClawConfig;
-  workspaceDir?: string;
-  agentDir?: string;
-  authStore?: AuthProfileStore;
-  authProfileStoreSource?: boolean;
-  providers: readonly CapabilityProvider[];
-}): Promise<string[]> {
-  const providerDefaults = new Map<string, { ref: string; aliases: string[] }>();
-  for (const provider of params.providers) {
-    const providerId = provider.id.trim();
-    const modelId = provider.defaultModel?.trim();
-    if (
-      !providerId ||
-      !modelId ||
-      providerDefaults.has(providerId) ||
-      !(await isCapabilityProviderConfiguredAsync({
-        ...params,
-        provider,
-      }))
-    ) {
-      continue;
-    }
-    const aliases = (provider.aliases ?? []).flatMap((alias) => {
-      const normalized = normalizeProviderId(alias);
-      return normalized ? [normalized] : [];
-    });
-    providerDefaults.set(providerId, { ref: `${providerId}/${modelId}`, aliases });
-  }
-
-  const primaryProvider = resolveDefaultModelRef(params.cfg).provider;
-  const normalizedPrimaryProvider = normalizeProviderId(primaryProvider);
-  const providerIds = [...providerDefaults.keys()].toSorted();
-  const matchesPrimaryProvider = (providerId: string): boolean =>
-    normalizeProviderId(providerId) === normalizedPrimaryProvider ||
-    providerDefaults.get(providerId)!.aliases.includes(normalizedPrimaryProvider);
-  const orderedProviders = [
-    ...providerIds.filter(matchesPrimaryProvider),
-    ...providerIds.filter((providerId) => !matchesPrimaryProvider(providerId)),
-  ];
-  return uniqueStrings(orderedProviders.map((id) => providerDefaults.get(id)!.ref));
-}
-
 /**
  * Builds the model config for a generation tool from explicit config first, then configured
  * provider defaults ordered around the agent's primary provider.
@@ -275,7 +232,42 @@ export async function resolveCapabilityModelConfigForTool(params: {
   return buildToolModelConfigFromCandidates({
     ...params,
     explicit,
-    candidates: await resolveCapabilityModelCandidatesForTool({ ...params, providers }),
+    candidates: await (async () => {
+      const candidateParams = { ...params, providers };
+      const providerDefaults = new Map<string, { ref: string; aliases: string[] }>();
+      for (const provider of candidateParams.providers) {
+        const providerId = provider.id.trim();
+        const modelId = provider.defaultModel?.trim();
+        if (
+          !providerId ||
+          !modelId ||
+          providerDefaults.has(providerId) ||
+          !(await isCapabilityProviderConfiguredAsync({
+            ...candidateParams,
+            provider,
+          }))
+        ) {
+          continue;
+        }
+        const aliases = (provider.aliases ?? []).flatMap((alias) => {
+          const normalized = normalizeProviderId(alias);
+          return normalized ? [normalized] : [];
+        });
+        providerDefaults.set(providerId, { ref: `${providerId}/${modelId}`, aliases });
+      }
+
+      const primaryProvider = resolveDefaultModelRef(candidateParams.cfg).provider;
+      const normalizedPrimaryProvider = normalizeProviderId(primaryProvider);
+      const providerIds = [...providerDefaults.keys()].toSorted();
+      const matchesPrimaryProvider = (providerId: string): boolean =>
+        normalizeProviderId(providerId) === normalizedPrimaryProvider ||
+        providerDefaults.get(providerId)!.aliases.includes(normalizedPrimaryProvider);
+      const orderedProviders = [
+        ...providerIds.filter(matchesPrimaryProvider),
+        ...providerIds.filter((providerId) => !matchesPrimaryProvider(providerId)),
+      ];
+      return uniqueStrings(orderedProviders.map((id) => providerDefaults.get(id)!.ref));
+    })(),
     // Candidate selection already checked each provider against its current auth owner.
     isProviderConfigured: () => true,
   });

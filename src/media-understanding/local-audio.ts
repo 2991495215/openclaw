@@ -165,35 +165,6 @@ async function inspectLinkedLibraries(
   );
 }
 
-async function inspectWhisperBackend(params: {
-  command: string;
-  platform: NodeJS.Platform;
-  arch: string;
-}): Promise<Pick<LocalAudioCandidate, "capableBackend" | "evidence">> {
-  const libraries = await inspectLinkedLibraries(params.command, params.platform);
-  if (/(?:ggml[-_]?cuda|libcuda|libcudart)/i.test(libraries ?? "")) {
-    return {
-      capableBackend: "cuda",
-      evidence: "whisper-cli links a CUDA ggml runtime",
-    };
-  }
-  if (params.platform === "darwin" && params.arch === "arm64") {
-    const realCommand = await fs.realpath(params.command).catch(() => params.command);
-    if (
-      /(?:ggml[-_]?metal|Metal\.framework)/i.test(libraries ?? "") ||
-      /\/Cellar\/whisper-cpp\/[^/]+\/bin\/whisper-cli$/.test(realCommand)
-    ) {
-      return {
-        capableBackend: "metal",
-        evidence: "Apple Silicon Homebrew whisper-cpp runtime with Metal support",
-      };
-    }
-  }
-  return {
-    evidence: "whisper-cli backend cannot be proven without loading a model",
-  };
-}
-
 function rank(candidate: LocalAudioCandidate): number {
   if (
     candidate.id === "whisper-cli" &&
@@ -234,11 +205,30 @@ export async function inspectLocalAudioSelection(language?: string): Promise<Loc
       : null;
   const whisperReady = whisperCommand !== null && Boolean(whisperModel);
   const whisperBackend = whisperCommand
-    ? await inspectWhisperBackend({
-        command: whisperCommand,
-        platform,
-        arch,
-      })
+    ? await (async (): Promise<Pick<LocalAudioCandidate, "capableBackend" | "evidence">> => {
+        const libraries = await inspectLinkedLibraries(whisperCommand, platform);
+        if (/(?:ggml[-_]?cuda|libcuda|libcudart)/i.test(libraries ?? "")) {
+          return {
+            capableBackend: "cuda",
+            evidence: "whisper-cli links a CUDA ggml runtime",
+          };
+        }
+        if (platform === "darwin" && arch === "arm64") {
+          const realCommand = await fs.realpath(whisperCommand).catch(() => whisperCommand);
+          if (
+            /(?:ggml[-_]?metal|Metal\.framework)/i.test(libraries ?? "") ||
+            /\/Cellar\/whisper-cpp\/[^/]+\/bin\/whisper-cli$/.test(realCommand)
+          ) {
+            return {
+              capableBackend: "metal",
+              evidence: "Apple Silicon Homebrew whisper-cpp runtime with Metal support",
+            };
+          }
+        }
+        return {
+          evidence: "whisper-cli backend cannot be proven without loading a model",
+        };
+      })()
     : {
         evidence: "whisper-cli command not found",
       };
