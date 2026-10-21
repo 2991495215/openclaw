@@ -30,6 +30,15 @@ it("leaves Talk while an admitted native language edit is held", async () => {
     gateway,
     nativeDeviceSettings: capability,
   } as unknown as ApplicationContext);
+  Object.assign(context.runtimeConfig.state, {
+    configSchema: {
+      type: "object",
+      properties: {
+        broadcast: { type: "object", properties: { strategy: { type: "string" } } },
+      },
+    },
+    configForm: { broadcast: { strategy: "sequential" } },
+  });
   const provider = createSolidApplicationContextProvider(context);
   const routes = pages.filter(
     (page): page is Extract<(typeof pages)[number], { id: ConfigPageId }> =>
@@ -73,11 +82,16 @@ it("leaves Talk while an admitted native language edit is held", async () => {
       }),
     );
     const navigation = router.navigate("advanced", context);
-    await waitForSolid(() =>
+    await waitForSolid(() => {
       expect(view.querySelector(".content-header--settings .page-title")?.textContent).toBe(
         "Advanced",
-      ),
-    );
+      );
+      expect(view.querySelector<HTMLInputElement>("#config-section-broadcast input")?.value).toBe(
+        "sequential",
+      );
+      expect(view.querySelector("openclaw-talk-settings")).toBeNull();
+      expect(view.querySelector('select[aria-label="Primary language"]')).toBeNull();
+    });
     await navigation;
     expect(capability.snapshot?.voice.locale?.primary).toBe("en-US");
     held.resolve(accepted);
@@ -85,6 +99,11 @@ it("leaves Talk while an admitted native language edit is held", async () => {
     expect(view.querySelector(".content-header--settings .page-title")?.textContent).toBe(
       "Advanced",
     );
+    expect(view.querySelector<HTMLInputElement>("#config-section-broadcast input")?.value).toBe(
+      "sequential",
+    );
+    expect(view.querySelector("openclaw-talk-settings")).toBeNull();
+    expect(view.querySelector('select[aria-label="Primary language"]')).toBeNull();
   } finally {
     held.resolve(accepted);
     view.dispose();
