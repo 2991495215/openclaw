@@ -34,7 +34,6 @@ import { Icon } from "./solid/icon.tsx";
 import { ShortcutHint } from "./solid/kbd.tsx";
 import { renderNewSessionLink as NewSessionLink } from "./solid/new-session-link.tsx";
 import { renderSessionOwnerAvatar } from "./solid/session-presentation.tsx";
-import { SidebarCommunityInvite } from "./solid/sidebar-community-invite.tsx";
 
 type SidebarZone = ReturnType<AppSidebarRenderHost["reconciledSidebarZone"]>;
 type RailPinTouchPress = {
@@ -190,17 +189,7 @@ export function renderSidebarRail(host: AppSidebarRenderHost): JSX.Element {
           }}
         </For>
       </div>
-      <div class="sidebar-rail__bottom">
-        <Show
-          when={
-            host.sessionDataContext?.theme.branding.communityLinks &&
-            host.sessionDataContext.config.current.communityInvite
-          }
-        >
-          <SidebarCommunityInvite />
-        </Show>
-        {renderAppSidebarFooterBar(host)}
-      </div>
+      <div class="sidebar-rail__bottom">{renderAppSidebarFooterBar(host)}</div>
     </nav>
   );
 }
