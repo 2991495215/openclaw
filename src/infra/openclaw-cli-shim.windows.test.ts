@@ -7,11 +7,13 @@ import {
   buildWindowsCmdExeCommandLine,
   resolveTrustedWindowsCmdExe,
 } from "../process/windows-command.js";
+import { withEnvAsync } from "../test-utils/env.js";
 import { withTempDir } from "../test-utils/temp-dir.js";
 import { resolveCurrentOpenClawCliInvocation } from "./openclaw-cli-invocation.js";
 import {
   createSourceCliFixture,
   runSourceCliProbe,
+  withSourceCliParent,
 } from "./openclaw-cli-invocation.test-support.js";
 import { clearGatewayAgentCliShim, prepareGatewayAgentCliShim } from "./openclaw-cli-shim.js";
 
@@ -37,9 +39,11 @@ async function sourceFixture(root: string) {
         args,
       );
     },
-    async shim(env = {}) {
+    async shim(profile?: string) {
       const stateDir = path.join(root, "state");
-      await prepareGatewayAgentCliShim({ env, invocation: f.invocation, stateDir });
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir, OPENCLAW_PROFILE: profile }, () =>
+        withSourceCliParent(f, prepareGatewayAgentCliShim),
+      );
       return path.join(stateDir, "tmp", "agent-cli", "openclaw.cmd");
     },
     cmd(file: string, args: string[], expansion = "on") {
@@ -62,7 +66,7 @@ describe.skipIf(process.platform !== "win32")("native Windows source CLI shim", 
         const f = await sourceFixture(root);
         const args = ["--profile", "work", "probe"];
         f.control(args);
-        const shim = await f.shim({ OPENCLAW_PROFILE: "work" });
+        const shim = await f.shim("work");
         f.check(
           f.cmd(shim, ["probe"], expansion),
           f.callerCwd,
