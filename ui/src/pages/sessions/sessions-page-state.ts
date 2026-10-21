@@ -1302,9 +1302,9 @@ export function createSessionsPage(
     const personGroupingAvailable = (state.result?.owners?.length ?? 0) > 1;
     return {
       ...viewState,
-      loading: state.loading || details.loading(),
+      loading: state.loading || details.pending(),
+      readDetails: details.read,
       refreshDisabled: application.gateway.snapshot.phase !== "connected",
-      error: details.error() ?? state.error,
       basePath: application.basePath,
       agentId: resolveSessionNavigationAgentId(application),
       allAgentsScope: application.agentSelection.state.scopeId === null,

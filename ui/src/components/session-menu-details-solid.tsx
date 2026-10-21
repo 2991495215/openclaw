@@ -1,4 +1,4 @@
-import { For, createMemo, createSignal } from "solid-js";
+import { Errored, For, Loading, createMemo, createSignal } from "solid-js";
 import { SESSION_COMMUNICATION_MODES } from "../../../packages/gateway-protocol/src/session-communication.js";
 import { registerSessionOrganizationEnglish } from "../i18n/locales/en-session-organization.ts";
 import { formatUiError } from "../lib/format-error.ts";
@@ -242,6 +242,35 @@ export function useSessionMenuDetails(
       : []),
     communicationEnd,
   ];
-  const error = () => actions.advanced.error;
-  return { ownerStatus, ownerOptions, communication, error };
+  const readSettings = () => {
+    actions.advanced.read();
+    return null;
+  };
+  const settingsStatus: MenuEntry = {
+    kind: "group",
+    id: "settings-status",
+    get items() {
+      return [{ id: "reload-settings", label: t("common.retry"), class: "session-menu__item" }];
+    },
+    render: (retry) => (
+      // Each admitted read owns its error surface, so retry clears the previous failure.
+      <For each={[actions.advanced.request()]}>
+        {() => (
+          <Errored
+            fallback={(error) => (
+              <>
+                <div class="session-menu__info" role="alert">
+                  {formatUiError(error())}
+                </div>
+                {retry}
+              </>
+            )}
+          >
+            <Loading>{readSettings()}</Loading>
+          </Errored>
+        )}
+      </For>
+    ),
+  };
+  return { ownerStatus, ownerOptions, communication, settingsStatus };
 }

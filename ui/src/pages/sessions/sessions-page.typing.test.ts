@@ -550,18 +550,19 @@ describe("Sessions page typing and detail ownership", () => {
     });
   });
   it.each([
-    { entry: "interactive", closeBeforeReply: false },
-    { entry: "deep-link", closeBeforeReply: false },
-    { entry: "interactive", closeBeforeReply: true },
+    { entry: "interactive", closeBeforeReply: false, failFirst: false },
+    { entry: "deep-link", closeBeforeReply: false, failFirst: false },
+    { entry: "interactive", closeBeforeReply: true, failFirst: false },
+    { entry: "interactive", closeBeforeReply: false, failFirst: true },
   ])(
-    "loads full settings for the expanded compact row ($entry, closed: $closeBeforeReply)",
-    async ({ entry, closeBeforeReply }) => {
+    "loads full settings for the expanded compact row ($entry, closed: $closeBeforeReply, retry: $failFirst)",
+    async ({ entry, closeBeforeReply, failFirst }) => {
       const row: GatewaySessionRow = {
         ...result("agent:main:details").sessions[0]!,
         sessionId: "details-session",
         rowMode: "compact",
       };
-      const descriptor = createDeferred<{ session: GatewaySessionRow }>();
+      let descriptor = createDeferred<{ session: GatewaySessionRow }>();
       let description = descriptor.promise;
       const request = listRequest(() => sessionsResult([row], 1), {
         "sessions.subscribe": subscribed,
@@ -589,6 +590,25 @@ describe("Sessions page typing and detail ownership", () => {
       await advance();
       expect(calls("describe")).toHaveLength(1);
       expect(select()?.disabled).toBe(true);
+      let descriptorReads = 1;
+      if (failFirst) {
+        const originalPanel = panel();
+        descriptor.reject(new Error("Settings unavailable"));
+        await advance();
+        expect(page.querySelector('.sessions-error[role="alert"]')?.textContent).toContain(
+          "Settings unavailable",
+        );
+        expect(panel()).toBe(originalPanel);
+        descriptor = createDeferred<{ session: GatewaySessionRow }>();
+        description = descriptor.promise;
+        await toggle();
+        await toggle();
+        await advance();
+        descriptorReads += 1;
+        expect(calls("describe")).toHaveLength(descriptorReads);
+        expect(page.querySelector('.sessions-error[role="alert"]')).toBeNull();
+        expect(select()?.disabled).toBe(true);
+      }
       const held = page.result;
       if (closeBeforeReply) {
         await toggle();
@@ -621,7 +641,7 @@ describe("Sessions page typing and detail ownership", () => {
       if (entry === "interactive") {
         await toggle();
         await toggle();
-        expect(calls("describe")).toHaveLength(1);
+        expect(calls("describe")).toHaveLength(descriptorReads);
         description = Promise.resolve({
           session: { ...full, updatedAt: 2, thinkingDefault: "off" },
         });
@@ -632,7 +652,7 @@ describe("Sessions page typing and detail ownership", () => {
         });
         await advance();
         await page.updateComplete;
-        expect(calls("describe")).toHaveLength(2);
+        expect(calls("describe")).toHaveLength(descriptorReads + 1);
         expect(select()?.options[0]?.textContent?.trim()).toBe("Inherited: Off");
       }
     },

@@ -2,6 +2,7 @@ import type { SessionsPageOwner } from "./sessions-page-state.ts";
 
 type View = ReturnType<SessionsPageOwner["view"]>;
 type OptionalFields =
+  | "readDetails"
   | "labelDisabledReason"
   | "patchAdminDisabledReason"
   | "groupWriteDisabledReason"

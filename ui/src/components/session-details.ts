@@ -1,6 +1,5 @@
-import { createSignal, onCleanup } from "solid-js";
+import { createMemo, createSignal, isPending, onCleanup } from "solid-js";
 import type { GatewaySessionRow } from "../api/types.ts";
-import { formatUiError } from "../lib/format-error.ts";
 import type {
   SessionCapability,
   SessionRowObservation,
@@ -8,7 +7,6 @@ import type {
 
 type DetailScope = { sessions: Pick<SessionCapability, "observeRow" | "describe"> };
 type DetailRow = Pick<GatewaySessionRow, "key" | "sessionId" | "rowMode" | "agentId">;
-type DetailRequestState = { loading: boolean; error: string | null };
 type DetailBinding = {
   matches: () => boolean;
   dispose: () => void;
@@ -22,20 +20,20 @@ export function createSessionDetails<Scope extends DetailScope>(options: {
   row: () => DetailRow | undefined;
   agentId: (row: DetailRow, scope: Scope) => string;
 }) {
-  const [state, setState] = createSignal<DetailRequestState>({ loading: false, error: null });
+  const [request, setRequest] = createSignal<Promise<void>>();
+  // The initial, idle read is synchronous; only admitted descriptor requests suspend.
+  const read = createMemo(() => request());
   const [rowRevision, setRowRevision] = createSignal(0);
   const rowChanged = () => setRowRevision((value) => value + 1);
-  let loading = false;
   let activeBinding: DetailBinding | undefined;
 
   const release = () => {
     activeBinding?.dispose();
     activeBinding = undefined;
-    loading = false;
   };
   const reset = () => {
     release();
-    setState({ loading: false, error: null });
+    setRequest(undefined);
     rowChanged();
   };
   onCleanup(release);
@@ -54,6 +52,7 @@ export function createSessionDetails<Scope extends DetailScope>(options: {
     const agentId = options.agentId(row, scope);
     // Registration may notify before the observation handle is returned.
     let observation: SessionRowObservation | null = null;
+    let reading = false;
     const binding = {
       matches: () => {
         const selected = options.row();
@@ -69,28 +68,29 @@ export function createSessionDetails<Scope extends DetailScope>(options: {
         observation?.row && observation.row.sessionId === sessionId ? observation.row : null,
     };
     const current = () => activeBinding === binding && binding.matches();
-    const refresh = async () => {
-      if (loading || !current()) {
+    const refresh = () => {
+      if (reading || !current()) {
         return;
       }
-      loading = true;
-      setState({ loading: true, error: null });
-      let error: string | null = null;
-      try {
-        if (observation?.isCurrent()) {
-          const reconcile = observation.captureReconcile();
-          const { session } = await scope.sessions.describe({ key, agentId });
-          if (current()) {
-            reconcile(session ?? undefined);
+      reading = true;
+      const completion = (async () => {
+        try {
+          if (observation?.isCurrent()) {
+            const reconcile = observation.captureReconcile();
+            const { session } = await scope.sessions.describe({ key, agentId });
+            if (current()) {
+              reconcile(session ?? undefined);
+            }
           }
+        } catch (failure) {
+          if (current()) {
+            throw failure;
+          }
+        } finally {
+          reading = false;
         }
-      } catch (failure) {
-        error = formatUiError(failure);
-      }
-      if (current()) {
-        loading = false;
-        setState({ loading: false, error });
-      }
+      })();
+      void setRequest(() => completion);
     };
     activeBinding = binding;
     observation = scope.sessions.observeRow(
@@ -100,16 +100,17 @@ export function createSessionDetails<Scope extends DetailScope>(options: {
           rowChanged();
         }
       },
-      { onInvalidate: () => void refresh() },
+      { onInvalidate: refresh },
     );
     rowChanged();
     if (row.rowMode) {
-      void refresh();
+      refresh();
     }
   }
   return {
-    error: () => state().error,
-    loading: () => state().loading,
+    request,
+    read,
+    pending: () => isPending(read),
     reset,
     synchronize,
     row() {

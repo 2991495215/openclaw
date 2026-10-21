@@ -109,17 +109,31 @@ describe("session communication menu", () => {
   });
 
   it("shows descriptor failures and retries through the settings menu", async () => {
+    const retryReply = createDeferred<ReturnType<typeof descriptor>>();
     const read = vi
       .fn()
       .mockRejectedValueOnce(new Error("Settings unavailable"))
-      .mockResolvedValue(descriptor());
+      .mockReturnValueOnce(retryReply.promise)
+      .mockRejectedValueOnce(new Error("Next settings unavailable"))
+      .mockResolvedValue(descriptor("next", { send: "ask", receive: "always" }));
     const { context } = settingsHarness(read);
     const { menu, advanced } = await setup({ context, session: target() });
     await waitForFast(() => expect(advanced.textContent).toContain("Settings unavailable"));
     expect(choice(advanced, "send", "always").disabled).toBe(true);
     await selectMenuValue(menu, "reload-settings");
+    expect(advanced.querySelector('[role="alert"]')).toBeNull();
+    expect(choice(advanced, "send", "always").disabled).toBe(true);
+    retryReply.resolve(descriptor());
     await waitForFast(() => expect(pressed(advanced, "send", "never")).toBe("true"));
     expect(advanced.textContent).not.toContain("Settings unavailable");
+
+    menu.session = { ...menu.session, ...target("next") };
+    await menu.updateComplete;
+    await waitForFast(() => expect(advanced.textContent).toContain("Next settings unavailable"));
+    await selectMenuValue(menu, "reload-settings");
+    await waitForFast(() => expect(pressed(advanced, "receive", "always")).toBe("true"));
+    expect(advanced.textContent).not.toContain("Next settings unavailable");
+    expect(read).toHaveBeenCalledTimes(4);
   });
 
   it("dispatches only the selected direction and resets raw overrides together", async () => {

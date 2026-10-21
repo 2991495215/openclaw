@@ -70,9 +70,8 @@ export function createSessionMenuSettings(options: SessionMenuSettingsOptions) {
     get communicationAvailable() {
       return Boolean(communicationState().session.effectiveCommunication);
     },
-    get error() {
-      return details.error();
-    },
+    request: details.request,
+    read: details.read,
     open() {
       setActive(true);
       details.synchronize();
