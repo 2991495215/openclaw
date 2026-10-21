@@ -26,6 +26,7 @@ import { meetingStatus } from "../../test-helpers/transcripts.test-support.ts";
 import { mountAppearanceCatalogPage as mount } from "./config-page-catalog.test-support.ts";
 import {
   completeConfigContext,
+  createConfigRouteContext as routeContext,
   mountConfigPage,
   mountConfigPageState,
   publishConfigSource,
@@ -86,61 +87,6 @@ describe("ConfigPage navigation", () => {
       );
     });
   });
-
-  function routeContext(): ApplicationContext {
-    const config = { messages: { ackReaction: "!" }, tts: { provider: "synthetic" } };
-    const subscribe = () => () => undefined;
-    const { gateway } = createApplicationGateway({
-      client: null,
-      phase: "offline",
-      offlineStable: true,
-      hello: null,
-      canvasPluginSurfaceUrl: null,
-      assistantAgentId: "main",
-      sessionKey: "main",
-      lastError: null,
-      lastErrorCode: null,
-    });
-    return {
-      basePath: "",
-      gateway,
-      settingsAgentSelection: { state: { selectedId: "main" }, subscribe },
-      agentSelection: { state: { selectedId: "main" }, subscribe },
-      agents: { state: { agentsList: null }, subscribe },
-      config: {
-        current: { assistantIdentity: { name: "OpenClaw" }, serverVersion: "test" },
-        subscribe,
-      },
-      runtimeConfig: {
-        state: {
-          connected: false,
-          configLoading: false,
-          configSchemaLoading: false,
-          configSnapshot: { config, runtimeConfig: config, hash: "settings-defaults" },
-          configSchema: {
-            type: "object",
-            properties: {
-              messages: { type: "object", properties: { ackReaction: { type: "string" } } },
-              tts: { type: "object", properties: { provider: { type: "string" } } },
-            },
-          },
-          configUiHints: {},
-          configForm: config,
-          configFormOriginal: config,
-          configRaw: JSON.stringify(config),
-          configRawOriginal: JSON.stringify(config),
-          configValid: true,
-          configIssues: [],
-        },
-        ensureLoaded: async () => undefined,
-        ensureSchemaLoaded: async () => undefined,
-        subscribe,
-      },
-      theme: { branding: resolveThemeBranding(undefined), subscribe },
-      overlays: { snapshot: {}, subscribe },
-      webPush: { snapshot: undefined, subscribe },
-    } as unknown as ApplicationContext;
-  }
 
   describe("ConfigPage route selections", () => {
     it.each([

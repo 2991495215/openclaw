@@ -472,7 +472,7 @@ export function createConfigPage(
       resetConfigViewState();
     }
     const config = runtimeConfig.state;
-    if (!config.configSnapshot && !config.configLoading) {
+    if (!config.configSnapshot && !config.configLoading && !currentConfigRead(config)) {
       void runtimeConfig
         .ensureLoaded()
         .then(() =>

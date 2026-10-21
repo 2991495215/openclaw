@@ -77,7 +77,7 @@ export function Config(props: ConfigProps) {
   };
   const schema = createMemo(() => asConfigSchema(props.schema));
   const configResult = createMemo(() => props.configRead ?? undefined);
-  const configReady = createMemo(() => {
+  const configReady = () => {
     // Loaded drafts and publication recovery retain the owner's editor interlocks.
     if (!props.configLoaded && !props.configRecoveryError) {
       const result = configResult();
@@ -86,7 +86,7 @@ export function Config(props: ConfigProps) {
       }
     }
     return true;
-  });
+  };
   const includeSections = createMemo(() => props.includeSections);
   const excludeSections = createMemo(() => props.excludeSections);
   const includedSections = createMemo(() =>
@@ -641,7 +641,7 @@ export function Config(props: ConfigProps) {
               </div>
             )}
           >
-            {props.activeSection === "__appearance__" ? (
+            {!configReady() ? null : props.activeSection === "__appearance__" ? (
               state().includeVirtualSections ? (
                 <AppearanceSection {...props} />
               ) : null
@@ -649,7 +649,7 @@ export function Config(props: ConfigProps) {
               state().includeVirtualSections ? (
                 <NotificationsSection {...props} />
               ) : null
-            ) : !configReady() ? null : state().formMode === "form" ? (
+            ) : state().formMode === "form" ? (
               <>
                 {state().unsupportedActivePaths.length > 0 &&
                 state().showModeToggle &&
