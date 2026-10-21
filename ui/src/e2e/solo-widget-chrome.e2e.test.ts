@@ -210,7 +210,7 @@ suite.define(() => {
           true,
         );
         expect(await note.inputValue()).toBe("Keep this local draft");
-        await updateBoard(gateway, {
+        const researchBoard = {
           ...board,
           revision: 4,
           widgets: [
@@ -222,7 +222,8 @@ suite.define(() => {
               title: "Research widget",
             },
           ],
-        });
+        };
+        await updateBoard(gateway, researchBoard);
         await expect.poll(() => widget.locator(chrome).count()).toBe(0);
         await page.getByRole("tab", { name: "Research", exact: true }).click();
         await page.locator('[data-widget-name="research-widget"]').waitFor();
@@ -232,8 +233,26 @@ suite.define(() => {
             .getByRole("tab", { name: "Research", exact: true })
             .getAttribute("aria-selected"),
         ).toBe("true");
-        await gateway.setMethodResponse("board.update", { ...board, revision: 5 });
-        await researchMenu.locator('[data-value="remove"]').click();
+        await gateway.setMethodResponse("board.update", { ...board, revision: 6 });
+        const refresh = await gateway.deferNext("board.get");
+        await gateway.emitGatewayEvent("board.changed", { sessionKey });
+        await gateway.waitForRequest("board.get", { after: refresh });
+        const removeButton = researchMenu.locator('[data-value="remove"]');
+        await removeButton.hover();
+        await page.mouse.down();
+        try {
+          // A normal snapshot reply must not detach the pressed menu item and lose its click.
+          await gateway.resolveDeferred("board.get", { ...researchBoard, revision: 5 });
+          await expect
+            .poll(() =>
+              page.evaluate(
+                () => document.querySelector("openclaw-board-view")?.snapshot?.revision,
+              ),
+            )
+            .toBe(5);
+        } finally {
+          await page.mouse.up();
+        }
         const remove = await gateway.waitForRequest("board.update", { after: 1 });
         expect(remove.params).toMatchObject({
           sessionKey,
