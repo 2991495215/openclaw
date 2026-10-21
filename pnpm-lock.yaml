@@ -738,6 +738,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 0.133.0
         version: 0.133.0(zod@4.6.7)
+      '@aws-sdk/credential-providers':
+        specifier: 3.1148.0
+        version: 3.1148.0
       '@aws/bedrock-token-generator':
         specifier: 1.1.0
         version: 1.1.0

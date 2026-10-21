@@ -28,6 +28,12 @@ vi.mock("openclaw/plugin-sdk/ssrf-runtime", async (importOriginal) => {
 
 const getTokenProviderMock = vi.hoisted(() => vi.fn());
 vi.mock("@aws/bedrock-token-generator", () => ({ getTokenProvider: getTokenProviderMock }));
+vi.mock("@aws-sdk/credential-providers", () => ({
+  fromNodeProviderChain: () => async () => ({
+    accessKeyId: "TEST_DISCOVERY",
+    secretAccessKey: "synthetic-secret",
+  }),
+}));
 
 const discoveryDebugSpy = vi.hoisted(() => vi.fn());
 vi.mock("openclaw/plugin-sdk/core", async (importOriginal) => {

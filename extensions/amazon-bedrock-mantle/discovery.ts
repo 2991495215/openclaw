@@ -123,12 +123,20 @@ export async function generateBearerTokenFromIam(params: {
   }
 
   try {
+    const { fromNodeProviderChain } = await import("@aws-sdk/credential-providers");
     const { getTokenProvider } = await import("@aws/bedrock-token-generator");
+    const credentials = await fromNodeProviderChain()();
     const token = await getTokenProvider({
+      credentials,
       region: params.region,
       expiresInSeconds: 7200, // 2 hours
     })();
-    const expiresAt = resolveExpiresAtMsFromDurationMs(IAM_TOKEN_TTL_MS, { nowMs: now });
+    const requestedExpiry = resolveExpiresAtMsFromDurationMs(IAM_TOKEN_TTL_MS, { nowMs: now });
+    // A presigned token cannot outlive the temporary IAM session that signed it.
+    const expiresAt =
+      requestedExpiry === undefined
+        ? undefined
+        : Math.min(requestedExpiry, credentials.expiration?.getTime() ?? Infinity);
     if (expiresAt !== undefined) {
       iamTokenCache.set(params.region, { token, expiresAt });
     }
