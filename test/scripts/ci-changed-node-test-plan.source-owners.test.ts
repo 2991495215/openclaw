@@ -848,51 +848,43 @@ describe("CI changed Node test plan", () => {
         owners.flatMap((group) => group.includePatterns ?? []).toSorted(),
       );
       expect(selectedOwners.every((group) => (group.includePatterns?.length ?? 0) > 0)).toBe(true);
-      // Canonical selection normalizes singleton capacity before compatible serial
-      // rows can coalesce; the final row size cannot recover that earlier policy.
-      const projected = expectDefined(
-        createSelectedNodeTestShardBundles(
-          groups.flatMap((group) => group.includePatterns ?? []),
-          { includeReleaseOnlyRuntimeTests: true, includePrExemptRuntimeTests: true },
-        ),
-        "canonical selected owners before row coalescing",
+      // Selected owners retain their singleton worker ceiling when serial rows share setup.
+      const canonical = expectDefined(
+        createSelectedNodeTestShardBundles(selectedFiles(shards), {
+          includePrExemptRuntimeTests: true,
+          includeReleaseOnlyRuntimeTests: true,
+        }),
+        "canonical selected commands jobs",
       );
-      for (const owner of owners) {
-        const fullJob = expectDefined(
-          full.find((job) => job.groups.includes(owner)),
-          "canonical commands job",
+      for (const group of selectedOwners) {
+        const owner = expectDefined(
+          owners.find((candidate) => candidate.shard_name === group.shard_name),
+          "canonical commands owner",
+        );
+        expect(group.configs).toEqual(owner.configs);
+        expect(group.env).toEqual(owner.env);
+        expect(group.fallbackMaxWorkers).toBe(owner.fallbackMaxWorkers);
+        expect(group.minTotalMemoryBytes).toBe(owner.minTotalMemoryBytes);
+        const ownerJob = expectDefined(
+          canonical.find((job) =>
+            job.groups.some((candidate) => candidate.shard_name === group.shard_name),
+          ),
+          "canonical selected commands job",
         );
         const selectedJob = expectDefined(
-          shards?.find((job) => job.groups?.some((group) => group.shard_name === owner.shard_name)),
+          shards?.find((job) => job.groups?.includes(group)),
           "selected commands job",
         );
-        const projectedJob = expectDefined(
-          projected.find((job) =>
-            job.groups.some((group) => group.shard_name === owner.shard_name),
-          ),
-          `projected commands job for ${owner.shard_name}`,
-        );
-        const projectedOwner = expectDefined(
-          projectedJob.groups.find((group) => group.shard_name === owner.shard_name),
-          "projected commands child",
-        );
-        const selectedOwner = expectDefined(
-          selectedJob.groups?.find((group) => group.shard_name === owner.shard_name),
-          "selected commands child",
-        );
-        for (const key of ["env", "fallbackMaxWorkers", "minTotalMemoryBytes"] as const) {
-          expect(selectedOwner[key], `${owner.shard_name} ${key}`).toEqual(projectedOwner[key]);
-        }
-        expect(selectedJob.runner).toBe(fullJob.runner);
-        const singleton = selectedJob.groups?.length === 1 && projectedJob.planConcurrency === 2;
+        expect(selectedJob.runner).toBe(ownerJob.runner);
+        const singleton = selectedJob.groups?.length === 1 && ownerJob.planConcurrency === 2;
         expect(selectedJob.env).toEqual(
-          singleton && projectedOwner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
-            ? { ...projectedJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
-            : projectedJob.env,
+          singleton && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
+            ? { ...ownerJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
+            : ownerJob.env,
         );
-        expect(selectedJob.planConcurrency).toBe(singleton ? 1 : projectedJob.planConcurrency);
-        expect(selectedJob.pretestBuildMode).toBe(fullJob.pretestBuildMode);
-        expect(selectedJob.timeoutMinutes).toBe(fullJob.timeoutMinutes);
+        expect(selectedJob.planConcurrency).toBe(singleton ? 1 : ownerJob.planConcurrency);
+        expect(selectedJob.pretestBuildMode).toBe(ownerJob.pretestBuildMode);
+        expect(selectedJob.timeoutMinutes).toBe(ownerJob.timeoutMinutes);
       }
       const configs = groups.flatMap((group) => group.configs);
       expect(configs).not.toContain("test/vitest/vitest.cron.config.ts");
