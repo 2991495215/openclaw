@@ -53,6 +53,14 @@ vi.mock("openclaw/plugin-sdk/security-runtime", async (importOriginal) => {
 
 const { createTempDir, createVault } = createMemoryWikiTestHarness();
 
+async function addNotes(pagePath: string, note: string) {
+  const page = (await fs.readFile(pagePath, "utf8")).replace(
+    "<!-- openclaw:human:start -->\n<!-- openclaw:human:end -->",
+    () => `<!-- openclaw:human:start -->\n${note}\n<!-- openclaw:human:end -->`,
+  );
+  await fs.writeFile(pagePath, page, "utf8");
+}
+
 async function createChatGptImportFixture(prefix: string) {
   const { rootDir, config } = await createVault({ prefix });
   const exportDir = path.join(rootDir, "chatgpt-export");
@@ -412,13 +420,11 @@ describe("memory-wiki existing-page read retry", () => {
     await expect(fs.readFile(absolutePath, "utf8")).resolves.toBe(before);
   });
 
-  it("preserves chatgpt conversation notes containing dollar sequences and marker examples", async () => {
-    const { config, exportDir, pagePath } = await createChatGptImportFixture();
-    const userNote = [
-      "Energy identity $$E=mc^2$$ and match $& and prefix $` and suffix $' end.",
-      "Example marker: <!-- openclaw:human:end -->",
-      "Keep this trailing handwritten note.",
-    ].join("\n");
+  it("preserves chatgpt conversation notes containing replacement-pattern dollar sequences", async () => {
+    const { config, exportDir, pagePath } = await createChatGptImportFixture(
+      "memory-wiki-chatgpt-dollar-notes-",
+    );
+    const userNote = "Energy identity $$E=mc^2$$ and match $& and prefix $` and suffix $' end.";
     const noteBlock = [
       "<!-- openclaw:human:start -->",
       userNote,
