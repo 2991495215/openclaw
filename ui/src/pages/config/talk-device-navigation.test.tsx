@@ -2,6 +2,7 @@
 
 import { createRouter } from "@openclaw/uirouter";
 import { expect, it, vi } from "vitest";
+import type { SolidRouteProps } from "../../app-route-types.tsx";
 import type { ApplicationContext } from "../../app/context.ts";
 import { createNativeDeviceSettingsCapability } from "../../app/native-device-settings.ts";
 import { mountRouterOutlet } from "../../app/router-outlet.test-support.tsx";
@@ -30,12 +31,15 @@ it("leaves Talk while an admitted native language edit is held", async () => {
     nativeDeviceSettings: capability,
   } as unknown as ApplicationContext);
   const provider = createSolidApplicationContextProvider(context);
-  const routes = pages.filter((page) => page.id === "talk" || page.id === "advanced");
+  const routes = pages.filter(
+    (page): page is Extract<(typeof pages)[number], { id: ConfigPageId }> =>
+      page.id === "talk" || page.id === "advanced",
+  );
   const production = await routes[0]!.component();
   const Page = production.renderSolid;
   const module = {
     ...production,
-    renderSolid: (props: Parameters<typeof Page>[0]) => (
+    renderSolid: (props: SolidRouteProps<ConfigPageRouteData>) => (
       <provider.wrapper>
         <Page {...props} />
       </provider.wrapper>
