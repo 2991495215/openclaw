@@ -196,6 +196,7 @@ function DeviceVoiceSettings(props: {
     }
     return options;
   });
+  // Choices and selection share one optimistic frame during overlapping native edits.
   const [locale, setLocale] = createOptimistic(() => {
     // Reading the published snapshot invalidates the pending-intent overlay.
     void props.snapshot;
@@ -203,9 +204,6 @@ function DeviceVoiceSettings(props: {
   });
   // Keep the controls owned by availability, not each optimistic selection frame.
   const hasLocale = createMemo(() => locale() !== null);
-  // Choices and selection share one optimistic frame during overlapping native edits.
-  const languageOptions = () =>
-    (locale()?.available ?? []).map(({ id, name }) => ({ value: id, label: name }));
   const changeLocales = action(function* (change: Partial<DeviceLocaleSelection>) {
     // Intent stays synchronous so consecutive gestures compose before Solid settles.
     const completion = changeDeviceLocales(props.capability, change);
@@ -254,7 +252,7 @@ function DeviceVoiceSettings(props: {
         <SettingsSelectRow
           title={t("configPage.deviceTalk.primaryLanguage")}
           value={locale()!.primary}
-          options={languageOptions()}
+          options={locale()!.available.map(({ id, name }) => ({ value: id, label: name }))}
           onChange={(value) => {
             const current = deviceLocaleSelection(props.capability);
             if (current) {
@@ -277,7 +275,7 @@ function DeviceVoiceSettings(props: {
               <For each={locale()!.additional} keyed={(id) => id}>
                 {(id) => {
                   const name = () =>
-                    languageOptions().find((option) => option.value === id())?.label ?? id();
+                    locale()?.available.find((language) => language.id === id())?.name ?? id();
                   return (
                     <div>
                       {name()}

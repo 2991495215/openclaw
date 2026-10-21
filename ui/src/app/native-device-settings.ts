@@ -342,11 +342,10 @@ export function createNativeDeviceSettingsCapability(): NativeDeviceSettingsCapa
       return;
     }
     let failure: Error | undefined;
-    const disposal = Promise.withResolvers<undefined>();
-    const stop = () => disposal.resolve(undefined);
-    pendingRequests.add(stop);
+    const { promise, resolve } = Promise.withResolvers<void>();
+    pendingRequests.add(resolve);
     try {
-      const reply = await Promise.race([post(message), disposal.promise]);
+      const reply = await Promise.race([post(message), promise]);
       if (disposed) {
         return;
       }
@@ -361,7 +360,7 @@ export function createNativeDeviceSettingsCapability(): NativeDeviceSettingsCapa
       failure = error instanceof Error ? error : new Error(String(error));
       console.warn("Native device settings request failed", error);
     } finally {
-      pendingRequests.delete(stop);
+      pendingRequests.delete(resolve);
     }
     if (!disposed && message.type === "set") {
       // Clear the originating draft before notifying whichever page is now mounted.
