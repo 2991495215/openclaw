@@ -33,14 +33,15 @@ import {
 import { ChatComposerPersistence, markChatComposerEdit } from "./composer-persistence.ts";
 import { activeQueuedMessageEdit, subscribeQueuedMessageEdit } from "./queued-message-edit.ts";
 import {
-  type AfterCommitEffect,
+  type AfterCommitTask,
+  createAfterCommitTask,
   notifyRenderLifecycleForTest,
   type RenderLifecycle,
 } from "./render-lifecycle.ts";
 import { hasDirectSessionRun } from "./run-lifecycle.ts";
 import { cancelChatScroll, scheduleCommittedChatScroll } from "./scroll.ts";
 
-type ChatRenderLifecycleScope = Set<() => void>;
+type ChatRenderLifecycleScope = Set<AfterCommitTask>;
 
 function transcriptSources(state: ChatPageHost): readonly unknown[] {
   return [
@@ -190,7 +191,18 @@ export function createChatState<TState extends ChatPageHost>(
       const scope: ChatRenderLifecycleScope = new Set();
       renderLifecycleScope = scope;
       return {
-        afterCommit: (effect, onCancel) => afterCommit(scope, effect, onCancel),
+        afterCommit(effect, onCancel) {
+          if (!isRenderLifecycleScopeActive(scope)) {
+            onCancel?.();
+            return () => undefined;
+          }
+          const task = createAfterCommitTask(scope, {}, effect, {
+            isCurrent: () => isRenderLifecycleScopeActive(scope),
+            onCancel,
+          });
+          void renderer.awaitDomCommit().then(task.run, task.cancel);
+          return task.cancel;
+        },
       };
     },
 
@@ -491,71 +503,9 @@ export function createChatState<TState extends ChatPageHost>(
       return;
     }
     renderLifecycleScope = undefined;
-    for (const cancel of scope) {
-      cancel();
+    for (const task of scope) {
+      task.cancel();
     }
-  }
-
-  function afterCommit(
-    scope: ChatRenderLifecycleScope,
-    effect: AfterCommitEffect,
-    onCancel?: () => void,
-  ): () => void {
-    if (!isRenderLifecycleScopeActive(scope)) {
-      onCancel?.();
-      return () => undefined;
-    }
-    let committed = false;
-    let cleanup: (() => void) | undefined;
-    const complete = () => {
-      if (!scope.has(cancel)) {
-        return;
-      }
-      cleanup = undefined;
-      scope.delete(cancel);
-    };
-    const cancel = () => {
-      if (!scope.has(cancel)) {
-        return;
-      }
-      scope.delete(cancel);
-      try {
-        cleanup?.();
-      } finally {
-        cleanup = undefined;
-        if (!committed) {
-          onCancel?.();
-        }
-      }
-    };
-    scope.add(cancel);
-    const completion = renderer.awaitDomCommit();
-    void completion.then(() => {
-      if (!scope.has(cancel)) {
-        return;
-      }
-      if (!isRenderLifecycleScopeActive(scope)) {
-        cancel();
-        return;
-      }
-      committed = true;
-      try {
-        const nextCleanup = effect(complete);
-        if (typeof nextCleanup === "function") {
-          if (scope.has(cancel) && isRenderLifecycleScopeActive(scope)) {
-            cleanup = nextCleanup;
-          } else {
-            nextCleanup();
-          }
-        } else {
-          complete();
-        }
-      } catch (error) {
-        complete();
-        throw error;
-      }
-    }, cancel);
-    return cancel;
   }
 
   function captureRenderLifecycleChanges() {
