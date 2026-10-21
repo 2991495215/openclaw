@@ -101,14 +101,14 @@ export function createSkillLibrary(
   const data = observation.state;
   const [local, setLocal] = createStore({ importOpen: false, newFilePath: "", query: "" });
   let lifetime = Promise.withResolvers<void>();
-  const connection = createMemo(
+  const connectionScope = createMemo(
     () => (gateway.snapshot?.phase === "connected" ? gateway.capture() : null),
     { equals: (a, b) => a?.client === b?.client && a?.epoch === b?.epoch },
   );
   const acceptedEntries = createMemo(() => observation.read().list?.entries);
   const acceptedEntry = createMemo(() => observation.read().draft?.entry ?? null);
   const presentation = createMemo(() => {
-    const scope = connection();
+    const scope = connectionScope();
     const [entries, setEntries] = createOptimisticStore(() => acceptedEntries() ?? [], [], {
       key: "skillId",
     });
@@ -126,9 +126,9 @@ export function createSkillLibrary(
       view.setSaving(true);
       if (expected) {
         view.setEntries((rows) => {
-          const row = rows.find((row) => row.skillId === expected.skillId);
-          if (row) {
-            Object.assign(row, expected.values);
+          const entry = rows.find((row) => row.skillId === expected.skillId);
+          if (entry) {
+            Object.assign(entry, expected.values);
           }
         });
         view.setEntry((entry) =>
@@ -438,15 +438,15 @@ export function createSkillLibrary(
         await recordReceipt(receipt);
       }, true);
     },
-    async mutate(action: SkillsLibraryMutateParams["action"]) {
+    async mutate(operation: SkillsLibraryMutateParams["action"]) {
       const draft = data.draft;
       const entry = draft?.entry;
       if (!draft || !entry || !canEdit() || draft.dirty) {
         return;
       }
       if (
-        (action === "remove" || action === "transfer") &&
-        !window.confirm(t(`skillLibrary.confirm.${action}`, { slug: draft.slug }))
+        (operation === "remove" || operation === "transfer") &&
+        !window.confirm(t(`skillLibrary.confirm.${operation}`, { slug: draft.slug }))
       ) {
         return;
       }
@@ -457,22 +457,22 @@ export function createSkillLibrary(
             {
               skillId: entry.skillId,
               expectedRevision: entry.revision,
-              action,
-              ...(action === "rollback" ? { revision: draft.rollbackRevision } : {}),
+              action: operation,
+              ...(operation === "rollback" ? { revision: draft.rollbackRevision } : {}),
             },
           );
           if (!gateway.isCurrent(connection)) {
             return;
           }
-          if (action === "remove") {
+          if (operation === "remove") {
             data.draft = null;
           }
           // Record the committed mutation even if the follow-up list or revision read fails.
           await recordReceipt(receipt);
-          if (action === "remove") {
+          if (operation === "remove") {
             return;
           }
-          if (action === "rollback") {
+          if (operation === "rollback") {
             const read = await connection.client.request<SkillsLibraryReadResult>(
               "skills.library.read",
               { skillId: receipt.entry.skillId, revision: receipt.entry.revision },
@@ -490,10 +490,10 @@ export function createSkillLibrary(
           draft.entry = receipt.entry;
         },
         true,
-        action === "enable" || action === "disable"
-          ? { skillId: entry.skillId, values: { enabled: action === "enable" } }
-          : action === "share" || action === "unshare"
-            ? { skillId: entry.skillId, values: { shared: action === "share" } }
+        operation === "enable" || operation === "disable"
+          ? { skillId: entry.skillId, values: { enabled: operation === "enable" } }
+          : operation === "share" || operation === "unshare"
+            ? { skillId: entry.skillId, values: { shared: operation === "share" } }
             : undefined,
       );
     },

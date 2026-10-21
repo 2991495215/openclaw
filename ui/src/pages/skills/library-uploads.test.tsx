@@ -95,7 +95,7 @@ it.each(
     const row = mounted.container.querySelector(".settings-row")!;
     const button = (label: string) =>
       [...dialog.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.textContent?.trim() === label,
+        (candidate) => candidate.textContent?.trim() === label,
       )!;
     const before = action === "disable" ? "Disable" : "Share with team";
     const after = action === "disable" ? "Enable" : "Make private";
