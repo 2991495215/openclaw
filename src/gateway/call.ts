@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { redactSensitiveUrlLikeString } from "@openclaw/net-policy/redact-sensitive-url";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { startGatewayClientWhenEventLoopReady } from "../../packages/gateway-client/src/readiness.js";
@@ -54,12 +53,10 @@ import {
 } from "./client.js";
 import {
   buildGatewayConnectionDetailsWithResolvers,
-  projectGatewayConnectionDetailsForDiagnostics,
   projectGatewayUrlForDiagnostics,
   type GatewayConnectionDetails,
 } from "./connection-details.js";
 import {
-  isGatewaySecretRefUnavailableError,
   resolveExplicitGatewayAuth,
   trimToUndefined,
   type ExplicitGatewayAuth,
@@ -85,12 +82,9 @@ import {
 } from "./method-scopes.js";
 import { assertGatewayCliMessageContext } from "./operator-cli-message-input.js";
 import {
-  type GatewayTransportErrorKind,
   createGatewayCloseTransportError,
   createGatewayTimeoutTransportError,
-  isGatewayTransportError,
   createGatewayUnreachableTransportError,
-  firstGatewayErrorLine,
   isGatewayUnreachableSocketError,
 } from "./transport-error.js";
 export type { GatewayConnectionDetails };
@@ -172,98 +166,10 @@ export {
   GatewayStoredDeviceAuthUnavailableError,
 } from "./call-device-auth.js";
 
-export type GatewayTransportErrorJson = {
-  ok: false;
-  error: {
-    type: "gateway_transport_error";
-    kind: GatewayTransportErrorKind;
-    message: string;
-    code?: number;
-    reason?: string;
-    timeoutMs?: number;
-  };
-  gateway: {
-    url: string;
-    urlSource: string;
-    bindDetail?: string;
-    remoteFallbackNote?: string;
-  };
-};
-
-export type GatewayClientRequestErrorJson = {
-  ok: false;
-  error: {
-    type: "gateway_request_error";
-    code: string;
-    message: string;
-    details?: unknown;
-    retryable: boolean;
-    retryAfterMs?: number;
-  };
-};
-
-export type GatewayAuthErrorJson = {
-  ok: false;
-  error: {
-    type: "gateway_credentials_required";
-    message: string;
-  };
-};
-
 export type GatewayProbeConnectionDetails = GatewayConnectionDetails & {
   tlsFingerprint?: string;
   preauthHandshakeTimeoutMs?: number;
 };
-
-export function formatGatewayTransportErrorJson(value: unknown): GatewayTransportErrorJson | null {
-  if (!isGatewayTransportError(value)) {
-    return null;
-  }
-  const connectionDetails = projectGatewayConnectionDetailsForDiagnostics(value.connectionDetails);
-  return {
-    ok: false,
-    error: {
-      type: "gateway_transport_error",
-      kind: value.kind,
-      // The message embeds the remote-controlled close reason, which can echo a
-      // credential-bearing URL; redact both before they reach CLI JSON output.
-      message: redactSensitiveUrlLikeString(firstGatewayErrorLine(value.message)),
-      ...(value.code !== undefined ? { code: value.code } : {}),
-      ...(value.reason !== undefined ? { reason: redactSensitiveUrlLikeString(value.reason) } : {}),
-      ...(value.timeoutMs !== undefined ? { timeoutMs: value.timeoutMs } : {}),
-    },
-    gateway: {
-      url: connectionDetails.url,
-      urlSource: connectionDetails.urlSource,
-      ...(connectionDetails.bindDetail ? { bindDetail: connectionDetails.bindDetail } : {}),
-      ...(connectionDetails.remoteFallbackNote
-        ? { remoteFallbackNote: connectionDetails.remoteFallbackNote }
-        : {}),
-    },
-  };
-}
-
-export function formatGatewayClientRequestErrorJson(
-  value: unknown,
-): GatewayClientRequestErrorJson | null {
-  if (!isGatewayClientRequestError(value)) {
-    return null;
-  }
-  const requestError = value;
-  return {
-    ok: false,
-    error: {
-      type: "gateway_request_error",
-      code: requestError.gatewayCode,
-      message: requestError.message,
-      ...(requestError.details !== undefined ? { details: requestError.details } : {}),
-      retryable: requestError.retryable,
-      ...(requestError.retryAfterMs !== undefined
-        ? { retryAfterMs: requestError.retryAfterMs }
-        : {}),
-    },
-  };
-}
 
 export function isGatewayClientRequestError(value: unknown): value is Error & {
   gatewayCode: string;
@@ -292,24 +198,6 @@ export function isGatewayClientRequestError(value: unknown): value is Error & {
     return false;
   }
   return true;
-}
-
-/** Preserve machine-readable output for auth failures raised before transport startup. */
-export function formatGatewayAuthErrorJson(value: unknown): GatewayAuthErrorJson | null {
-  if (
-    !isGatewayCredentialsRequiredError(value) &&
-    !isGatewayExplicitAuthRequiredError(value) &&
-    !isGatewaySecretRefUnavailableError(value)
-  ) {
-    return null;
-  }
-  return {
-    ok: false,
-    error: {
-      type: "gateway_credentials_required",
-      message: value.message,
-    },
-  };
 }
 
 export function isGatewayCredentialsRequiredError(

@@ -13,7 +13,7 @@ import { readConnectPairingRequiredMessage } from "../../packages/gateway-protoc
 import { sanitizeForLog } from "../../packages/terminal-core/src/ansi.js";
 import { getTerminalTableWidth, renderTable } from "../../packages/terminal-core/src/table.js";
 import { theme } from "../../packages/terminal-core/src/theme.js";
-import { formatGatewayTransportErrorJson } from "../gateway/call.js";
+import { formatGatewayTransportErrorJson } from "../gateway/call-error-json.js";
 import type {
   DevicePairingList,
   DeviceTokenSummary,

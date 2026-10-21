@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
-import type { callGateway as CallGateway, formatGatewayTransportErrorJson } from "./call.js";
+import type { formatGatewayTransportErrorJson } from "./call-error-json.js";
+import type { callGateway as CallGateway } from "./call.js";
 import { isGatewayTransportError } from "./transport-error.js";
 
 // Reuse the call owner fixture without growing its oversized test file or duplicating mocks.
