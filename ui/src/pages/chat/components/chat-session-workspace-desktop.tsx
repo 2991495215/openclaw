@@ -1,12 +1,22 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo, createSignal, createUniqueId, For, Show } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  createUniqueId,
+  Errored,
+  For,
+  isPending,
+  latest,
+  Loading,
+  Show,
+} from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { Menu } from "../../../components/solid/menu.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { StrokeIcon } from "../../../components/solid/stroke-icon.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
-import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
-import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
+import { formatUiError } from "../../../lib/format-error.ts";
+import { t } from "../../../lib/reactive/i18n.ts";
 import { createLayoutMeasurement } from "../../../lib/reactive/layout-measurement.ts";
 import { liveValue } from "../../../lib/reactive/live-value.ts";
 import { createPendingFocus } from "../../../lib/reactive/pending-focus.ts";
@@ -25,14 +35,13 @@ import {
   type WorkspaceCatalogFile,
   type WorkspaceCatalogRow,
 } from "./chat-session-workspace-catalog.ts";
+import { createSessionWorkspaceRead } from "./chat-session-workspace-read.ts";
 import type { SessionWorkspaceFilter } from "./chat-sidebar-content-types.ts";
 import type { SessionWorkspaceProps } from "./chat-sidebar-view-types.ts";
 import { hasTranscriptAttachments } from "./chat-transcript-attachments.ts";
 import "../../../styles/session-panel-rail.css";
 import "./chat-session-workspace-desktop.css";
 import { FileDisclosure } from "./file-disclosure.tsx";
-
-registerEnglishCatalog(registerChatSessionEnglish);
 
 function WorkspaceFilename(props: { name: string }) {
   const parts = createMemo(() => splitWorkspaceFilename(props.name));
@@ -176,9 +185,22 @@ function DirectoryBranch(props: {
   const active = () =>
     props.workspace.navigation?.treeVisible !== false && !props.workspace.navigation?.searchOpen;
   const [instant, setInstant] = createSignal(true);
-  const directory = () => props.workspace.directories?.[path()];
+  const directory = createMemo(() => props.workspace.directories?.[path()]);
+  const readResult = createMemo(
+    () => ({ pending: props.workspace.directories?.[path()]?.readResult }),
+    { equals: (previous, next) => previous.pending === next.pending },
+  );
+  const read = createMemo(async () => {
+    const current = directory();
+    const pending = readResult().pending;
+    await pending;
+    if (current?.error != null) {
+      throw new Error(current.error || t("chat.workspaceFiles.folderUnavailable"));
+    }
+    return null;
+  });
   const browser = () =>
-    directory()?.browser ??
+    props.workspace.directories?.[path()]?.browser ??
     (!props.workspace.list?.browser?.search && props.workspace.list?.browser?.path === path()
       ? props.workspace.list.browser
       : undefined);
@@ -197,16 +219,29 @@ function DirectoryBranch(props: {
       />
       <Show when={props.row.directory}>
         <FileDisclosure variant="folder" open={expanded()} active={active()} instant={instant()}>
-          <Show when={directory()?.loading}>
-            <div class="workspace-desktop__notice" role="status">
-              {t("chat.workspaceFiles.loading")}
-            </div>
-          </Show>
-          <Show when={directory()?.error != null}>
-            <div class="workspace-desktop__notice" role="alert">
-              {directory()?.error || t("chat.workspaceFiles.folderUnavailable")}
-            </div>
-          </Show>
+          <Errored
+            fallback={(error) => (
+              <div class="workspace-desktop__notice" role="alert">
+                {formatUiError(error())}
+              </div>
+            )}
+          >
+            <Loading
+              on={directory()}
+              fallback={
+                <div class="workspace-desktop__notice" role="status">
+                  {t("chat.workspaceFiles.loading")}
+                </div>
+              }
+            >
+              {latest(read)}
+              <Show when={isPending(read)}>
+                <div class="workspace-desktop__notice" role="status">
+                  {t("chat.workspaceFiles.loading")}
+                </div>
+              </Show>
+            </Loading>
+          </Errored>
           <Show when={browser()?.truncated}>
             <div class="workspace-desktop__notice" role="status">
               {t("chat.workspaceFiles.truncated")}
@@ -340,6 +375,7 @@ function ActivityMenu(props: {
 }
 
 export function DesktopWorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
+  const { read, scope } = createSessionWorkspaceRead(() => props.workspace);
   let searchField: HTMLInputElement | undefined;
   const searchValue = liveValue(() => props.workspace.browserSearch);
   let searchButton: HTMLButtonElement | undefined;
@@ -420,89 +456,8 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
     restoreSearchFocus = true;
     props.workspace.onSearchOpenChange?.(false);
   };
-  return (
-    <aside
-      class={["workspace-desktop", { "workspace-desktop--session-only": !projectVisible() }]}
-      aria-label={t("chat.workspaceFiles.label")}
-      hidden={navigation()?.treeVisible === false}
-    >
-      <Show when={props.workspace.folderView && !navigation()?.searchOpen}>
-        <div class="workspace-desktop__folder-bar session-panel-rail" data-presentation="desktop">
-          <Icon name="folder" />
-          <WorkspaceBreadcrumb
-            path={root()}
-            rootLabel={
-              props.workspace.list?.root?.split("/").findLast(Boolean) ||
-              t("chat.workspaceFiles.root")
-            }
-            onBrowsePath={(path) => props.workspace.onBrowsePath(path)}
-          />
-        </div>
-      </Show>
-      <div class="workspace-desktop__toolbar session-panel-rail" data-presentation="desktop">
-        <div class="session-panel-rail__group" hidden={navigation()?.searchOpen}>
-          <button
-            ref={(element) => {
-              searchButton = element;
-            }}
-            type="button"
-            class="workspace-desktop__search-toggle session-panel-rail__button"
-            hidden={navigation()?.searchOpen}
-            aria-label={t("chat.workspaceFiles.search")}
-            onClick={() => props.workspace.onSearchOpenChange?.(true)}
-          >
-            <Icon name="search" />
-          </button>
-        </div>
-        <label class="workspace-desktop__search" hidden={!navigation()?.searchOpen}>
-          <input
-            type="search"
-            aria-label={t("chat.workspaceFiles.search")}
-            placeholder={t("chat.workspaceFiles.search")}
-            ref={(element) => {
-              searchField = element;
-              searchValue(element);
-            }}
-            onInput={(event) => props.workspace.onSearch(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Escape") {
-                return;
-              }
-              event.preventDefault();
-              event.stopPropagation();
-              if (props.workspace.browserSearch) {
-                props.workspace.onSearch("");
-              } else {
-                closeSearch();
-              }
-            }}
-          />
-          <button
-            type="button"
-            aria-label={t("chat.workspaceFiles.desktop.closeSearch")}
-            onClick={closeSearch}
-          >
-            <Icon name="x" />
-          </button>
-        </label>
-        <ActivityMenu workspace={props.workspace} filters={filters()} filter={filter()} />
-      </div>
-      <Show when={props.workspace.error}>
-        <div class="workspace-desktop__notice">
-          <div role="alert">{props.workspace.error}</div>
-          <button
-            type="button"
-            class="btn btn--sm"
-            disabled={props.workspace.loading}
-            onClick={() => props.workspace.onRetry()}
-          >
-            {t("common.retry")}
-          </button>
-        </div>
-      </Show>
-      <Show when={props.workspace.loading && !props.workspace.list}>
-        <PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />
-      </Show>
+  const Contents = (content: { pending: boolean }) => (
+    <>
       <div
         class="workspace-desktop__results"
         hidden={!navigation()?.searchOpen}
@@ -537,7 +492,7 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
         <Show
           when={
             Boolean(props.workspace.browserSearch.trim()) &&
-            !props.workspace.loading &&
+            !content.pending &&
             !searchTruncated() &&
             !searchResults().length &&
             !attachmentSearchVisible()
@@ -638,7 +593,7 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
         <Show
           when={
             props.workspace.list &&
-            !props.workspace.loading &&
+            !content.pending &&
             !sessionFiles().length &&
             !attachmentsVisible() &&
             !childrenByPath().get(root())?.length &&
@@ -650,6 +605,105 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
           </div>
         </Show>
       </div>
+    </>
+  );
+  return (
+    <aside
+      class={["workspace-desktop", { "workspace-desktop--session-only": !projectVisible() }]}
+      aria-label={t("chat.workspaceFiles.label")}
+      hidden={navigation()?.treeVisible === false}
+    >
+      <Show when={props.workspace.folderView && !navigation()?.searchOpen}>
+        <div class="workspace-desktop__folder-bar session-panel-rail" data-presentation="desktop">
+          <Icon name="folder" />
+          <WorkspaceBreadcrumb
+            path={root()}
+            rootLabel={
+              props.workspace.list?.root?.split("/").findLast(Boolean) ||
+              t("chat.workspaceFiles.root")
+            }
+            onBrowsePath={(path) => props.workspace.onBrowsePath(path)}
+          />
+        </div>
+      </Show>
+      <div class="workspace-desktop__toolbar session-panel-rail" data-presentation="desktop">
+        <div class="session-panel-rail__group" hidden={navigation()?.searchOpen}>
+          <button
+            ref={(element) => {
+              searchButton = element;
+            }}
+            type="button"
+            class="workspace-desktop__search-toggle session-panel-rail__button"
+            hidden={navigation()?.searchOpen}
+            aria-label={t("chat.workspaceFiles.search")}
+            onClick={() => props.workspace.onSearchOpenChange?.(true)}
+          >
+            <Icon name="search" />
+          </button>
+        </div>
+        <label class="workspace-desktop__search" hidden={!navigation()?.searchOpen}>
+          <input
+            type="search"
+            aria-label={t("chat.workspaceFiles.search")}
+            placeholder={t("chat.workspaceFiles.search")}
+            ref={(element) => {
+              searchField = element;
+              searchValue(element);
+            }}
+            onInput={(event) => props.workspace.onSearch(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") {
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation();
+              if (props.workspace.browserSearch) {
+                props.workspace.onSearch("");
+              } else {
+                closeSearch();
+              }
+            }}
+          />
+          <button
+            type="button"
+            aria-label={t("chat.workspaceFiles.desktop.closeSearch")}
+            onClick={closeSearch}
+          >
+            <Icon name="x" />
+          </button>
+        </label>
+        <ActivityMenu workspace={props.workspace} filters={filters()} filter={filter()} />
+      </div>
+      <Errored
+        fallback={(error, reset) => (
+          <>
+            <div class="workspace-desktop__notice">
+              <div role="alert">{formatUiError(error())}</div>
+              <button
+                type="button"
+                class="btn btn--sm"
+                onClick={() => {
+                  props.workspace.onRetry();
+                  reset();
+                }}
+              >
+                {t("common.retry")}
+              </button>
+            </div>
+            <Contents pending={false} />
+          </>
+        )}
+      >
+        <Loading
+          on={scope()}
+          fallback={
+            <PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />
+          }
+        >
+          {latest(read)}
+          <Contents pending={isPending(read)} />
+        </Loading>
+      </Errored>
     </aside>
   );
 }
