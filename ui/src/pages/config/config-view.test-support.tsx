@@ -16,6 +16,7 @@ import { createConfigViewState } from "./view-state.ts";
 import { Config, type ConfigProps } from "./view.tsx";
 
 const views = new WeakMap<HTMLElement, (props: ConfigProps) => void>();
+const activePresentation = Promise.withResolvers<void>().promise;
 
 function createViewContext() {
   const { gateway } = createApplicationGateway();
@@ -99,6 +100,7 @@ export const baseProps = () => ({
   onFormRemove: vi.fn(),
   onSectionChange: vi.fn(),
   onSave: vi.fn(),
+  presentationRetired: () => activePresentation,
   onRawDiscard: vi.fn(),
   onSubsectionChange: vi.fn(),
   theme: "claw" as ThemeName,

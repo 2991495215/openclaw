@@ -19,6 +19,7 @@ import {
   clearConfigRequestVersions,
   currentConfigRead,
   createInitialConfigState,
+  currentConfigConnectionEpoch,
   type RuntimeConfigGateway,
   type RuntimeConfigState,
 } from "./config-state-model.ts";
@@ -118,6 +119,8 @@ export function createRuntimeConfigCapability(
     beforeApplySnapshot?: () => void,
     preservePendingChanges = false,
   ) => {
+    const epoch = currentConfigConnectionEpoch(state);
+    const pendingSchema = loads.get("schema");
     const config = run(
       () =>
         loadConfig(state, {
@@ -127,9 +130,15 @@ export function createRuntimeConfigCapability(
         }),
       "config",
     );
-    if (state.configSchemaVersion !== null && canLoadConfigSchema()) {
+    if ((state.configSchemaVersion !== null || pendingSchema) && canLoadConfigSchema()) {
       // Config success clears lastError; load the schema afterward to preserve its failures.
-      void config.then(() => run(() => loadConfigSchema(state), "schema"));
+      void config.then(async () => {
+        // A plugin change during a schema read needs one catch-up after that read.
+        await pendingSchema;
+        if (currentConfigConnectionEpoch(state) === epoch) {
+          await loadOnce("schema", () => loadConfigSchema(state));
+        }
+      });
     }
     return config;
   };
@@ -200,7 +209,7 @@ export function createRuntimeConfigCapability(
         appliedRefresh.reconcile();
       }
     },
-    refreshSchema: () => run(() => loadConfigSchema(state), "schema"),
+    refreshSchema: () => loadOnce("schema", () => loadConfigSchema(state)),
     patchForm: writes.patchForm,
     removeFormValue: writes.removeFormValue,
     setRaw: writes.setRaw,

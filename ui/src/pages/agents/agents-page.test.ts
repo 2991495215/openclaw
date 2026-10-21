@@ -227,7 +227,7 @@ describe("AgentsPage gateway lifecycle", () => {
     const context = pageContext(gateway(snapshot(client)), agents);
     Object.assign(context.runtimeConfig, { save });
     const { page } = mountPage(client, "overview", context);
-    await page.read().onConfigSave();
+    page.read().onConfigSave();
     await waitForFast(() => expect(save).toHaveBeenCalledOnce());
     expect(refreshList).not.toHaveBeenCalled();
   });
@@ -259,7 +259,7 @@ describe("AgentsPage gateway lifecycle", () => {
       expect(page.read().readData().toolsEffectiveResult?.profile).toBe("messaging"),
     );
 
-    void page.read().onConfigSave();
+    page.read().onConfigSave();
     saved.resolve(true);
     await saved.promise;
     roster.resolve(agentsList);

@@ -1,8 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
-import { mountSolid } from "../../test-helpers/mount-solid.ts";
-import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
-import { AgentConfigButtons } from "../agents/config-actions.tsx";
+import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { renderConfigInto, renderConfigView } from "./config-view.test-support.tsx";
 
 const schema = {
@@ -90,44 +88,72 @@ it("keeps the blocked editor when an initial read requires publication recovery"
   expect(container.querySelector('.config-content-callout [role="alert"]')).toBeNull();
 });
 
-it.each(["raw", "agents"] as const)(
-  "keeps the %s Save command busy until its owner settles",
-  async (surface) => {
-    const completion = createDeferred<boolean>();
-    const save = vi.fn(() => completion.promise);
-    const container =
-      surface === "raw"
-        ? renderConfigView({
-            formMode: "raw",
-            raw: '{"gateway":{"mode":"local"}}',
-            originalRaw: "{}",
-            onSave: save,
-          }).container
-        : mountSolid(() => (
-            <AgentConfigButtons
-              configLoading={false}
-              configSaving={false}
-              configDirty={true}
-              canUpdateConfig={true}
-              onConfigReload={() => undefined}
-              onConfigSave={save}
-            />
-          )).container;
-    const button = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
-      (candidate) => candidate.textContent?.trim() === "Save",
-    )!;
-    const textarea = container.querySelector("textarea");
-    button.click();
-    flush();
-    expect(button.disabled).toBe(true);
-    expect(button.textContent).toContain("Saving");
-    button.click();
-    expect(save).toHaveBeenCalledOnce();
-    completion.resolve(true);
-    await waitForSolid(() => expect(button.disabled).toBe(false));
-    expect(button.textContent?.trim()).toBe("Save");
-    if (surface === "raw") {
-      expect(container.querySelector("textarea")).toBe(textarea);
-    }
-  },
-);
+it("keeps the raw Save command busy until its owner settles", async () => {
+  const completion = createDeferred<boolean>();
+  const save = vi.fn(() => completion.promise);
+  const lifetime = Promise.withResolvers<void>();
+  const { container } = renderConfigView({
+    formMode: "raw",
+    raw: '{"gateway":{"mode":"local"}}',
+    originalRaw: "{}",
+    onSave: save,
+    presentationRetired: () => lifetime.promise,
+  });
+  const button = container.querySelector<HTMLButtonElement>(".config-raw-actions button.primary")!;
+  const textarea = container.querySelector("textarea");
+  button.click();
+  await waitForSolid(() => expect(button.disabled).toBe(true));
+  expect(button.textContent).toContain("Saving");
+  button.click();
+  expect(save).toHaveBeenCalledOnce();
+  completion.resolve(true);
+  await waitForSolid(() => expect(button.disabled).toBe(false));
+  expect(button.textContent?.trim()).toBe("Save");
+  expect(container.querySelector("textarea")).toBe(textarea);
+});
+
+it("publishes the plain config owner before entering the save presentation", async () => {
+  const completion = createDeferred<boolean>();
+  const save = vi.fn(() => {
+    props.valid = false;
+    renderConfigInto(props, container);
+    return completion.promise;
+  });
+  const { container, props } = renderConfigView({
+    formMode: "raw",
+    raw: '{"gateway":{"mode":"local"}}',
+    originalRaw: "{}",
+    onSave: save,
+  });
+  container.querySelector<HTMLButtonElement>(".config-raw-actions button.primary")!.click();
+  await waitForSolid(() =>
+    expect(container.querySelector(".config-validity-warning")).not.toBeNull(),
+  );
+  expect(save).toHaveBeenCalledOnce();
+  completion.resolve(true);
+  await completion.promise;
+});
+
+it("releases a raw save presentation when its owner retires the route", async () => {
+  const completion = createDeferred<boolean>();
+  let lifetime = Promise.withResolvers<void>();
+  const { container, props } = renderConfigView({
+    formMode: "raw",
+    raw: '{"gateway":{"mode":"local"}}',
+    originalRaw: "{}",
+    onSave: () => completion.promise,
+    presentationRetired: () => lifetime.promise,
+  });
+  const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => button.textContent?.trim() === "Save",
+  )!;
+  save.click();
+  await waitForSolid(() => expect(save.textContent).toContain("Saving"));
+  lifetime.resolve();
+  lifetime = Promise.withResolvers<void>();
+  props.formMode = "form";
+  renderConfigInto(props, container);
+  await waitForSolid(() => expect(container.querySelector("textarea")).toBeNull());
+  completion.resolve(true);
+  await completion.promise;
+});

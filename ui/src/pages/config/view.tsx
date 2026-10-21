@@ -253,19 +253,30 @@ export function Config(props: ConfigProps) {
     };
   });
   function RawEditor() {
-    const [commandPending, setCommandPending] = createOptimistic<
-      "save" | "discard" | "open" | null
-    >(null);
-    const command = action(function* (operation: "save" | "discard" | "open") {
-      setCommandPending(operation);
-      yield operation === "save"
-        ? props.onSave()
-        : operation === "discard"
-          ? props.onRawDiscard()
-          : props.onOpenFile?.();
+    const [pending, setPending] = createOptimistic<"save" | "discard" | "open" | null>(null);
+    const presentCommand = action(function* (
+      operation: "save" | "discard" | "open",
+      result: void | Promise<unknown>,
+      retired: Promise<void>,
+    ) {
+      if (retired === props.presentationRetired()) {
+        setPending(operation);
+      }
+      yield Promise.race([result, retired]);
     });
-    const busy = () => commandPending() !== null || state().configBusy;
-    const saving = () => commandPending() === "save" || props.saving;
+    const command = async (operation: "save" | "discard" | "open") => {
+      const retired = props.presentationRetired();
+      const result =
+        operation === "save"
+          ? props.onSave()
+          : operation === "discard"
+            ? props.onRawDiscard()
+            : props.onOpenFile?.();
+      await Promise.resolve();
+      return presentCommand(operation, result, retired);
+    };
+    const busy = () => pending() !== null || state().configBusy;
+    const saving = () => pending() === "save" || props.saving;
     const rawRef = createLiveValue(() => props.raw);
     // Resolve the raw branch once; a dynamic children factory recreates the textarea on each edit.
     const editor = (

@@ -39,6 +39,7 @@ import { i18n, isSupportedLocale, type Locale } from "../../i18n/index.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { resolveAgentAvatarUrl } from "../../lib/avatar.ts";
 import { resolveControlUiServerQueueMode } from "../../lib/chat/follow-up-mode.ts";
+import { currentConfigRead } from "../../lib/config/config-state-model.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { isMissingOperatorReadScopeError } from "../../lib/gateway-errors.ts";
 import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
@@ -156,6 +157,12 @@ export function createConfigPage(
   const customThemeImportOwner = new themeImport.CustomThemeImportOwner(invalidate);
   let configViewState: View.ConfigViewState = createConfigViewState();
   let runtimeConfigSource: ApplicationContext["runtimeConfig"] | null = null;
+  // Release command presentation before a reactive scope change can park its cleanup.
+  let commandLifetime = Promise.withResolvers<void>();
+  function retireCommands() {
+    commandLifetime.resolve();
+    commandLifetime = Promise.withResolvers<void>();
+  }
   let updateStatusClient: GatewayBrowserClient | null = null;
   let mediaDeviceWatch: (() => void) | null = null;
   const mediaDevices = {
@@ -201,6 +208,7 @@ export function createConfigPage(
       return;
     }
     routeInitialized = true;
+    retireCommands();
     if (pageId === "appearance" && nextPageId !== "appearance") {
       customThemeImportOwner.retireImport();
       retireMediaPermissionRequests();
@@ -261,6 +269,7 @@ export function createConfigPage(
       snapshot.hello !== previousHello ||
       snapshot.phase !== previousPhase;
     if (connectionChanged) {
+      retireCommands();
       abortRequests();
       systemInfo = null;
       systemInfoUnavailable = false;
@@ -463,6 +472,7 @@ export function createConfigPage(
 
   function synchronizeRuntimeConfig(runtimeConfig: ApplicationContext["runtimeConfig"]) {
     if (runtimeConfig !== runtimeConfigSource) {
+      retireCommands();
       if (runtimeConfigSource) {
         customThemeImportOwner.retireImport();
       }
@@ -631,7 +641,7 @@ export function createConfigPage(
       loading: configState.configLoading,
       configLoaded: configState.configSnapshot !== null,
       configRecoveryError: configState.configRecoveryError,
-      configRead: runtimeConfig.configRead,
+      configRead: currentConfigRead(configState)?.completion.promise ?? null,
       onRetryConfig: () => void runtimeConfig.refresh(),
       saving: configState.configSaving,
       applying: configState.configApplying,
@@ -654,6 +664,7 @@ export function createConfigPage(
       activeSubsection: pageId === "mcp" ? null : selection.activeSubsection,
       onRawChange: withConfigMutation((next: string) => runtimeConfig.setRaw(next)),
       onFormModeChange: (mode: View.ConfigFormMode) => {
+        retireCommands();
         setPresentation((draft) => {
           draft.formModes[pageId] = mode;
         });
@@ -667,12 +678,14 @@ export function createConfigPage(
         runtimeConfig.removeFormValue(path),
       ),
       onSectionChange: (section: string | null) => {
+        retireCommands();
         setPresentation((draft) => {
           draft.selections[pageId] = { activeSection: section, activeSubsection: null };
         });
         invalidate();
       },
       onSubsectionChange: (section: string | null) => {
+        retireCommands();
         setPresentation((draft) => {
           draft.selections[pageId] = {
             ...(draft.selections[pageId] ?? defaultConfigSelection(pageId)),
@@ -682,6 +695,7 @@ export function createConfigPage(
         invalidate();
       },
       onSave: () => runtimeConfig.save(),
+      presentationRetired: () => commandLifetime.promise,
       onRawDiscard: () => runtimeConfig.discardDraft(),
       onOpenFile: () => runtimeConfig.openFile(),
       theme: settings.theme,
@@ -891,13 +905,13 @@ export function createConfigPage(
       onNativeNotificationsSendTest: () => context.nativeNotifications?.sendTest(),
       // Downstream equality checks need a new value for the mutable owner snapshot.
       webPush: { ...webPush.read() },
-      onWebPushSubscribe: () => void context.webPush.run({ kind: "enable" }),
-      onWebPushUnsubscribe: () => void context.webPush.run({ kind: "disable" }),
-      onWebPushTest: () => void context.webPush.run({ kind: "test" }),
+      onWebPushSubscribe: () => context.webPush.run({ kind: "enable" }),
+      onWebPushUnsubscribe: () => context.webPush.run({ kind: "disable" }),
+      onWebPushTest: () => context.webPush.run({ kind: "test" }),
       onWebPushSetUserPreferences: (preferences: Push.WebPushNotificationPreferences) =>
-        void context.webPush.run({ kind: "set", scope: "user", preferences }),
+        context.webPush.run({ kind: "set", scope: "user", preferences }),
       onWebPushSetDevicePreferences: (preferences: Push.WebPushDevicePreferences) =>
-        void context.webPush.run({ kind: "set", scope: "device", preferences }),
+        context.webPush.run({ kind: "set", scope: "device", preferences }),
     };
   }
   const refresh = () => {
@@ -917,6 +931,20 @@ export function createConfigPage(
     ].map((source) => source.subscribe(refresh));
     // Server selection intent can change while the stored preferences stay equal.
     subscriptions.push(context.theme.subscribe(refresh));
+    let location = context.router.getState().location;
+    subscriptions.push(
+      context.router.subscribe(() => {
+        const next = context.router.getState().location;
+        if (
+          next.pathname !== location.pathname ||
+          next.search !== location.search ||
+          next.hash !== location.hash
+        ) {
+          location = next;
+          retireCommands();
+        }
+      }),
+    );
     connected = true;
     settings = loadSettings();
     hiddenSessionCatalogsChanged();
@@ -932,6 +960,7 @@ export function createConfigPage(
     });
     synchronize();
     return () => {
+      commandLifetime.resolve();
       subscriptions.forEach((stop) => stop());
       connected = false;
       customThemeImportOwner.retireImport();

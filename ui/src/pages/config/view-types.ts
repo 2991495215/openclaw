@@ -5,14 +5,20 @@ import type { SettingsMediaDeviceState } from "./view-state.ts";
 import type { TabIconViewProps } from "./view-tab-icon.tsx";
 
 type ConfigPageProps = ReturnType<ReturnType<typeof createConfigPage>["configProps"]>;
-// Most callbacks are fire-and-forget; actions retain their owner's completion receipt.
+// Async presenters retain their owners' admitted completions.
 type ConfigData = {
   [Key in keyof ConfigPageProps]: Key extends
     | "onSave"
     | "onRawDiscard"
     | "onOpenFile"
+    | "presentationRetired"
     | "onNativeNotificationsSendTest"
     | "onImportCustomTheme"
+    | "onWebPushSubscribe"
+    | "onWebPushUnsubscribe"
+    | "onWebPushTest"
+    | "onWebPushSetUserPreferences"
+    | "onWebPushSetDevicePreferences"
     ? ConfigPageProps[Key]
     : ConfigPageProps[Key] extends (...args: infer Args) => unknown
       ? (...args: Args) => void

@@ -27,6 +27,7 @@ import { mountAppearanceCatalogPage as mount } from "./config-page-catalog.test-
 import {
   completeConfigContext,
   mountConfigPage,
+  mountConfigPageState,
   publishConfigSource,
 } from "./config-page.test-support.ts";
 import type { ConfigPageRouteData } from "./config-page.tsx";
@@ -382,6 +383,28 @@ describe("ConfigPage navigation", () => {
     } finally {
       releaseAdvanced.resolve(undefined);
       mounted.dispose();
+      router.stop();
+    }
+  });
+
+  it("retires command presentation synchronously when the router changes location", async () => {
+    const context = completeConfigContext(routeContext());
+    const router = createRouter({
+      routes: [{ id: "destination", path: "/destination", component: () => ({}) }],
+    });
+    Object.assign(context, { router });
+    const view = mountConfigPageState(context);
+    const original = view.state.configProps().presentationRetired();
+    const retired = vi.fn();
+    void original.then(retired);
+    try {
+      const navigation = router.navigate("destination", context);
+      await original;
+      expect(retired).toHaveBeenCalledOnce();
+      expect(view.state.configProps().presentationRetired()).not.toBe(original);
+      await navigation;
+    } finally {
+      view.dispose();
       router.stop();
     }
   });
