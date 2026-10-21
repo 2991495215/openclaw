@@ -1,12 +1,13 @@
 import type { SessionObserverDigest } from "../../packages/gateway-protocol/src/schema/sessions.js";
-import type { SessionObserverDeps, SessionObserverState } from "./session-observer-model.js";
+import type {
+  SessionObserverPersistDigest,
+  SessionObserverState,
+} from "./session-observer-model.js";
 
 const PERSIST_INTERVAL_MS = 60_000;
 
-type PersistDigest = NonNullable<SessionObserverDeps["persistDigest"]>;
-
 export function createSessionObserverDigestPersister(params: {
-  persistDigest: PersistDigest;
+  persistDigest: SessionObserverPersistDigest;
   stillCurrent: (runId: string, sessionKey: string, agentId: string) => () => boolean;
   onMissingEntry: (state: SessionObserverState) => void;
   onError: (state: SessionObserverState, error: unknown) => void;

@@ -45,7 +45,7 @@ const MAX_DISABLED_RUNS = 512;
 export type SessionObserverRead = {
   assertCurrent: () => void;
   withRead: <T>(consume: (session: SessionEntry | undefined) => T) => Promise<T>;
-  persist: NonNullable<SessionObserverDeps["persistDigest"]>;
+  persist: SessionObserverPersistDigest;
 };
 
 export function sessionObserverScopeKey(sessionKey: string, agentId: string): string {
@@ -218,6 +218,17 @@ export function createDormantSessionObserverRun(
   };
 }
 
+export type SessionObserverPersistDigest = (params: {
+  reader?: SessionObserverRead;
+  sessionKey: string;
+  sessionId?: string;
+  agentId: string;
+  digest: SessionObserverDigest;
+  /** Evaluated inside the entry updater so run rollover cannot commit a
+   * digest from a replaced run between acceptance and the async write. */
+  stillCurrent?: () => boolean;
+}) => Promise<boolean | null>;
+
 export type SessionObserverDeps = {
   getConfig: () => OpenClawConfig;
   subscribers: SessionMessageSubscriberRegistry;
@@ -228,20 +239,7 @@ export type SessionObserverDeps = {
     connIds: ReadonlySet<string>,
     opts?: { dropIfSlow?: boolean },
   ) => void;
-  prepareModel?: PrepareModel;
-  completeModel?: CompleteModel;
-  readSession?: (sessionKey: string, agentId: string) => SessionEntry | undefined;
   getSessionRowProjection?: () => SessionRowProjection | undefined;
-  persistDigest?: (params: {
-    reader?: SessionObserverRead;
-    sessionKey: string;
-    sessionId?: string;
-    agentId: string;
-    digest: SessionObserverDigest;
-    /** Evaluated inside the entry updater so run rollover cannot commit a
-     * digest from a replaced run between acceptance and the async write. */
-    stillCurrent?: () => boolean;
-  }) => Promise<boolean | null>;
 };
 
 export async function defaultPrepareModel(params: Parameters<PrepareModel>[0]) {
@@ -342,7 +340,7 @@ export async function synthesizeSessionObserverTerminalDigest(params: {
     sessionKey: string,
     agentId: string,
   ) => SessionEntry | undefined | Promise<SessionEntry | undefined>;
-  persistDigest: NonNullable<SessionObserverDeps["persistDigest"]>;
+  persistDigest: SessionObserverPersistDigest;
   /** Rechecked at persist time: rollover can admit a newer run between the
    * synchronous synthesis start and the async write. */
   stillCurrent?: () => boolean;

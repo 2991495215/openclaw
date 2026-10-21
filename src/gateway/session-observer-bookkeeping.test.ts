@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createHarness, persistedLiveDigest } from "./session-observer.test-utils.js";
 
@@ -51,16 +51,18 @@ describe("session observer run bookkeeping", () => {
       },
     } satisfies OpenClawConfig;
     const digest = persistedLiveDigest({ agentId: "work", sessionKey: "global" });
-    const readSession = vi.fn(() => ({
+    const initialEntry = {
       sessionId: "global-session-id",
       updatedAt: 1_000,
       observerDigest: digest,
-    }));
-    const harness = createHarness({ subscribe: false, config, readSession });
+    };
+    const harness = createHarness({ subscribe: false, config });
+    harness.setSession(initialEntry, "global", "work");
 
     const snapshot = harness.observer.getCompanionSnapshot("agent:work:main");
 
-    expect(readSession).toHaveBeenCalledWith("global", "work");
+    expect(harness.readSession("global", "work")?.observerDigest).toEqual(digest);
+    expect(harness.readSession("global", "main")).toBeUndefined();
     expect(snapshot).toMatchObject({ agentId: "work", digest, runId: digest.runId });
     harness.observer.dispose();
   });

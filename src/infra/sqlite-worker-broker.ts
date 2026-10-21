@@ -31,7 +31,6 @@ import {
   dispatchSqliteWorkerJob,
   failSqliteWorkerSlot,
   type CompletedSqliteWorkerOutcome,
-  type SqliteWorkerReplyOwner,
 } from "./sqlite-worker-broker-reply.js";
 import type {
   Actor,
@@ -245,7 +244,13 @@ export class SqliteWorkerBroker {
       const slot = await this.lifecycle.acquireSlot(
         options,
         { maxWorkers: this.maxWorkers, maxStores: MAX_STORES },
-        (replySlot) => this.createReplyOwner(replySlot),
+        (admittedSlot) => ({
+          fail: (reason, currentError, openOutcome, completed) =>
+            this.fail(admittedSlot, reason, currentError, openOutcome, completed),
+          finish: (job, error, value, settlement) =>
+            this.finish(admittedSlot, job, error, value, settlement),
+          dispatch: () => this.dispatch(admittedSlot),
+        }),
       );
       try {
         options.assertCurrent?.();
@@ -454,15 +459,6 @@ export class SqliteWorkerBroker {
     await closeUnclaimedSharedStateActors(this.actors.values(), databasePath, (actor) =>
       this.lifecycle.closeActor(actor),
     );
-  }
-
-  private createReplyOwner(slot: Slot): SqliteWorkerReplyOwner {
-    return {
-      fail: (reason, currentError, openOutcome, completed) =>
-        this.fail(slot, reason, currentError, openOutcome, completed),
-      finish: (job, error, value, settlement) => this.finish(slot, job, error, value, settlement),
-      dispatch: () => this.dispatch(slot),
-    };
   }
 
   private enqueue(

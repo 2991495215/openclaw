@@ -41,11 +41,14 @@ it("waits for an abort-ignoring completion before retrying and never publishes i
   try {
     await startAndAddToolNotes(harness.observer);
     await vi.advanceTimersByTimeAsync(12_000);
+    await flushObserver();
     expect(completeModel).toHaveBeenCalledOnce();
     const requestSignal = completeModel.mock.calls[0]?.[0].abortSignal as AbortSignal;
     await vi.advanceTimersByTimeAsync(30_000);
+    await flushObserver();
     expect(requestSignal.aborted).toBe(true);
     await vi.advanceTimersByTimeAsync(60_000);
+    await flushObserver();
     expect(completeModel).toHaveBeenCalledOnce();
     expect(harness.broadcastToConnIds).not.toHaveBeenCalled();
 
@@ -80,6 +83,7 @@ it.for(["preparation", "completion"] as const)(
     try {
       await startAndAddToolNotes(harness.observer);
       await vi.advanceTimersByTimeAsync(42_000);
+      await flushObserver();
       expect(harness.prepareModel).toHaveBeenCalledOnce();
       expect(harness.completeModel).toHaveBeenCalledTimes(stage === "preparation" ? 0 : 1);
       disposal = harness.observer.disposeAsync().then(disposed);
@@ -146,6 +150,7 @@ it.for([
     const harness = createHarness({ subscribe: false, completeModel });
     const observe = async (index: number) => {
       const sessionKey = `agent:main:session-${index}`;
+      harness.setSession({ sessionId: `session-${index}`, updatedAt: 0 }, sessionKey);
       const connId = `conn-${index}`;
       harness.subscribers.subscribe(connId, sessionKey)?.commit();
       declareObserverVisibility(harness.observer, connId);
@@ -156,6 +161,7 @@ it.for([
         await observe(index);
       }
       await vi.advanceTimersByTimeAsync(12_000);
+      await flushObserver();
       expect(completeModel).toHaveBeenCalledTimes(6);
       if (kind === "replaced") {
         await startAndAddToolNotes(harness.observer, {
@@ -170,6 +176,7 @@ it.for([
       }
       expect(signals[0]?.aborted).toBe(true);
       await vi.advanceTimersByTimeAsync(12_000);
+      await flushObserver();
       expect(completeModel).toHaveBeenCalledTimes(6);
       expect(counts).toMatchObject({ active: 6, released: 0 });
 

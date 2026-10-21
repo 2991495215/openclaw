@@ -67,6 +67,7 @@ export function expectBroadcast(harness: Harness, fields: DigestFields, index = 
 
 export function expectPersisted(harness: Harness, fields: DigestFields, index = 0) {
   expect(persistedDigest(harness, index)).toMatchObject(fields);
+  expect(harness.readSession()?.observerDigest).toMatchObject(fields);
 }
 
 export function observerBroadcasts(harness: Harness) {

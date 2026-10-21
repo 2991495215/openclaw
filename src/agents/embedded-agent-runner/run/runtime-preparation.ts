@@ -339,7 +339,6 @@ export async function prepareEmbeddedRunTransport(input: {
     allowTransientCooldownProbe: params.allowTransientCooldownProbe === true,
     authProfileFailurePolicy: params.authProfileFailurePolicy,
     authProfileStateMode: params.authProfileStateMode,
-    runId: params.runId,
     provider,
     modelId,
     state: authState,
