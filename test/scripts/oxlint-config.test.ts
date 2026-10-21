@@ -733,6 +733,79 @@ describe("oxlint config", () => {
     }
   });
 
+  it("keeps untouched limits advisory for release-version-only manifest changes", () => {
+    const root = fs.realpathSync(createTempDir("openclaw-oxlint-release-version-scope-"));
+    const config = { categories: { correctness: "off" }, rules: { "max-lines": ["error", 2] } };
+    fs.writeFileSync(path.join(root, ".oxlintrc.json"), JSON.stringify(config));
+    fs.symlinkSync(path.resolve("node_modules"), path.join(root, "node_modules"), "junction");
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src/changed.ts"),
+      "export const changed = [\n  0,\n  1,\n];\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src/untouched.ts"),
+      "export const untouched = [\n  0,\n  1,\n];\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "fixture", version: "2026.10.10-beta.3" }),
+    );
+    const git = (...args: string[]) => {
+      const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      return result.stdout.trim();
+    };
+    git("init", "--quiet");
+    git("add", ".");
+    git(
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "--quiet",
+      "-m",
+      "base",
+    );
+    const base = git("rev-parse", "HEAD");
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "fixture", version: "2026.10.10-beta.4" }),
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.resolve("scripts/run-oxlint.mts"),
+        "--openclaw-focused-config",
+        "--threads=1",
+        "--format=json",
+        "src/changed.ts",
+        "src/untouched.ts",
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_ACTIONS: "false",
+          OPENCLAW_OXLINT_CHANGED_PATHS: JSON.stringify(["package.json", "src/changed.ts"]),
+          OPENCLAW_OXLINT_CHANGED_BASE: base,
+        },
+      },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    const report = JSON.parse(result.stdout) as {
+      diagnostics: Array<{ filename: string; severity: string }>;
+    };
+    const severity = (file: string) =>
+      report.diagnostics.find((item) => item.filename.replaceAll("\\", "/") === file)?.severity;
+    expect(severity("src/changed.ts")).toBe("error");
+    expect(severity("src/untouched.ts")).toBe("warning");
+  });
+
   it("preserves native config validation locally and in Actions", () => {
     const root = fs.realpathSync(createTempDir("openclaw-oxlint-invalid-limit-"));
     fs.mkdirSync(path.join(root, ".git"));

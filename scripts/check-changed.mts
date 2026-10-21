@@ -499,7 +499,12 @@ export function createChangedCheckPlan(
     options.base ?? (options.staged ? "HEAD" : baseEnv.CHECKOUT_BASE_SHA || "origin/main"),
   ];
   delete baseEnv.OPENCLAW_OXLINT_CHANGED_PATHS;
+  delete baseEnv.OPENCLAW_OXLINT_CHANGED_BASE;
   const cwd = process.cwd();
+  const changedOxlintContext = {
+    base: !options.staged ? baseEnv.CHECKOUT_BASE_SHA || options.base : undefined,
+    cwd,
+  };
   if (
     result.paths.some((changedPath) => LINTABLE_EXTENSION_PATH_RE.test(changedPath)) &&
     cachedGeneratedExtensionAssetPaths?.cwd !== cwd
@@ -565,10 +570,14 @@ export function createChangedCheckPlan(
       );
     }
     for (const command of [...lintChecks].filter(isOxlintCommand)) {
-      command.env = createChangedOxlintEnv(result.paths, command.env ?? baseEnv);
+      command.env = createChangedOxlintEnv(
+        result.paths,
+        command.env ?? baseEnv,
+        changedOxlintContext,
+      );
     }
     if (options.lintOnly) {
-      const lintEnv = createChangedOxlintEnv(result.paths, baseEnv);
+      const lintEnv = createChangedOxlintEnv(result.paths, baseEnv, changedOxlintContext);
       const lintCommands = commands.filter((command) => lintChecks.has(command));
       const selection = options.lintSelection;
       const selectedCentralCommands = selection?.central
