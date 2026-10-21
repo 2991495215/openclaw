@@ -1,4 +1,4 @@
-import { createSignal, onSettled } from "solid-js";
+import { action, createSignal, onSettled } from "solid-js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { AgentsFilesListResult, SkillStatusReport } from "../../api/types.ts";
 import { pathForAgentPanel } from "../../app-route-paths.ts";
@@ -50,6 +50,8 @@ import {
 } from "./files.ts";
 import {
   type AgentIdentityDraft,
+  type AgentIdentityOutcome,
+  identityDraftStatus,
   resetIdentityDraft,
   saveIdentityDraft,
   selectIdentityAvatar,
@@ -73,7 +75,7 @@ type AgentsPageData = Omit<AgentsState, "agentsLoading" | "agentsError"> &
     agentFileActive: string | null;
     identityDraft: AgentIdentityDraft;
     identitySaving: boolean;
-    identityError: string | null;
+    identityOutcome: Promise<AgentIdentityOutcome> | null;
     agentSkillsLoading: boolean;
     agentSkillsError: string | null;
     agentSkillsReport: SkillStatusReport | null;
@@ -130,7 +132,7 @@ export function createAgentsPageState(
     agentFileSaving: false,
     identityDraft: { name: null, emoji: null, avatar: null },
     identitySaving: false,
-    identityError: null,
+    identityOutcome: null,
     agentSkillsLoading: false,
     agentSkillsError: null,
     agentSkillsReport: null,
@@ -592,6 +594,10 @@ export function createAgentsPageState(
     }
   }
 
+  const presentIdentitySave = action(function* (completion: Promise<void>) {
+    yield completion;
+  });
+
   function clearIdentityAutosave() {
     if (identityAutosaveTimer !== null) {
       clearTimeout(identityAutosaveTimer);
@@ -601,12 +607,7 @@ export function createAgentsPageState(
 
   function scheduleIdentitySave(delay = 550) {
     clearIdentityAutosave();
-    const { name, emoji, avatar } = state.identityDraft;
-    if (
-      (name !== null && !name.trim()) ||
-      (emoji !== null && !emoji.trim()) ||
-      (name === null && emoji === null && avatar === null)
-    ) {
+    if (identityDraftStatus(state.identityDraft) !== "ready") {
       return;
     }
     identityAutosaveTimer = setTimeout(() => {
@@ -655,7 +656,7 @@ export function createAgentsPageState(
     });
     identitySaves.set(agentId, { client, snapshot: gateway.snapshot, promise: save });
     try {
-      await save;
+      await presentIdentitySave(save);
     } finally {
       if (identitySaves.get(agentId)?.promise === save) {
         identitySaves.delete(agentId);

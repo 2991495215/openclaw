@@ -54,7 +54,7 @@ export function createAgentViewTestProps(
     agentFileConflict: null,
     identityDraft: { name: null, emoji: null, avatar: null },
     identitySaving: false,
-    identityError: null,
+    identityOutcome: null,
     agentSkillsLoading: false,
     agentSkillsError: null,
     agentSkillsReport: null,
