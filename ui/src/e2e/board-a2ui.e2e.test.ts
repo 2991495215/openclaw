@@ -380,7 +380,8 @@ suite.define(() => {
       path: path.join(bundleDirectory, bundleFiles["v0.8"]),
       type: "module",
     });
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
+      await customElements.whenDefined("openclaw-a2ui-host");
       Reflect.set(globalThis, "canvasActions", []);
       Reflect.set(globalThis, "canvasValidation", []);
       Reflect.set(globalThis, "openclaw", {
