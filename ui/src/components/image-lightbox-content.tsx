@@ -34,8 +34,10 @@ export function ImageLightboxContent(props: ImageLightboxProps) {
   const galleryState = gallery.state;
   const hasGallery = () => galleryState().count > 1;
   const currentImage = () => galleryState().current;
-  const [openOriginalUrl, setOpenOriginalUrl] = createSignal("", { ownedWrite: true });
-  const [resolvingOriginal, setResolvingOriginal] = createSignal(false, { ownedWrite: true });
+  const [originalRead, setOriginalRead] = createSignal(
+    { result: Promise.resolve("") },
+    { ownedWrite: true },
+  );
   const [scale, setScale] = createSignal(1, { ownedWrite: true });
   const [canZoom, setCanZoom] = createSignal(false, { ownedWrite: true });
   const focusables = new Set<HTMLElement>();
@@ -337,10 +339,8 @@ export function ImageLightboxContent(props: ImageLightboxProps) {
   async function resolveOriginalUrl(fallbackSrc: string, fallbackOriginalSrc: string) {
     const request = ++originalUrlRequest;
     revokeOriginalBlobUrl();
-    setResolvingOriginal(false);
     if (gallery.peek().current?.kind !== "video" || gallery.peek().current?.loadDisplayImage) {
-      setOpenOriginalUrl("");
-      return;
+      return "";
     }
     const current = gallery.peek().current;
     const source = (
@@ -348,24 +348,15 @@ export function ImageLightboxContent(props: ImageLightboxProps) {
         ? (video()?.getAttribute("src") ?? "")
         : current?.originalSrc || current?.src || fallbackOriginalSrc || fallbackSrc
     ).trim();
-    setOpenOriginalUrl("");
-    setResolvingOriginal(true);
-    try {
-      const prepared = await resolveLightboxOriginalUrl(
-        source,
-        () => host.isConnected && !disposed && request === originalUrlRequest,
-      );
-      if (prepared && request === originalUrlRequest && !disposed) {
-        originalBlobUrl = prepared.blobUrl ?? "";
-        setOpenOriginalUrl(prepared.url);
-      }
-    } catch {
-      // The selected media remains viewable; omit an unusable external link.
-    } finally {
-      if (request === originalUrlRequest && !disposed) {
-        setResolvingOriginal(false);
-      }
+    const prepared = await resolveLightboxOriginalUrl(
+      source,
+      () => host.isConnected && !disposed && request === originalUrlRequest,
+    );
+    if (prepared && request === originalUrlRequest && !disposed) {
+      originalBlobUrl = prepared.blobUrl ?? "";
+      return prepared.url;
     }
+    return "";
   }
 
   const handleKeydown = (event: KeyboardEvent) => {
@@ -491,7 +482,7 @@ export function ImageLightboxContent(props: ImageLightboxProps) {
       const source = video()?.getAttribute("src") ?? gallery.peek().current?.src ?? src;
       if (selectionChanged || displayedSource !== source) {
         displayedSource = source;
-        void resolveOriginalUrl(src, originalSrc);
+        setOriginalRead({ result: resolveOriginalUrl(src, originalSrc) });
         const current = image();
         if (current?.complete && current.naturalWidth > 0) {
           initializePanzoom(current);
@@ -535,9 +526,9 @@ export function ImageLightboxContent(props: ImageLightboxProps) {
         <LightboxChrome
           focusableRef={focusableRef}
           title={title()}
-          originalUrl={openOriginalUrl()}
+          originalUrl={originalRead().result}
           externalImageUrl={externalLightboxImageUrl(currentImage() ?? props)}
-          resolvingOriginal={hasGallery() && resolvingOriginal()}
+          hasGallery={hasGallery()}
           isVideo={props.mediaKind === "video"}
           onDownloadImage={downloadCurrentImage}
           onClose={emitClose}
