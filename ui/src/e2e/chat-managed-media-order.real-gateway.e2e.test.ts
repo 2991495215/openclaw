@@ -600,11 +600,16 @@ async function runManagedMediaScenario() {
                 recapClientRetained: state?.client === observation.client,
                 recapObservedRunMatchesAssistant: observation.runId === assistantRunId,
                 recapObservedWorkingCount: observation.workingRowKeys.length,
-                recapObservedWorkingRowKeys: observation.workingRowKeys,
                 recapWorkingIndicatorCount: indicators.length,
-                recapWorkingIndicatorRowKeys: indicators.map((entry) =>
-                  entry.closest("[data-virtual-row-key]")?.getAttribute("data-virtual-row-key"),
-                ),
+                recapWorkingRowsRetained:
+                  observation.workingRowKeys.length === indicators.length &&
+                  observation.workingRowKeys.every(
+                    (key, index) =>
+                      key ===
+                      indicators[index]
+                        ?.closest("[data-virtual-row-key]")
+                        ?.getAttribute("data-virtual-row-key"),
+                  ),
                 recapSessionMatches: state?.sessionKey === expectedSessionKey,
                 recapRunCleared: state?.chatRunId === null,
                 recapCount: recaps.length,
