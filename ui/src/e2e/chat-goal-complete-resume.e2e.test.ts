@@ -67,7 +67,7 @@ suite.define(() => {
           action: "resume",
           operationId: expect.any(String),
         });
-        await card.getByText("Resuming goal…", { exact: true }).waitFor();
+        await card.getByText("Checking goal update…", { exact: true }).waitFor();
         const { completedAt: _completedAt, ...retained } = goal;
         const resumed = { ...retained, status: "active", updatedAt: now + 1_000 };
         await gateway.setSessionsListResponse({

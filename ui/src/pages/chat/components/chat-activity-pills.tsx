@@ -137,11 +137,11 @@ function ActivityGlyph(props: { name: Glyph }) {
 function goalView(input: NonNullable<ChatActivityPillsProps["goal"]>): PillView {
   const goal = input.value;
   const recovery = input.recovery;
-  if (recovery?.goalId === goal.id && recovery.action === "resume" && !recovery.retired) {
+  if (recovery) {
     return recovery.pending
-      ? { label: t("chat.goals.resuming"), icon: "spinner" }
+      ? { label: t("chat.goals.checking"), icon: "spinner" }
       : {
-          label: t("chat.activityPills.goal.resumeUnconfirmed"),
+          label: t("chat.goals.recoveryTitle"),
           icon: "alertTriangle",
           tone: "warn",
           attention: true,

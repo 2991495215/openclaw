@@ -168,7 +168,7 @@ suite.define(() => {
         if (action === "resume") {
           await page.locator(".agent-chat__goal-label").waitFor({ state: "visible" });
           expect(await page.locator(".agent-chat__goal-label").textContent()).toBe(
-            "Resuming goal…",
+            "Checking goal update…",
           );
         }
         // Commit and publish the authoritative state while withholding only this RPC's ACK.
@@ -202,14 +202,14 @@ suite.define(() => {
             message: "ACK still unavailable",
           });
         } else if (committed) {
-          await page.locator(`.agent-chat__goal--${committed.status}`).waitFor();
+          await page.getByText("Goal update not confirmed", { exact: true }).waitFor();
         } else {
           await expect.poll(() => page.locator(".agent-chat__goal").count()).toBe(0);
         }
-        const checkOutcome = exactButton(
-          page,
-          action === "resume" ? "Retry resume" : "Check outcome",
-        );
+        if (committed) {
+          await exactButton(page, "Show goal details").click();
+        }
+        const checkOutcome = exactButton(page, "Check outcome");
         await expect.poll(() => checkOutcome.isEnabled()).toBe(true);
         expect(await gateway.getSocketCount()).toBe(sockets);
         expect(await gateway.getRequests(method)).toHaveLength(action === "resume" ? 2 : 1);
@@ -220,19 +220,20 @@ suite.define(() => {
           await goalEntry.click();
           const mobileGoal = page.locator('.chat-mobile-details-page[data-details-page="goal"]');
           await mobileGoal.getByText(goal.objective, { exact: true }).waitFor();
-          await mobileGoal.getByRole("button", { name: "Retry resume", exact: true }).waitFor();
+          await mobileGoal.getByRole("button", { name: "Check outcome", exact: true }).waitFor();
           expect(await checkOutcome.isVisible()).toBe(true);
           await closeChatDetails(page);
           await page.setViewportSize(viewport);
         }
         await page.reload();
+        if (committed) {
+          await exactButton(page, "Show goal details").click();
+        }
         await checkOutcome.waitFor();
         expect(await gateway.getRequests(method)).toHaveLength(0);
         expect(await original.count()).toBe(0);
         if (committed) {
-          await page
-            .locator(`.agent-chat__goal--${action === "resume" ? "resuming" : committed.status}`)
-            .waitFor();
+          await page.locator(".agent-chat__goal--resuming").waitFor();
         } else {
           expect(await page.locator(".agent-chat__goal").count()).toBe(0);
         }
@@ -295,10 +296,12 @@ suite.define(() => {
       await page.clock.fastForward(1_001);
       await gateway.waitForRequest(method, { after: beforeRetry });
       await gateway.rejectDeferred(method, unavailable);
-      const checkOutcome = exactButton(page, "Retry resume");
+      await exactButton(page, "Show goal details").click();
+      const checkOutcome = exactButton(page, "Check outcome");
       await checkOutcome.waitFor();
       await page.reload();
       await admitHistory();
+      await exactButton(page, "Show goal details").click();
       await checkOutcome.waitFor();
       await checkOutcome.click();
       const retried = await gateway.waitForRequest(method);
@@ -309,12 +312,14 @@ suite.define(() => {
       const automatic = await gateway.waitForRequest(method, { after: 1 });
       expect(automatic.params).toEqual(first.params);
       await gateway.rejectDeferred(method, unavailable);
+      await page.getByText("Technical details", { exact: true }).click();
       await page.getByText("Gateway response unavailable", { exact: false }).waitFor();
       expect(await checkOutcome.isEnabled()).toBe(true);
       expect(await gateway.getRequests(method)).toHaveLength(2);
       expect(await gateway.getRequests("chat.send")).toHaveLength(0);
       await page.reload();
       await admitHistory();
+      await exactButton(page, "Show goal details").click();
       await checkOutcome.waitFor();
       expect(await gateway.getRequests(method)).toHaveLength(0);
     });

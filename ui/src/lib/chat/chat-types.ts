@@ -122,6 +122,7 @@ export type ChatGoalAction = "pause" | "resume" | "clear";
 
 export type ChatGoalRecovery = {
   pending: boolean;
+  error?: string;
   goalId?: string;
   action?: ChatGoalAction | "edit" | "complete" | "block";
   retired?: "expired" | "invalid";

@@ -51,7 +51,7 @@ type ChatGoalProps = {
   goal?: SessionGoal;
   expanded: boolean;
   canAct: boolean;
-  resumeRecovery?: ChatGoalRecovery;
+  recovery?: ChatGoalRecovery;
   connected?: boolean;
   onGoalAction?: (goalId: string, action: ChatGoalAction) => void;
   onGoalEdit?: (goal: SessionGoal) => void;
@@ -68,13 +68,13 @@ const goalActionIcons = {
 
 type GoalPresentationProps = Pick<
   ChatGoalProps,
-  "canAct" | "resumeRecovery" | "connected" | "onGoalAction" | "onGoalEdit"
+  "canAct" | "recovery" | "connected" | "onGoalAction" | "onGoalEdit"
 > & { goal: SessionGoal };
 
 /** Shared eligibility and callbacks; the parent supplies native write availability. */
 export function ChatGoalActions(props: GoalPresentationProps) {
   const visibleAction = (action: (typeof goalActions)[number]) =>
-    !props.resumeRecovery &&
+    !props.recovery &&
     props.canAct &&
     Boolean(props.onGoalAction) &&
     (action === "edit"
@@ -86,17 +86,6 @@ export function ChatGoalActions(props: GoalPresentationProps) {
           : true);
   return (
     <span class="agent-chat__goal-command-actions">
-      <Show when={props.resumeRecovery && !props.resumeRecovery.pending}>
-        <button
-          class="agent-chat__goal-action agent-chat__goal-resume"
-          type="button"
-          disabled={!props.connected}
-          onClick={() => void props.resumeRecovery?.onCheck()}
-        >
-          <Icon name="play" />
-          <span class="agent-chat__goal-action-label">{t("chat.goals.retryResume")}</span>
-        </button>
-      </Show>
       <For each={goalActions}>
         {(action) => (
           <>
@@ -128,7 +117,7 @@ export function ChatGoalActions(props: GoalPresentationProps) {
 
 export function ChatGoalBody(props: {
   goal: SessionGoal;
-  resumeRecovery?: ChatGoalRecovery;
+  recovery?: ChatGoalRecovery;
   objectiveRef?: (element: HTMLDivElement) => void;
 }) {
   return (
@@ -138,7 +127,7 @@ export function ChatGoalBody(props: {
         ref={props.objectiveRef}
         textContent={props.goal.objective}
       />
-      {props.goal.lastStatusNote && !props.resumeRecovery ? (
+      {props.goal.lastStatusNote && !props.recovery ? (
         <div class="agent-chat__goal-detail-note">{props.goal.lastStatusNote}</div>
       ) : null}
     </>
@@ -168,30 +157,30 @@ export function ChatGoalMetrics(props: { goal: SessionGoal; live?: boolean }) {
 function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
   const canResume = () => props.goal.status !== "active";
   const pauseReason = () =>
-    canResume() && !props.expanded && !props.resumeRecovery ? props.goal.lastStatusNote : undefined;
+    canResume() && !props.expanded && !props.recovery ? props.goal.lastStatusNote : undefined;
   const statusLabel = () =>
-    props.resumeRecovery
-      ? t(props.resumeRecovery.pending ? "chat.goals.resuming" : "chat.goals.resumeUnconfirmed")
+    props.recovery
+      ? t(props.recovery.pending ? "chat.goals.checking" : "chat.goals.recoveryTitle")
       : formatGoalStatusLabel(props.goal.status);
   return (
     <div
       class={[
         "agent-chat__goal",
-        `agent-chat__goal--${props.resumeRecovery ? "resuming" : props.goal.status}`,
+        `agent-chat__goal--${props.recovery ? "resuming" : props.goal.status}`,
       ]}
       data-expanded={String(props.expanded)}
       role="group"
       aria-label={
-        props.resumeRecovery
-          ? `${statusLabel()}: ${props.goal.objective}`
-          : formatGoalDetail(props.goal)
+        props.recovery ? `${statusLabel()}: ${props.goal.objective}` : formatGoalDetail(props.goal)
       }
-      aria-busy={props.resumeRecovery?.pending ? "true" : "false"}
+      aria-busy={props.recovery?.pending ? "true" : "false"}
     >
       <div class="agent-chat__goal-row">
         <span class="agent-chat__goal-icon" aria-hidden="true">
-          {props.resumeRecovery?.pending ? (
+          {props.recovery?.pending ? (
             <span class="session-run-spinner" />
+          ) : props.recovery ? (
+            <Icon name="alertTriangle" />
           ) : props.goal.status === "active" ? (
             <GoalIcon />
           ) : (
@@ -215,7 +204,7 @@ function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
           <ChatGoalActions
             goal={props.goal}
             canAct={props.canAct}
-            resumeRecovery={props.resumeRecovery}
+            recovery={props.recovery}
             connected={props.connected}
             onGoalAction={props.onGoalAction}
             onGoalEdit={props.onGoalEdit}
@@ -240,9 +229,18 @@ function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
         <div class="agent-chat__goal-detail-content">
           <ChatGoalBody
             goal={props.goal}
-            resumeRecovery={props.resumeRecovery}
+            recovery={props.recovery}
             objectiveRef={useScrollState(false, true, { revision: () => props.goal.objective })}
           />
+          <Show when={props.recovery}>
+            <div class="agent-chat__goal-recovery-detail">
+              <ChatGoalRecoveryMessage recovery={props.recovery!} />
+              <ChatGoalRecoveryAction
+                recovery={props.recovery!}
+                connected={Boolean(props.connected)}
+              />
+            </div>
+          </Show>
           <ChatGoalMetrics goal={props.goal} />
         </div>
       </div>
@@ -257,7 +255,7 @@ export function ChatGoal(props: ChatGoalProps) {
         goal={props.goal!}
         expanded={props.expanded}
         canAct={props.canAct}
-        resumeRecovery={props.resumeRecovery}
+        recovery={props.recovery}
         connected={props.connected}
         onGoalAction={props.onGoalAction}
         onGoalEdit={props.onGoalEdit}
@@ -280,6 +278,7 @@ export function renderChatGoalRecoverySolid(
         <Icon name="alertTriangle" />
       </span>
       <div class="chat-composer-neighbor-card__copy">
+        <strong>{t(recovery.pending ? "chat.goals.checking" : "chat.goals.recoveryTitle")}</strong>
         <ChatGoalRecoveryMessage recovery={recovery} />
       </div>
       <ChatGoalRecoveryAction recovery={recovery} connected={connected} />
@@ -290,9 +289,6 @@ export function renderChatGoalRecoverySolid(
 export function ChatGoalRecoveryMessage(props: { recovery: ChatGoalRecovery }) {
   return (
     <>
-      <strong>
-        {t(props.recovery.pending ? "chat.goals.checking" : "chat.goals.recoveryTitle")}
-      </strong>
       <span>
         {t(
           props.recovery.retired === "expired"
@@ -302,6 +298,15 @@ export function ChatGoalRecoveryMessage(props: { recovery: ChatGoalRecovery }) {
               : "chat.goals.recoveryHint",
         )}
       </span>
+      <Show when={props.recovery.error}>
+        <details class="agent-chat__goal-recovery-error">
+          <summary>
+            <span>{t("chat.goals.technicalDetails")}</span>
+            <Icon name="chevronDown" />
+          </summary>
+          <div class="agent-chat__goal-recovery-error-body">{props.recovery.error}</div>
+        </details>
+      </Show>
     </>
   );
 }
