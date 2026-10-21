@@ -49,116 +49,6 @@ export type UpdateCandidateRehearsal = {
   cleanup: (assertDirectoryCurrent?: (directory: string) => void) => Promise<void>;
 };
 
-function isolatedConfig(
-  config: OpenClawConfigWithLegacyRoster,
-  sourceRoot: string,
-  stateDir: string,
-  port: number,
-  sourceEnv: NodeJS.ProcessEnv,
-  pluginPaths: Record<string, string>,
-  migrationPolicy?: "rehearse" | "startup-only",
-): OpenClawConfigWithLegacyRoster {
-  const copied = structuredClone(config);
-  if (Object.values(resolveDatabaseFamilyEngines(copied)).includes("postgres")) {
-    // Provider exports are private SQLite images, never live PostgreSQL anchors.
-    copied.database = { engine: "sqlite" };
-  }
-  const projectPluginPath = (value: string) => {
-    const projected = pluginPaths[resolveUserPath(value, sourceEnv)];
-    if (!projected) {
-      throw new Error("Plugin locator was not included in the update snapshot");
-    }
-    return projected;
-  };
-  for (const record of Object.values(copied.plugins?.installs ?? {})) {
-    if (record.source === "path" && record.sourcePath) {
-      record.sourcePath = projectPluginPath(record.sourcePath);
-    }
-    if (record.installPath) {
-      record.installPath = projectPluginPath(record.installPath);
-    }
-  }
-  if (copied.plugins?.load?.paths) {
-    copied.plugins.load.paths = copied.plugins.load.paths.map(projectPluginPath);
-  }
-  const workspace = path.join(stateDir, "workspace");
-  const entries =
-    copied.agents?.entries ??
-    (migrationPolicy === "startup-only"
-      ? undefined
-      : Object.fromEntries((copied.agents?.list ?? []).map(({ id, ...agent }) => [id, agent])));
-  const isolateAgent = (id: string, agent: AgentEntryConfig): AgentEntryConfig => ({
-    ...agent,
-    // Pre-Doctor input can be malformed; validation reports non-string avatars.
-    ...(typeof agent.identity?.avatar === "string"
-      ? {
-          identity: {
-            ...agent.identity,
-            avatar: resolveUpdateCandidateAvatar(
-              resolveAgentWorkspaceDir(config, id, sourceEnv),
-              agent.identity.avatar,
-            ),
-          },
-        }
-      : {}),
-    workspace: path.join(workspace, id),
-    cwd: path.join(workspace, id),
-    agentDir: agent.agentDir
-      ? resolveUpdateCandidateStatePath(
-          sourceRoot,
-          stateDir,
-          resolveUserPath(agent.agentDir, sourceEnv),
-        )
-      : path.join(stateDir, "agents", id, "agent"),
-  });
-  copied.agents = {
-    ...copied.agents,
-    defaults: { ...copied.agents?.defaults, workspace, cwd: workspace },
-    ...(entries
-      ? {
-          entries: Object.fromEntries(
-            Object.entries(entries).map(([id, agent]) => [id, isolateAgent(id, agent)]),
-          ),
-        }
-      : {}),
-    ...(migrationPolicy === "startup-only" && copied.agents?.list
-      ? { list: copied.agents.list.map(({ id, ...agent }) => ({ id, ...isolateAgent(id, agent) })) }
-      : {}),
-  };
-  if (migrationPolicy !== "startup-only") {
-    delete copied.agents.list;
-  }
-  // Copy effective config, never its include graph or ambient shell overrides.
-  delete copied.env;
-  delete copied.diagnostics;
-  delete copied.session?.store;
-  copied.logging = { ...copied.logging, file: path.join(stateDir, "canary.log") };
-  copied.gateway = {
-    ...copied.gateway,
-    mode: "local",
-    bind: "loopback",
-    port,
-    auth: {
-      ...copied.gateway?.auth,
-      mode: "token",
-      token: randomUUID(),
-      password: undefined,
-      allowTailscale: false,
-    },
-    tls: { enabled: false },
-    tailscale: { mode: "off" },
-    controlUi: { enabled: false },
-  };
-  copied.cron = { ...copied.cron, enabled: false, triggers: { enabled: false } };
-  copied.hooks = { enabled: false, internal: { enabled: false } };
-  copied.transcripts = { enabled: false, autoStart: [] };
-  copied.discovery = { mdns: { mode: "off" } };
-  if (copied.mcp?.apps) {
-    copied.mcp.apps.enabled = false;
-  }
-  return copied;
-}
-
 /** Prepare one disposable generation for candidate diagnostics. */
 export async function prepareUpdateCandidateRehearsal(params: {
   config: OpenClawConfigWithLegacyRoster;
@@ -265,17 +155,114 @@ export async function prepareUpdateCandidateRehearsal(params: {
       host: "127.0.0.1",
       signal: params.signal ?? AbortSignal.timeout(params.timeoutMs ?? 300_000),
     });
-    const serialized = JSON.stringify(
-      isolatedConfig(
-        params.config,
-        path.resolve(params.stateDir),
-        tempDir,
+    const { config, migrationPolicy } = params;
+    const sourceRoot = path.resolve(params.stateDir);
+    const isolatedConfig = (): OpenClawConfigWithLegacyRoster => {
+      const copied = structuredClone(config);
+      if (Object.values(resolveDatabaseFamilyEngines(copied)).includes("postgres")) {
+        // Provider exports are private SQLite images, never live PostgreSQL anchors.
+        copied.database = { engine: "sqlite" };
+      }
+      const projectPluginPath = (value: string) => {
+        const projected = pluginPaths[resolveUserPath(value, sourceEnv)];
+        if (!projected) {
+          throw new Error("Plugin locator was not included in the update snapshot");
+        }
+        return projected;
+      };
+      for (const record of Object.values(copied.plugins?.installs ?? {})) {
+        if (record.source === "path" && record.sourcePath) {
+          record.sourcePath = projectPluginPath(record.sourcePath);
+        }
+        if (record.installPath) {
+          record.installPath = projectPluginPath(record.installPath);
+        }
+      }
+      if (copied.plugins?.load?.paths) {
+        copied.plugins.load.paths = copied.plugins.load.paths.map(projectPluginPath);
+      }
+      const entries =
+        copied.agents?.entries ??
+        (migrationPolicy === "startup-only"
+          ? undefined
+          : Object.fromEntries((copied.agents?.list ?? []).map(({ id, ...agent }) => [id, agent])));
+      const isolateAgent = (id: string, agent: AgentEntryConfig): AgentEntryConfig => ({
+        ...agent,
+        // Pre-Doctor input can be malformed; validation reports non-string avatars.
+        ...(typeof agent.identity?.avatar === "string"
+          ? {
+              identity: {
+                ...agent.identity,
+                avatar: resolveUpdateCandidateAvatar(
+                  resolveAgentWorkspaceDir(config, id, sourceEnv),
+                  agent.identity.avatar,
+                ),
+              },
+            }
+          : {}),
+        workspace: path.join(workspaceDir, id),
+        cwd: path.join(workspaceDir, id),
+        agentDir: agent.agentDir
+          ? resolveUpdateCandidateStatePath(
+              sourceRoot,
+              tempDir,
+              resolveUserPath(agent.agentDir, sourceEnv),
+            )
+          : path.join(tempDir, "agents", id, "agent"),
+      });
+      copied.agents = {
+        ...copied.agents,
+        defaults: { ...copied.agents?.defaults, workspace: workspaceDir, cwd: workspaceDir },
+        ...(entries
+          ? {
+              entries: Object.fromEntries(
+                Object.entries(entries).map(([id, agent]) => [id, isolateAgent(id, agent)]),
+              ),
+            }
+          : {}),
+        ...(migrationPolicy === "startup-only" && copied.agents?.list
+          ? {
+              list: copied.agents.list.map(({ id, ...agent }) => ({
+                id,
+                ...isolateAgent(id, agent),
+              })),
+            }
+          : {}),
+      };
+      if (migrationPolicy !== "startup-only") {
+        delete copied.agents.list;
+      }
+      // Copy effective config, never its include graph or ambient shell overrides.
+      delete copied.env;
+      delete copied.diagnostics;
+      delete copied.session?.store;
+      copied.logging = { ...copied.logging, file: path.join(tempDir, "canary.log") };
+      copied.gateway = {
+        ...copied.gateway,
+        mode: "local",
+        bind: "loopback",
         port,
-        sourceEnv,
-        pluginPaths,
-        params.migrationPolicy,
-      ),
-    );
+        auth: {
+          ...copied.gateway?.auth,
+          mode: "token",
+          token: randomUUID(),
+          password: undefined,
+          allowTailscale: false,
+        },
+        tls: { enabled: false },
+        tailscale: { mode: "off" },
+        controlUi: { enabled: false },
+      };
+      copied.cron = { ...copied.cron, enabled: false, triggers: { enabled: false } };
+      copied.hooks = { enabled: false, internal: { enabled: false } };
+      copied.transcripts = { enabled: false, autoStart: [] };
+      copied.discovery = { mdns: { mode: "off" } };
+      if (copied.mcp?.apps) {
+        copied.mcp.apps.enabled = false;
+      }
+      return copied;
+    };
+    const serialized = JSON.stringify(isolatedConfig());
     params.signal?.throwIfAborted();
     params.assertCurrent?.();
     await fs.writeFile(configPath, serialized, { mode: 0o600 });
