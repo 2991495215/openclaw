@@ -1,5 +1,5 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { createComponent, createEffect, createRoot, flush } from "solid-js";
+import { createEffect, createRoot, flush } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { GatewayPendingRequests } from "../../../../packages/gateway-client/src/pending-request.js";
 import type { RequestFrame } from "../../../../packages/gateway-protocol/src/schema/frames.js";
