@@ -77,6 +77,7 @@ it("binds a first native chat.send before streaming and persists its stopped par
     "first-turn",
   );
   const cfg = {
+    cron: { enabled: false },
     agents: {
       defaults: {
         workspace: state.workspaceDir,

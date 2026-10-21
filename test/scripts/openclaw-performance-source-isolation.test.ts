@@ -110,18 +110,21 @@ printf 'http-health\\n' >> "$EVENTS_FILE"
   );
   writeCommand(
     "rg",
-    `[ "$#" -eq 3 ] && [ "$1" = '-q' ] && [ "$2" = 'catalogRefresh:' ] && [ "$3" = 'src/config/zod-schema.core.ts' ] || {
-  printf 'unexpected rg argv\\n' >&2
-  exit 64
-}
-printf 'catalog-probe\\n' >> "$EVENTS_FILE"
-exit "$RG_STATUS"
+    `[ "$#" -eq 3 ] && [ "$1" = '-q' ] || { printf 'unexpected rg argv\\n' >&2; exit 64; }
+case "$2:$3" in
+  catalogRefresh::src/config/zod-schema.core.ts) probe=catalog; status="$CATALOG_RG_STATUS" ;;
+  heartbeat::src/config/zod-schema.agent-defaults.ts) probe=heartbeat; status="$HEARTBEAT_RG_STATUS" ;;
+  *) printf 'unexpected rg argv\\n' >&2; exit 64 ;;
+esac
+printf '%s-probe\\n' "$probe" >> "$EVENTS_FILE"
+exit "$status"
 `,
   );
 
-  for (const [branch, rgStatus, expectsCatalogRefresh] of [
-    ["unsupported", "1", false],
-    ["supported", "0", true],
+  // Older candidates lack catalogRefresh and still accept the retired heartbeat key.
+  for (const [branch, expectsCatalogRefresh, expectsHeartbeat] of [
+    ["older", false, true],
+    ["current", true, false],
   ] as const) {
     const branchDir = join(fixtureRoot, branch);
     const captureDir = join(branchDir, "capture");
@@ -147,7 +150,8 @@ exit "$RG_STATUS"
       GITHUB_WORKSPACE: "/fixture/workspace",
       PERFORMANCE_HELPER_DIR: "/fixture/helpers",
       REAL_NODE: process.execPath,
-      RG_STATUS: rgStatus,
+      CATALOG_RG_STATUS: expectsCatalogRefresh ? "0" : "1",
+      HEARTBEAT_RG_STATUS: expectsHeartbeat ? "0" : "1",
       SOURCE_PERF_DIR: sourcePerfDir,
       source_runs: "2",
     });
@@ -166,6 +170,7 @@ exit "$RG_STATUS"
 
     expect(readFileSync(eventsFile, "utf8").trim().split("\n")).toEqual([
       "catalog-probe",
+      "heartbeat-probe",
       "gateway-run",
       "http-health",
       "gateway-health",
@@ -180,8 +185,12 @@ exit "$RG_STATUS"
     parse(gatewayConfig, { uniqueKeys: true });
     const parsedConfig = JSON.parse(gatewayConfig) as {
       gateway?: { auth?: Record<string, unknown> };
+      agents?: unknown;
       models?: { catalogRefresh?: { enabled?: boolean } };
     };
+    expect(parsedConfig.agents).toEqual(
+      expectsHeartbeat ? { defaults: { heartbeat: { every: "0m" } } } : undefined,
+    );
     expect(parsedConfig).toMatchObject({
       cron: { enabled: false },
       browser: { enabled: false },
@@ -196,7 +205,6 @@ exit "$RG_STATUS"
       plugins: { enabled: true, entries: { browser: { enabled: false } } },
     });
     expect(JSON.stringify(parsedConfig)).not.toContain('"dreaming":');
-    expect(parsedConfig).not.toHaveProperty("agents");
     expect(parsedConfig.gateway?.auth).toEqual({ mode: "token" });
     if (expectsCatalogRefresh) {
       expect(parsedConfig.models?.catalogRefresh?.enabled).toBe(false);
