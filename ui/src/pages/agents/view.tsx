@@ -18,6 +18,7 @@ import { currentConfigObject } from "../../lib/config/config-state-model.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { ReasonedDisabledControl } from "../plugins/reasoned-disabled-control.tsx";
 import type { AgentsPageView } from "./agents-page-state.ts";
+import type { AgentConfigActions } from "./config-actions.tsx";
 import { AgentMemoryPanel } from "./memory/memory-panel.tsx";
 import { AgentFiles } from "./panels-files.tsx";
 import { AgentOverview } from "./panels-overview.tsx";
@@ -32,7 +33,12 @@ const AGENTS_DOCS_URL = "https://docs.openclaw.ai/concepts/multi-agent";
 
 export type AgentsProps = Omit<
   AgentsPageView,
-  "config" | "overview" | "onOpenMemoryImport" | "onOpenMemorySettings"
+  | "config"
+  | "overview"
+  | "onOpenMemoryImport"
+  | "onOpenMemorySettings"
+  | "onConfigReload"
+  | "onConfigSave"
 > & {
   config: Pick<
     AgentsPageView["config"],
@@ -47,7 +53,7 @@ export type AgentsProps = Omit<
     Partial<Pick<AgentsPageView["overview"], "modelSelectionPolicy" | "modelCatalogRetired">>;
   onOpenMemoryImport?: AgentsPageView["onOpenMemoryImport"];
   onOpenMemorySettings?: AgentsPageView["onOpenMemorySettings"];
-};
+} & Pick<AgentConfigActions, "onConfigReload" | "onConfigSave">;
 
 export function AgentsPageHeader() {
   return (

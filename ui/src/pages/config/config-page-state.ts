@@ -635,10 +635,7 @@ export function createConfigPage(
       currentSelection.activeSection,
       currentSelection.activeSubsection,
     );
-    const activeSection = pageId === "mcp" ? "mcp" : selection.activeSection;
-    const activeSubsection = pageId === "mcp" ? null : selection.activeSubsection;
-    const gatewayConfig = asConfigRecord(configObject.gateway);
-    const controlUiConfig = asConfigRecord(gatewayConfig?.controlUi);
+    const controlUiConfig = asConfigRecord(asConfigRecord(configObject.gateway)?.controlUi);
     const agentsDefaults = asConfigRecord(asConfigRecord(configObject.agents)?.defaults);
     const utilityModel = readModelSetting(agentsDefaults?.utilityModel);
     const id = context.agentSelection.state.selectedId;
@@ -670,6 +667,9 @@ export function createConfigPage(
       valid: configState.configValid,
       issues: configState.configIssues,
       loading: configState.configLoading,
+      configLoaded: configState.configSnapshot !== null,
+      configRead: runtimeConfig.configRead,
+      onRetryConfig: () => void runtimeConfig.refresh(),
       saving: configState.configSaving,
       applying: configState.configApplying,
       updating: isUpdateBusy() || context.overlays.snapshot.updateStatusRefreshing,
@@ -687,8 +687,8 @@ export function createConfigPage(
       ),
       showModeToggle: pageId === "advanced",
       formValue: configState.configForm,
-      activeSection,
-      activeSubsection,
+      activeSection: pageId === "mcp" ? "mcp" : selection.activeSection,
+      activeSubsection: pageId === "mcp" ? null : selection.activeSubsection,
       onRawChange: withConfigMutation((next: string) => runtimeConfig.setRaw(next)),
       onFormModeChange: (mode: View.ConfigFormMode) => {
         setPresentation((draft) => {
@@ -718,9 +718,9 @@ export function createConfigPage(
         });
         invalidate();
       },
-      onSave: () => void runtimeConfig.save(),
-      onRawDiscard: () => void runtimeConfig.discardDraft(),
-      onOpenFile: () => void runtimeConfig.openFile(),
+      onSave: () => runtimeConfig.save(),
+      onRawDiscard: () => runtimeConfig.discardDraft(),
+      onOpenFile: () => runtimeConfig.openFile(),
       theme: settings.theme,
       themeOverridden: themePref.overridden,
       themeProvenance: themePref.provenance,

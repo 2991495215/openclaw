@@ -1,4 +1,14 @@
-import { createMemo, createSignal, For, Show, untrack } from "solid-js";
+import {
+  action,
+  createMemo,
+  createOptimistic,
+  createSignal,
+  Errored,
+  For,
+  Loading,
+  Show,
+  untrack,
+} from "solid-js";
 import "../../styles/lobster-pet.css";
 import { ConfigForm } from "../../components/config-form.render.tsx";
 import { countSensitiveConfigValues } from "../../components/config-form.shared.ts";
@@ -8,6 +18,7 @@ import { Icon } from "../../components/solid/icon.tsx";
 import "../../components/tooltip.ts";
 import { SettingsSegmented, SettingsPage } from "../../components/solid/settings-ui.tsx";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
+import { formatUiError } from "../../lib/format-error.ts";
 import { isJson5Warm, warmJson5 } from "../../lib/json5-runtime.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { liveValue as createLiveValue } from "../../lib/reactive/live-value.ts";
@@ -65,6 +76,17 @@ export function Config(props: ConfigProps) {
     return props.viewState;
   };
   const schema = createMemo(() => asConfigSchema(props.schema));
+  const configResult = createMemo(() => props.configRead ?? undefined);
+  const configReady = createMemo(() => {
+    // Background reads must not hold editor interlocks or discard a loaded draft.
+    if (!props.configLoaded) {
+      const result = configResult();
+      if (result?.ok === false) {
+        throw new Error(result.error);
+      }
+    }
+    return true;
+  });
   const includeSections = createMemo(() => props.includeSections);
   const excludeSections = createMemo(() => props.excludeSections);
   const includedSections = createMemo(() =>
@@ -231,6 +253,19 @@ export function Config(props: ConfigProps) {
     };
   });
   function RawEditor() {
+    const [commandPending, setCommandPending] = createOptimistic<
+      "save" | "discard" | "open" | null
+    >(null);
+    const command = action(function* (operation: "save" | "discard" | "open") {
+      setCommandPending(operation);
+      yield operation === "save"
+        ? props.onSave()
+        : operation === "discard"
+          ? props.onRawDiscard()
+          : props.onOpenFile?.();
+    });
+    const busy = () => commandPending() !== null || state().configBusy;
+    const saving = () => commandPending() === "save" || props.saving;
     const rawRef = createLiveValue(() => props.raw);
     // Resolve the raw branch once; a dynamic children factory recreates the textarea on each edit.
     const editor = (
@@ -300,30 +335,27 @@ export function Config(props: ConfigProps) {
           <div class="settings-row settings-row--stacked">
             <div class="config-raw-actions">
               {props.onOpenFile && props.openFileAllowed !== false ? (
-                <button class="btn btn--sm" onClick={() => props.onOpenFile?.()}>
+                <button class="btn btn--sm" disabled={busy()} onClick={() => void command("open")}>
                   <Icon name="fileText" />
                   {t("configView.open")}
                 </button>
               ) : null}
               <button
                 class="btn btn--sm"
-                disabled={state().configBusy || !state().hasRawChanges}
-                onClick={() => props.onRawDiscard()}
+                disabled={busy() || !state().hasRawChanges}
+                onClick={() => void command("discard")}
               >
                 {t("configView.rawDiscard")}
               </button>
               <button
                 class="btn btn--sm primary"
                 disabled={
-                  !props.connected ||
-                  !state().mutationAllowed ||
-                  state().configBusy ||
-                  !state().hasRawChanges
+                  !props.connected || !state().mutationAllowed || busy() || !state().hasRawChanges
                 }
-                aria-busy={props.saving ? "true" : "false"}
-                onClick={() => props.onSave()}
+                aria-busy={saving() ? "true" : "false"}
+                onClick={() => void command("save")}
               >
-                {props.saving ? (
+                {saving() ? (
                   <>
                     <span class="config-action-spinner" aria-hidden="true">
                       <Icon name="loader" />
@@ -385,7 +417,7 @@ export function Config(props: ConfigProps) {
                   aria-label={t("configView.rawConfig")}
                   placeholder={t("configView.rawConfig")}
                   ref={rawRef}
-                  disabled={state().configBusy || !state().mutationAllowed}
+                  disabled={busy() || !state().mutationAllowed}
                   onInput={(event) => props.onRawChange(event.currentTarget.value)}
                 />
               )}
@@ -570,56 +602,86 @@ export function Config(props: ConfigProps) {
         }
         aria-label={state().showSectionTabs ? undefined : t("common.settingsSections")}
       >
-        {props.activeSection === "__appearance__" ? (
-          state().includeVirtualSections ? (
-            <AppearanceSection {...props} />
-          ) : null
-        ) : props.activeSection === "__notifications__" ? (
-          state().includeVirtualSections ? (
-            <NotificationsSection {...props} />
-          ) : null
-        ) : state().formMode === "form" ? (
-          <>
-            {state().unsupportedActivePaths.length > 0 &&
-            state().showModeToggle &&
-            state().rawAvailable ? (
+        <Loading
+          on={!props.configLoaded ? props.configRead : undefined}
+          fallback={
+            <div class="config-loading" aria-busy="true">
+              <div class="config-loading__spinner" />
+              <span>{t("common.loading")}</span>
+            </div>
+          }
+        >
+          <Errored
+            fallback={(error, reset) => (
               <div class="config-content-callout">
-                <div class="callout info">
-                  <UnsupportedPathSummary paths={state().unsupportedActivePaths} />{" "}
+                <div class="callout danger" role="alert">
+                  {formatUiError(error())}{" "}
                   <button
                     type="button"
                     class="btn btn--sm"
-                    onClick={() => props.onFormModeChange("raw")}
+                    onClick={() => {
+                      props.onRetryConfig();
+                      reset();
+                    }}
                   >
-                    {t("configView.openRawEditor")}
+                    {t("common.retry")}
                   </button>
                 </div>
               </div>
-            ) : null}
-            {state().includeVirtualSections &&
-            props.activeSection === null &&
-            state().include?.has("__appearance__") ? (
-              <AppearanceSection {...props} />
-            ) : null}
-            {state().showSchemaLoading ? (
-              <div class="config-loading">
-                <div class="config-loading__spinner" />
-                <span>{t("configView.loadingSchema")}</span>
-              </div>
-            ) : (
-              <FormEditor />
             )}
-            {state().showSetup && !state().showSchemaLoading ? (
-              <SetupSection
-                schema={state().setupSchema!}
-                config={props}
-                disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
-              />
-            ) : null}
-          </>
-        ) : (
-          <RawEditor />
-        )}
+          >
+            {props.activeSection === "__appearance__" ? (
+              state().includeVirtualSections ? (
+                <AppearanceSection {...props} />
+              ) : null
+            ) : props.activeSection === "__notifications__" ? (
+              state().includeVirtualSections ? (
+                <NotificationsSection {...props} />
+              ) : null
+            ) : !configReady() ? null : state().formMode === "form" ? (
+              <>
+                {state().unsupportedActivePaths.length > 0 &&
+                state().showModeToggle &&
+                state().rawAvailable ? (
+                  <div class="config-content-callout">
+                    <div class="callout info">
+                      <UnsupportedPathSummary paths={state().unsupportedActivePaths} />{" "}
+                      <button
+                        type="button"
+                        class="btn btn--sm"
+                        onClick={() => props.onFormModeChange("raw")}
+                      >
+                        {t("configView.openRawEditor")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {state().includeVirtualSections &&
+                props.activeSection === null &&
+                state().include?.has("__appearance__") ? (
+                  <AppearanceSection {...props} />
+                ) : null}
+                {state().showSchemaLoading ? (
+                  <div class="config-loading">
+                    <div class="config-loading__spinner" />
+                    <span>{t("configView.loadingSchema")}</span>
+                  </div>
+                ) : (
+                  <FormEditor />
+                )}
+                {state().showSetup && !state().showSchemaLoading ? (
+                  <SetupSection
+                    schema={state().setupSchema!}
+                    config={props}
+                    disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <RawEditor />
+            )}
+          </Errored>
+        </Loading>
         {props.issues.length > 0 ? (
           <div class="config-content-callout">
             <div class="callout danger">

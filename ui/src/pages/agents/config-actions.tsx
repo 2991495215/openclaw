@@ -1,4 +1,5 @@
 import type { JSX } from "@solidjs/web";
+import { action, createOptimistic } from "solid-js";
 import { t } from "../../lib/reactive/i18n.ts";
 
 export type AgentConfigActions = {
@@ -6,20 +7,25 @@ export type AgentConfigActions = {
   configSaving: boolean;
   configDirty: boolean;
   canUpdateConfig: boolean;
-  onConfigReload: () => void;
-  onConfigSave: () => void;
+  onConfigReload: () => void | Promise<unknown>;
+  onConfigSave: () => void | Promise<unknown>;
 };
 
 export function AgentConfigButtons(
   props: AgentConfigActions & { children?: JSX.Element; buttonType?: "button" },
 ) {
+  const [pending, setPending] = createOptimistic<"reload" | "save" | null>(null);
+  const command = action(function* (operation: "reload" | "save") {
+    setPending(operation);
+    yield operation === "reload" ? props.onConfigReload() : props.onConfigSave();
+  });
   return (
     <>
       <button
         type={props.buttonType}
         class="btn btn--sm"
-        disabled={props.configLoading}
-        onClick={() => props.onConfigReload()}
+        disabled={pending() !== null || props.configLoading}
+        onClick={() => void command("reload")}
       >
         {t("common.reloadConfig")}
       </button>
@@ -27,10 +33,12 @@ export function AgentConfigButtons(
       <button
         type={props.buttonType}
         class="btn btn--sm primary"
-        disabled={!props.canUpdateConfig || props.configSaving || !props.configDirty}
-        onClick={() => props.onConfigSave()}
+        disabled={
+          !props.canUpdateConfig || pending() !== null || props.configSaving || !props.configDirty
+        }
+        onClick={() => void command("save")}
       >
-        {t(props.configSaving ? "common.saving" : "common.save")}
+        {t(pending() === "save" || props.configSaving ? "common.saving" : "common.save")}
       </button>
     </>
   );
