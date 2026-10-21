@@ -180,6 +180,7 @@ function installProbe() {
     writeJson(path.join(directory, "process-" + process.pid + ".json"), {
       pid: process.pid,
       ppid: process.ppid,
+      at: Date.now(),
       identity,
       doctor,
       migrated:
@@ -254,10 +255,8 @@ function installProbe() {
     record({ gate: "doctor-ancestor-missing" });
     return;
   }
-  if (fixture.migrated && !ancestors.some((ancestor) => ancestor.migrated)) {
-    record({ gate: "finalizer-ancestor-missing" });
-    return;
-  }
+  // The migrated case performs native schema work before finalizer admission.
+  // Its caller separately verifies the later real finalizer and terminal result.
   record({ gate: "hold-armed" });
   observeRepairProgressIntegrity(() => {
     record({ gate: "integrity-observed" });

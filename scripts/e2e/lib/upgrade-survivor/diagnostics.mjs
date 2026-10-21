@@ -108,10 +108,12 @@ const repairProgressLogs = [
     "service-probe-restore-reload",
     "service-probe-restore-verify",
     "stop-service",
-    ...["progress-repair", "progress-quiet", "progress-migrated"].map((phase) => `${phase}-fifo`),
+    ...repairProgressCases.flatMap((phase) => [`${phase}-fifo`, `${phase}-stopped`]),
   ].flatMap((phase) => [`${phase}.stdout`, `${phase}.stderr`, `${phase}-exit.json`]),
   ...["progress-repair", "progress-quiet", "progress-migrated"].flatMap((phase) =>
-    ["held", "released", "observed", "heartbeat", "result"].map((name) => `${phase}/${name}.json`),
+    ["held", "released", "observed", "heartbeat", "finalizer", "result"].map(
+      (name) => `${phase}/${name}.json`,
+    ),
   ),
 ];
 const logNames = [

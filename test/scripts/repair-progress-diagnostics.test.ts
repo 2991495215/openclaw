@@ -47,6 +47,12 @@ it("publishes bounded redacted progress evidence after failure and success", () 
   for (const name of ["held", "released", "observed", "heartbeat", "result"]) {
     write(`progress-repair/${name}.json`, JSON.stringify(evidence));
   }
+  const finalizer = {
+    runId: "fixture-update-run",
+    nativeProgressPhase: "before-finalizer",
+    identity: { entry: "dist/infra/update-migrated-finalize.worker.js", payload: "frozen-payload" },
+  };
+  write("progress-migrated/finalizer.json", JSON.stringify(finalizer));
   write("progress-repair/fixture.json", JSON.stringify({ privatePackageInventory: true }));
   const probe = {
     role: "integrity",
@@ -161,6 +167,7 @@ it("publishes bounded redacted progress evidence after failure and success", () 
     for (const name of ["held", "released", "observed", "heartbeat", "result"]) {
       expect(JSON.parse(report.logs[`progress-repair/${name}.json`])).toEqual(evidence);
     }
+    expect(JSON.parse(report.logs["progress-migrated/finalizer.json"])).toEqual(finalizer);
     expect(text).not.toContain(secret);
     expect(text).not.toContain("privatePackageInventory");
     expect(text).not.toContain("PRIVATE_CHAT_FIXTURE");

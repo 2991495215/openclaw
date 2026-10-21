@@ -7,6 +7,7 @@ import {
   observeRepairProgressPhases,
   resolveRepairProgressEntrypoint,
 } from "../../scripts/e2e/lib/upgrade-survivor/repair-progress-probe.mjs";
+import { assertRepairProgressFinalization } from "../../scripts/e2e/lib/upgrade-survivor/repair-progress.mjs";
 import { readWorkerCellPackageIdentity } from "../../scripts/e2e/lib/upgrade-survivor/worker-cell-package.mjs";
 import {
   assertSqliteIntegrity,
@@ -118,4 +119,58 @@ it("ignores lifecycle scripts without relaxing installed runtime identity", () =
   const unlisted = path.join(root, "dist/unlisted-runtime.js");
   fs.writeFileSync(unlisted, "export {};\n");
   expect(() => resolveRepairProgressEntrypoint(unlisted, [expected])).toThrow();
+});
+
+const finalizerProcess = {
+  pid: 123,
+  ppid: 122,
+  at: 20_001,
+  migrated: true,
+  identity: {
+    entry: "dist/infra/update-migrated-finalize.worker.js",
+    payload: "frozen-target-payload",
+  },
+};
+const finalizerResult = {
+  runId: "actual-update-run",
+  steps: [{ name: "update-driver-handoff", exitCode: 0 }],
+};
+
+it("accepts native migration followed by the real finalizer without requiring another audit", () => {
+  expect(
+    assertRepairProgressFinalization({
+      processes: [finalizerProcess],
+      result: finalizerResult,
+      releasedAt: 20_000,
+      payload: "frozen-target-payload",
+    }),
+  ).toMatchObject({
+    pid: 123,
+    runId: "actual-update-run",
+    nativeProgressPhase: "before-finalizer",
+  });
+});
+
+it.each([
+  { name: "missing finalizer", processes: [] },
+  { name: "duplicate finalizer", processes: [finalizerProcess, finalizerProcess] },
+  { name: "wrong package", payload: "other-payload" },
+  { name: "native work still held", releasedAt: 20_002 },
+  { name: "missing timestamp", processes: [{ ...finalizerProcess, at: undefined }] },
+  { name: "missing run", result: { ...finalizerResult, runId: "" } },
+  { name: "missing handoff", result: { ...finalizerResult, steps: [] } },
+  {
+    name: "failed handoff",
+    result: { ...finalizerResult, steps: [{ name: "update-driver-handoff", exitCode: 1 }] },
+  },
+])("rejects $name instead of passing ordinary update completion as finalization", (invalid) => {
+  expect(() =>
+    assertRepairProgressFinalization({
+      processes: [finalizerProcess],
+      result: finalizerResult,
+      releasedAt: 20_000,
+      payload: "frozen-target-payload",
+      ...invalid,
+    }),
+  ).toThrow();
 });

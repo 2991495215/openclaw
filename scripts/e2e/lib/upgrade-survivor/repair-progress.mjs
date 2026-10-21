@@ -112,6 +112,25 @@ async function seedLegacyAgent({ run, runtime, artifacts, env }) {
   }
 }
 
+// Migration completes before the ownership handoff. Prove the real finalizer
+// adopted and completed that run, not a second native audit of healthy state.
+export function assertRepairProgressFinalization({ result, processes, releasedAt, payload }) {
+  const finalizers = processes.filter((entry) => entry.migrated === true);
+  assert.equal(finalizers.length, 1, "Expected one actual migrated finalizer");
+  const finalizer = finalizers[0];
+  assert.equal(finalizer.identity.entry, "dist/infra/update-migrated-finalize.worker.js");
+  assert.equal(finalizer.identity.payload, payload, "Finalizer ran a different package");
+  assert(Number.isSafeInteger(finalizer.at), "Finalizer start time is missing");
+  assert(finalizer.at >= releasedAt, "Finalizer started before native migration settled");
+  assert.equal(typeof result.runId, "string");
+  assert(result.runId.length > 0, "Finalizer did not return an admitted run identity");
+  assert(
+    result.steps.some((step) => step.name === "update-driver-handoff" && step.exitCode === 0),
+    "Finalizer did not record its real driver handoff",
+  );
+  return { ...finalizer, runId: result.runId, nativeProgressPhase: "before-finalizer" };
+}
+
 // Reuses the published-driver cell's runtime, service custody, deadline and cleanup.
 export async function prepareRepairProgress({
   run,
@@ -169,6 +188,24 @@ export async function prepareRepairProgress({
     await stop();
     const probe = fileURLToPath(new URL("./repair-progress-probe.mjs", import.meta.url));
     const runProbe = async (name, args, identities, options = {}) => {
+      // The previous CLI has joined; confirm the service owner is still settled
+      // before replacing any database family, including the quiet repair case.
+      await run(name + "-stopped", process.execPath, [
+        path.join(bin, "systemd-fixture.mjs"),
+        "check-stopped",
+      ]);
+      // Update Doctor intentionally skips unchanged current-schema stores. Each
+      // case needs the authentic published backup, not the preceding case's
+      // already-migrated database, to reach its required native integrity check.
+      const preserved = path.join(runtime, name + "-before-migration");
+      fs.mkdirSync(preserved);
+      for (const suffix of ["", "-wal", "-shm", "-journal"]) {
+        if (fs.existsSync(agent + suffix)) {
+          fs.renameSync(agent + suffix, path.join(preserved, "agent.sqlite" + suffix));
+        }
+      }
+      fs.copyFileSync(baseline, agent);
+      assert.deepEqual(inspectAgent(agent), before);
       const directory = path.join(artifacts, name);
       fs.mkdirSync(directory);
       const fixture = {
@@ -218,9 +255,6 @@ export async function prepareRepairProgress({
               "Progress arrived after release",
             );
             assert(progress.elapsedMs >= 10_000);
-            if (fixture.migrated) {
-              assert(held.ancestors.some((entry) => entry.migrated));
-            }
             observation = {
               at: Date.now(),
               progress,
@@ -274,11 +308,40 @@ export async function prepareRepairProgress({
         assert(held.at <= heartbeat.at && heartbeat.at <= released.at);
       } else {
         assert(observation, "Real Doctor heartbeat was not visible before completion");
-        assert(fs.existsSync(path.join(directory, "released.json")));
+        const released = readJson(path.join(directory, "released.json"));
+        assert.equal(released.pid, observation.held.pid);
+        assert(observation.held.at <= observation.at && observation.at <= released.at);
         assert.equal(
           stderr.split("\n").filter((line) => line.startsWith("[update progress] ")).length,
           1,
           "Progress was replayed at completion",
+        );
+      }
+      let finalizer;
+      if (fixture.migrated) {
+        const processes = fs
+          .readdirSync(directory)
+          .filter((fileName) => /^process-\d+\.json$/u.test(fileName))
+          .map((fileName) => readJson(path.join(directory, fileName)));
+        finalizer = assertRepairProgressFinalization({
+          result,
+          processes,
+          releasedAt: readJson(path.join(directory, "released.json")).at,
+          payload: createHash("sha256")
+            .update(JSON.stringify(identities.at(-1)))
+            .digest("hex"),
+        });
+        save(path.join(directory, "finalizer.json"), finalizer);
+      }
+      const after = inspectAgent(agent);
+      assert.equal(after.version, manifest.openclaw.schemaVersions.agent);
+      for (const session of before.sessions) {
+        assert(
+          after.sessions.some(
+            (entry) =>
+              entry.session_key === session.session_key &&
+              entry.current_session_id === session.current_session_id,
+          ),
         );
       }
       save(path.join(directory, "result.json"), {
@@ -286,8 +349,10 @@ export async function prepareRepairProgress({
         singleTerminalJson: true,
         quiet: fixture.quiet,
         observation,
+        finalizer,
+        database: { before, after },
       });
-      return result;
+      return after;
     };
     await runProbe("progress-repair", ["update", "repair", "--yes", "--json"], [expected]);
     await runProbe("progress-quiet", ["update", "repair", "--yes", "--json"], [expected], {
@@ -296,17 +361,6 @@ export async function prepareRepairProgress({
     await stop();
     assertWorkerCellPackageIdentity(readWorkerCellPackageIdentity(packageRoot), expected);
 
-    // Restore this same synthetic agent's native baseline backup, preserving its
-    // candidate files separately. No schema markers or authority facts are forged.
-    const preserved = path.join(runtime, "progress-before-migration");
-    fs.mkdirSync(preserved);
-    for (const suffix of ["", "-wal", "-shm", "-journal"]) {
-      if (fs.existsSync(agent + suffix)) {
-        fs.renameSync(agent + suffix, path.join(preserved, "agent.sqlite" + suffix));
-      }
-    }
-    fs.copyFileSync(baseline, agent);
-    assert.deepEqual(inspectAgent(agent), before);
     const future = path.join(runtime, "progress-future.tgz");
     await run("progress-relabel", process.execPath, [
       fileURLToPath(new URL("../update-first-hop-package-fixtures.mjs", import.meta.url)),
@@ -330,24 +384,13 @@ export async function prepareRepairProgress({
     fs.mkdirSync(target);
     await run("progress-target-extract", "tar", ["-xf", future, "-C", target]);
     const futureIdentity = readWorkerCellPackageIdentity(path.join(target, "package"));
-    await runProbe(
+    const after = await runProbe(
       "progress-migrated",
       ["update", "--tag", future, "--yes", "--json", "--no-restart"],
       [expected, futureIdentity],
       { migrated: true },
     );
     assertWorkerCellPackageIdentity(readWorkerCellPackageIdentity(packageRoot), futureIdentity);
-    const after = inspectAgent(agent);
-    assert.equal(after.version, manifest.openclaw.schemaVersions.agent);
-    for (const session of before.sessions) {
-      assert(
-        after.sessions.some(
-          (entry) =>
-            entry.session_key === session.session_key &&
-            entry.current_session_id === session.current_session_id,
-        ),
-      );
-    }
     save(path.join(artifacts, "progress-summary.json"), {
       source: expected.buildInfo,
       target: futureIdentity.buildInfo,
@@ -356,7 +399,7 @@ export async function prepareRepairProgress({
       packageSha256: hash(candidate),
       fixtureSha256: hash(future),
       limitation:
-        "Controlled native-boundary hold; not a large-data timing benchmark. Published driver output remains buffered.",
+        "Repair/quiet hold real native work. Migration progress precedes finalizer handoff; finalizer continuation/state/JSON are proved separately. No second native check beneath the finalizer is required. Outer streaming retains its process-boundary regression. Not a large-data timing benchmark; the published driver still buffers output.",
     });
   };
   return {
