@@ -1,7 +1,6 @@
 import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { createDeferredCore } from "../shared/deferred.js";
 import { notifyListeners } from "../shared/listeners.js";
-import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import { racePromiseWithAbortSignal } from "./abort-signal.js";
 import { captureSqliteWorkerClosePolicy } from "./bun-sqlite-library.js";
 import { assertStateDatabaseAccessAllowed } from "./gateway-state-owner.js";
@@ -9,6 +8,7 @@ import { runtimeNeedsTypeScriptLoader } from "./runtime-worker-url.js";
 import {
   SQLITE_WORKER_ADMISSION_TIMEOUT_MS as ADMISSION_TIMEOUT_MS,
   assertSqliteWorkerActorReusable,
+  captureSqliteWorkerJobCustody,
   createSqliteWorkerAdmissionWarning,
   captureSqliteWorkerOpen,
   captureSqliteWorkerRuntime,
@@ -191,6 +191,8 @@ export class SqliteWorkerBroker {
         schemaLease: options.cleanupAccess,
       });
     }
+    // Reusable clients outlive this open; they retain only its cleanup custody.
+    const custody = captureSqliteWorkerJobCustody(options.cleanupAccess);
     const input = options.input;
     const admittedPaths = identity
       ? captureSqliteWorkerAdmissionPaths(databasePath, identity, this.actors.values())
@@ -305,8 +307,7 @@ export class SqliteWorkerBroker {
           dispatchState: opening.openDispatch,
           signal: options.signal,
           assertCurrent: options.assertCurrent,
-          maintenanceScope: options.maintenanceScope,
-          cleanupAccess: options.cleanupAccess,
+          ...custody(options),
           createAdmission: options.createAdmission ?? options.createOpenAdmission,
         },
       ).then(async () => {
@@ -399,12 +400,7 @@ export class SqliteWorkerBroker {
             scope,
             assertCurrent,
             createAdmission,
-            cleanupAccess: options.cleanupAccess,
-            maintenanceScope: options.cleanupAccess
-              ? undefined
-              : scope
-                ? scope.maintenanceScope
-                : getOpenClawDatabaseMaintenanceScope(),
+            ...custody(scope),
           },
         ),
       release: async () => {
@@ -497,15 +493,7 @@ export class SqliteWorkerBroker {
     admitted = false,
     observation = trackWorkerRequest("sqlite_writer", options.requestClass ?? body.type),
   ): Promise<unknown> {
-    const {
-      signal,
-      dispatchState,
-      scope,
-      assertCurrent,
-      createAdmission,
-      maintenanceScope,
-      cleanupAccess,
-    } = options;
+    const { signal, dispatchState, scope, assertCurrent, createAdmission } = options;
     const reject = (error: Error) => {
       observation.completed();
       return Promise.reject(error);
@@ -542,8 +530,8 @@ export class SqliteWorkerBroker {
     const job: Job = {
       observation,
       signal,
-      maintenanceScope,
-      cleanupAccess,
+      maintenanceScope: options.maintenanceScope,
+      cleanupAccess: options.cleanupAccess,
       createAdmission,
       assertCurrent,
       dispatchState,
