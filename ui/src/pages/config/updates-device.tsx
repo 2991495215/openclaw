@@ -44,7 +44,7 @@ export function DeviceUpdates(props: { capability: NativeDeviceSettingsCapabilit
   const changeAutomatic = (value: boolean) => {
     requestedValue = value;
     const completion = new Promise<void>((resolve, reject) => {
-      props.capability.set("updates.automatic", value, (error) =>
+      void props.capability.set("updates.automatic", value, (error) =>
         error ? reject(error) : resolve(),
       );
     });
