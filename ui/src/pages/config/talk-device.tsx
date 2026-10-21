@@ -17,10 +17,10 @@ import { SettingsSelectRow } from "./settings-select-row.tsx";
 registerEnglishCatalog(registerSettingsEnglish);
 
 type DeviceLocaleSelection = { primary: string; additional: string[] };
-const pendingDeviceLocales = new WeakMap<
-  NativeDeviceSettingsCapability,
-  Partial<DeviceLocaleSelection>
->();
+type PendingDeviceLocales = Partial<DeviceLocaleSelection> & {
+  errors: Partial<Record<keyof DeviceLocaleSelection, string>>;
+};
+const pendingDeviceLocales = new WeakMap<NativeDeviceSettingsCapability, PendingDeviceLocales>();
 
 function deviceLocaleSelection(capability: NativeDeviceSettingsCapability) {
   const locale = capability.snapshot?.voice.locale;
@@ -35,6 +35,7 @@ function deviceLocaleSelection(capability: NativeDeviceSettingsCapability) {
     additional: [...new Set(pending?.additional ?? locale.additional)].filter(
       (id) => id !== primary,
     ),
+    error: pending?.errors.primary ?? pending?.errors.additional ?? null,
   };
 }
 
@@ -42,7 +43,10 @@ function changeDeviceLocales(
   capability: NativeDeviceSettingsCapability,
   change: Partial<DeviceLocaleSelection>,
 ) {
-  const desired = Object.assign(pendingDeviceLocales.get(capability) ?? {}, change);
+  const desired: PendingDeviceLocales = Object.assign(
+    pendingDeviceLocales.get(capability) ?? { errors: {} },
+    change,
+  );
   pendingDeviceLocales.set(capability, desired);
   const writes: Promise<void>[] = [];
   for (const key of ["additional", "primary"] as const) {
@@ -50,11 +54,17 @@ function changeDeviceLocales(
     if (value === undefined) {
       continue;
     }
+    delete desired.errors[key];
     writes.push(
-      capability.set(`voice.locale.${key}`, value, () => {
+      capability.set(`voice.locale.${key}`, value, (error) => {
         // Native settles before publishing its snapshot. Do not retire a newer edit.
         if (desired[key] === value) {
-          delete desired[key];
+          if (error) {
+            desired.errors[key] = formatUiError(error);
+          } else {
+            delete desired[key];
+            delete desired.errors[key];
+          }
         }
         if (
           desired.primary === undefined &&
@@ -334,6 +344,28 @@ function DeviceVoiceSettings(props: {
             </>
           }
         />
+      )}
+      {locale()?.error && (
+        <div class="callout danger" role="alert">
+          {locale()!.error}
+          <button
+            class="btn btn--sm"
+            type="button"
+            onClick={() => {
+              const pending = pendingDeviceLocales.get(props.capability);
+              if (pending) {
+                void changeLocales(
+                  changeDeviceLocales(props.capability, {
+                    ...(pending.errors.primary ? { primary: pending.primary } : {}),
+                    ...(pending.errors.additional ? { additional: pending.additional } : {}),
+                  }),
+                );
+              }
+            }}
+          >
+            {t("common.retry")}
+          </button>
+        </div>
       )}
       {microphone() && (
         <SettingsRow

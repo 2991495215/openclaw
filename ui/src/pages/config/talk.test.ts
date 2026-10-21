@@ -761,15 +761,15 @@ describe("Talk device and voice wake settings", () => {
     for (const notify of listeners) {
       notify();
     }
-    await waitForSolid(() =>
-      expect(
-        page.querySelector('select[aria-label="Add language…"] option[value="es-ES"]'),
-      ).not.toBeNull(),
-    );
-    add("es-ES");
+    await waitForSolid(() => {
+      expect(page.querySelector('[role="alert"]')?.textContent).toContain("Native edit failed");
+      expect(page.querySelector('button[aria-label="Remove Spanish"]')).not.toBeNull();
+      expect(page.querySelector('button[aria-label="Remove Italian"]')).not.toBeNull();
+    });
+    page.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
     expect(nativeDeviceSettings.set).toHaveBeenLastCalledWith(
       "voice.locale.additional",
-      ["de-DE", "es-ES"],
+      ["de-DE", "es-ES", "it-IT"],
       expect.any(Function),
     );
     completions.forEach((complete) => complete());
