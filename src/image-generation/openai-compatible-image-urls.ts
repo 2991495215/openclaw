@@ -1,9 +1,6 @@
 import { asOptionalObjectRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import {
-  assertOkOrThrowHttpError,
-  readProviderBinaryResponse,
-} from "../agents/provider-http-errors.js";
+import { ProviderHttpError, readProviderBinaryResponse } from "../agents/provider-http-errors.js";
 import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
 import {
   mergeSsrFPolicies,
@@ -84,12 +81,14 @@ export async function inlineOpenAiCompatibleImageUrls(
       fetchImpl: fetch,
     });
     try {
-      await assertOkOrThrowHttpError(download, `${downloadLabel} failed`, {
-        bodyTimeoutMs: params.timeoutMs,
-      });
+      // Storage errors can reflect provider credentials without receiving auth headers.
+      if (!download.ok) {
+        throw new ProviderHttpError(`${downloadLabel} failed (HTTP ${download.status})`, {
+          status: download.status,
+        });
+      }
       const mimeType = download.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase();
       if (!mimeType || !/^image\/[a-z0-9.+-]+$/.test(mimeType)) {
-        void download.body?.cancel().catch(() => undefined);
         throw new Error(`${downloadLabel}: expected an image Content-Type`);
       }
       const buffer = await readProviderBinaryResponse(download, downloadLabel, "image", {
