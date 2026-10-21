@@ -57,6 +57,7 @@ export function AgentOverview(
       agentFilesList: AgentsFilesListResult | null;
       agentIdentity: AgentIdentityResult | null;
       canUpdateIdentity: boolean;
+      identitySavePending: boolean;
       onSelectPanel: (panel: AgentsPanel) => void;
     },
 ) {

@@ -107,7 +107,6 @@ export function createAgentViewTestProps(
     },
     agentIdentityById: {},
     overview: {
-      identitySavePending: false,
       modelCatalog: [],
       decisionModels: [],
       modelCatalogRetired: false,

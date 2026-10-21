@@ -1,4 +1,4 @@
-import { action, createOptimistic, createSignal, onSettled } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { AgentsFilesListResult, SkillStatusReport } from "../../api/types.ts";
 import { pathForAgentPanel } from "../../app-route-paths.ts";
@@ -39,6 +39,7 @@ import { projectOwner } from "../../lib/reactive/projection.ts";
 import { createTimeout } from "../../lib/reactive/timers.ts";
 import { parseAgentSessionKey } from "../../lib/sessions/session-key.ts";
 import { createAgentConfigActions } from "./agent-config-actions.ts";
+import { createAgentsPagePresentation } from "./agents-page-presentation.ts";
 import type { GeneratedAvatar } from "./avatar-picker.tsx";
 import {
   loadAgentFileContent,
@@ -106,6 +107,7 @@ export function createAgentsPageState(
 ) {
   let routeData = initialRouteData;
   let active = true;
+  const presentation = createAgentsPagePresentation();
   const [skillsFilter, setSkillsFilter] = createSignal("");
   const identities = projectOwner(context.agentIdentity, (identity) => identity.entries());
   const channels = projectOwner(context.channels, (source) => source.state);
@@ -309,6 +311,7 @@ export function createAgentsPageState(
   }
 
   function invalidateTransientRequests() {
+    presentation.retire();
     gateway.invalidate();
     state.agentFilesLoading = false;
     state.agentFileSaving = false;
@@ -595,12 +598,6 @@ export function createAgentsPageState(
     }
   }
 
-  const [identitySavePending, setIdentitySavePending] = createOptimistic(false);
-  const presentIdentitySave = action(function* (completion: Promise<void>) {
-    setIdentitySavePending(true);
-    yield completion;
-  });
-
   function scheduleIdentitySave(delay = 550) {
     identityAutosave.cancel();
     if (identityDraftStatus(state.identityDraft) !== "ready") {
@@ -648,9 +645,7 @@ export function createAgentsPageState(
       onSaved: () => syncAgentState(agents),
     });
     identitySaves.set(agentId, { client, snapshot: gateway.snapshot, promise: save });
-    onSettled(() => {
-      void presentIdentitySave(save);
-    });
+    presentation.saveIdentity(save);
     try {
       await save;
     } finally {
@@ -667,6 +662,7 @@ export function createAgentsPageState(
   }
 
   function resetSelectionState() {
+    presentation.retire();
     identityAutosave.cancel();
     gateway.invalidate();
     resetModelCatalog();
@@ -879,7 +875,6 @@ export function createAgentsPageState(
         identities.read().map((entry) => [entry.agentId, entry]),
       ),
       overview: {
-        identitySavePending: identitySavePending() && state.identitySaving,
         modelCatalog: modelCatalog.models,
         decisionModels: modelCatalog.decisionModels ?? [],
         modelSelectionPolicy: modelCatalog.modelSelectionPolicy,
@@ -1036,6 +1031,7 @@ export function createAgentsPageState(
     };
   });
   return {
+    identitySavePending: () => presentation.identitySaving() || readData().identitySaving,
     read() {
       observation.read();
       return viewProps();
@@ -1043,6 +1039,9 @@ export function createAgentsPageState(
     setRouteData(next?: AgentsRouteData) {
       if (next === routeData) {
         return;
+      }
+      if (next?.panel !== routeData?.panel) {
+        presentation.retire();
       }
       routeData = next;
       applyRoute();
