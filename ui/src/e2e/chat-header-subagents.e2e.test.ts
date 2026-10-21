@@ -119,7 +119,12 @@ suite.define(() => {
             .count(),
         ).toBe(0);
         detailsChunk.resolve();
-        await detailsDialog.locator(".chat-details-session").waitFor();
+        // Empty session metadata has no visible box; its mounted section and
+        // the dismissed loading state establish that the lazy content arrived.
+        await detailsDialog.locator(".chat-details-session").waitFor({ state: "attached" });
+        await detailsDialog
+          .getByRole("status", { name: "Loading…", exact: true })
+          .waitFor({ state: "hidden" });
         expect(
           await detailsDialog.getByRole("status", { name: "Loading…", exact: true }).count(),
         ).toBe(0);
