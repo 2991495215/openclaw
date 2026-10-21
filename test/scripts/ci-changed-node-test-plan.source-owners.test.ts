@@ -4,7 +4,10 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hasBuildArtifactAffectingChange } from "../../scripts/lib/ci-changed-node-test-plan.mts";
-import { createNodeTestShardBundles } from "../../scripts/lib/ci-node-test-plan.mts";
+import {
+  createNodeTestShardBundles,
+  createSelectedNodeTestShardBundles,
+} from "../../scripts/lib/ci-node-test-plan.mts";
 import { resolvePolicyTestTargets } from "../../scripts/lib/ci-policy-test-watch.mts";
 import {
   isCiProofTestFile,
@@ -845,6 +848,15 @@ describe("CI changed Node test plan", () => {
         owners.flatMap((group) => group.includePatterns ?? []).toSorted(),
       );
       expect(selectedOwners.every((group) => (group.includePatterns?.length ?? 0) > 0)).toBe(true);
+      // Canonical selection normalizes singleton capacity before compatible serial
+      // rows can coalesce; the final row size cannot recover that earlier policy.
+      const projected = expectDefined(
+        createSelectedNodeTestShardBundles(
+          groups.flatMap((group) => group.includePatterns ?? []),
+          { includeReleaseOnlyRuntimeTests: true, includePrExemptRuntimeTests: true },
+        ),
+        "canonical selected owners before row coalescing",
+      );
       for (const owner of owners) {
         const fullJob = expectDefined(
           full.find((job) => job.groups.includes(owner)),
@@ -854,14 +866,31 @@ describe("CI changed Node test plan", () => {
           shards?.find((job) => job.groups?.some((group) => group.shard_name === owner.shard_name)),
           "selected commands job",
         );
-        expect(selectedJob.runner).toBe(fullJob.runner);
-        const singleton = selectedJob.groups?.length === 1 && fullJob.planConcurrency === 2;
-        expect(selectedJob.env).toEqual(
-          singleton && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
-            ? { ...fullJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
-            : fullJob.env,
+        const projectedJob = expectDefined(
+          projected.find((job) =>
+            job.groups.some((group) => group.shard_name === owner.shard_name),
+          ),
+          `projected commands job for ${owner.shard_name}`,
         );
-        expect(selectedJob.planConcurrency).toBe(singleton ? 1 : fullJob.planConcurrency);
+        const projectedOwner = expectDefined(
+          projectedJob.groups.find((group) => group.shard_name === owner.shard_name),
+          "projected commands child",
+        );
+        const selectedOwner = expectDefined(
+          selectedJob.groups?.find((group) => group.shard_name === owner.shard_name),
+          "selected commands child",
+        );
+        for (const key of ["env", "fallbackMaxWorkers", "minTotalMemoryBytes"] as const) {
+          expect(selectedOwner[key], `${owner.shard_name} ${key}`).toEqual(projectedOwner[key]);
+        }
+        expect(selectedJob.runner).toBe(fullJob.runner);
+        const singleton = selectedJob.groups?.length === 1 && projectedJob.planConcurrency === 2;
+        expect(selectedJob.env).toEqual(
+          singleton && projectedOwner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
+            ? { ...projectedJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
+            : projectedJob.env,
+        );
+        expect(selectedJob.planConcurrency).toBe(singleton ? 1 : projectedJob.planConcurrency);
         expect(selectedJob.pretestBuildMode).toBe(fullJob.pretestBuildMode);
         expect(selectedJob.timeoutMinutes).toBe(fullJob.timeoutMinutes);
       }
