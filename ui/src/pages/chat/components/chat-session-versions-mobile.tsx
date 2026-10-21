@@ -4,8 +4,8 @@ import { Icon } from "../../../components/solid/icon.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatRelativeTimestamp } from "../../../lib/format.ts";
-import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import "./chat-session-versions-mobile.css";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

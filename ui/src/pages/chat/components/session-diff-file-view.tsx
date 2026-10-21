@@ -10,7 +10,7 @@ import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { AttachmentFileIcon } from "./chat-attachment-file-icon-solid.tsx";
 import { createDiffPresentation } from "./chat-diff-render.solid.tsx";
 import { DiffStatChips } from "./chat-diff-stat.solid.tsx";
-import { ReviewDisclosure } from "./session-diff-disclosure.tsx";
+import { FileDisclosure } from "./file-disclosure.tsx";
 import { SessionDiffOpenIcon } from "./session-diff-icons.tsx";
 import type { SessionDiffViewBindings } from "./session-diff-presentation.ts";
 import { FILE_STATUS_LABELS, diffStat, splitPath } from "./session-diff-presentation.ts";
@@ -25,7 +25,7 @@ export function createSessionDiffFileView(bindings: SessionDiffViewBindings) {
     props,
     desktop,
     mobile,
-    collapsedPaths,
+    isCollapsed,
     wordDiffs,
     selectedPath,
     motionInstant,
@@ -150,7 +150,7 @@ export function createSessionDiffFileView(bindings: SessionDiffViewBindings) {
     // The keyed list retains this owner by source, not refreshed metadata.
     const source = () => fileProps.view.source;
     const file = () => fileProps.view.file;
-    const collapsed = () => collapsedPaths().has(file().path);
+    const collapsed = () => isCollapsed(file().path);
     // The pairing budget skips collapsed files. Keep its last real result while
     // the desktop reader is still painting its exit, rather than emptying Split.
     const rows = createMemo<ReturnType<typeof pairSessionDiffLines>>(
@@ -347,13 +347,14 @@ export function createSessionDiffFileView(bindings: SessionDiffViewBindings) {
           </button>
         </div>
         <Show when={desktop()} fallback={<Show when={!collapsed()}>{body()}</Show>}>
-          <ReviewDisclosure
+          <FileDisclosure
+            variant="review"
             open={!collapsed()}
             active={props.active !== false}
             instant={motionInstant()}
           >
             {body()}
-          </ReviewDisclosure>
+          </FileDisclosure>
         </Show>
       </section>
     );

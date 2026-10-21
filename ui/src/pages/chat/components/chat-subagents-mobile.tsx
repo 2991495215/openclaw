@@ -6,8 +6,8 @@ import { useScrollState } from "../../../components/solid/scroll-state.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { elementRef } from "../../../lib/reactive/element-ref.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
-import { SubagentDesktopAvatar } from "./chat-subagents-panel-desktop.tsx";
 import "./chat-subagents-mobile.css";
+import { SubagentDesktopAvatar } from "./chat-subagents-panel-desktop.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

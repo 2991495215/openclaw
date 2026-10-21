@@ -11,8 +11,8 @@ import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { liveValue } from "../../../lib/reactive/live-value.ts";
 import { createScrollPosition } from "../../../lib/reactive/scroll-state.ts";
 import type { SessionWorkspaceFilter } from "./chat-sidebar-content-types.ts";
-import type { SessionWorkspaceProps } from "./chat-sidebar-view-types.ts";
 import "./chat-session-workspace-mobile.css";
+import type { SessionWorkspaceProps } from "./chat-sidebar-view-types.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

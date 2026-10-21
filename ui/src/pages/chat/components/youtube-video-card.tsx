@@ -2,8 +2,8 @@ import { createMemo, createSignal, onSettled, Show } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import type { YouTubeVideo } from "../../../lib/chat/youtube-video.ts";
-import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import "./youtube-video-card.css";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

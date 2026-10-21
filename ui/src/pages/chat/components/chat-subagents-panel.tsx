@@ -21,9 +21,9 @@ import {
   type SessionPanelProps,
 } from "./chat-session-panel.tsx";
 import { ChatSubagentsMobileList, type ChatSubagentMobileItem } from "./chat-subagents-mobile.tsx";
-import { ChatSubagentsPanelDesktop } from "./chat-subagents-panel-desktop.tsx";
 import "./chat-session-panels.css";
 import "./chat-subagents-panel.css";
+import { ChatSubagentsPanelDesktop } from "./chat-subagents-panel-desktop.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

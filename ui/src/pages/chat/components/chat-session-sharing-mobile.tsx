@@ -14,9 +14,9 @@ import { SessionOwnerAvatar } from "../../../components/solid/session-owner-chip
 import { SettingsToggleRow } from "../../../components/solid/settings-ui.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerSessionPeopleEnglish } from "../../../i18n/locales/en-session-people.ts";
-import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import "../../../styles/settings.css";
 import "../../../styles/chat/sharing-mobile.css";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

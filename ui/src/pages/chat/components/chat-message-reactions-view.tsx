@@ -7,8 +7,8 @@ import { StrokeIcon } from "../../../components/solid/stroke-icon.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
-import type { MessageReactionPlacement } from "./chat-message-reaction-model.ts";
 import "./chat-message-reactions.css";
+import type { MessageReactionPlacement } from "./chat-message-reaction-model.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

@@ -59,9 +59,14 @@ export function controlUiStableChunkName(id: string): string | undefined {
   const normalized = normalizeModuleId(id);
 
   switch (controlUiBootManifestKey(id)) {
+    case "node_modules/@solidjs/signals/dist/prod/deferred.js":
+      // Only lazy resource consumers need this scheduler hook.
+      return "solid-deferred-runtime";
     case "node_modules/@solidjs/signals/dist/prod/core/action.js":
     case "node_modules/@solidjs/signals/dist/dev/core/action.js":
-      // Solid's shared runtime imports actions; keep the first lazy action user out of boot.
+    case "node_modules/@solidjs/signals/dist/prod/core/verdict.js":
+    case "node_modules/@solidjs/signals/dist/prod/core/lanes.js":
+      // Solid's eager initializers must not pull the route boot groups into startup.
       return "solid-actions-runtime";
     case "ui/src/lib/device-pair-setup.ts":
       // Pairing loads on interaction; the earlier boot capture must not pull it into either route.
@@ -108,6 +113,16 @@ export function controlUiStableChunkName(id: string): string | undefined {
     case "ui/src/pages/chat/session-snapshot-database.ts":
       // Warm boot reads while the Gateway connects; the chat boot group made it wait for the whole route.
       return "session-snapshot-database";
+  }
+
+  if (
+    moduleIdIncludesPackage(id, "solid-js") ||
+    moduleIdIncludesPackage(id, "@solidjs/signals") ||
+    moduleIdIncludesPackage(id, "@solidjs/web")
+  ) {
+    // Preserve the specific runtime chunks above, including lazy deferred reads.
+    // Keep the remaining Solid initializers out of route-only boot groups.
+    return "solid-runtime";
   }
 
   if (normalized.startsWith(resolvedLocaleConfigHintsModulePrefix)) {
@@ -182,6 +197,14 @@ export function createControlUiCodeSplitting(options: { includeBootGroups?: bool
         priority: 10,
         // Already-initial dependencies compress well; the UI source-size cap
         // fragmented them into tiny requests. The asset gzip budget bounds them.
+      },
+      {
+        name: "control-ui-lib",
+        test: (id: string) => normalizeModuleId(id).includes("/ui/src/lib/"),
+        tags: ["$initial"] as ["$initial"],
+        priority: 11,
+        // Keep initial state owners and utilities together across core entry points.
+        maxSize: 1024 * 1024,
       },
       ...(options.includeBootGroups === false
         ? []

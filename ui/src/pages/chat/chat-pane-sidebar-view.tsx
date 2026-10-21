@@ -1,18 +1,17 @@
 import { dynamic } from "@solidjs/web";
-import { For, Show, createSignal, onCleanup, onSettled } from "solid-js";
+import { For, Show, createSignal, onSettled } from "solid-js";
 import { shellViewport } from "../../app/shell-viewport.ts";
 import { Icon } from "../../components/solid/icon.tsx";
 import { LazyViewError } from "../../components/solid/lazy-view-error.tsx";
 import { PanelLoadingSkeleton } from "../../components/solid/panel-loading-skeleton.tsx";
-import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import "../../styles/chat/mobile-host.css";
+import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import { elementRef } from "../../lib/reactive/element-ref.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { listen } from "../../lib/reactive/listener.ts";
 import { createScrollPosition } from "../../lib/reactive/scroll-state.ts";
 import { ContentPresentation } from "../../lib/solid/presentation.ts";
 import type { ElementProperties } from "../../types/solid-elements.d.ts";
-import type { ChatMobileHost } from "./chat-mobile-host.ts";
 import type {
   RegionProps,
   SidebarRegionViewProps,
@@ -30,7 +29,6 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
   let shell!: HTMLElement;
   let regionView: HTMLElementTagNameMap["openclaw-chat-sidebar-region"] | undefined;
   let detailsMount!: HTMLDivElement;
-  let releaseDetailsMount: ChatMobileHost["setDetailsMount"] | undefined;
   let region!: HTMLDivElement;
   let header!: HTMLDivElement;
   let primary!: HTMLDivElement;
@@ -226,7 +224,6 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
   onSettled(() =>
     shellViewport.subscribe(() => props.mobileHost?.onViewportChange(shellViewport.snapshot)),
   );
-  onCleanup(() => releaseDetailsMount?.(null));
   const column = () => props.layout.columns[0];
   const visiblePanels = () =>
     column()?.panels.filter(
@@ -560,7 +557,7 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
           {(attach) => {
             onSettled(() => {
               attach(detailsMount);
-              releaseDetailsMount = attach;
+              return () => attach(null);
             });
             return undefined;
           }}

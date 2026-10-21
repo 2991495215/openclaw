@@ -13,7 +13,7 @@ registerEnglishCatalog(registerChatSessionEnglish);
 export function createSessionDiffChrome(bindings: SessionDiffViewBindings) {
   const {
     props,
-    collapsedPaths,
+    collapsedFiles,
     scope,
     split,
     wrap,
@@ -123,7 +123,8 @@ export function createSessionDiffChrome(bindings: SessionDiffViewBindings) {
   }
   function DesktopSummary(summary: { result: SessionsDiffResult }) {
     let secondary: HTMLDivElement | undefined;
-    const allExpanded = () => summary.result.files.length > 0 && collapsedPaths().size === 0;
+    const allExpanded = () =>
+      summary.result.files.length > 0 && Object.keys(collapsedFiles).length === 0;
     const modeLabel = () => t("chat.sessionDiff.cycleMode", { mode: mode() });
     return (
       <div class="session-diff__summary session-panel-rail" data-presentation="desktop">

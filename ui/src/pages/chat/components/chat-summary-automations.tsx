@@ -16,8 +16,8 @@ import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
 import { resolveUiConversationIdentity } from "../../../lib/sessions/session-key.ts";
 import { HoverMarquee } from "../../../lib/solid/hover-marquee.tsx";
-import { ChatDetailsDesktopSection } from "./chat-details-desktop-section.tsx";
 import "../../../styles/chat/summary-automations.css";
+import { ChatDetailsDesktopSection } from "./chat-details-desktop-section.tsx";
 import { sessionAutomationSchedule } from "./session-automation-schedule.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);

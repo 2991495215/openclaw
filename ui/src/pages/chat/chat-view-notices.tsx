@@ -26,8 +26,8 @@ import { ChatConversationMobile } from "./components/chat-conversation-presentat
 import { WorkspaceConflictNotice } from "./components/chat-workspace-conflict.tsx";
 import type { ChatRunError } from "./run-lifecycle.ts";
 import type { ProviderPolicyNotice } from "./tool-stream-contract.ts";
-import type { WorkspaceResultConflict } from "./workspace-conflict.ts";
 import "../../styles/chat/conversation-notices.css";
+import type { WorkspaceResultConflict } from "./workspace-conflict.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

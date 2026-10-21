@@ -6,7 +6,6 @@ import {
   createMemo,
   createSignal,
   merge,
-  onCleanup,
   onSettled,
   Show,
   type Element,
@@ -46,8 +45,8 @@ import {
 } from "./chat-pane-placement.tsx";
 import type { HeaderMenuSessionAction } from "./chat-quick-action.tsx";
 import { createChatSessionSharingMobileAdapter } from "./chat-session-sharing-mobile-adapter.tsx";
-import { ChatSessionSharingOptions } from "./chat-session-sharing-options.tsx";
 import "./chat-pane-mobile-composition.css";
+import { ChatSessionSharingOptions } from "./chat-session-sharing-options.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 
@@ -64,9 +63,6 @@ export function ChatPaneMobileComposition(props: {
   ) => Element;
 }) {
   let disposed = false;
-  onCleanup(() => {
-    disposed = true;
-  });
   // The destination's first visit mounts its content under this retained header owner.
   const retainPage = (render: () => Element) => {
     const opened = createMemo<boolean>(
@@ -376,7 +372,10 @@ export function ChatPaneMobileComposition(props: {
       ? request
       : undefined;
   };
-  onCleanup(() => moveRequest()?.cancel());
+  onSettled(() => () => {
+    disposed = true;
+    moveRequest()?.cancel();
+  });
   const layoutProps = merge(
     () => props.header,
     () => ({ mobile: props.header.mergedChrome }),
@@ -387,7 +386,6 @@ export function ChatPaneMobileComposition(props: {
   const desktopViewActions = () =>
     layoutModel().actions.filter((action) => action.id === "close-pane");
   const desktopSessionActions = (): HeaderMenuSessionAction[] => [
-    ...(layoutModel().createClawAction ? [layoutModel().createClawAction!] : []),
     ...(props.header.sessionMenuAction?.sessionActions ?? []),
     ...(!props.header.mergedChrome
       ? layoutModel().actions.flatMap((action) =>
@@ -401,7 +399,6 @@ export function ChatPaneMobileComposition(props: {
     return source ? companionClearAction(source) : undefined;
   });
   const nativeActions = createMemo((): HeaderMenuSessionAction[] => [
-    ...(layoutModel().createClawAction ? [layoutModel().createClawAction!] : []),
     ...(clearSideChat() ? [clearSideChat()!] : []),
     ...(props.header.runAction
       ? [

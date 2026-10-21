@@ -51,8 +51,8 @@ import { readChatSessionActionAccess } from "./chat-session-action-access.ts";
 import { projectSubagentStatus } from "./chat-subagent-wait.ts";
 import { isChatRunWorking } from "./components/chat-composer.tsx";
 import type { ChatDetails, ChatDetailsViewProps } from "./components/chat-details.tsx";
-import type { HeaderPanelAction } from "./components/chat-header-panel-actions.tsx";
 import "./components/chat-header-session-menu.ts";
+import type { HeaderPanelAction } from "./components/chat-header-panel-actions.tsx";
 import type {
   HeaderMenuAction,
   HeaderMenuActionKind,
@@ -229,7 +229,9 @@ export abstract class ChatPaneHeader extends ChatPaneDiscussion {
         })
       : null;
     const renameDisabledReason = !renameAccess
-      ? t("sessionsView.actionRequiresConnection")
+      ? sharingSnapshot.phase !== "connected"
+        ? t("sessionsView.actionRequiresConnection")
+        : undefined
       : renameAccess.allowed
         ? undefined
         : renameAccess.reason;

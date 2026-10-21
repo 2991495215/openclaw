@@ -25,7 +25,7 @@ export function createSessionDiffResultViews(
   const {
     props,
     desktop,
-    collapsedPaths,
+    collapsedFiles,
     scope,
     split,
     mobileWrap,
@@ -50,7 +50,13 @@ export function createSessionDiffResultViews(
     const [edges, setEdges] = createSignal({ atStart: true, atEnd: true });
     const viewportRef = createScrollStateRef((_, state) => setEdges(state), {
       presented: () => props.active !== false,
-      content: () => [body.value, collapsedPaths(), mobileWrap(), split(), gapRevision()],
+      content: () => [
+        body.value,
+        Object.keys(collapsedFiles),
+        mobileWrap(),
+        split(),
+        gapRevision(),
+      ],
     });
     const result = () => body.value.result;
     return (

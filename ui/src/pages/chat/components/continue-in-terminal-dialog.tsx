@@ -1,6 +1,6 @@
 import { ConnectCommand } from "../../../components/solid/connect-command.tsx";
-import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import "../../../components/modal-dialog.ts";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);

@@ -13,6 +13,7 @@ import {
   scopedSessionArtifactKey,
 } from "../../../lib/sessions/session-key.ts";
 import { requestSessionUsage } from "../../../lib/sessions/usage.ts";
+import "../../../styles/chat/context-breakdown.css";
 import {
   buildChatContextCategories,
   buildDeferredContextGroups,
@@ -20,7 +21,6 @@ import {
   type ContextGroup,
   type ContextCategory,
 } from "./chat-context-breakdown-model.ts";
-import "../../../styles/chat/context-breakdown.css";
 import { createDetailsDesktopReveal } from "./chat-details-desktop-section.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);

@@ -6,8 +6,8 @@ import { ThemeBrandIcon } from "../../../components/theme-brand-icon.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { fnv1aUtf16 } from "../../../lib/fnv1a.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
-import type { ChatSubagentActivity } from "../chat-subagent-wait.ts";
 import "./chat-subagent-activity.css";
+import type { ChatSubagentActivity } from "../chat-subagent-wait.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

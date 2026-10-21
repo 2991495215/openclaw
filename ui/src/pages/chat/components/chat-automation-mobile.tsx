@@ -6,9 +6,9 @@ import { registerCronEnglish } from "../../../i18n/locales/en-cron.ts";
 import { shouldHandleNavigationClick } from "../../../lib/navigation-click.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import type { SessionAutomationInventory } from "./chat-summary-automations.tsx";
-import { sessionAutomationSchedule } from "./session-automation-schedule.ts";
 import "../../../styles/chat/automation-mobile.css";
 import "../../../styles/chat/summary-automations.css";
+import { sessionAutomationSchedule } from "./session-automation-schedule.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 

@@ -1,7 +1,7 @@
 import { For } from "solid-js";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
-import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import "../../../styles/chat/conversation-notices.css";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 
