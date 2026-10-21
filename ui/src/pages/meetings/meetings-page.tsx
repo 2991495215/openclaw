@@ -5,7 +5,15 @@ import type {
   TranscriptsGetResult,
   TranscriptsListResult,
 } from "@openclaw/gateway-protocol";
-import { createEffect, createSignal, onCleanup, onSettled } from "solid-js";
+import {
+  action,
+  createEffect,
+  createOptimistic,
+  createSignal,
+  latest,
+  onCleanup,
+  onSettled,
+} from "solid-js";
 import type { ApplicationContext } from "../../app/context-types.ts";
 import { hasOperatorReadAccess, hasOperatorWriteAccess } from "../../app/operator-access.ts";
 import { formatUiError } from "../../lib/format-error.ts";
@@ -31,7 +39,12 @@ type ArchiveReadResults = {
   "transcripts.get": TranscriptsGetResult;
   "transcripts.export": TranscriptsExportResult;
 };
-type OperationState = { kind: "idle" | "loading" | "done" | "error"; message?: string };
+type OperationState = { kind: "idle" | "done" | "error"; message?: string };
+// Cancellation settles presentation even when the retired RPC replies later.
+type Operation = {
+  abort: AbortController;
+  completion: ReturnType<typeof Promise.withResolvers<void>>;
+};
 // Requests stay synchronous; the revision only publishes their presentation state.
 function createArchiveRead(run: (signal: AbortSignal, search?: string) => Promise<void>) {
   const [revision, setRevision] = createSignal(0, { ownedWrite: true });
@@ -88,7 +101,12 @@ export function MeetingsPage(props: { routeSearch?: string }) {
     { kind: "idle" },
     { ownedWrite: true },
   );
-  let summaryAbort: AbortController | null = null;
+  let summaryOperation: Operation | null = null;
+  const [generating, setGenerating] = createOptimistic(false);
+  const presentSummary = action(function* (completion: Promise<void>) {
+    setGenerating(true);
+    yield completion;
+  });
   const [readerPages, setReaderPages] = createSignal<TranscriptsGetResult[]>([], {
     ownedWrite: true,
   });
@@ -96,7 +114,12 @@ export function MeetingsPage(props: { routeSearch?: string }) {
     { kind: "idle" },
     { ownedWrite: true },
   );
-  let exportAbort: AbortController | null = null;
+  let exportOperation: Operation | null = null;
+  const [exporting, setExporting] = createOptimistic(false);
+  const presentExport = action(function* (completion: Promise<void>) {
+    setExporting(true);
+    yield completion;
+  });
   let focusSelection = false;
   const focusTargets: Partial<Record<"search" | "reader-title" | "reader-error", HTMLElement>> = {};
   const focusCurrentTarget = () => {
@@ -314,14 +337,18 @@ export function MeetingsPage(props: { routeSearch?: string }) {
   }
 
   function cancelExport() {
-    exportAbort?.abort();
-    exportAbort = null;
+    const previous = exportOperation;
+    exportOperation = null;
+    previous?.abort.abort();
+    previous?.completion.resolve();
     setExportState({ kind: "idle" });
   }
 
   function cancelSummaryGeneration() {
-    summaryAbort?.abort();
-    summaryAbort = null;
+    const previous = summaryOperation;
+    summaryOperation = null;
+    previous?.abort.abort();
+    previous?.completion.resolve();
     setSummaryGeneration({ kind: "idle" });
   }
 
@@ -338,44 +365,53 @@ export function MeetingsPage(props: { routeSearch?: string }) {
       !page ||
       page.summary ||
       page.session.utteranceCount === 0 ||
-      summaryAbort !== null ||
+      summaryOperation !== null ||
       (!retry && summaryGeneration().kind !== "idle")
     ) {
       return;
     }
-    const abort = new AbortController();
-    summaryAbort = abort;
-    setSummaryGeneration({ kind: "loading" });
+    const operation = {
+      abort: new AbortController(),
+      completion: Promise.withResolvers<void>(),
+    };
+    summaryOperation = operation;
+    setSummaryGeneration({ kind: "idle" });
     const current = () =>
-      !abort.signal.aborted &&
-      summaryAbort === abort &&
+      !operation.abort.signal.aborted &&
+      summaryOperation === operation &&
       requestScope.isCurrent() &&
       selection().selector === selector;
-    try {
-      const result = await client.request<TranscriptsGetResult>(
-        "transcripts.summarize",
-        { selector },
-        {
-          signal: abort.signal,
-          // Allow the shared summary lane to drain an earlier generation before inference.
-          timeoutMs: 120000,
-        },
-      );
-      if (!current()) {
-        return;
+    // Live authority and result publication stay outside the action's held snapshot.
+    const completed = (async () => {
+      try {
+        const result = await client.request<TranscriptsGetResult>(
+          "transcripts.summarize",
+          { selector },
+          {
+            signal: operation.abort.signal,
+            // Allow the shared summary lane to drain an earlier generation before inference.
+            timeoutMs: 120000,
+          },
+        );
+        if (!current()) {
+          return;
+        }
+        summaryTask.abort();
+        setSummary(result);
+        setSummaryGeneration({ kind: "done" });
+      } catch (error) {
+        if (current()) {
+          setSummaryGeneration({ kind: "error", message: formatUiError(error) });
+        }
+      } finally {
+        if (summaryOperation === operation) {
+          summaryOperation = null;
+        }
+        operation.completion.resolve();
       }
-      summaryTask.abort();
-      setSummary(result);
-      setSummaryGeneration({ kind: "done" });
-    } catch (error) {
-      if (current()) {
-        setSummaryGeneration({ kind: "error", message: formatUiError(error) });
-      }
-    } finally {
-      if (summaryAbort === abort) {
-        summaryAbort = null;
-      }
-    }
+    })();
+    await Promise.resolve();
+    return current() ? presentSummary(operation.completion.promise) : completed;
   }
 
   function navigate(patch: Record<string, string | null>) {
@@ -442,45 +478,57 @@ export function MeetingsPage(props: { routeSearch?: string }) {
   async function download(format: TranscriptsExportParams["format"]) {
     const client = requestClient();
     const { selector } = selection();
-    if (!client || !selector || exportAbort !== null) {
+    if (!client || !selector || exportOperation !== null) {
       return;
     }
-    const abort = new AbortController();
-    exportAbort = abort;
-    setExportState({ kind: "loading" });
-    try {
-      await readArchive({
-        client,
-        method: "transcripts.export",
-        params: { selector, format },
-        signal: abort.signal,
-        current: () => selection().selector === selector,
-        accept: (result) => {
-          const bytes = Uint8Array.from(atob(result.data), (character) => character.charCodeAt(0));
-          const url = URL.createObjectURL(new Blob([bytes], { type: result.mimeType }));
-          const anchor = document.createElement("a");
-          try {
-            anchor.href = url;
-            anchor.download = result.filename;
-            document.body.append(anchor);
-            anchor.click();
-            setExportState({ kind: "done" });
-          } finally {
-            anchor.remove();
-            // Allow the browser to consume the object URL before releasing the bytes.
-            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-          }
-        },
-      });
-    } catch (error) {
-      if (exportAbort === abort && !abort.signal.aborted) {
-        setExportState({ kind: "error", message: formatUiError(error) });
+    const operation = {
+      abort: new AbortController(),
+      completion: Promise.withResolvers<void>(),
+    };
+    exportOperation = operation;
+    setExportState({ kind: "idle" });
+    const current = () => exportOperation === operation && !operation.abort.signal.aborted;
+    const completed = (async () => {
+      try {
+        await readArchive({
+          client,
+          method: "transcripts.export",
+          params: { selector, format },
+          signal: operation.abort.signal,
+          current: () => selection().selector === selector,
+          accept: (result) => {
+            const bytes = Uint8Array.from(atob(result.data), (character) =>
+              character.charCodeAt(0),
+            );
+            const url = URL.createObjectURL(new Blob([bytes], { type: result.mimeType }));
+            const anchor = document.createElement("a");
+            try {
+              anchor.href = url;
+              anchor.download = result.filename;
+              document.body.append(anchor);
+              anchor.click();
+              setExportState({ kind: "done" });
+            } finally {
+              anchor.remove();
+              // Allow the browser to consume the object URL before releasing the bytes.
+              window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+          },
+        });
+      } catch (error) {
+        if (current()) {
+          setExportState({ kind: "error", message: formatUiError(error) });
+        }
+      } finally {
+        if (exportOperation === operation) {
+          exportOperation = null;
+        }
+        operation.completion.resolve();
       }
-    } finally {
-      if (exportAbort === abort) {
-        exportAbort = null;
-      }
-    }
+    })();
+    // Let input drafts settle before opening the presentation transaction.
+    await Promise.resolve();
+    return current() ? presentExport(operation.completion.promise) : completed;
   }
 
   let previousSearch: string | undefined;
@@ -488,7 +536,8 @@ export function MeetingsPage(props: { routeSearch?: string }) {
   let connectionHello: unknown;
   let connectionAuth: unknown;
   createEffect(
-    () => ({ snapshot: projection.read().snapshot, search: routeSearch() }),
+    // Navigation must retire pending actions before their held frame can commit.
+    () => ({ snapshot: projection.read().snapshot, search: latest(routeSearch) }),
     ({ snapshot, search }) => {
       const connectionChanged = gateway.transition(snapshot);
       const authorizationChanged =
@@ -589,9 +638,9 @@ export function MeetingsPage(props: { routeSearch?: string }) {
           error: readerDenial() ?? activeReaderTask().error,
         }}
         readerTab={readerTab()}
-        summaryGeneration={summaryGeneration()}
+        summaryGeneration={generating() ? { kind: "loading" } : summaryGeneration()}
         onSummaryRetry={() => void generateMissingSummary(true)}
-        exportState={exportState()}
+        exportState={exporting() ? { kind: "loading" } : exportState()}
         onNavigate={navigate}
         onOpenCaptureSettings={() => {
           const target = SETTINGS_SEARCH_TARGETS.meetingCapture;
