@@ -50,12 +50,9 @@ import {
   fetchAllGraphPages,
   fetchGraphAbsoluteUrl,
   fetchGraphJson,
-  listChannelsForTeam,
   listChannelsForTeamWithPageInfo,
-  listTeamsByName,
   listTeamsByNameWithPageInfo,
   mutateGraphJson,
-  normalizeQuery,
   resolveGraphToken,
 } from "./graph.js";
 import { MSTEAMS_REQUEST_TIMEOUT_MS } from "./request-timeout.js";
@@ -182,9 +179,7 @@ describe("msteams graph helpers", () => {
     vi.useRealTimers();
   });
 
-  it("normalizes queries and escapes OData apostrophes", () => {
-    expect(normalizeQuery("  Team Alpha  ")).toBe("Team Alpha");
-    expect(normalizeQuery("   ")).toBe("");
+  it("escapes OData apostrophes", () => {
     expect(escapeOData("alice.o'hara")).toBe("alice.o''hara");
   });
 
@@ -518,10 +513,14 @@ describe("msteams graph helpers", () => {
       return Response.json(graphCollection(deploymentsChannel));
     });
 
-    await expect(listTeamsByName(graphToken, "Bob's Team")).resolves.toEqual([opsTeam]);
-    await expect(listChannelsForTeam(graphToken, "team/ops")).resolves.toEqual([
-      deploymentsChannel,
-    ]);
+    await expect(listTeamsByNameWithPageInfo(graphToken, "Bob's Team")).resolves.toEqual({
+      items: [opsTeam],
+      truncated: false,
+    });
+    await expect(listChannelsForTeamWithPageInfo(graphToken, "team/ops")).resolves.toEqual({
+      items: [deploymentsChannel],
+      truncated: false,
+    });
 
     expect(fetchCallSearchParam(0, "$filter")).toBe(
       "resourceProvisioningOptions/Any(x:x eq 'Team') and startsWith(displayName,'Bob''s Team')",
