@@ -4,6 +4,7 @@ import {
   createSignal,
   Errored,
   isPending,
+  latest,
   Loading,
   onCleanup,
   onSettled,
@@ -182,10 +183,10 @@ function TextAttachment(props: TextAttachmentProps, host: SolidBridgeElement<Tex
       },
       { equals: (before, after) => before?.text === after?.text },
     );
-    const pending = () => result().status === "empty" || isPending(() => result());
+    const pending = () => isPending(result) || result().status === "empty";
     const readFailure = () => {
       const value = result();
-      if (value.status === "failed" && !pending()) {
+      if (value.status === "failed") {
         throw value.error;
       }
       return null;
@@ -284,20 +285,26 @@ function TextAttachment(props: TextAttachmentProps, host: SolidBridgeElement<Tex
               </>
             )}
           </Show>
-          <Show when={!reader() && pending()}>{skeleton}</Show>
-          <Errored
-            fallback={() => (
-              <p class="muted" role="status">
-                {t(
-                  htmlDocument()
-                    ? "chat.attachments.htmlPreviewUnavailable"
-                    : "chat.attachments.textPreviewUnavailable",
+          <Show
+            when={!latest(reader) && pending()}
+            fallback={
+              <Errored
+                fallback={() => (
+                  <p class="muted" role="status">
+                    {t(
+                      htmlDocument()
+                        ? "chat.attachments.htmlPreviewUnavailable"
+                        : "chat.attachments.textPreviewUnavailable",
+                    )}
+                  </p>
                 )}
-              </p>
-            )}
+              >
+                {readFailure()}
+              </Errored>
+            }
           >
-            {readFailure()}
-          </Errored>
+            {skeleton}
+          </Show>
         </Loading>
       </>
     );
