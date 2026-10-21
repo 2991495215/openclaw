@@ -4,6 +4,7 @@ import { createMemo, For, Match, Show, Switch } from "solid-js";
 import { shortestFileLabels } from "../../../components/file-kind.ts";
 import { CopyButton } from "../../../components/solid/copy-button.tsx";
 import { Icon, type IconName } from "../../../components/solid/icon.tsx";
+import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import "../../../components/tooltip.ts";
@@ -276,224 +277,232 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
   );
   return (
     <aside class="chat-workspace-rail" aria-label={t("chat.workspaceFiles.label")}>
-      <Show when={props.workspace.list?.root}>
-        <openclaw-tooltip prop:content={props.workspace.list?.root}>
-          <div class="chat-workspace-rail__path">
-            <span
-              ref={createTextOverflow(() => props.workspace.list?.root)}
-              title={props.workspace.list?.root ?? undefined}
-            >
-              {props.workspace.list?.root}
-            </span>
-          </div>
-        </openclaw-tooltip>
-      </Show>
-      <div class="chat-workspace-rail__toolbar">
-        <label class="chat-workspace-rail__search">
-          <span class="chat-workspace-rail__search-icon" aria-hidden="true">
-            <Icon name="search" />
-          </span>
-          <input
-            type="search"
-            placeholder={t("chat.workspaceFiles.search")}
-            aria-label={t("chat.workspaceFiles.search")}
-            ref={liveValue(() => props.workspace.browserSearch)}
-            onInput={(event) => props.workspace.onSearch(event.currentTarget.value)}
-          />
-        </label>
-        <Show when={data().filters[0]!.count > 0}>
-          <div
-            class="chat-workspace-rail__filters"
-            role="group"
-            aria-label={t("chat.workspaceFiles.filters")}
-          >
-            <For
-              each={data().filters.filter(({ count }) => count > 0)}
-              keyed={(filter) => filter.filter}
-            >
-              {(filter) => (
-                <button
-                  type="button"
-                  class="chat-workspace-rail__chip"
-                  aria-pressed={data().activeFilter === filter().filter ? "true" : "false"}
-                  onClick={() => props.workspace.onSetFilter(filter().filter)}
-                >
-                  {filter().label}
-                </button>
-              )}
-            </For>
-          </div>
+      <PanelFeedbackScope>
+        <Show when={props.workspace.list?.root}>
+          <openclaw-tooltip prop:content={props.workspace.list?.root}>
+            <div class="chat-workspace-rail__path">
+              <span
+                ref={createTextOverflow(() => props.workspace.list?.root)}
+                title={props.workspace.list?.root ?? undefined}
+              >
+                {props.workspace.list?.root}
+              </span>
+            </div>
+          </openclaw-tooltip>
         </Show>
-      </div>
-      <Show
-        when={!props.workspace.error}
-        fallback={
-          <div class="chat-workspace-rail__state chat-workspace-rail__state--error">
-            <div role="alert">{props.workspace.error}</div>
-            <button
-              type="button"
-              class="btn small"
-              disabled={props.workspace.loading}
-              onClick={() => props.workspace.onRetry()}
+        <div class="chat-workspace-rail__toolbar">
+          <label class="chat-workspace-rail__search">
+            <span class="chat-workspace-rail__search-icon" aria-hidden="true">
+              <Icon name="search" />
+            </span>
+            <input
+              type="search"
+              placeholder={t("chat.workspaceFiles.search")}
+              aria-label={t("chat.workspaceFiles.search")}
+              ref={liveValue(() => props.workspace.browserSearch)}
+              onInput={(event) => props.workspace.onSearch(event.currentTarget.value)}
+            />
+          </label>
+          <Show when={data().filters[0]!.count > 0}>
+            <div
+              class="chat-workspace-rail__filters"
+              role="group"
+              aria-label={t("chat.workspaceFiles.filters")}
             >
-              {t("common.retry")}
-            </button>
-          </div>
-        }
-      >
-        <Show
-          when={!props.workspace.loading || data().hasItems}
-          fallback={
-            <PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />
-          }
-        >
-          <div class="chat-workspace-rail__scroll">
-            <For each={["changed", "read"] as const}>
-              {(kind) => (
-                <Show when={visible(kind) && data()[kind].length > 0}>
-                  <WorkspaceGroup
-                    title={t(`chat.workspaceFiles.${kind}`)}
-                    count={data()[kind].length}
-                    defaultOpen={kind === "changed"}
-                    forcedOpen={data().forcedOpen}
+              <For
+                each={data().filters.filter(({ count }) => count > 0)}
+                keyed={(filter) => filter.filter}
+              >
+                {(filter) => (
+                  <button
+                    type="button"
+                    class="chat-workspace-rail__chip"
+                    aria-pressed={data().activeFilter === filter().filter ? "true" : "false"}
+                    onClick={() => props.workspace.onSetFilter(filter().filter)}
                   >
-                    <FileRows rows={data()[kind]} />
-                  </WorkspaceGroup>
-                </Show>
-              )}
-            </For>
-            <Show when={visible("artifacts") && data().artifacts.length > 0}>
-              <WorkspaceGroup
-                title={t("chat.workspaceFiles.artifacts")}
-                count={data().artifacts.length}
-                forcedOpen={data().forcedOpen}
-              >
-                <div class="chat-workspace-rail__list" role="list">
-                  <For each={data().artifacts} keyed={(artifact) => artifact.id}>
-                    {(artifact) => (
-                      <RailRow
-                        icon={artifact().mimeType?.startsWith("image/") ? "image" : "paperclip"}
-                        name={artifact().title}
-                        meta={[artifact().mimeType, formatWorkspaceFileSize(artifact().sizeBytes)]
-                          .filter(Boolean)
-                          .join(" / ")}
-                        active={`artifact:${artifact().id}` === props.workspace.activeId}
-                        onOpen={() => props.workspace.onOpenArtifact(artifact().id)}
-                      />
-                    )}
-                  </For>
-                </div>
-              </WorkspaceGroup>
-            </Show>
-            <Show when={browserVisible()}>
-              <WorkspaceGroup
-                title={t("chat.workspaceFiles.browser")}
-                count={data().entries.length}
-                defaultOpen
-                forcedOpen={data().forcedOpen}
-              >
-                <Show when={data().browser?.search}>
-                  <div class="chat-workspace-rail__browser-caption">
-                    {t("chat.workspaceFiles.searchResults")}
-                  </div>
-                </Show>
-                <div
-                  class="chat-workspace-rail__list chat-workspace-rail__list--browser"
-                  role="list"
-                >
-                  <Show when={data().parentPath != null}>
-                    <RailRow
-                      icon="folder"
-                      name=".."
-                      directory
-                      hideActions
-                      meta={t("chat.workspaceFiles.parentFolder")}
-                      onOpen={() => props.workspace.onBrowsePath(data().parentPath ?? "")}
-                    />
+                    {filter().label}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+        <PanelFeedback
+          label={t("chat.workspaceFiles.label")}
+          message={props.workspace.error}
+          retrying={props.workspace.loading}
+          onRetry={() => props.workspace.onRetry()}
+        />
+        <Show when={!props.workspace.error}>
+          <Show
+            when={!props.workspace.loading || data().hasItems}
+            fallback={
+              <PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />
+            }
+          >
+            <div class="chat-workspace-rail__scroll">
+              <For each={["changed", "read"] as const}>
+                {(kind) => (
+                  <Show when={visible(kind) && data()[kind].length > 0}>
+                    <WorkspaceGroup
+                      title={t(`chat.workspaceFiles.${kind}`)}
+                      count={data()[kind].length}
+                      defaultOpen={kind === "changed"}
+                      forcedOpen={data().forcedOpen}
+                    >
+                      <FileRows rows={data()[kind]} />
+                    </WorkspaceGroup>
                   </Show>
-                  <Show when={data().entries.length === 0}>
-                    <div class="chat-workspace-rail__state">
-                      {t(
-                        data().unavailableFolder
-                          ? "chat.workspaceFiles.folderUnavailable"
-                          : data().browser?.search
-                            ? "chat.workspaceFiles.noSearchResults"
-                            : "chat.workspaceFiles.noBrowserFiles",
+                )}
+              </For>
+              <Show when={visible("artifacts") && data().artifacts.length > 0}>
+                <WorkspaceGroup
+                  title={t("chat.workspaceFiles.artifacts")}
+                  count={data().artifacts.length}
+                  forcedOpen={data().forcedOpen}
+                >
+                  <div class="chat-workspace-rail__list" role="list">
+                    <For each={data().artifacts} keyed={(artifact) => artifact.id}>
+                      {(artifact) => (
+                        <RailRow
+                          icon={artifact().mimeType?.startsWith("image/") ? "image" : "paperclip"}
+                          name={artifact().title}
+                          meta={[artifact().mimeType, formatWorkspaceFileSize(artifact().sizeBytes)]
+                            .filter(Boolean)
+                            .join(" / ")}
+                          active={`artifact:${artifact().id}` === props.workspace.activeId}
+                          onOpen={() => props.workspace.onOpenArtifact(artifact().id)}
+                        />
                       )}
+                    </For>
+                  </div>
+                </WorkspaceGroup>
+              </Show>
+              <Show when={browserVisible()}>
+                <WorkspaceGroup
+                  title={t("chat.workspaceFiles.browser")}
+                  count={data().entries.length}
+                  defaultOpen
+                  forcedOpen={data().forcedOpen}
+                >
+                  <Show when={data().browser?.search}>
+                    <div class="chat-workspace-rail__browser-caption">
+                      {t("chat.workspaceFiles.searchResults")}
                     </div>
                   </Show>
-                  <For each={data().entries} keyed={(entry) => entry.path}>
-                    {(entry) => {
-                      const directory = () => entry().kind === "directory";
-                      const onOpen = () =>
-                        directory()
-                          ? props.workspace.onBrowsePath(entry().path)
-                          : props.workspace.onOpenFile(entry().path, "workspace");
-                      return (
-                        <RailRow
-                          icon={directory() ? "folder" : "fileText"}
-                          name={entry().name}
-                          tooltip={entry().path || entry().name}
-                          meta={
-                            directory()
-                              ? entry().path || t("chat.workspaceFiles.root")
-                              : [entry().path, formatWorkspaceFileSize(entry().size)]
-                                  .filter(Boolean)
-                                  .join(" / ")
-                          }
-                          directory={directory()}
-                          active={selected(entry().path, entry().path)}
-                          badge={
-                            entry().sessionKind
-                              ? t(SESSION_KIND_LABELS[entry().sessionKind!])
-                              : undefined
-                          }
-                          kindBadge
-                          onOpen={onOpen}
-                          path={entry().path}
-                          hideActions={directory()}
-                          download={
-                            <Show when={!directory() && props.workspace.onDownloadFile}>
-                              {(download) => (
-                                <FileDownloadButton
-                                  scopeKey={[
-                                    props.workspace.sessionKey,
-                                    entry().path,
-                                    props.workspace.connectionEpoch,
-                                  ].join("\0")}
-                                  download={(signal) =>
-                                    download()(entry().path, "workspace", signal)
-                                  }
-                                  class="chat-workspace-rail__row-action"
-                                />
-                              )}
-                            </Show>
-                          }
-                        />
-                      );
-                    }}
-                  </For>
+                  <div
+                    class="chat-workspace-rail__list chat-workspace-rail__list--browser"
+                    role="list"
+                  >
+                    <Show when={data().parentPath != null}>
+                      <RailRow
+                        icon="folder"
+                        name=".."
+                        directory
+                        hideActions
+                        meta={t("chat.workspaceFiles.parentFolder")}
+                        onOpen={() => props.workspace.onBrowsePath(data().parentPath ?? "")}
+                      />
+                    </Show>
+                    <PanelFeedback
+                      label={t("chat.workspaceFiles.label")}
+                      message={
+                        data().unavailableFolder
+                          ? t("chat.workspaceFiles.folderUnavailable")
+                          : undefined
+                      }
+                    />
+                    <Show
+                      when={
+                        data().entries.length === 0 &&
+                        !data().unavailableFolder &&
+                        data().browser?.search
+                      }
+                    >
+                      <div class="chat-workspace-rail__state">
+                        {t("chat.workspaceFiles.noSearchResults")}
+                      </div>
+                    </Show>
+                    <For each={data().entries} keyed={(entry) => entry.path}>
+                      {(entry) => {
+                        const directory = () => entry().kind === "directory";
+                        const onOpen = () =>
+                          directory()
+                            ? props.workspace.onBrowsePath(entry().path)
+                            : props.workspace.onOpenFile(entry().path, "workspace");
+                        return (
+                          <RailRow
+                            icon={directory() ? "folder" : "fileText"}
+                            name={entry().name}
+                            tooltip={entry().path || entry().name}
+                            meta={
+                              directory()
+                                ? entry().path || t("chat.workspaceFiles.root")
+                                : [entry().path, formatWorkspaceFileSize(entry().size)]
+                                    .filter(Boolean)
+                                    .join(" / ")
+                            }
+                            directory={directory()}
+                            active={selected(entry().path, entry().path)}
+                            badge={
+                              entry().sessionKind
+                                ? t(SESSION_KIND_LABELS[entry().sessionKind!])
+                                : undefined
+                            }
+                            kindBadge
+                            onOpen={onOpen}
+                            path={entry().path}
+                            hideActions={directory()}
+                            download={
+                              <Show when={!directory() && props.workspace.onDownloadFile}>
+                                {(download) => (
+                                  <FileDownloadButton
+                                    scopeKey={[
+                                      props.workspace.sessionKey,
+                                      entry().path,
+                                      props.workspace.connectionEpoch,
+                                    ].join("\0")}
+                                    download={(signal) =>
+                                      download()(entry().path, "workspace", signal)
+                                    }
+                                    class="chat-workspace-rail__row-action"
+                                  />
+                                )}
+                              </Show>
+                            }
+                          />
+                        );
+                      }}
+                    </For>
+                  </div>
+                  <Show when={data().browser?.truncated}>
+                    <span
+                      class="panel-feedback__hint"
+                      role="img"
+                      title={t("chat.workspaceFiles.truncated")}
+                      aria-label={t("chat.workspaceFiles.truncated")}
+                    >
+                      <Icon name="info" />
+                    </span>
+                  </Show>
+                </WorkspaceGroup>
+              </Show>
+              <Show
+                when={
+                  data().search &&
+                  props.workspace.list !== null &&
+                  !props.workspace.loading &&
+                  !hasGroups()
+                }
+              >
+                <div class="chat-workspace-rail__state" role="status">
+                  {t("chat.workspaceFiles.noSearchResults")}
                 </div>
-                <Show when={data().browser?.truncated}>
-                  <div class="chat-workspace-rail__state">{t("chat.workspaceFiles.truncated")}</div>
-                </Show>
-              </WorkspaceGroup>
-            </Show>
-            <Show
-              when={
-                data().search &&
-                props.workspace.list !== null &&
-                !props.workspace.loading &&
-                !hasGroups()
-              }
-            >
-              <div class="chat-workspace-rail__state" role="status">
-                {t("chat.workspaceFiles.noSearchResults")}
-              </div>
-            </Show>
-          </div>
+              </Show>
+            </div>
+          </Show>
         </Show>
-      </Show>
+      </PanelFeedbackScope>
     </aside>
   );
 }

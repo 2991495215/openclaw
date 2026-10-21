@@ -244,21 +244,8 @@ function BoardViewContent(props: BoardViewProps, host: BoardViewElement) {
               <div class="board-grid__append-zone" aria-hidden="true" />
             </Show>
           </div>
-          <Show when={view().empty}>
-            <div class="board-empty" data-test-id="board-empty">
-              <span class="board-empty__mark" aria-hidden="true">
-                ＋
-              </span>
-              <strong>{t("board.emptyTitle")}</strong>
-              <span>{t("board.emptyHint")}</span>
-            </div>
-          </Show>
         </Show>
-        <Show when={view().state.actionError}>
-          <div class="board-view__error" role="alert">
-            {view().state.actionError}
-          </div>
-        </Show>
+
         <div class="board-announcer" aria-live="polite" aria-atomic="true">
           <Show when={view().state.announcementRevision || undefined} keyed>
             {(announcementRevision) => (

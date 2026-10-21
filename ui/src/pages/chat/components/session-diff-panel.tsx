@@ -1,7 +1,7 @@
 import { createMemo, createSignal, createStore, onSettled, Show } from "solid-js";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { nativeGatewaysCapability } from "../../../app/native-gateways.runtime.ts";
-import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import "../../../styles/chat/session-diff-mobile.css";
 import "../../../styles/session-panel-rail.css";
@@ -654,60 +654,54 @@ export function SessionDiffPanel(props: SessionDiffProps) {
           }
         }}
       >
-        <Show when={!desktop()}>
-          <NativeGapLifetime />
-        </Show>
-        <Show when={request()} keyed>
-          {(current) => <RequestLifetime request={current} />}
-        </Show>
-        <Show when={mobile()}>
-          <MobileRail />
-        </Show>
-        <Show
-          when={failure()}
-          fallback={
-            <Show
-              when={loading() && (value()?.owner !== props.owner || value()?.scope !== scope())}
-              fallback={
-                <Show when={value()}>
-                  {(current) => (
-                    <Show when={mobile()} fallback={<ResultBody value={current()} />}>
-                      <MobileResultBody value={current()} />
-                    </Show>
-                  )}
-                </Show>
-              }
-            >
-              <PanelLoadingSkeleton variant="review" label={t("chat.sessionDiff.loading")} />
-            </Show>
-          }
-        >
-          {(failed) => (
-            <div class="callout danger">
-              {formatUiError(failed().error)}
-              <Show when={mobile()}>
-                <button
-                  class="btn btn--ghost"
-                  type="button"
-                  disabled={loading() || !props.loader}
-                  onClick={() => loadDiff()}
-                >
-                  <Icon name="refresh" />
-                  {t("common.retry")}
-                </button>
+        <PanelFeedbackScope presented={props.active !== false}>
+          <Show when={!desktop()}>
+            <NativeGapLifetime />
+          </Show>
+          <Show when={request()} keyed>
+            {(current) => <RequestLifetime request={current} />}
+          </Show>
+          <Show when={mobile()}>
+            <MobileRail />
+          </Show>
+          <Show
+            when={failure()}
+            fallback={
+              <Show
+                when={loading() && (value()?.owner !== props.owner || value()?.scope !== scope())}
+                fallback={
+                  <Show when={value()}>
+                    {(current) => (
+                      <Show when={mobile()} fallback={<ResultBody value={current()} />}>
+                        <MobileResultBody value={current()} />
+                      </Show>
+                    )}
+                  </Show>
+                }
+              >
+                <PanelLoadingSkeleton variant="review" label={t("chat.sessionDiff.loading")} />
               </Show>
-            </div>
-          )}
-        </Show>
-        <Show when={menu()} keyed>
-          {(current) => (
-            <SessionDiffMenu
-              menu={current}
-              onAction={handleMenuAction}
-              onClose={() => setMenu(null)}
-            />
-          )}
-        </Show>
+            }
+          >
+            {(failed) => (
+              <PanelFeedback
+                label={t("chat.sessionDiff.allChanges")}
+                message={formatUiError(failed().error)}
+                onRetry={props.loader ? () => loadDiff() : undefined}
+                retrying={loading()}
+              />
+            )}
+          </Show>
+          <Show when={menu()} keyed>
+            {(current) => (
+              <SessionDiffMenu
+                menu={current}
+                onAction={handleMenuAction}
+                onClose={() => setMenu(null)}
+              />
+            )}
+          </Show>
+        </PanelFeedbackScope>
       </div>
     </openclaw-session-diff>
   );

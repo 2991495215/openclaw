@@ -1,6 +1,7 @@
 import type { ProgressCard, SessionRunStatus } from "@openclaw/gateway-protocol";
 import { createMemo, createUniqueId, onSettled, Show } from "solid-js";
 import { i18nRevision, t } from "../lib/reactive/i18n.ts";
+import { showToast } from "../lib/toast.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 import { CardActivity, StepMarker, Steps } from "./session-progress-card-content.tsx";
 import { ProgressCardMarkdown } from "./session-progress-card-view.tsx";
@@ -40,6 +41,18 @@ export type SessionProgressCardProps = {
 };
 
 type CardProps = SessionProgressCardProps & { card: ProgressCard };
+
+function refreshDetails(card: ProgressCard, action: SessionProgressCardRefreshAction) {
+  const onFailure = (state: "failed" | "timeout", retry: () => void) => {
+    showToast({
+      message: t(REFRESH_STATUS_LABEL_KEYS[state]),
+      severity: "error",
+      actionLabel: t("common.retry"),
+      onAction: retry,
+    });
+  };
+  action.onRefresh(card, onFailure);
+}
 
 function CardAction(props: { card: ProgressCard; onAction?: (card: ProgressCard) => void }) {
   const label = () => t("sessionProgressCard.dismiss");
@@ -212,8 +225,12 @@ function CardMenu(props: CardProps) {
             }
             switch (item.id) {
               case "refresh":
-                if (!pending()) {
-                  props.refreshAction?.onRefresh(props.card);
+                if (!pending() && props.refreshAction) {
+                  if (props.placement === "details") {
+                    refreshDetails(props.card, props.refreshAction);
+                  } else {
+                    props.refreshAction.onRefresh(props.card);
+                  }
                 }
                 break;
               case "dismiss":
@@ -291,8 +308,8 @@ export function ProgressDetailsRefresh(props: {
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (!props.disabled && !pending()) {
-              props.action?.onRefresh(props.card);
+            if (!props.disabled && !pending() && props.action) {
+              refreshDetails(props.card, props.action);
             }
           }}
         >
@@ -307,39 +324,6 @@ export function ProgressDetailsRefresh(props: {
           />
         </span>
       </openclaw-tooltip>
-    </Show>
-  );
-}
-
-export function ProgressDetailsRefreshStatus(props: {
-  card: ProgressCard;
-  action?: SessionProgressCardRefreshAction;
-  disabled?: boolean;
-}) {
-  const failed = () => props.action?.state === "failed" || props.action?.state === "timeout";
-  return (
-    <Show when={props.action?.state}>
-      {(state) => (
-        <div class="task-progress-details__refresh-status" data-state={state()} role="status">
-          <span>{t(REFRESH_STATUS_LABEL_KEYS[state()])}</span>
-          <Show when={failed()}>
-            <button
-              type="button"
-              class="task-progress-details__retry"
-              disabled={props.disabled}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (!props.disabled) {
-                  props.action?.onRefresh(props.card);
-                }
-              }}
-            >
-              {t("common.retry")}
-            </button>
-          </Show>
-        </div>
-      )}
     </Show>
   );
 }
@@ -485,11 +469,6 @@ function DetailsCard(props: CardProps) {
           </span>
           <CardMenu {...props} />
         </span>
-        <ProgressDetailsRefreshStatus
-          card={props.card}
-          action={props.refreshAction}
-          disabled={props.menuOptions?.disabled}
-        />
       </summary>
       <div
         ref={(value) => {

@@ -784,13 +784,6 @@ openclaw-board-widget-cell {
   background: color-mix(in srgb, var(--danger) 7%, transparent);
 }
 
-.board-widget__error--inline {
-  height: auto;
-  margin-top: 4px;
-  padding: 8px;
-  width: min(100%, 320px);
-}
-
 .board-widget__error details {
   color: var(--muted);
   font-size: 10px;

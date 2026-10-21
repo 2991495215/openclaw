@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 import type { SessionSystemPromptReport } from "../../../../../src/config/sessions/session-system-prompt-report.js";
 import { createDeferredCore } from "../../../../../src/shared/deferred.js";
 import type { GatewaySessionRow } from "../../../api/types.ts";
+import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { createApplicationGateway } from "../../../test-helpers/application-context-fixtures.ts";
 import {
   createGatewayRequestMock,
@@ -84,12 +85,14 @@ it("retires a pending report on session replacement and rejects a report from an
     sessionId: "first",
   });
   const view = mountSolid(() => (
-    <ChatContextBreakdown gateway={gateway} session={session()} used={50000} limit={100000} />
+    <PanelFeedbackScope>
+      <ChatContextBreakdown gateway={gateway} session={session()} used={50000} limit={100000} />
+    </PanelFeedbackScope>
   ));
   await expect.poll(() => request.mock.calls.length).toBe(1);
   setSession({ key: "agent:main:second", kind: "direct", sessionId: "current" });
   flush();
-  await expect.poll(() => view.container.textContent).toContain("No matching context report");
+  await view.findByRole("button", { name: "Refresh" });
   expect(signal?.aborted).toBe(true);
   first.resolve(usage("first"));
   await first.promise;

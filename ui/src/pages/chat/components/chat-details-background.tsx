@@ -2,6 +2,7 @@ import type { JSX } from "@solidjs/web";
 import { For, Show, createMemo, createSignal } from "solid-js";
 import type { SessionProcessSummary } from "../../../../../packages/gateway-protocol/src/schema/session-processes.js";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import {
@@ -335,42 +336,39 @@ function DetailsProcesses(
     }
   };
   return (
-    <Show when={processRows().length > 0 || processError()}>
-      <BackgroundGroup
-        kind="processes"
-        title={t("chat.sessionDetails.processes")}
-        tally={processTally()}
-        total={processRows().length}
-        icon="terminal"
-        openAllLabel={t("chat.sessionDetails.allProcesses")}
-        onOpenAll={props.details.onOpenProcesses ? openProcesses : undefined}
-        expanded={processesExpanded()}
-        onExpandedChange={setProcessesExpanded}
-      >
-        <Show when={processError()}>
-          <div class="chat-summary__automation-error">
-            <span role="status">{t("chat.sessionDetails.processesError")}</span>
-            <button
-              type="button"
-              class="chip chat-summary__automation-retry"
-              onClick={() => void props.processes()?.refresh()}
-            >
-              {t("common.retry")}
-            </button>
+    <>
+      <PanelFeedback
+        label={t("chat.sessionDetails.processes")}
+        message={processError()}
+        onRetry={() => void props.processes()?.refresh()}
+        retrying={props.processes()?.snapshot.loading}
+        presented={props.presented}
+      />
+      <Show when={processRows().length > 0}>
+        <BackgroundGroup
+          kind="processes"
+          title={t("chat.sessionDetails.processes")}
+          tally={processTally()}
+          total={processRows().length}
+          icon="terminal"
+          openAllLabel={t("chat.sessionDetails.allProcesses")}
+          onOpenAll={props.details.onOpenProcesses ? openProcesses : undefined}
+          expanded={processesExpanded()}
+          onExpandedChange={setProcessesExpanded}
+        >
+          <div role="list" aria-label={t("chat.sessionDetails.processes")}>
+            <For each={visibleProcesses()} keyed={(row) => row.instanceId}>
+              {(row) => (
+                <ChatDetailsProcessRow
+                  row={row()}
+                  hoverDescription
+                  onOpen={props.details.onOpenProcesses ? openProcesses : undefined}
+                />
+              )}
+            </For>
           </div>
-        </Show>
-        <div role="list" aria-label={t("chat.sessionDetails.processes")}>
-          <For each={visibleProcesses()} keyed={(row) => row.instanceId}>
-            {(row) => (
-              <ChatDetailsProcessRow
-                row={row()}
-                hoverDescription
-                onOpen={props.details.onOpenProcesses ? openProcesses : undefined}
-              />
-            )}
-          </For>
-        </div>
-      </BackgroundGroup>
-    </Show>
+        </BackgroundGroup>
+      </Show>
+    </>
   );
 }

@@ -68,7 +68,6 @@ it.each(["profile", "device"] as const)(
     });
     expect(text(container, "chip")).toBe("Worker · syncing files");
     await openPlacement(container);
-    expect(text(container, "note")).toContain("Finalizing worker workspace");
     expect(container.querySelector("openclaw-elapsed-time")).toBeNull();
     if (target === "device") {
       expect(container.textContent).toContain("Inference");
@@ -105,17 +104,14 @@ it.each([
     expect(text(container, "chip")).toBe(label);
     await openPlacement(container);
     expect(text(container, "move")).toBe(moveLabel);
-    const note = container.querySelector(".chat-pane__placement-note");
     const move = container.querySelector<HTMLElement>(".chat-pane__placement-move");
     const reclaim = container.querySelector<HTMLElement>(".chat-pane__placement-reclaim");
     expect(move?.hasAttribute("disabled")).toBe(false);
     expect(reclaim?.textContent?.trim()).toBe(stopLabel);
     if (status === "offline") {
-      expect(note?.textContent).toContain("Waiting for device to reconnect");
       expect(reclaim?.hasAttribute("disabled")).toBe(true);
       expect(reclaim?.title).toContain("Reconnect the device");
     } else {
-      expect(note).toBeNull();
       expect(reclaim?.hasAttribute("disabled")).toBe(false);
     }
   },

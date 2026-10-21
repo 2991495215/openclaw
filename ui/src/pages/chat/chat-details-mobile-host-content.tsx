@@ -1,5 +1,6 @@
 import { For, Show, createMemo, createSignal, onSettled } from "solid-js";
 import type { ControlUiSessionPullRequestSnapshot } from "../../../../src/gateway/control-ui-contract.js";
+import { PanelFeedback, PanelFeedbackScope } from "../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../components/solid/panel-loading-skeleton.tsx";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import { useOptionalApplication } from "../../lib/reactive/context.ts";
@@ -532,52 +533,51 @@ function MobileHostContent(
                 inert={!visible()}
                 data-details-page={page().kind}
               >
-                <div
-                  class="chat-mobile-details-page__body"
-                  ref={[elementRef(props.details.onScrollPortRef)]}
-                >
-                  <Show when={page().kind === "people"}>
-                    <Show when={props.bindings?.peopleMentions?.status === "loading"}>
-                      <PanelLoadingSkeleton
-                        variant="file-list"
-                        label={t("common.loading")}
-                        compact
-                      />
+                <PanelFeedbackScope presented={visible()}>
+                  <div
+                    class="chat-mobile-details-page__body"
+                    ref={[elementRef(props.details.onScrollPortRef)]}
+                  >
+                    <Show when={page().kind === "people"}>
+                      <Show when={props.bindings?.peopleMentions?.status === "loading"}>
+                        <PanelLoadingSkeleton
+                          variant="file-list"
+                          label={t("common.loading")}
+                          compact
+                        />
+                      </Show>
+                      <Show
+                        when={["error", "unavailable", "insert-rejected"].includes(
+                          props.bindings?.peopleMentions?.status ?? "",
+                        )}
+                      >
+                        <PanelFeedback
+                          label={t("chat.sessionHeader.people")}
+                          message={
+                            props.bindings?.peopleMentions?.status === "insert-rejected"
+                              ? t("chat.sessionHeader.mentionRejected")
+                              : (props.bindings?.peopleMentions?.error ??
+                                t("chat.mentions.unavailable"))
+                          }
+                          onRetry={() => void props.bindings?.peopleMentions?.request()}
+                        />
+                      </Show>
+                      <Show when={props.bindings?.peopleMentions?.truncated}>
+                        <p role="status">{t("chat.sessionHeader.mentionsTruncated")}</p>
+                      </Show>
                     </Show>
-                    <Show
-                      when={["error", "unavailable", "insert-rejected"].includes(
-                        props.bindings?.peopleMentions?.status ?? "",
-                      )}
-                    >
-                      <p role="alert">
-                        {props.bindings?.peopleMentions?.status === "insert-rejected"
-                          ? t("chat.sessionHeader.mentionRejected")
-                          : (props.bindings?.peopleMentions?.error ??
-                            t("chat.mentions.unavailable"))}
-                        <button
-                          type="button"
-                          class="btn btn--ghost"
-                          onClick={() => void props.bindings?.peopleMentions?.request()}
-                        >
-                          {t("common.retry")}
-                        </button>
-                      </p>
-                    </Show>
-                    <Show when={props.bindings?.peopleMentions?.truncated}>
-                      <p role="status">{t("chat.sessionHeader.mentionsTruncated")}</p>
-                    </Show>
-                  </Show>
-                  <ChatDetailsMobileContent
+                    <ChatDetailsMobileContent
+                      details={props.details}
+                      presented={visible()}
+                      page={page()}
+                    />
+                  </div>
+                  <ChatDetailsMobileControls
                     details={props.details}
                     presented={visible()}
                     page={page()}
                   />
-                </div>
-                <ChatDetailsMobileControls
-                  details={props.details}
-                  presented={visible()}
-                  page={page()}
-                />
+                </PanelFeedbackScope>
               </div>
             </ContentPresentation>
           );

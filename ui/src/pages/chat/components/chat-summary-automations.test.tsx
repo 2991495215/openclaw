@@ -4,6 +4,7 @@ import { createSignal } from "solid-js";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import type { CronCompactJob, CronJobsListResult } from "../../../api/types.ts";
+import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { createApplicationGateway } from "../../../test-helpers/application-context.ts";
 import {
   createGatewayRequestMock,
@@ -77,7 +78,11 @@ function component(
     sessionKey: "agent:ops:task",
     presented,
   });
-  const view = mountSolid(() => <ChatSummaryAutomations {...props()} />);
+  const view = mountSolid(() => (
+    <PanelFeedbackScope presented={props().presented}>
+      <ChatSummaryAutomations {...props()} />
+    </PanelFeedbackScope>
+  ));
   const element = view.container.querySelector<HTMLElement>("openclaw-chat-summary-automations")!;
   return {
     ...current,
@@ -294,7 +299,7 @@ it.each([false, true])(
         flush();
         expect(current.element.textContent).toContain("Paused");
       }
-      expect(current.find(".chat-summary__automation-retry")).toBeNull();
+      expect(current.queryByRole("button", { name: "Retry" })).toBeNull();
       const count = request.mock.calls.length;
       request.mockResolvedValue(page([job({ name: "Recovered automation", enabled: false })]));
       current.publish({ ...current.gateway.snapshot });
@@ -304,7 +309,7 @@ it.each([false, true])(
       flush();
       expect(current.element.textContent).toContain("Recovered automation");
       expect(current.element.textContent).toContain("Paused");
-      expect(current.find(".chat-summary__automation-retry")).toBeNull();
+      expect(current.queryByRole("button", { name: "Retry" })).toBeNull();
       expect(request).toHaveBeenCalledTimes(count + 1);
       expect(request.mock.calls.every(([method]) => method === "cron.list")).toBe(true);
     } finally {
@@ -340,7 +345,7 @@ it.each(["retry", "event", "reconnect"] as const)(
       expect(vi.getTimerCount()).toBe(0);
       request.mockResolvedValue(page([job({ name: "Authorized automation", enabled: false })]));
       if (recovery === "retry") {
-        current.find<HTMLButtonElement>(".chat-summary__automation-retry")!.click();
+        current.getByRole("button", { name: "Retry" }).click();
       } else if (recovery === "event") {
         current.cron();
       } else {
@@ -409,9 +414,11 @@ it.each([false, true])("restores retry focus: moved=%s", async (moved) => {
   const { element, find } = current;
   const sibling = document.createElement("details");
   document.body.append(sibling);
-  await current.ready("Couldn't load automations.");
+  await waitForSolid(() => {
+    expect(current.getByRole("status").textContent).toBe("Automations unavailable");
+  });
   expect(element.textContent).not.toContain("private server detail");
-  const retry = find<HTMLButtonElement>(".chat-summary__automation-retry")!;
+  const retry = current.getByRole("button", { name: "Retry" });
   expect(retry.textContent?.trim()).toBe("Retry");
   retry.focus();
   retry.click();
@@ -567,11 +574,13 @@ it("shares the session inventory with consumers without starting another catalog
     const props = { gateway: current.gateway, sessionKey: "agent:ops:task", presented: true };
     const inventory = createSessionAutomationInventory(props, () => host);
     return (
-      <section ref={(element) => (host = element)}>
-        {inventory.lifecycle}
-        <output>{inventory.loaded() ? inventory.total() : "unknown"}</output>
-        <ChatSummaryAutomations {...props} inventory={inventory} />
-      </section>
+      <PanelFeedbackScope>
+        <section ref={(element) => (host = element)}>
+          {inventory.lifecycle}
+          <output>{inventory.loaded() ? inventory.total() : "unknown"}</output>
+          <ChatSummaryAutomations {...props} inventory={inventory} />
+        </section>
+      </PanelFeedbackScope>
     );
   });
   await waitForSolid(() => {

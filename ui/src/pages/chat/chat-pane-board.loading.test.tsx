@@ -295,7 +295,7 @@ describe("chat pane board loading states", () => {
     }
   });
 
-  it("replaces the skeleton with a styled alert when the snapshot fails to load", async () => {
+  it("keeps a failed initial dashboard read in the fixed feedback surface", async () => {
     const { pane, request, container, draw, cleanup } = createGatewayBoardPane(
       "agent:main:failing-board",
     );
@@ -304,10 +304,13 @@ describe("chat pane board loading states", () => {
     try {
       await vi.waitFor(() => expect(provider.loadError$.value).toBeTruthy());
       draw();
-      const alert = container.querySelector('[role="alert"]');
       expect(container.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
-      expect(alert?.classList.contains("board-session-surface__state--error")).toBe(true);
-      expect(alert?.textContent).toContain("gateway offline");
+      container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
+      await vi.waitFor(() =>
+        expect(container.querySelector(".panel-feedback__messages")?.textContent).toContain(
+          "gateway offline",
+        ),
+      );
     } finally {
       cleanup();
     }

@@ -3,7 +3,7 @@ import { createComponent, createSignal } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { flush } from "../../../test-helpers/solid-settle.ts";
-import { ChatDetailsDesktopComposition } from "./chat-details-session.tsx";
+import { ChatDetailsDesktopComposition } from "./chat-details-desktop-composition.tsx";
 import type { ChatDetailsProps } from "./chat-details-types.ts";
 
 function mountDetails() {
@@ -95,7 +95,12 @@ it("keeps unknown and empty desktop Outputs and Progress quiet during slow reads
   view.update({ outputs: { ...view.initial.outputs!, artifacts: [], dashboard: null } });
   expect(view.group("outputs")).toBeNull();
   view.update({ outputs: { ...view.initial.outputs!, artifactsError: "Cannot load files" } });
-  expect(view.group("outputs")?.textContent).toContain("Cannot load files");
+  expect(view.group("outputs")).toBeNull();
+  view.container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
+  flush();
+  expect(view.container.querySelector(".panel-feedback__messages")?.textContent).toContain(
+    "Cannot load files",
+  );
   view.update({
     outputs: { ...view.initial.outputs!, dashboard: { title: "Build report", onOpen() {} } },
     progressCard: {

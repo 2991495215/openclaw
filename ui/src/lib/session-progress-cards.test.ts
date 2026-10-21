@@ -211,10 +211,11 @@ describe("session progress card refresh", () => {
       );
       const { store } = watchCards(gateway);
       const original = (await store.load(target))!;
+      const onFailure = vi.fn();
       const refreshCalls = () =>
         request.mock.calls.filter(([method]) => method === "progressCard.refresh");
-      store.refresh(target, original);
-      store.refresh(target, original);
+      store.refresh(target, original, onFailure);
+      store.refresh(target, original, onFailure);
       expect(refreshCalls()).toEqual([
         ["progressCard.refresh", { sessionKey, idempotencyKey: expect.any(String) }],
       ]);
@@ -246,8 +247,8 @@ describe("session progress card refresh", () => {
         request.mockImplementation(async (method) =>
           method === "progressCard.refresh" ? accepted : { card },
         );
-        store.refresh(target, store.get(target)!);
-        store.refresh(target, store.get(target)!);
+        onFailure.mock.calls[0]![1]();
+        onFailure.mock.calls[0]![1]();
         expect(refreshCalls()).toHaveLength(2);
         expect(refreshCalls()[1]).toEqual(refreshCalls()[0]);
       } else {
@@ -267,6 +268,13 @@ describe("session progress card refresh", () => {
         }
         await publish();
       }
+      expect(onFailure.mock.calls).toEqual(
+        outcome === "retry"
+          ? [["failed", expect.any(Function)]]
+          : outcome === "timeout"
+            ? [["timeout", expect.any(Function)]]
+            : [],
+      );
       expect(store.getRefreshState(target)).toBe("updated");
       expect(store.get(target)).toEqual(card);
       expect(request.mock.calls.every(([method]) => method.startsWith("progressCard."))).toBe(true);
@@ -279,6 +287,25 @@ describe("session progress card refresh", () => {
       }
     },
   );
+
+  it("reports a timeout once when the admission reply later fails", async () => {
+    vi.useFakeTimers();
+    const { gateway, request } = createGateway();
+    const acceptance = createDeferred<never>();
+    const card = createProgressCard(1);
+    request.mockImplementation(async (method) =>
+      method === "progressCard.refresh" ? acceptance.promise : { card },
+    );
+    const { store } = watchCards(gateway);
+    const onFailure = vi.fn();
+    store.refresh(target, (await store.load(target))!, onFailure);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith("timeout", expect.any(Function));
+    acceptance.reject(new Error("Admission reply unavailable"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getRefreshState(target)).toBe("failed");
+    expect(onFailure).toHaveBeenCalledTimes(1);
+  });
 
   it("starts a new intent only after the Gateway confirms completion without an update", async () => {
     vi.useFakeTimers();

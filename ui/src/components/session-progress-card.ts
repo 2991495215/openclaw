@@ -15,7 +15,10 @@ export const REFRESH_STATUS_LABEL_KEYS: Record<
 
 export type SessionProgressCardRefreshAction = {
   state?: SessionProgressCardRefreshState;
-  onRefresh: (card: ProgressCard) => void;
+  onRefresh: (
+    card: ProgressCard,
+    onFailure?: (state: "failed" | "timeout", retry: () => void) => void,
+  ) => void;
 };
 
 export type PresentedProgressStepStatus = ProgressCardStep["status"] | "paused";

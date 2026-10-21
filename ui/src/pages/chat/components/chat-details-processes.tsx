@@ -1,6 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import type { SessionProcessSummary } from "../../../../../packages/gateway-protocol/src/schema/session-processes.js";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { useScrollState } from "../../../components/solid/scroll-state.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -120,28 +121,15 @@ export function ChatDetailsProcesses(props: Props) {
     }
   };
   const hasRunning = () => rows().some((row) => row.status === "running");
-  const ProcessError = () => (
-    <Show when={snapshot()?.errorKind !== "read" && snapshot()?.error}>
-      {(error) => (
-        <div class="chat-details-processes__error" role="alert">
-          <span>{error()}</span>
-          <button
-            class="chip"
-            type="button"
-            disabled={!props.presented || snapshot()?.loading}
-            onClick={() => void props.processes()?.refresh()}
-          >
-            {t("common.retry")}
-          </button>
-        </div>
-      )}
-    </Show>
-  );
   return (
     <Show when={props.onOpen}>
-      <Show when={!hasRunning()}>
-        <ProcessError />
-      </Show>
+      <PanelFeedback
+        label={t("chat.sessionDetails.processes")}
+        message={snapshot()?.errorKind === "access" ? snapshot()?.error : undefined}
+        onRetry={() => void props.processes()?.refresh()}
+        retrying={snapshot()?.loading}
+        presented={props.presented}
+      />
       <Show when={hasRunning()}>
         <ChatDetailsDesktopSection
           section="processes"
@@ -151,7 +139,6 @@ export function ChatDetailsProcesses(props: Props) {
           onExpandedChange={(expanded) => props.onExpandedChange(expanded)}
         >
           <div class="chat-details-processes" aria-busy={snapshot()?.loading ? "true" : "false"}>
-            <ProcessError />
             <div
               class="chat-details-processes__list"
               role="list"
@@ -170,7 +157,14 @@ export function ChatDetailsProcesses(props: Props) {
               </For>
             </div>
             <Show when={snapshot()?.truncated}>
-              <div class="chat-details__muted">{t("chat.processesPanel.listTruncated")}</div>
+              <span
+                class="panel-feedback__hint"
+                role="img"
+                title={t("chat.processesPanel.listTruncated")}
+                aria-label={t("chat.processesPanel.listTruncated")}
+              >
+                <Icon name="info" />
+              </span>
             </Show>
           </div>
         </ChatDetailsDesktopSection>

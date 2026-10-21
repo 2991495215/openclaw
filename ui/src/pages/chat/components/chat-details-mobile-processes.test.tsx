@@ -2,6 +2,7 @@
 import { createSignal, flush } from "solid-js";
 import { expect, it, vi } from "vitest";
 import type { SessionProcessSummary } from "../../../../../packages/gateway-protocol/src/schema/session-processes.js";
+import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import {
   ChatDetailsMobileProcesses,
@@ -36,7 +37,9 @@ it("shows two prioritized processes and opens the full collection without mutati
   const [presented, setPresented] = createSignal(true);
   const onOpen = vi.fn();
   const view = mountSolid(() => (
-    <ChatDetailsMobileProcesses data={data()} presented={presented()} onOpen={onOpen} />
+    <PanelFeedbackScope>
+      <ChatDetailsMobileProcesses data={data()} presented={presented()} onOpen={onOpen} />
+    </PanelFeedbackScope>
   ));
   expect(
     [...view.container.querySelectorAll('[role="listitem"]')].map((item) =>

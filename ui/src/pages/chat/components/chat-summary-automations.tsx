@@ -4,6 +4,7 @@ import { pathForRoute } from "../../../app-route-paths.ts";
 import { gatewayPresentationScope } from "../../../app/gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { loadCompactCronJobsPage, retireCronJobsRequest } from "../../../lib/cron/jobs.ts";
 import { createInitialCronState } from "../../../lib/cron/state.ts";
@@ -345,10 +346,11 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
     }
   }
 
-  async function retry(button: HTMLButtonElement) {
+  async function retry(button: Element | null) {
     const key = props.sessionKey;
     const source = props.gateway;
-    const focused = host.ownerDocument.activeElement === button;
+    const focused =
+      button instanceof HTMLButtonElement && host.ownerDocument.activeElement === button;
     await inventory.refresh();
     if (
       props.sessionKey !== key ||
@@ -468,25 +470,6 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
           );
         }}
       </For>
-      {inventory.readDenied() && inventory.connected() && (
-        <div class="chat-summary__automation-error">
-          <span role="status">
-            {t(
-              inventory.loaded()
-                ? "chat.sessionDetails.automationUpdateError"
-                : "chat.sessionDetails.automationError",
-            )}
-          </span>
-          <button
-            type="button"
-            class="chat-summary__automation-retry"
-            aria-disabled={inventory.loading() ? "true" : "false"}
-            onClick={(event) => void retry(event.currentTarget)}
-          >
-            {t("common.retry")}
-          </button>
-        </div>
-      )}
       {more() && (
         <button
           type="button"
@@ -502,11 +485,19 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
   return (
     <openclaw-chat-summary-automations ref={(element) => (host = element)}>
       {initialInventory ? null : inventory.lifecycle}
+      <PanelFeedback
+        label={t("chat.sessionDetails.automations")}
+        message={
+          inventory.readDenied() && inventory.connected()
+            ? t("chat.sessionDetails.automationError")
+            : undefined
+        }
+        onRetry={() => void retry(host.ownerDocument.activeElement)}
+        retrying={inventory.loading()}
+        presented={props.presented}
+      />
       <Show when={inventory.readable()}>
-        <Show
-          when={inventory.jobs().length > 0}
-          fallback={<>{inventory.readDenied() && inventory.connected() && content()}</>}
-        >
+        <Show when={inventory.jobs().length > 0}>
           <Show
             when={props.desktop}
             fallback={

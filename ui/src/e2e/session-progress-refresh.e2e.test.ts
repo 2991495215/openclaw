@@ -96,7 +96,6 @@ suite.define(() => {
         const card = await openChatTaskProgress(page);
         await waitForChatScrollIdle(page);
         const button = card.locator(".task-progress-details__refresh");
-        const status = card.locator(".task-progress-details__refresh-status");
         const initial = await transcriptSnapshot(page);
         const originalCard = await card.elementHandle();
         const initialMarkdown = await card
@@ -133,7 +132,7 @@ suite.define(() => {
           sessionKey: scenario.sessionKey,
           idempotencyKey: expect.any(String),
         });
-        await expect.poll(() => status.getAttribute("data-state")).toBe("pending");
+        await expect.poll(() => button.getAttribute("aria-busy")).toBe("true");
         expect(await button.isDisabled()).toBe(true);
         expect(await button.getAttribute("aria-busy")).toBe("true");
         expect(await button.locator("svg").innerHTML()).not.toBe(idleIcon);
@@ -151,9 +150,7 @@ suite.define(() => {
               .evaluate((element) => element.getAnimations()[0]?.playState),
           ).toBe("running");
         }
-        expect(
-          await status.evaluate((element) => element.getBoundingClientRect().width),
-        ).toBeLessThanOrEqual(1);
+        expect(await card.locator(".task-progress-details__refresh-status").count()).toBe(0);
         expect(await transcriptSnapshot(page)).toEqual(initial);
         expect(await card.locator(".session-progress-card__markdown").textContent()).toBe(
           initialMarkdown,
@@ -170,7 +167,7 @@ suite.define(() => {
           revision: null,
         });
         await gateway.waitForRequest("progressCard.get", { after: reads });
-        expect(await status.getAttribute("data-state")).toBe("pending");
+        expect(await button.getAttribute("aria-busy")).toBe("true");
         if (!mobile) {
           expect(await readTimestamp()).toBe(timestamp);
         }
@@ -190,7 +187,7 @@ suite.define(() => {
           sessionKey: scenario.sessionKey,
           revision: 2,
         });
-        await expect.poll(() => status.getAttribute("data-state")).toBe("updated");
+        await expect.poll(() => button.getAttribute("aria-busy")).toBe("false");
         expect(await button.isEnabled()).toBe(true);
         if (!mobile) {
           expect(await readTimestamp()).toBe(new Date(nextCard.updatedAt).toISOString());
@@ -225,35 +222,34 @@ suite.define(() => {
       const initial = await transcriptSnapshot(page);
       const initialMarkdown = await card.locator(".session-progress-card__markdown").textContent();
       const button = card.locator(".task-progress-details__refresh");
-      const status = card.locator(".task-progress-details__refresh-status");
+      const toast = page.locator(".app-toast");
       await button.click();
       const request = await gateway.waitForRequest("progressCard.refresh");
       await gateway.rejectDeferred("progressCard.refresh", {
         code: "UNAVAILABLE",
         message: "The synthetic worker is unavailable.",
       });
-      await expect.poll(() => status.getAttribute("data-state")).toBe("failed");
+      await toast.getByText("Could not refresh. Previous update kept.", { exact: true }).waitFor();
       expect(await button.isEnabled()).toBe(true);
-      expect(await status.textContent()).toContain("Could not refresh. Previous update kept.");
-      expect(await status.isVisible()).toBe(true);
-      expect(
-        await status.evaluate((element) => element.getBoundingClientRect().height),
-      ).toBeGreaterThan(1);
+      expect(await toast.isVisible()).toBe(true);
+      expect(await card.locator(".task-progress-details__refresh-status").count()).toBe(0);
       expect(await card.locator(".session-progress-card__markdown").textContent()).toBe(
         initialMarkdown,
       );
       expect(await transcriptSnapshot(page)).toEqual(initial);
       await captureUiProof(suite, page, "desktop-error", "after-error.png");
       await gateway.deferNext("progressCard.refresh");
-      await status.getByRole("button", { name: "Retry", exact: true }).click();
+      await toast.getByRole("button", { name: "Retry", exact: true }).click();
       const retry = await gateway.waitForRequest("progressCard.refresh", { after: 1 });
       expect(retry.params).toEqual(request.params);
+      // Activating the external toast dismisses the undocked Details inspector.
+      await openChatTaskProgress(page);
       await gateway.resolveDeferred("progressCard.refresh", {
         runId: "retry-run",
         status: "accepted",
         revision: 1,
       });
-      await expect.poll(() => status.getAttribute("data-state")).toBe("pending");
+      await expect.poll(() => button.getAttribute("aria-busy")).toBe("true");
       await gateway.setMethodResponse("progressCard.get", {
         card: {
           ...scenario.methodResponses["progressCard.get"].card,
@@ -265,7 +261,7 @@ suite.define(() => {
         sessionKey: scenario.sessionKey,
         revision: 2,
       });
-      await expect.poll(() => status.getAttribute("data-state")).toBe("updated");
+      await expect.poll(() => button.getAttribute("aria-busy")).toBe("false");
       expect(await transcriptSnapshot(page)).toEqual(initial);
       expect(await gateway.getRequests("chat.send")).toHaveLength(0);
       expect(await gateway.getRequests("progressCard.refresh")).toHaveLength(2);

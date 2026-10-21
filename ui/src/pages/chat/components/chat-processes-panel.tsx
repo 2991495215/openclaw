@@ -2,7 +2,7 @@ import { For, Show, createMemo, createSignal, createStore, onSettled } from "sol
 import type { SessionProcessSummary } from "../../../../../packages/gateway-protocol/src/schema/session-processes.js";
 import { ElapsedTime } from "../../../components/elapsed-time.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelEmptyState } from "../../../components/solid/panel-empty-state.tsx";
+import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { useScrollState } from "../../../components/solid/scroll-state.ts";
 import { elementRef } from "../../../lib/reactive/element-ref.ts";
@@ -122,15 +122,18 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
           )}
         </button>
       );
-    const error = () =>
-      visibleError() && (
-        <div class="chat-processes__error" role="alert">
-          {visibleError()}
-          <button class="btn btn--sm" type="button" onClick={() => void panel().refresh()}>
-            {t("common.retry")}
-          </button>
-        </div>
-      );
+    const feedbackMessage = () => {
+      if (visibleError()) {
+        return visibleError();
+      }
+      if (!data().loading && !data().hasResult) {
+        return t("chat.processesPanel.disconnected");
+      }
+      if (selected() && !selectedRow() && !data().loading) {
+        return t(data().truncated ? "chat.processesPanel.omitted" : "chat.processesPanel.expired");
+      }
+      return null;
+    };
     const RowName = (nameProps: { name: string }) => {
       const nameScrollState = useScrollState(true, false);
       return (
@@ -165,6 +168,11 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
                   type="button"
                   title={row().name}
                   aria-label={row().name}
+                  aria-description={
+                    row().status === "running" && !row().canStop
+                      ? t("chat.processesPanel.cannotStop")
+                      : undefined
+                  }
                   ref={(element) => {
                     navigation.openers.set(row().instanceId, element);
                   }}
@@ -197,11 +205,6 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
                   </span>
                 )}
                 {stopButton(row())}
-                {row().status === "running" && !row().canStop && (
-                  <span class="chat-processes__unavailable">
-                    {t("chat.processesPanel.cannotStop")}
-                  </span>
-                )}
                 <span class="chat-processes__chevron" aria-hidden="true">
                   <Icon name="chevronRight" />
                 </span>
@@ -220,6 +223,11 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
                 class="chat-processes__open"
                 type="button"
                 aria-label={row().name}
+                aria-description={
+                  row().status === "running" && !row().canStop
+                    ? t("chat.processesPanel.cannotStop")
+                    : undefined
+                }
                 ref={(element) => {
                   navigation.openers.set(row().instanceId, element);
                 }}
@@ -244,14 +252,6 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
         </div>
       );
     };
-    const outputNotes = (row: SessionProcessSummary) => (
-      <>
-        <p class="chat-processes__note">{t("chat.processesPanel.retention")}</p>
-        {row.truncated && (
-          <p class="chat-processes__note">{t("chat.processesPanel.outputTruncated")}</p>
-        )}
-      </>
-    );
     const Detail = () => {
       let output!: HTMLDivElement;
       let back!: HTMLButtonElement;
@@ -279,6 +279,9 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
             class="chat-processes__output"
             tabindex={0}
             aria-label={t("chat.processesPanel.output")}
+            aria-description={
+              outputProps.row.truncated ? t("chat.processesPanel.outputTruncated") : undefined
+            }
             ref={[
               (element) => {
                 output = element;
@@ -289,21 +292,7 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
             onScroll={savePosition}
           >
             {props.mobile && <h3>{t("chat.processesPanel.output")}</h3>}
-            <Show
-              when={outputProps.row.tail || props.mobile}
-              fallback={
-                <div class="chat-processes__output-empty">
-                  <PanelEmptyState
-                    icon={<Icon name="terminal" />}
-                    heading={t("chat.processesPanel.noOutputTitle")}
-                    description={t("chat.processesPanel.noOutput")}
-                  />
-                </div>
-              }
-            >
-              <pre>{outputProps.row.tail || t("chat.processesPanel.noOutput")}</pre>
-            </Show>
-            {!props.mobile && outputNotes(outputProps.row)}
+            <pre>{outputProps.row.tail}</pre>
           </div>
         );
       };
@@ -348,6 +337,11 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
               </button>
             </span>
             <strong
+              aria-description={
+                selectedRow()?.status === "running" && !selectedRow()?.canStop
+                  ? t("chat.processesPanel.cannotStop")
+                  : undefined
+              }
               class="chat-processes__detail-name"
               ref={titleScrollState}
               title={props.mobile ? undefined : selectedRow()?.name}
@@ -367,35 +361,16 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
                       {stopButton(row(), true)}
                     </span>
                   )}
-                  {!props.mobile && row().status === "running" && !row().canStop && (
-                    <span class="chat-processes__unavailable">
-                      {t("chat.processesPanel.cannotStop")}
-                    </span>
-                  )}
                 </>
               )}
             </Show>
           </header>
-          {error()}
           <Show
             when={selectedRow()}
             fallback={
-              <Show
-                when={data().loading}
-                fallback={
-                  <div class="chat-processes__empty" role="status">
-                    {t(
-                      data().hasResult
-                        ? data().truncated
-                          ? "chat.processesPanel.omitted"
-                          : "chat.processesPanel.expired"
-                        : "chat.processesPanel.disconnected",
-                    )}
-                  </div>
-                }
-              >
+              data().loading && (
                 <PanelLoadingSkeleton variant="terminal" label={t("common.loading")} compact />
-              </Show>
+              )
             }
           >
             {(row) => (
@@ -414,9 +389,6 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
                   {row().exitReason && <p class="chat-processes__note">{row().exitReason}</p>}
                 </div>
                 <Output row={row()} />
-                {props.mobile && (
-                  <footer class="chat-processes__output-notice">{outputNotes(row())}</footer>
-                )}
               </>
             )}
           </Show>
@@ -424,89 +396,73 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
       );
     };
     return (
-      <div class="chat-processes__panel" data-mobile={props.mobile ? "true" : "false"}>
-        <div
-          class="chat-processes__list"
-          hidden={Boolean(selected())}
-          tabindex={-1}
-          aria-busy={data().loading ? "true" : "false"}
-          ref={[
-            (element) => {
-              list = element;
-              listScrollState(element);
-            },
-            elementRef(props.onScrollPortRef),
-          ]}
-        >
-          {error()}
-          <Show
-            when={rows().length}
-            fallback={
-              <Show
-                when={data().hasResult && !data().error && !data().loading}
-                fallback={
-                  <Show
-                    when={data().loading}
-                    fallback={
-                      <div class="chat-processes__empty" role="status">
-                        {!visibleError() ? t("chat.processesPanel.disconnected") : null}
-                      </div>
-                    }
-                  >
-                    <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
-                  </Show>
-                }
-              >
-                <PanelEmptyState
-                  icon={<Icon name="terminal" />}
-                  heading={t("chat.processesPanel.emptyTitle")}
-                  description={t("chat.processesPanel.empty")}
-                />
-              </Show>
-            }
+      <PanelFeedbackScope>
+        <PanelFeedback
+          label={t("chat.sessionDetails.processes")}
+          message={props.presented ? feedbackMessage() : null}
+          onRetry={visibleError() ? () => void panel().refresh() : undefined}
+          retrying={data().loading}
+        />
+        <div class="chat-processes__panel" data-mobile={props.mobile ? "true" : "false"}>
+          <div
+            class="chat-processes__list"
+            aria-description={data().truncated ? t("chat.processesPanel.listTruncated") : undefined}
+            hidden={Boolean(selected())}
+            tabindex={-1}
+            aria-busy={data().loading ? "true" : "false"}
+            ref={[
+              (element) => {
+                list = element;
+                listScrollState(element);
+              },
+              elementRef(props.onScrollPortRef),
+            ]}
           >
-            <section class="chat-processes__running">
-              <h3>
-                <span>{t("chat.processesPanel.runningDesktop", { count: "" }).trim()}</span>
-                <span class="chat-processes__count">{running().length}</span>
-              </h3>
-              <div role="list">
-                <For each={running()} keyed={(row) => row.instanceId}>
-                  {rowView}
-                </For>
-              </div>
-              {!running().length && (
-                <div class="chat-processes__empty">{t("chat.processesPanel.noRunning")}</div>
-              )}
-            </section>
-            <section class="chat-processes__finished">
-              <button
-                class="chat-processes__finished-toggle"
-                type="button"
-                aria-expanded={finishedOpen() ? "true" : "false"}
-                onClick={() => setFinishedOpen((value) => !value)}
-              >
-                <span>{t("chat.processesPanel.finishedDesktop", { count: "" }).trim()}</span>
-                <span class="chat-processes__count">{finished().length}</span>
-                <Icon name={finishedOpen() ? "chevronDown" : "chevronRight"} />
-              </button>
-              <div role="list" hidden={!finishedOpen()}>
-                {finishedOpen() && (
-                  <For each={finished()} keyed={(row) => row.instanceId}>
+            <Show
+              when={rows().length}
+              fallback={
+                data().loading && (
+                  <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
+                )
+              }
+            >
+              <section class="chat-processes__running">
+                <h3>
+                  <span>{t("chat.processesPanel.runningDesktop", { count: "" }).trim()}</span>
+                  <span class="chat-processes__count">{running().length}</span>
+                </h3>
+                <div role="list">
+                  <For each={running()} keyed={(row) => row.instanceId}>
                     {rowView}
                   </For>
-                )}
-              </div>
-            </section>
+                </div>
+              </section>
+              <section class="chat-processes__finished">
+                <button
+                  class="chat-processes__finished-toggle"
+                  type="button"
+                  aria-expanded={finishedOpen() ? "true" : "false"}
+                  onClick={() => setFinishedOpen((value) => !value)}
+                >
+                  <span>{t("chat.processesPanel.finishedDesktop", { count: "" }).trim()}</span>
+                  <span class="chat-processes__count">{finished().length}</span>
+                  <Icon name={finishedOpen() ? "chevronDown" : "chevronRight"} />
+                </button>
+                <div role="list" hidden={!finishedOpen()}>
+                  {finishedOpen() && (
+                    <For each={finished()} keyed={(row) => row.instanceId}>
+                      {rowView}
+                    </For>
+                  )}
+                </div>
+              </section>
+            </Show>
+          </div>
+          <Show when={selected()}>
+            <Detail />
           </Show>
-          {data().truncated && (
-            <p class="chat-processes__note">{t("chat.processesPanel.listTruncated")}</p>
-          )}
         </div>
-        <Show when={selected()}>
-          <Detail />
-        </Show>
-      </div>
+      </PanelFeedbackScope>
     );
   },
   {

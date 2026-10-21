@@ -9,6 +9,7 @@ import { formatGitHubItemReference } from "../../../components/github-link-targe
 import { SessionGitDiff } from "../../../components/session-git-diff.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { createMenuControls, Menu, type MenuHandle } from "../../../components/solid/menu.tsx";
+import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import "../../../components/tooltip.ts";
@@ -22,6 +23,8 @@ import {
 import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
 import { HoverMarquee } from "../../../lib/solid/hover-marquee.tsx";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
+import { ChatCiAutomation } from "./chat-ci-automation-control.tsx";
+import { ChatCiDetails } from "./chat-ci-details.tsx";
 import { GitHubPublicationAction, GitHubPublicationDetails } from "./chat-github-publication.tsx";
 import { PullRequestActions } from "./chat-pull-request-actions.tsx";
 import { ChatPullRequestChecks } from "./chat-pull-request-checks.tsx";
@@ -37,8 +40,6 @@ import {
   retainedPublication,
   showWorkRow,
 } from "./chat-pull-requests.ts";
-import "./chat-ci-details.ts";
-import "./chat-ci-automation-control.ts";
 import "./chat-pull-request-presenters.css";
 
 registerGitHubEnglish();
@@ -85,21 +86,20 @@ function Checks(props: {
       </div>
       <div class="chat-pr__checks-counts">
         <ChecksRows checks={checks()} />
-        <Show when={!checks()}>{t("chat.pullRequests.automationNoChecks")}</Show>
       </div>
-      <openclaw-chat-ci-automation
-        prop:pullRequest={props.pullRequest}
-        prop:gateway={props.gateway}
-        prop:sessionKey={props.sessionKey ?? ""}
-        prop:sessionId={props.sessionId ?? ""}
-        prop:presented={presented()}
+      <ChatCiAutomation
+        pullRequest={props.pullRequest}
+        gateway={props.gateway}
+        sessionKey={props.sessionKey ?? ""}
+        sessionId={props.sessionId ?? ""}
+        presented={presented()}
       />
       <Show when={checks()}>
-        <openclaw-chat-ci-details
-          prop:pullRequest={props.pullRequest}
-          prop:gateway={props.gateway}
-          prop:sessionKey={props.sessionKey ?? ""}
-          prop:presented={presented()}
+        <ChatCiDetails
+          pullRequest={props.pullRequest}
+          gateway={props.gateway}
+          sessionKey={props.sessionKey ?? ""}
+          presented={presented()}
         />
       </Show>
     </div>
@@ -167,7 +167,6 @@ function WorkRow(props: {
                 />
               )}
             </Show>
-            <StatusWarning status={props.status} />
             <Show
               when={props.publication}
               fallback={
@@ -316,7 +315,6 @@ function BranchActions(props: {
             </div>
           )}
         </Show>
-        <StatusWarning status={props.status} />
         <Show when={props.onDismiss}>
           <div class="chat-pr-menu__group">
             <button
@@ -353,41 +351,44 @@ export function ChatPullRequestsContent(props: ChatPullRequestsProps) {
   const recovery = () =>
     retained() && (!published() || props.publication?.error) ? props.publication : undefined;
   return (
-    <Show when={hasChatPullRequests(props)}>
-      <div class="chat-prs" aria-live="polite">
-        <Show
-          when={workRow()}
-          fallback={
-            <>
-              <For each={visible()} keyed={chatPullRequestId}>
-                {(pullRequest) => (
-                  <PullRequestRow
-                    pullRequest={pullRequest()}
-                    owner={props}
-                    published={Boolean(published())}
-                  />
-                )}
-              </For>
-              <Show when={recovery()}>
-                {(publication) => (
-                  <PublicationRecovery publication={publication()} presented={props.presented} />
-                )}
-              </Show>
-            </>
-          }
-        >
-          <WorkRow
-            compact={props.compact}
-            branch={branch()}
-            status={props.status}
-            onOpenSessionDiff={props.onOpenSessionDiff}
-            publication={props.publication}
-            onDismissBranch={props.onDismissBranch}
-            presented={props.presented}
-          />
-        </Show>
-      </div>
-    </Show>
+    <PanelFeedbackScope>
+      <StatusWarning status={props.status} />
+      <Show when={hasChatPullRequests(props)}>
+        <div class="chat-prs" aria-live="polite">
+          <Show
+            when={workRow()}
+            fallback={
+              <>
+                <For each={visible()} keyed={chatPullRequestId}>
+                  {(pullRequest) => (
+                    <PullRequestRow
+                      pullRequest={pullRequest()}
+                      owner={props}
+                      published={Boolean(published())}
+                    />
+                  )}
+                </For>
+                <Show when={recovery()}>
+                  {(publication) => (
+                    <PublicationRecovery publication={publication()} presented={props.presented} />
+                  )}
+                </Show>
+              </>
+            }
+          >
+            <WorkRow
+              compact={props.compact}
+              branch={branch()}
+              status={props.status}
+              onOpenSessionDiff={props.onOpenSessionDiff}
+              publication={props.publication}
+              onDismissBranch={props.onDismissBranch}
+              presented={props.presented}
+            />
+          </Show>
+        </div>
+      </Show>
+    </PanelFeedbackScope>
   );
 }
 
@@ -489,11 +490,6 @@ function PullRequestRow(props: {
             />
             <Show when={props.pullRequest.state !== "open"}>
               <span class="chat-pr__state">{t(STATE_LABEL_KEYS[props.pullRequest.state])}</span>
-            </Show>
-            <Show
-              when={props.pullRequest.state !== "merged" || props.owner.status === "unavailable"}
-            >
-              <StatusWarning status={props.owner.status} />
             </Show>
             <button
               class="chat-pr__dismiss"

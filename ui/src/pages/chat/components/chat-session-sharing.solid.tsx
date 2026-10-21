@@ -78,10 +78,6 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
     scope();
     return false;
   });
-  const [copyError, setCopyError] = createSignal(() => {
-    scope();
-    return "";
-  });
   const [immediate, setImmediate] = createSignal(false);
   const [accessOpen, setAccessOpen] = createSignal(() => {
     scope();
@@ -130,7 +126,6 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
     const selectedScope = scope();
     if (value === "public:copy") {
       setCopied(false);
-      setCopyError("");
     }
     const outcome = await selectChatSessionSharingItem(props, value);
     if (scope() !== selectedScope || !menu?.overlay.open || !outcome) {
@@ -138,7 +133,6 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
     }
     if (value === "public:copy") {
       setCopied(outcome?.status === "success");
-      setCopyError(outcome?.status === "failed" ? outcome.error : "");
     }
     if (outcome?.status === "success" && value.startsWith("visibility:")) {
       resetSearch();
@@ -456,7 +450,6 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
               onClick={(event) => {
                 setImmediate(event.detail === 0);
                 setCopied(false);
-                setCopyError("");
                 void select(result()?.publicShare ? "public:disable" : "public:enable");
               }}
             >
@@ -498,11 +491,6 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
                   </span>
                   <Icon name={copied() ? "check" : "copy"} />
                 </button>
-                <Show when={copyError()}>
-                  <div class="chat-pane__sharing-status--error" role="alert">
-                    {copyError()}
-                  </div>
-                </Show>
               </div>
             </div>
           </section>
@@ -548,7 +536,6 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
         setAccessOpen(false);
         resetSearch();
         setCopied(false);
-        setCopyError("");
       }
     },
     onEscape: () => {

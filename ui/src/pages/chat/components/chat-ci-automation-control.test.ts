@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi, type MockInstance } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { CronJob } from "../../../api/types.ts";
@@ -12,8 +12,9 @@ import {
   createGatewayHarness,
   flushSync,
 } from "../../../lib/session-pull-requests.test-support.ts";
-import type { ChatCiAutomationElement } from "./chat-ci-automation-control.ts";
-import "./chat-ci-automation-control.ts";
+import * as toast from "../../../lib/toast.ts";
+import type { ChatCiAutomationElement } from "./chat-ci-automation-control.tsx";
+import "./chat-ci-automation-control.tsx";
 
 const sessionKey = "agent:main:dashboard:ci-test";
 const cronStatus = { enabled: true, triggersEnabled: true, jobs: 0 };
@@ -115,7 +116,9 @@ class Fixture {
 }
 describe("CI automation popup scope", () => {
   let h: Fixture;
+  let notify: MockInstance<typeof toast.showToast>;
   beforeEach(async () => {
+    notify = vi.spyOn(toast, "showToast").mockReturnValue(true);
     h = new Fixture();
     await h.paint("first");
   });
@@ -166,7 +169,7 @@ describe("CI automation popup scope", () => {
     expect(h.root.textContent).toBe(before);
   });
 
-  it("retains a lost-ack error through sibling completion and reconciles without replay", async () => {
+  it("reports a lost acknowledgement once and reconciles sibling writes without replay", async () => {
     const fixWrite = createDeferred<{ job: CronJob }>();
     const mergeWrite = createDeferred<{ job: CronJob }>();
     h.writes["cron.add"] = (params) =>
@@ -176,7 +179,6 @@ describe("CI automation popup scope", () => {
     await h.open();
     h.checkbox().click();
     h.checkbox("autoMerge").click();
-    h.harness.emit({}, "cron");
     fixWrite.reject(new Error("Lost acknowledgement"));
     await h.settle();
     h.toggles(false, true);
@@ -184,11 +186,12 @@ describe("CI automation popup scope", () => {
     h.writes = {};
     mergeWrite.resolve({ job: job("first", "autoMerge") });
     await h.settle();
-    expect(h.root.textContent).toContain("Lost acknowledgement");
+    expect(notify).toHaveBeenCalledExactlyOnceWith({
+      message: "Lost acknowledgement",
+      severity: "error",
+    });
+    expect(h.root.textContent).not.toContain("Lost acknowledgement");
     h.toggles(true, true);
-    h.root.querySelector<HTMLButtonElement>(".chat-ci__automation-retry")!.click();
-    await h.settle();
-    expect(h.root.querySelector('[role="alert"]')).toBeNull();
     expect(h.calls("cron.add")).toHaveLength(2);
   });
 
@@ -282,6 +285,7 @@ describe("CI automation popup scope", () => {
       pending.reject(new Error("Old context failure"));
       await h.settle();
       expect(h.root.textContent).not.toContain("Old context failure");
+      expect(notify).not.toHaveBeenCalled();
       expect(h.checkbox().checked).toBe(false);
       expect(h.calls("cron.add")).toHaveLength(1);
     },

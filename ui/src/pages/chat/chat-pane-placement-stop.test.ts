@@ -5,6 +5,7 @@ import { createComponent } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import type { GatewaySessionRow } from "../../api/types.ts";
+import { PanelFeedbackScope } from "../../components/solid/panel-feedback.tsx";
 import { t } from "../../i18n/index.ts";
 import { createSessionsListResult } from "../../test-helpers/chat-model.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
@@ -617,11 +618,15 @@ describe("Machine and Stop owner contracts", () => {
       const session = offline ? offlineDeviceSession() : activePlacementSession();
       const onMove = vi.fn();
       const view = mountSolid(() =>
-        createComponent(ChatMachine, {
-          session,
-          machineName: "Build device",
-          onPlacementMove: onMove,
-          onPlacementReclaim: vi.fn(),
+        createComponent(PanelFeedbackScope, {
+          get children() {
+            return createComponent(ChatMachine, {
+              session,
+              machineName: "Build device",
+              onPlacementMove: onMove,
+              onPlacementReclaim: vi.fn(),
+            });
+          },
         }),
       );
       onTestFinished(view.unmount);
@@ -636,17 +641,15 @@ describe("Machine and Stop owner contracts", () => {
       expect(labels).not.toContain("Profile");
       expect(body.textContent).not.toContain("undefined");
       expect(body.querySelectorAll("dl")).toHaveLength(offline ? 2 : 1);
-      const recovery = body.querySelector(".chat-machine__recovery");
-      expect(Boolean(recovery)).toBe(offline);
-      if (recovery) {
+      expect(Boolean(body.querySelector(".panel-feedback"))).toBe(offline);
+      const action = body.querySelector<HTMLButtonElement>(".chat-machine__action")!;
+      if (offline) {
         expect(
-          recovery.compareDocumentPosition(body.querySelector("dl")!) &
+          action.compareDocumentPosition(body.querySelector("dl")!) &
             Node.DOCUMENT_POSITION_FOLLOWING,
         ).toBeTruthy();
-        recovery.querySelector<HTMLButtonElement>("button")!.click();
-      } else {
-        body.querySelector<HTMLButtonElement>(".chat-machine__action")!.click();
       }
+      action.click();
       expect(onMove).toHaveBeenCalledOnce();
     },
   );

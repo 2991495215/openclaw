@@ -102,12 +102,6 @@
 .chat-context__entry > span:last-child {
   flex: none;
 }
-.chat-context__note {
-  font-size: 10px;
-  line-height: 1.5;
-  color: var(--muted);
-  margin: 8px 0;
-}
 .chat-context__refresh,
 .chat-context__compact {
   display: inline-flex;

@@ -257,11 +257,11 @@ export abstract class ChatPaneSharingActions extends ChatPaneSidePanels {
     this.setSessionSharingState(key, {
       ...(this.collaboration.sharingStates.get(key) ?? { loading: false }),
       loading: false,
-      error: formatUiError(error),
+      error: undefined,
     });
-    // Sharing errors stay with their session; the visible slot belongs only to the selected session.
+    // A mutation result belongs to the initiating session, never a replacement view.
     if (areUiSessionKeysEquivalent(this.state?.sessionKey, session)) {
-      this.publishHeaderError(error, scope.headerOutcomeOwner);
+      showToast({ message: formatUiError(error), severity: "error" });
     }
   }
 
@@ -404,13 +404,16 @@ export abstract class ChatPaneSharingActions extends ChatPaneSidePanels {
       }
       const copied = await copyToClipboard(url, isCurrent);
       if (isCurrent()) {
-        showToast({ message: t(copied ? "common.copied" : "common.copyFailed") });
+        showToast({
+          message: t(copied ? "common.copied" : "common.copyFailed"),
+          severity: copied ? undefined : "error",
+        });
         return copied ? { status: "success" } : { status: "failed", error: t("common.copyFailed") };
       }
       return { status: "stale" };
     } catch (error) {
       if (isCurrent()) {
-        this.publishHeaderError(error);
+        showToast({ message: formatUiError(error), severity: "error" });
         return { status: "failed", error: formatUiError(error) };
       }
       return { status: "stale" };

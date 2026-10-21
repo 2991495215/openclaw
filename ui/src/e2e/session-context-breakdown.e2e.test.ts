@@ -213,7 +213,8 @@ suite.define(() => {
         expect(await draft.inputValue()).toBe("Keep this unsent draft");
         await gateway.setMethodResponse("sessions.usage", { sessions: [] });
         await context.getByRole("button", { name: "Refresh", exact: true }).click();
-        await context.getByText("No matching context report.", { exact: false }).waitFor();
+        await context.locator(".chat-context__bar").waitFor({ state: "detached" });
+        await context.getByRole("button", { name: "Refresh", exact: true }).waitFor();
         const unavailable = await takeControlUiScreenshotFrame(page, panel, [context], {
           elements: [panel],
           animations: "disabled",

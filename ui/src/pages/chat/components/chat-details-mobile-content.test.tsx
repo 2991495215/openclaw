@@ -3,6 +3,7 @@ import { createSignal, flush } from "solid-js";
 import { expect, it, vi } from "vitest";
 import "../chat-details-mobile-host-content.tsx";
 import type { GatewaySessionRow } from "../../../api/types.ts";
+import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import type { ChatMobileHost, MobileHostDestination } from "../chat-mobile-host.ts";
 import {
@@ -70,11 +71,13 @@ it("shows a real worker without legacy fields and lets the environment owner dec
   const content = rootContent();
   content.environment = { onRequestUncommitted: request, onOpenMachine: openMachine };
   const view = mountSolid(() => (
-    <ChatDetailsMobileContent
-      details={value()}
-      presented={presented()}
-      page={{ kind: "root", content }}
-    />
+    <PanelFeedbackScope presented={presented()}>
+      <ChatDetailsMobileContent
+        details={value()}
+        presented={presented()}
+        page={{ kind: "root", content }}
+      />
+    </PanelFeedbackScope>
   ));
   view.getByRole("button", { name: "worker:device" }).click();
   expect(openMachine).toHaveBeenCalledOnce();
@@ -117,7 +120,9 @@ it("retains Outputs demand across publications and returns navigation origins wi
   const content = rootContent();
   const [page, setPage] = createSignal<ChatDetailsMobilePage>({ kind: "root", content });
   const view = mountSolid(() => (
-    <ChatDetailsMobileContent details={value()} presented={presented()} page={page()} />
+    <PanelFeedbackScope presented={presented()}>
+      <ChatDetailsMobileContent details={value()} presented={presented()} page={page()} />
+    </PanelFeedbackScope>
   ));
   expect(retain).toHaveBeenCalledOnce();
   const people = view.getByRole("button", { name: "People" });

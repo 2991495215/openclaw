@@ -36,13 +36,10 @@ export type ChatSubagentsPanelDesktopProps = {
   agentId: string;
   rows: readonly SubagentsPanelRow[];
   loading: boolean;
-  error: string | null;
-  hasResult: boolean;
   active: boolean;
   /** Whether Show more has revealed the complete Done list, not its disclosure. */
   doneExpanded?: boolean;
   onDoneExpandedChange?: (expanded: boolean) => void;
-  onRefresh: () => void;
   onStop: (row: SubagentsPanelRow) => void;
   onOpen: (row: SubagentsPanelRow) => void;
   renderElapsed: (row: SubagentsPanelRow) => JSX.Element;
@@ -258,28 +255,11 @@ export function ChatSubagentsPanelDesktop(props: ChatSubagentsPanelDesktopProps)
         class="subagents-desktop__content"
         tabindex="-1"
       >
-        <Show when={props.error}>
-          <div class="chat-subagents__error" role="alert">
-            <span>{props.error}</span>
-            <button class="btn btn--sm" type="button" onClick={() => props.onRefresh()}>
-              {t("common.retry")}
-            </button>
-          </div>
-        </Show>
         <Show
           when={props.rows.length}
           fallback={
-            (props.loading || (props.hasResult && !props.error)) && (
-              <Show
-                when={props.loading}
-                fallback={
-                  <div class="chat-subagents__empty" role="status">
-                    {t("chat.subagentsPanel.empty")}
-                  </div>
-                }
-              >
-                <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
-              </Show>
+            props.loading && (
+              <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
             )
           }
         >

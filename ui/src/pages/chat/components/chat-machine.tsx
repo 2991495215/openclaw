@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
-import { ElapsedTime } from "../../../components/elapsed-time.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { t } from "../../../lib/reactive/i18n.ts";
 import {
   ChatMachineFacts,
@@ -34,6 +34,7 @@ export function ChatMachine(props: ChatMachineProps) {
               ]}
               disabled={Boolean(action.disabledReason) || !action.onClick}
               title={action.disabledReason}
+              aria-description={action.disabledReason}
               onClick={action.onClick}
             >
               <Icon name={action.icon} />
@@ -41,9 +42,6 @@ export function ChatMachine(props: ChatMachineProps) {
                 ? t("sessionsView.stopWorkerConfirmAction")
                 : action.label.replace(/…$/, "")}
             </button>
-            <Show when={action.disabledReason}>
-              {(reason) => <p class="chat-machine__note">{reason()}</p>}
-            </Show>
           </div>
         )}
       </For>
@@ -69,20 +67,18 @@ export function ChatMachine(props: ChatMachineProps) {
                     : view().label}
             </span>
           </header>
-          <Show when={view().exceptionState}>
-            {(message) => (
-              <p class="chat-machine__note" role="status">
-                {message()}
-              </p>
-            )}
-          </Show>
-          <Show when={view().deviceOffline}>
-            <section class="chat-machine__recovery">
-              <h3>{t("sessionsView.machineKeepGoing")}</h3>
-              <p>{t("sessionsView.machineRecoveryDescription")}</p>
-              {actions(true)}
-            </section>
-          </Show>
+          <PanelFeedback
+            label={view().machineName}
+            message={
+              props.session?.placementMove?.error ??
+              (view().deviceOffline
+                ? t("sessionsView.waitingForDevice")
+                : view().placementState === "failed"
+                  ? view().exceptionState
+                  : undefined)
+            }
+          />
+          <Show when={view().deviceOffline}>{actions(true)}</Show>
           <Show when={view().deviceOffline} fallback={<ChatMachineFacts view={view()} includeId />}>
             <section class="chat-machine__facts-group">
               <h3>{t("sessionsView.machineConfiguration")}</h3>
@@ -92,15 +88,6 @@ export function ChatMachine(props: ChatMachineProps) {
               <h3>{t("sessionsView.machineLastKnownState")}</h3>
               <ChatMachineFacts view={view()} group="state" />
             </section>
-          </Show>
-          <Show when={view().workspaceResultReconciling || view().syncElapsed !== undefined}>
-            <p class="chat-machine__note" role="status">
-              {t("sessionsView.syncingCloudFilesDetail")}
-              <Show when={view().syncElapsed !== undefined}>
-                {" "}
-                · <ElapsedTime startMs={view().syncElapsed} />
-              </Show>
-            </p>
           </Show>
           <Show when={!view().deviceOffline}>{actions(false)}</Show>
         </section>

@@ -3,7 +3,6 @@ import { createMemo, For, Show } from "solid-js";
 import type { GatewaySessionRow } from "../../../api/types.ts";
 import type { ApplicationPlacementStartupStatus } from "../../../app/session-placement-startup.ts";
 import { resolveCloudWorkerStopAction } from "../../../components/cloud-worker-stop.ts";
-import { ElapsedTime } from "../../../components/elapsed-time.tsx";
 import {
   repositorySessionNeedsWorker,
   sessionPlacementRetry,
@@ -236,30 +235,6 @@ export function ChatPanePlacement(
             </div>
             <ChatMachineFacts view={view()} />
           </Menu>
-          <Show
-            when={view().deviceOffline}
-            fallback={
-              <Show
-                when={view().workspaceResultReconciling}
-                fallback={
-                  <Show when={view().syncElapsed !== undefined}>
-                    <div class="chat-pane__placement-note" role="status">
-                      {t("sessionsView.syncingCloudFilesDetail")} ·{" "}
-                      <ElapsedTime startMs={view().syncElapsed} />
-                    </div>
-                  </Show>
-                }
-              >
-                <div class="chat-pane__placement-note" role="status">
-                  {t("sessionsView.syncingCloudFilesDetail")}
-                </div>
-              </Show>
-            }
-          >
-            <div class="chat-pane__placement-note" role="status">
-              {t("sessionsView.waitingForDevice")}
-            </div>
-          </Show>
         </div>
       )}
     </Show>

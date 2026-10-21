@@ -2,7 +2,7 @@ import type { JSX } from "@solidjs/web";
 import { For, Show, onSettled } from "solid-js";
 import type { ArtifactSummary } from "../../../../../packages/gateway-protocol/src/schema/artifacts.js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelEmptyState } from "../../../components/solid/panel-empty-state.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { t } from "../../../lib/reactive/i18n.ts";
 import "./chat-outputs.css";
 
@@ -46,21 +46,9 @@ export function getChatOutputsCount(data: ChatOutputsData): number | null {
   return data.artifacts.length + (data.dashboard === null ? 0 : 1);
 }
 
-/** Optional desktop sections need content or an actionable read error, not a speculative slot. */
+/** Read failures live in the panel footer; only actual outputs create a section. */
 export function hasChatDesktopOutputs(data: ChatOutputsData): boolean {
-  return Boolean(
-    data.artifacts?.length || data.dashboard || data.artifactsError || data.dashboardError,
-  );
-}
-
-/** The explicit mobile destination distinguishes loading from confirmed absence. */
-function isChatOutputsEmpty(data: ChatOutputsData): boolean {
-  return (
-    getChatOutputsCount(data) === 0 &&
-    !data.artifactsLoading &&
-    !data.artifactsError &&
-    !data.dashboardError
-  );
+  return Boolean(data.artifacts?.length || data.dashboard);
 }
 
 function OutputName(props: { text: string }) {
@@ -123,46 +111,18 @@ function DashboardRow(props: { dashboard: ChatOutputsDashboard; mobile?: boolean
   );
 }
 
-function OutputReadStatus(props: {
-  pending: boolean;
-  error: string | null;
-  label: string;
-  onRetry?: () => void;
-}) {
+export function ChatOutputsFeedback(props: ChatOutputsProps) {
   return (
     <>
-      <Show when={props.error}>
-        <div class="chat-outputs__status" role="status">
-          <span>{props.error}</span>
-          <Show when={props.onRetry}>
-            <button type="button" disabled={props.pending} onClick={() => props.onRetry?.()}>
-              {t("common.retry")}
-            </button>
-          </Show>
-        </div>
-      </Show>
-      <Show when={props.pending && !props.error}>
-        <div class="chat-outputs__status" role="status">
-          {props.label}
-        </div>
-      </Show>
-    </>
-  );
-}
-
-function OutputStatuses(props: ChatOutputsProps) {
-  return (
-    <>
-      <OutputReadStatus
-        pending={props.artifactsLoading || (props.artifacts === null && !props.artifactsError)}
-        error={props.artifactsError}
-        label={props.artifacts === null ? t("outputs.loading") : t("outputs.updating")}
+      <PanelFeedback
+        label={t("outputs.files")}
+        message={props.artifactsError}
         onRetry={props.onRetryArtifacts}
+        retrying={props.artifactsLoading}
       />
-      <OutputReadStatus
-        pending={props.dashboard === undefined && !props.dashboardError}
-        error={props.dashboardError}
-        label={t("outputs.loadingDashboard")}
+      <PanelFeedback
+        label={t("outputs.dashboard")}
+        message={props.dashboardError}
         onRetry={props.onRetryDashboard}
       />
     </>
@@ -192,7 +152,6 @@ export function ChatOutputsDesktop(props: ChatOutputsDesktopProps) {
             <span>{t("outputs.viewAll")}</span>
           </button>
         </Show>
-        <OutputStatuses {...props} />
       </div>
     </Show>
   );
@@ -202,38 +161,27 @@ export function ChatOutputsDesktop(props: ChatOutputsDesktopProps) {
 export function ChatOutputsMobile(props: ChatOutputsProps) {
   return (
     <div class="chat-outputs chat-outputs--mobile">
-      <Show
-        when={!isChatOutputsEmpty(props)}
-        fallback={
-          <PanelEmptyState
-            icon={<Icon name="fileText" />}
-            heading={t("outputs.emptyTitle")}
-            description={t("outputs.emptyDescription")}
-          />
-        }
-      >
-        <Show when={props.dashboard}>
-          {(dashboard) => (
-            <section class="chat-outputs__section" aria-label={t("tabs.dashboards")}>
-              <h3>{t("tabs.dashboards")}</h3>
-              <div class="chat-outputs__group">
-                <DashboardRow dashboard={dashboard()} mobile />
-              </div>
-            </section>
-          )}
-        </Show>
-        <Show when={props.artifacts?.length}>
-          <section class="chat-outputs__section" aria-label={t("outputs.files")}>
-            <h3>{t("outputs.files")}</h3>
+      <Show when={props.dashboard}>
+        {(dashboard) => (
+          <section class="chat-outputs__section" aria-label={t("tabs.dashboards")}>
+            <h3>{t("tabs.dashboards")}</h3>
             <div class="chat-outputs__group">
-              <For each={props.artifacts ?? []} keyed={(artifact) => artifact.id}>
-                {(artifact) => <ArtifactRow artifact={artifact()} outputs={props} mobile />}
-              </For>
+              <DashboardRow dashboard={dashboard()} mobile />
             </div>
           </section>
-        </Show>
-        <OutputStatuses {...props} />
+        )}
       </Show>
+      <Show when={props.artifacts?.length}>
+        <section class="chat-outputs__section" aria-label={t("outputs.files")}>
+          <h3>{t("outputs.files")}</h3>
+          <div class="chat-outputs__group">
+            <For each={props.artifacts ?? []} keyed={(artifact) => artifact.id}>
+              {(artifact) => <ArtifactRow artifact={artifact()} outputs={props} mobile />}
+            </For>
+          </div>
+        </section>
+      </Show>
+      <ChatOutputsFeedback {...props} />
     </div>
   );
 }

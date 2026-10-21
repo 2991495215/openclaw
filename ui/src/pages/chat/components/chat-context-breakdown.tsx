@@ -4,6 +4,7 @@ import type { SessionSystemPromptReport } from "../../../../../src/config/sessio
 import type { GatewaySessionRow } from "../../../api/types.ts";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatCompactTokenCount } from "../../../lib/format.ts";
 import { projectGateway } from "../../../lib/reactive/application.ts";
@@ -275,28 +276,26 @@ export function ChatContextBreakdown(props: {
   );
   return (
     <div class="chat-context">
-      <Loading
-        on={target()}
-        fallback={
-          <p class="chat-context__note" role="status">
-            {t("chat.sessionDetails.contextLoading")}
-          </p>
-        }
-      >
+      <Loading on={target()}>
         <Show
-          when={result().report}
-          fallback={
-            <p class="chat-context__note" role="status">
-              {t(
-                result().offline
-                  ? "chat.sessionDetails.contextOffline"
-                  : result().failed
-                    ? "chat.sessionDetails.contextError"
-                    : "chat.sessionDetails.contextUnavailable",
-              )}
-            </p>
+          when={
+            result().offline
+              ? t("chat.sessionDetails.contextOffline")
+              : result().failed
+                ? t("chat.sessionDetails.contextError")
+                : undefined
           }
+          keyed
         >
+          {(message) => (
+            <PanelFeedback
+              label={t("chat.sessionDetails.context")}
+              message={message}
+              onRetry={() => setRevision((value) => value + 1)}
+            />
+          )}
+        </Show>
+        <Show when={result().report}>
           {(report) => {
             const categories = createMemo(() => buildChatContextCategories(report(), props.used));
             const deferred = createMemo(() => buildDeferredContextGroups(report()));
@@ -345,31 +344,28 @@ export function ChatContextBreakdown(props: {
                   >
                     <summary class="chat-context__source-heading">
                       <span>{t("chat.sessionDetails.contextAvailableOnDemand")}</span>
-                      <small>{t("chat.sessionDetails.contextNotLoaded")}</small>
                       <Icon name="chevronDown" />
                     </summary>
-                    <p class="chat-context__note">
-                      {t("chat.sessionDetails.contextDeferredEstimate")}
-                    </p>
                     <div class="chat-context__entries">
                       <ContextGroups groups={deferred()} />
                     </div>
                   </details>
                 </Show>
-                <p class="chat-context__note">{t("chat.sessionDetails.contextEstimate")}</p>
               </>
             );
           }}
         </Show>
+        <Show when={!result().failed && !result().offline}>
+          <button
+            type="button"
+            class="chat-context__refresh"
+            onClick={() => setRevision((value) => value + 1)}
+          >
+            <Icon name="refresh" />
+            {t("common.refresh")}
+          </button>
+        </Show>
       </Loading>
-      <button
-        type="button"
-        class="chat-context__refresh"
-        onClick={() => setRevision((value) => value + 1)}
-      >
-        <Icon name="refresh" />
-        {t("common.refresh")}
-      </button>
     </div>
   );
 }

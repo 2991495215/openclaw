@@ -150,18 +150,6 @@
   opacity: 1;
 }
 
-.chat-details-mobile-root__notice,
-.chat-details-mobile-processes__error {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
-}
-
 .chat-details-mobile-processes .chat-details__process {
   grid-template-columns: var(--mobile-list-icon) minmax(0, 1fr) auto;
   column-gap: var(--mobile-list-gap);

@@ -73,11 +73,6 @@
   text-overflow: clip;
 }
 
-.task-progress-details--desktop[data-desktop-details]:not([open])
-  .task-progress-details__refresh-status {
-  grid-column: 1 / -1;
-}
-
 .task-progress-details__menu-group:empty {
   display: none;
 }
@@ -238,7 +233,6 @@
 }
 
 .task-progress-details__refresh:focus-visible,
-.task-progress-details__retry:focus-visible,
 .task-progress-details__summary:focus-visible,
 .task-progress-details__mobile-options:focus-visible {
   outline: 2px solid var(--ring);
@@ -362,67 +356,8 @@
   height: var(--details-row-icon-size, 15px);
 }
 
-.task-progress-details__refresh-status {
-  display: flex;
-  flex-basis: 100%;
-  align-items: center;
-  gap: 8px;
-  min-height: 24px;
-  padding: 2px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--bg-hover);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.task-progress-details__refresh-status:is([data-state="pending"], [data-state="updated"]) {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  min-height: 0;
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  clip-path: inset(50%);
-}
-
-.task-progress-details__retry {
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-}
-
 .task-progress-details--mobile .session-progress-card__step {
   font-size: 14px;
-}
-
-.task-progress-details--mobile
-  .task-progress-details__refresh-status:is([data-state="failed"], [data-state="timeout"]) {
-  justify-content: space-between;
-  gap: 16px;
-  margin-block-end: 16px;
-  padding: 12px;
-  border: 0;
-  border-radius: 14px;
-  background: var(--card);
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.task-progress-details--mobile .task-progress-details__retry {
-  min-height: 30px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 20px;
 }
 
 .task-progress-details__mobile-controls {
@@ -531,6 +466,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .task-progress-details__refresh:focus-visible,
+  .task-progress-details__summary:focus-visible,
+  .task-progress-details__mobile-options:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
   .task-progress-details__refresh[data-pending="true"] svg {
     animation: none;
   }

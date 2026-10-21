@@ -2,6 +2,7 @@ import { Show, createMemo, createSignal } from "solid-js";
 import type { ChatInputRegion } from "../../../app/chat-input-owner.ts";
 import { ElapsedTime } from "../../../components/elapsed-time.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
@@ -51,7 +52,6 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
     const finishedId = `chat-subagents-finished-${++panelSequence}`;
     let mobileList: HTMLDivElement | undefined;
     let mobileFirstButton: (() => HTMLButtonElement | undefined) | undefined;
-    let mobileRetry: HTMLButtonElement | undefined;
     let mobileReturn: { scrollTop: number; focus: HTMLElement | null } | undefined;
     const data = useSessionPanel(
       host,
@@ -111,9 +111,7 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
             const target = request.focus;
             (target?.isConnected && mobileList.contains(target)
               ? target
-              : mobileRetry?.isConnected
-                ? mobileRetry
-                : mobileFirstButton?.()
+              : (mobileFirstButton?.() ?? mobileList)
             )?.focus({ preventScroll: true });
             mobileReturn = undefined;
           }
@@ -227,7 +225,13 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
       props.mobile === true ? finished().map(mobileItem) : [],
     );
     return (
-      <>
+      <PanelFeedbackScope>
+        <PanelFeedback
+          label={t("chat.subagentsPanel.title")}
+          message={!selected() && props.presented ? data().error : null}
+          onRetry={() => void data().refresh()}
+          retrying={data().loading}
+        />
         <Show when={props.mobile === true}>
           <div style={{ display: !selected() && props.presented ? "contents" : "none" }}>
             <ChatSubagentsMobileList
@@ -235,7 +239,6 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
               finished={mobileFinished()}
               runningLabel={t("common.running")}
               finishedLabel={t("chat.subagentsPanel.mobileFinished")}
-              noRunningLabel={t("chat.subagentsPanel.noRunning")}
               finishedId={finishedId}
               finishedOpen={finishedOpen()}
               onToggleFinished={() => setFinishedOpen((value) => !value)}
@@ -253,35 +256,9 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
                 };
                 setSelected({ key, agentId: subagentAgentId(key) });
               }}
-              notice={
-                data().error && (
-                  <div class="chat-subagents__error" role="alert">
-                    <span>{data().error}</span>
-                    <button
-                      ref={(button) => {
-                        mobileRetry = button;
-                      }}
-                      class="btn btn--sm"
-                      type="button"
-                      onClick={() => void data().refresh()}
-                    >
-                      {t("common.retry")}
-                    </button>
-                  </div>
-                )
-              }
               empty={
-                (data().loading || (data().hasResult && !data().error)) && (
-                  <Show
-                    when={data().loading}
-                    fallback={
-                      <div class="chat-subagents__empty" role="status">
-                        {t("chat.subagentsPanel.empty")}
-                      </div>
-                    }
-                  >
-                    <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
-                  </Show>
+                data().loading && (
+                  <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
                 )
               }
             />
@@ -293,12 +270,9 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
             agentId={props.agentId}
             rows={data().rows}
             loading={data().loading}
-            error={data().error}
-            hasResult={data().hasResult}
             active={!selected() && props.presented}
             doneExpanded={props.doneExpanded}
             onDoneExpandedChange={props.onDoneExpandedChange}
-            onRefresh={() => void data().refresh()}
             onStop={(row) => void data().stop(row)}
             onOpen={(row) =>
               setSelected({ key: row.session.key, agentId: subagentAgentId(row.session.key) })
@@ -312,32 +286,15 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
           fallback={
             <Show when={props.mobile === undefined}>
               <div class="chat-subagents__list" aria-busy={data().loading ? "true" : "false"}>
-                {data().error && (
-                  <div class="chat-subagents__error" role="alert">
-                    <span>{data().error}</span>
-                    <button class="btn btn--sm" type="button" onClick={() => void data().refresh()}>
-                      {t("common.retry")}
-                    </button>
-                  </div>
-                )}
                 <Show
                   when={data().rows.length}
                   fallback={
-                    (data().loading || (data().hasResult && !data().error)) && (
-                      <Show
-                        when={data().loading}
-                        fallback={
-                          <div class="chat-subagents__empty" role="status">
-                            {t("chat.subagentsPanel.empty")}
-                          </div>
-                        }
-                      >
-                        <PanelLoadingSkeleton
-                          variant="file-list"
-                          label={t("common.loading")}
-                          compact
-                        />
-                      </Show>
+                    data().loading && (
+                      <PanelLoadingSkeleton
+                        variant="file-list"
+                        label={t("common.loading")}
+                        compact
+                      />
                     )
                   }
                 >
@@ -469,7 +426,7 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
             />
           )}
         </Show>
-      </>
+      </PanelFeedbackScope>
     );
   },
   {

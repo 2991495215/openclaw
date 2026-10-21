@@ -1,6 +1,7 @@
-import { createMemo, createProjection, createUniqueId, For, onSettled, Show } from "solid-js";
+import { createMemo, createProjection, For, onSettled, Show } from "solid-js";
 import type { SessionBranch } from "../../../api/types.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatRelativeTimestamp } from "../../../lib/format.ts";
@@ -22,7 +23,6 @@ export type ChatSessionVersionsMobileProps = {
 
 /** Interior only: the mobile host owns its header, navigation, retention and scrolling. */
 export function ChatSessionVersionsMobile(props: ChatSessionVersionsMobileProps) {
-  const id = createUniqueId();
   const buttons = new Map<string, HTMLButtonElement>();
   // Retain presentation order across active-first server responses, never branch facts.
   const order = createProjection<{ scopeKey: string; ids: string[] }>(
@@ -41,7 +41,6 @@ export function ChatSessionVersionsMobile(props: ChatSessionVersionsMobileProps)
     () => new Map(props.branches.map((branch) => [branch.leafEntryId, branch])),
   );
   const error = () => (props.query.status === "error" ? props.query.message : null);
-  const empty = () => props.query.status === "ready" && props.branches.length === 0;
   const select = (branch: SessionBranch) => {
     if (!branch.active && !props.branchSwitchDisabledReason) {
       props.onBranchSelect(branch.leafEntryId);
@@ -49,44 +48,21 @@ export function ChatSessionVersionsMobile(props: ChatSessionVersionsMobileProps)
   };
 
   return (
-    <section
-      class={["chat-session-versions-mobile", { "chat-session-versions-mobile--empty": empty() }]}
-      aria-label={t("chat.sessionHeader.branches")}
-    >
-      <Show when={!empty()}>
-        <p class="chat-session-versions-mobile__help">{t("chat.sessionHeader.versionsHelp")}</p>
-      </Show>
-      <Show when={props.branchSwitchDisabledReason}>
-        <p id={`${id}-disabled`} class="chat-session-versions-mobile__note" role="status">
-          {props.branchSwitchDisabledReason}
-        </p>
-      </Show>
+    <section class="chat-session-versions-mobile" aria-label={t("chat.sessionHeader.branches")}>
       <Show when={props.query.status === "loading" && props.branches.length === 0}>
         <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
       </Show>
-      <Show when={error()}>
-        <div class="chat-session-versions-mobile__note" role="alert">
-          <p>{error()}</p>
-          <Show when={props.onRetry}>
-            <button type="button" class="btn btn--sm" onClick={() => props.onRetry?.()}>
-              {t("common.retry")}
-            </button>
-          </Show>
-        </div>
-      </Show>
-      <Show when={empty()}>
-        <div class="chat-session-versions-mobile__empty" role="status">
-          <Icon name="history" />
-          <strong>{t("chat.sessionHeader.versionsEmptyTitle")}</strong>
-          <p>{t("chat.sessionHeader.versionsEmptyDescription")}</p>
-        </div>
-      </Show>
+      <PanelFeedback
+        label={t("chat.sessionHeader.branches")}
+        message={error()}
+        onRetry={props.onRetry}
+      />
       <Show when={props.branches.length > 0}>
         <ol
           class="chat-session-versions-mobile__list"
           role="radiogroup"
           aria-label={t("chat.sessionHeader.branches")}
-          aria-describedby={props.branchSwitchDisabledReason ? `${id}-disabled` : undefined}
+          aria-description={props.branchSwitchDisabledReason ?? undefined}
           aria-busy={props.query.status === "loading" ? "true" : "false"}
           onKeyDown={(event) => {
             const backward = event.key === "ArrowUp" || event.key === "ArrowLeft";
@@ -133,6 +109,8 @@ export function ChatSessionVersionsMobile(props: ChatSessionVersionsMobileProps)
                         class="chat-session-versions-mobile__select"
                         aria-checked={version().active ? "true" : "false"}
                         aria-disabled={props.branchSwitchDisabledReason ? "true" : "false"}
+                        aria-description={props.branchSwitchDisabledReason ?? undefined}
+                        title={props.branchSwitchDisabledReason ?? undefined}
                         tabindex={
                           version().active ||
                           (!props.branches.some((item) => item.active) &&

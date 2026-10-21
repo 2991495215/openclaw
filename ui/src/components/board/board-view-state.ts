@@ -17,6 +17,7 @@ import type { BoardViewCallbacks, BoardWidgetFrameUrl } from "../../lib/board/vi
 import { t } from "../../lib/reactive/i18n.ts";
 import { listen } from "../../lib/reactive/listener.ts";
 import type { SolidBridgeElement } from "../../lib/solid-bridge.ts";
+import { showToast } from "../../lib/toast.ts";
 import { orderedBoardTabs } from "./board-tabs.tsx";
 import type { BoardWidgetCellMethods } from "./board-widget-cell-options.ts";
 import {
@@ -88,7 +89,6 @@ export function createBoardViewState(
     hoverTabId: "",
     announcement: "",
     announcementRevision: 0,
-    actionError: "",
     focusName: "",
     mutationPending: false,
     initialLoading: true,
@@ -114,10 +114,6 @@ export function createBoardViewState(
       local.contentHeights = {};
       mutationRequestId += 1;
       mutationPending = local.mutationPending = false;
-    }
-    // Recovery reads can publish unchanged state after a failed mutation.
-    if (ownerChanged || before?.snapshot?.revision !== props.snapshot?.revision) {
-      local.actionError = "";
     }
     if (snapshotChanged) {
       const currentByName = new Map(props.snapshot?.widgets.map((widget) => [widget.name, widget]));
@@ -187,7 +183,6 @@ export function createBoardViewState(
     const requestId = ++mutationRequestId;
     mutationPending = true;
     update((local) => {
-      local.actionError = "";
       local.mutationPending = true;
     });
     try {
@@ -198,10 +193,7 @@ export function createBoardViewState(
     } catch (error) {
       if (requestId === mutationRequestId && sessionKey === props.snapshot?.sessionKey) {
         const errorText = t("board.actionFailed");
-        update((local) => {
-          local.actionError = errorText;
-        });
-        announce(errorText);
+        showToast({ message: errorText, severity: "error", anchor: host });
       }
       throw error;
     } finally {

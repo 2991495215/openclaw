@@ -137,14 +137,10 @@
   mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
 }
 
-.chat-subagents-mobile__stats,
-.chat-subagents-mobile__empty {
+.chat-subagents-mobile__stats {
   color: var(--muted);
   font-size: var(--control-ui-text-sm);
   line-height: 18px;
-}
-
-.chat-subagents-mobile__stats {
   display: flex;
   align-items: center;
   gap: 5px;

@@ -35,15 +35,21 @@ import type {
   ChatSessionSharingOutcome,
 } from "./components/chat-session-sharing.solid.tsx";
 
-const { confirmPublicShare, copyPublicShare } = vi.hoisted(() => ({
+const { confirmPublicShare, copyPublicShare, sharingToast } = vi.hoisted(() => ({
   confirmPublicShare: vi.fn<(...args: unknown[]) => Promise<boolean>>(),
   copyPublicShare: vi.fn<(...args: unknown[]) => Promise<boolean>>(),
+  sharingToast: vi.fn(),
 }));
 vi.mock("../../components/confirm-dialog.ts", () => ({ showConfirmDialog: confirmPublicShare }));
 vi.mock("../../lib/clipboard.ts", () => ({ copyToClipboard: copyPublicShare }));
+vi.mock("../../lib/toast.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/toast.ts")>()),
+  showToast: sharingToast,
+}));
 afterEach(() => {
   confirmPublicShare.mockReset();
   copyPublicShare.mockReset();
+  sharingToast.mockReset();
 });
 
 type SharingPane = TestChatPane & {
@@ -829,8 +835,9 @@ describe.each(mutations)("chat pane $name mutation connection ownership", (mutat
       pane.collaboration.sharingStates.get(pane.sessionSharingCacheKey(previous.key)),
     ).toMatchObject({
       loading: false,
-      error: `${mutation.name} failed after session switch`,
+      error: undefined,
     });
+    expect(sharingToast).not.toHaveBeenCalled();
     expect(state.lastError).toBeNull();
     expect(state.chatError).toBeNull();
     expect(sessions.reconcileMutation).not.toHaveBeenCalled();
@@ -868,7 +875,7 @@ describe.each(mutations)("chat pane $name mutation connection ownership", (mutat
   });
 });
 
-it("preserves a member sharing refresh failure in the current connection", async () => {
+it("reports a member sharing refresh failure once without a second inline or header error", async () => {
   const row = sessionRow();
   const failure = "member refresh failed";
   const request = vi.fn(async (method: string) => {
@@ -888,14 +895,20 @@ it("preserves a member sharing refresh failure in the current connection", async
     sessions,
   });
 
-  await pane.mutateSessionSharing(row, { identityId: "identity-alice", member: true });
+  expect(
+    await pane.mutateSessionSharing(row, { identityId: "identity-alice", member: true }),
+  ).toEqual({
+    status: "failed",
+    error: failure,
+  });
 
   expect(pane.collaboration.sharingStates.get(pane.sessionSharingCacheKey(row.key))).toMatchObject({
     loading: false,
-    error: failure,
+    error: undefined,
   });
-  expect(state.lastError).toBe(failure);
-  expect(state.chatError).toBe(state.lastError);
+  expect(sharingToast).toHaveBeenCalledExactlyOnceWith({ message: failure, severity: "error" });
+  expect(state.lastError).toBeNull();
+  expect(state.chatError).toBeNull();
   expect(sessions.reconcileMutation).toHaveBeenCalledOnce();
 });
 

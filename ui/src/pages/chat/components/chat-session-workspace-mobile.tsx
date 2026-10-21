@@ -3,7 +3,7 @@ import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { SessionWorkspaceListResult } from "../../../api/types.ts";
 import { fileKindForPath } from "../../../components/file-kind.ts";
 import { Icon, type IconName } from "../../../components/solid/icon.tsx";
-import { PanelEmptyState } from "../../../components/solid/panel-empty-state.tsx";
+import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
@@ -283,9 +283,14 @@ function MobileGroupRows(props: {
         </For>
       </ul>
       <Show when={workspace()?.truncated}>
-        <p class="chat-workspace-mobile__notice" role="status">
-          {t("chat.workspaceFiles.truncated")}
-        </p>
+        <span
+          class="panel-feedback__hint"
+          role="img"
+          title={t("chat.workspaceFiles.truncated")}
+          aria-label={t("chat.workspaceFiles.truncated")}
+        >
+          <Icon name="info" />
+        </span>
       </Show>
     </>
   );
@@ -320,140 +325,134 @@ export function SessionWorkspaceMobile(props: SessionWorkspaceMobileProps) {
   });
   return (
     <section class="chat-workspace-mobile" aria-label={t("chat.workspaceFiles.label")}>
-      <div class="chat-workspace-mobile__rail">
-        <Show when={props.location.kind === "folder" && props.location}>
-          {(location) => (
-            <MobileFolderHeader location={location()} onBrowsePath={props.onBrowsePath} />
-          )}
-        </Show>
-        <label class="chat-workspace-mobile__search">
-          <Icon name="search" />
-          <input
-            type="search"
-            placeholder={
-              props.location.kind === "folder"
-                ? props.location.searchLabel
-                : t("chat.workspaceFiles.search")
-            }
-            aria-label={
-              props.location.kind === "folder"
-                ? props.location.searchLabel
-                : t("chat.workspaceFiles.search")
-            }
-            ref={liveValue(() => props.search)}
-            onInput={(event) => props.onSearch(event.currentTarget.value)}
-            onFocus={() => props.onSearchFocus()}
-          />
-        </label>
-      </div>
-      <div
-        class="chat-workspace-mobile__scroll"
-        ref={(element) => {
-          scroll = element;
-        }}
-        aria-busy={busy() ? "true" : "false"}
-        onScroll={() => {
-          updateFades();
-          props.onScroll(scroll.scrollTop);
-        }}
-      >
+      <PanelFeedbackScope>
+        <div class="chat-workspace-mobile__rail">
+          <Show when={props.location.kind === "folder" && props.location}>
+            {(location) => (
+              <MobileFolderHeader location={location()} onBrowsePath={props.onBrowsePath} />
+            )}
+          </Show>
+          <label class="chat-workspace-mobile__search">
+            <Icon name="search" />
+            <input
+              type="search"
+              placeholder={
+                props.location.kind === "folder"
+                  ? props.location.searchLabel
+                  : t("chat.workspaceFiles.search")
+              }
+              aria-label={
+                props.location.kind === "folder"
+                  ? props.location.searchLabel
+                  : t("chat.workspaceFiles.search")
+              }
+              ref={liveValue(() => props.search)}
+              onInput={(event) => props.onSearch(event.currentTarget.value)}
+              onFocus={() => props.onSearchFocus()}
+            />
+          </label>
+        </div>
         <div
-          class="chat-workspace-mobile__content"
+          class="chat-workspace-mobile__scroll"
           ref={(element) => {
-            content = element;
+            scroll = element;
+          }}
+          aria-busy={busy() ? "true" : "false"}
+          onScroll={() => {
+            updateFades();
+            props.onScroll(scroll.scrollTop);
           }}
         >
-          <Show when={!folder()}>
-            <div
-              class="chat-workspace-mobile__filters"
-              role="group"
-              aria-label={t("chat.workspaceFiles.filters")}
-            >
-              <For each={FILTERS}>
-                {(filter) => (
-                  <button
-                    type="button"
-                    aria-pressed={props.filter === filter ? "true" : "false"}
-                    onClick={() => props.onSetFilter(filter)}
-                  >
-                    {t(
-                      filter === "all"
-                        ? "chat.workspaceFiles.filterAll"
-                        : filter === "artifacts"
-                          ? "chat.workspaceFiles.desktop.sessionFiles"
-                          : `chat.workspaceFiles.${filter}`,
-                    )}
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
-          <Show when={props.status.kind === "loading"}>
-            <PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />
-          </Show>
-          <Show
-            when={
-              (props.status.kind === "error" || props.status.kind === "unavailable") && props.status
-            }
+          <div
+            class="chat-workspace-mobile__content"
+            ref={(element) => {
+              content = element;
+            }}
           >
-            {(status) => (
+            <Show when={!folder()}>
               <div
-                class="chat-workspace-mobile__state"
-                role={status().kind === "error" ? "alert" : "status"}
+                class="chat-workspace-mobile__filters"
+                role="group"
+                aria-label={t("chat.workspaceFiles.filters")}
               >
-                <p>{status().message}</p>
-                <Show when={status().onRetry}>
-                  {(retry) => (
-                    <button type="button" class="btn" onClick={() => retry()()}>
-                      {t("common.retry")}
-                    </button>
-                  )}
-                </Show>
-              </div>
-            )}
-          </Show>
-          <Show when={props.status.kind === "empty" && props.status}>
-            {(status) => (
-              <PanelEmptyState
-                heading={status().heading}
-                description={status().description}
-                icon={<Icon name="folder" />}
-              />
-            )}
-          </Show>
-          <Show when={props.status.kind === "ready"}>
-            <For each={props.groups} keyed={(group) => group.kind}>
-              {(group) => (
-                <div class="chat-workspace-mobile__group">
-                  <Show when={!folder()}>
+                <For each={FILTERS}>
+                  {(filter) => (
                     <button
                       type="button"
-                      class="chat-workspace-mobile__group-heading"
-                      aria-expanded={group().expanded ? "true" : "false"}
-                      onClick={() => props.onToggleGroup(group().kind)}
+                      aria-pressed={props.filter === filter ? "true" : "false"}
+                      onClick={() => props.onSetFilter(filter)}
                     >
-                      <Icon name={group().expanded ? "chevronDown" : "chevronRight"} />
-                      {t(GROUP_LABELS[group().kind])}
-                      <span class="chat-workspace-mobile__group-count">{groupCount(group())}</span>
+                      {t(
+                        filter === "all"
+                          ? "chat.workspaceFiles.filterAll"
+                          : filter === "artifacts"
+                            ? "chat.workspaceFiles.desktop.sessionFiles"
+                            : `chat.workspaceFiles.${filter}`,
+                      )}
                     </button>
-                  </Show>
-                  <Show when={folder() || group().expanded}>
-                    <MobileGroupRows
-                      group={group()}
-                      folder={folder()}
-                      search={props.search}
-                      onBrowsePath={props.onBrowsePath}
-                      onOpenFileInsideFiles={props.onOpenFileInsideFiles}
-                      onOpenArtifactInsideFiles={props.onOpenArtifactInsideFiles}
-                    />
-                  </Show>
-                </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <Show when={props.status.kind === "loading"}>
+              <PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />
+            </Show>
+            <Show
+              when={
+                (props.status.kind === "error" || props.status.kind === "unavailable") &&
+                props.status
+              }
+            >
+              {(status) => (
+                <PanelFeedback
+                  label={t("chat.workspaceFiles.label")}
+                  message={status().message}
+                  onRetry={status().onRetry}
+                  retrying={busy()}
+                />
               )}
-            </For>
-          </Show>
-          {props.attachmentContent}
+            </Show>
+            <Show when={props.status.kind === "empty" && props.search.trim()}>
+              <div class="chat-workspace-mobile__state" role="status">
+                {t("chat.workspaceFiles.noSearchResults")}
+              </div>
+            </Show>
+            <Show when={props.status.kind === "ready"}>
+              <For each={props.groups} keyed={(group) => group.kind}>
+                {(group) => (
+                  <div class="chat-workspace-mobile__group">
+                    <Show when={!folder()}>
+                      <button
+                        type="button"
+                        class="chat-workspace-mobile__group-heading"
+                        aria-expanded={group().expanded ? "true" : "false"}
+                        onClick={() => props.onToggleGroup(group().kind)}
+                      >
+                        <Icon name={group().expanded ? "chevronDown" : "chevronRight"} />
+                        {t(GROUP_LABELS[group().kind])}
+                        <span class="chat-workspace-mobile__group-count">
+                          {groupCount(group())}
+                        </span>
+                      </button>
+                    </Show>
+                    <Show when={folder() || group().expanded}>
+                      <MobileGroupRows
+                        group={group()}
+                        folder={folder()}
+                        search={props.search}
+                        onBrowsePath={props.onBrowsePath}
+                        onOpenFileInsideFiles={props.onOpenFileInsideFiles}
+                        onOpenArtifactInsideFiles={props.onOpenArtifactInsideFiles}
+                      />
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </Show>
+            {props.attachmentContent}
+          </div>
         </div>
-      </div>
+      </PanelFeedbackScope>
     </section>
   );
 }

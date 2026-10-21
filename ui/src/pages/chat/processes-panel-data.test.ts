@@ -7,14 +7,20 @@ import type {
 } from "../../../../packages/gateway-protocol/src/schema/session-processes.js";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
 import { createTestSessionCapability } from "../../lib/sessions/session-capability.test-support.ts";
+import { showToast } from "../../lib/toast.ts";
 import { disposeSidebarContextLifecycles } from "../../test-helpers/app-sidebar-context-lifecycle.ts";
 import { createContext, createGatewayHarness } from "../../test-helpers/app-sidebar.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { ProcessesPanelData } from "./processes-panel-data.ts";
 
+vi.mock("../../lib/toast.ts", () => ({ showToast: vi.fn() }));
+
 const key = "agent:main:parent";
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.mocked(showToast).mockClear();
+});
 const process = (instanceId = "first"): SessionProcessSummary => ({
   processId: "build",
   instanceId,
@@ -174,6 +180,20 @@ describe("process panel observation ownership", () => {
     },
   );
 
+  it("does not toast a Stop failure after its session was replaced", async () => {
+    const stopped = createDeferred();
+    const f = fixture((method) =>
+      method === "sessions.processes.stop" ? stopped.promise : page(),
+    );
+    await f.load();
+    const pending = f.data.stop(f.data.snapshot.rows[0]!);
+    f.open("agent:main:other");
+    stopped.reject(new Error("Old worker unavailable"));
+    await pending;
+    expect(showToast).not.toHaveBeenCalled();
+    expect(f.data.snapshot.error).toBeNull();
+  });
+
   it("refreshes placement changes and rejects Stop callbacks for the previous process", async () => {
     let current = process();
     const f = fixture((method) =>
@@ -246,29 +266,29 @@ describe("process panel observation ownership", () => {
     },
   );
 
-  it("retains a failed Stop across an overlapping read until its process is known to be gone", async () => {
+  it("reports Stop once without replacing an overlapping read failure", async () => {
     const pending = createDeferred<SessionsProcessesListResult>();
     let reads = 0;
-    let next = page();
     const f = fixture((method) => {
       if (method === "sessions.processes.stop") {
         throw new Error("Stop could not reach the worker");
       }
-      return ++reads === 2 ? pending.promise : next;
+      return ++reads === 2 ? pending.promise : page();
     });
     await f.load();
     const refresh = f.data.refresh();
     await f.data.stop(f.data.snapshot.rows[0]!);
-    pending.resolve(page());
+    expect(showToast).toHaveBeenCalledExactlyOnceWith({
+      message: "Stop could not reach the worker",
+      severity: "error",
+    });
+    pending.reject(new Error("Read unavailable"));
     await refresh;
-    expect(f.data.snapshot.error).toContain("Stop could not reach the worker");
-    expect(f.data.snapshot.errorKind).toBe("action");
-    next = { ...page(), processes: [], truncated: true };
+    expect(f.data.snapshot.error).toBe("Read unavailable");
+    expect(f.data.snapshot.errorKind).toBe("read");
     await f.advance(60_000, 4);
-    expect(f.data.snapshot.errorKind).toBe("action");
-    next = { ...next, truncated: false };
-    await f.advance(60_000, 5);
     expect(f.data.snapshot.error).toBeNull();
+    expect(showToast).toHaveBeenCalledOnce();
     expect(f.stopCalls()).toHaveLength(1);
   });
 
@@ -291,8 +311,13 @@ describe("process panel observation ownership", () => {
       await f.data.stop(f.data.snapshot.rows[0]!);
       await f.advance(60_000, 3);
       expect(f.stopCalls()).toHaveLength(1);
-      expect(f.data.snapshot.error).not.toBeNull();
-      expect(f.data.snapshot.errorKind).toBe("action");
+      expect(f.data.snapshot.error).toBeNull();
+      expect(showToast).toHaveBeenCalledExactlyOnceWith({
+        message: unavailable
+          ? "Worker reconnecting"
+          : "The process could not be stopped. Refresh to check its current state.",
+        severity: "error",
+      });
     },
   );
 

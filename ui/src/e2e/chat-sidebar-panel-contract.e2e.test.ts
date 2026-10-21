@@ -321,14 +321,10 @@ async function readSlotColdOpenOutcome(
     }
     if (label === "Processes") {
       const processes = page.locator("openclaw-chat-processes-panel");
-      await processes
-        .getByText(
-          expectedOutcome === "content"
-            ? "Build application"
-            : "No background processes in this conversation.",
-          { exact: true },
-        )
-        .waitFor();
+      await processes.locator('.chat-processes__list[aria-busy="false"]').waitFor();
+      if (expectedOutcome === "content") {
+        await processes.getByText("Build application", { exact: true }).waitFor();
+      }
       if (expectedOutcome !== "content") {
         expect(await processes.getByRole("listitem").count()).toBe(0);
         expect(await processes.getByRole("button", { name: /^Stop/ }).count()).toBe(0);
@@ -343,7 +339,9 @@ async function readSlotColdOpenOutcome(
           true,
         );
       } else {
-        await subagents.getByText("No subagents in this conversation.", { exact: true }).waitFor();
+        await subagents.locator('.subagents-desktop[aria-busy="false"]').waitFor();
+        expect(await subagents.locator("[data-session-key]").count()).toBe(0);
+        expect(await subagents.getByRole("button", { name: /^Stop/ }).count()).toBe(0);
       }
     }
     if (label === "Side chat" && !expectedOutcome) {
@@ -815,7 +813,7 @@ suite.define(() => {
     }
   });
 
-  it("finishes cold-open with content or an identified and explained empty state", async () => {
+  it("finishes cold-open with content or the panel’s intended empty presentation", async () => {
     for (const label of offeredSlotLabels) {
       const outcome = await readSlotColdOpenOutcome(label, coldOpenScenario());
       expect(outcome.outcome, `${label} finishes loading`).not.toBe("loading");
@@ -823,13 +821,8 @@ suite.define(() => {
         expect(outcome.heading, `${label} identifies its empty state`).not.toBe("");
         expect(outcome.description, `${label} explains its empty state`).not.toBe("");
       }
-      if (label === "Processes") {
-        expect(outcome).toEqual({
-          outcome: "generic-empty",
-          heading: "No processes",
-          description: "No background processes in this conversation.",
-          emptyStateOffersAction: false,
-        });
+      if (label === "Processes" || label === "Subagents") {
+        expect(outcome).toEqual({ outcome: "content" });
       } else if (label === "Discussion") {
         expect(outcome).toMatchObject({
           outcome: "generic-empty",

@@ -32,14 +32,6 @@
   content: "";
 }
 
-.session-automation-mobile__note {
-  margin: 0;
-  padding: 8px 12px;
-  color: var(--muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
 .session-automation-mobile__list-copy {
   flex: 1;
   min-width: 0;
@@ -74,58 +66,20 @@
   font-variant-numeric: tabular-nums;
 }
 
-.session-automation-mobile__more,
-.session-automation-mobile__message > button {
+.session-automation-mobile__more {
   min-height: 36px;
   border: 0;
   background: transparent;
   color: var(--accent);
   font: inherit;
   font-size: 13px;
-}
 
-.session-automation-mobile__more {
   display: block;
   margin: 8px auto 0;
 }
 
 .session-automation-mobile button:disabled {
   opacity: 0.6;
-}
-
-.session-automation-mobile__empty {
-  display: grid;
-  justify-items: center;
-  gap: 10px;
-  padding: 36px 16px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.session-automation-mobile__empty > svg {
-  width: 24px;
-  height: 24px;
-}
-
-.session-automation-mobile__empty > strong {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.session-automation-mobile__empty > p {
-  margin: 0;
-  font-size: 13px;
-}
-
-.session-automation-mobile__message {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .session-automation-mobile__list-icon {
@@ -141,9 +95,4 @@
 
 .session-automation-mobile__list-row:hover .chat-summary__automation-attention {
   box-shadow: 0 0 0 2px var(--bg-hover);
-}
-
-.session-automation-mobile__empty.session-automation-mobile__message {
-  display: grid;
-  justify-content: normal;
 }

@@ -63,23 +63,6 @@
   height: 12px;
 }
 
-.chat-subagents__empty {
-  padding: 14px 11px;
-  color: var(--muted);
-  font-size: var(--control-ui-text-sm);
-}
-
-.chat-subagents__error {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px;
-  color: var(--danger);
-  font-size: var(--control-ui-text-sm);
-  overflow-wrap: anywhere;
-}
-
 .chat-subagents__detail-pane,
 .chat-subagent-detail {
   display: flex;

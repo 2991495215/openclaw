@@ -48,13 +48,11 @@ export type ChatSubagentsMobileListProps = {
   finished: readonly ChatSubagentMobileItem[];
   runningLabel: string;
   finishedLabel: string;
-  noRunningLabel: string;
   finishedId: string;
   finishedOpen: boolean;
   onToggleFinished: () => void;
   onOpen: (key: string) => void;
-  /** Parent-owned loading/error/retry and empty feedback. */
-  notice?: JSX.Element;
+  /** Parent-owned initial loading presentation. */
   empty?: JSX.Element;
   loading: boolean;
   /** The navigation owner retains/restores list scroll across child navigation. */
@@ -182,18 +180,15 @@ export function ChatSubagentsMobileList(props: ChatSubagentsMobileListProps) {
       class="chat-subagents-mobile"
       ref={[(element) => props.listRef?.(element, firstButton), elementRef(props.onScrollPortRef)]}
       aria-busy={props.loading ? "true" : "false"}
+      tabindex={-1}
     >
-      {props.notice}
       <Show when={props.running.length + props.finished.length} fallback={props.empty}>
         <section class="chat-subagents-mobile__group">
           <h3 class="chat-subagents-mobile__heading">
             <span>{props.runningLabel}</span>
             <span>{props.running.length}</span>
           </h3>
-          <Show
-            when={props.running.length}
-            fallback={<p class="chat-subagents-mobile__empty">{props.noRunningLabel}</p>}
-          >
+          <Show when={props.running.length}>
             <div class="chat-subagents-mobile__list" role="list" aria-label={props.runningLabel}>
               <For each={props.running} keyed={(item) => item.key}>
                 {(item) => (

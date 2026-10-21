@@ -304,11 +304,11 @@ suite.define(() => {
       code: "UNAVAILABLE",
       message: "Connection lost after saving",
     });
-    await page.getByText("Connection lost after saving", { exact: false }).waitFor();
-    expect(await autoMerge.isDisabled()).toBe(true);
-    const retry = page.locator(".chat-ci__automation-retry");
-    expect(await retry.isEnabled()).toBe(true);
-    await retry.click();
+    await page
+      .locator("openclaw-toast-host")
+      .getByText("Connection lost after saving", { exact: false })
+      .waitFor();
+    expect(await page.locator(".chat-ci__automation-error").count()).toBe(0);
     await expect.poll(() => autoArchive.isEnabled()).toBe(true);
     expect(await autoArchive.isChecked()).toBe(true);
     expect(await gateway.getRequests("cron.add")).toHaveLength(1);

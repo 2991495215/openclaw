@@ -1,8 +1,10 @@
 import { Show, type Element } from "solid-js";
+import { PanelFeedback, PanelFeedbackScope } from "../../components/solid/panel-feedback.tsx";
 import "../../components/modal-dialog.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { BoardSessionSurface, type BoardSessionSurfaceProps } from "./board-session-surface.tsx";
+import { usePanePresentation } from "./chat-pane-presentation.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 
@@ -12,12 +14,19 @@ export function ChatBoardPanel(props: {
   elementReady: boolean;
   surface: BoardSessionSurfaceProps;
 }) {
+  const active = usePanePresentation(() => props.surface.active);
   return (
     <Show
       when={!props.error}
       fallback={
-        <div class="board-session-surface__state board-session-surface__state--error" role="alert">
-          {t("dashboardDocument.loadFailed", { error: props.error ?? "" })}
+        <div class="panel-feedback-shell">
+          <PanelFeedbackScope presented={active()}>
+            <div class="panel-feedback-shell__body" />
+            <PanelFeedback
+              label={t("outputs.dashboard")}
+              message={t("dashboardDocument.loadFailed", { error: props.error ?? "" })}
+            />
+          </PanelFeedbackScope>
         </div>
       }
     >

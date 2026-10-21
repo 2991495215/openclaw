@@ -8,7 +8,7 @@ import { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { ApplicationGateway, ApplicationGatewaySnapshot } from "../../../app/gateway.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { flush } from "../../../test-helpers/solid-settle.ts";
-import type { ChatCiDetailsElement } from "./chat-ci-details.ts";
+import type { ChatCiDetailsElement } from "./chat-ci-details.tsx";
 import { ChatPullRequestChecks } from "./chat-pull-request-checks.tsx";
 import type { ChatPullRequestsProps } from "./chat-pull-request-shared.tsx";
 import {
@@ -133,9 +133,15 @@ describe("ChatPullRequests", () => {
       },
       container,
     );
-    const warning = container.querySelector(".chat-pr__warning");
-    expect(warning?.getAttribute("aria-label")).toContain("could not be refreshed");
-    expect(warning?.getAttribute("aria-label")).not.toContain("rate limit");
+    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
+    flush();
+    expect(container.querySelector(".panel-feedback__messages")?.textContent).toContain(
+      "could not be refreshed",
+    );
+    expect(container.querySelector(".panel-feedback__messages")?.textContent).not.toContain(
+      "rate limit",
+    );
+    expect(container.querySelector(".chat-pr__warning")).toBeNull();
     expect(container.querySelector(".chat-pr__number")?.textContent).toBe(
       "openclaw/openclaw#103469",
     );
@@ -367,12 +373,18 @@ describe("ChatPullRequests", () => {
     expect(container.querySelectorAll(".chat-pr__dismiss")).toHaveLength(1);
   });
 
-  it("marks open chips stale when GitHub is rate limited", () => {
+  it("reports rate limits once outside the PR rows", () => {
     paint({
       pullRequests: [pullRequest()],
       status: "rate-limited",
     });
-    expect(container.querySelector(".chat-pr__warning")).not.toBeNull();
+    expect(container.querySelector(".chat-pr__warning")).toBeNull();
+    expect(container.querySelectorAll(".panel-feedback")).toHaveLength(1);
+    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
+    flush();
+    expect(container.querySelector(".panel-feedback__messages")?.textContent).toContain(
+      "rate limit",
+    );
   });
 
   it("opens the session diff from interactive branch stats", () => {
@@ -815,7 +827,7 @@ describe("CI job details", () => {
     await settle(h.element);
     h.disclosure.open = true;
     await settle(h.element);
-    expect(container.textContent).toContain("Loading jobs and steps");
+    expect(container.querySelector(".chat-ci__jobs")?.getAttribute("aria-busy")).toBe("true");
     const signal = h.request.mock.calls[0]?.[2]?.signal;
     h.disclosure.open = false;
     await settle(h.element);
@@ -884,13 +896,14 @@ describe("CI job details", () => {
     await h.element.updateComplete;
     expect(container.querySelector(".chat-ci__job")).toBeNull();
     expect(container.textContent).not.toContain("Private build");
-    expect(container.querySelector('.chat-ci__notice[data-state="unavailable"]')).not.toBeNull();
+    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
+    flush();
     expect(container.textContent).toContain("GitHub request failed: token=[redacted]");
     expect(container.textContent).not.toContain("synthetic-secret");
     h.request.mockResolvedValue(details());
-    container.querySelector<HTMLButtonElement>(".chat-ci__retry")?.click();
+    container.querySelector<HTMLButtonElement>(".panel-feedback__retry")?.click();
     await settle(h.element);
-    expect(container.querySelector(".chat-ci__notice")).toBeNull();
+    expect(container.textContent).not.toContain("GitHub request failed");
     expect(container.querySelector(".chat-ci__job")).not.toBeNull();
   });
 
@@ -903,10 +916,12 @@ describe("CI job details", () => {
     h.disconnect();
     await settle(h.element);
     expect(container.querySelector(".chat-ci__job")).toBeNull();
+    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
+    flush();
     expect(container.textContent).toContain("Couldn’t load all CI details");
   });
 
-  it("shows inline rate-limit recovery without retrying before the server delay", async () => {
+  it("offers fixed-footer recovery without retrying before the server delay", async () => {
     const h = harness();
     h.request.mockResolvedValueOnce(
       details({ checks: [], status: "unavailable", rateLimited: true, retryAfterMs: 30_000 }),
@@ -914,13 +929,15 @@ describe("CI job details", () => {
     await settle(h.element);
     h.disclosure.open = true;
     await settle(h.element);
-    const retry = container.querySelector<HTMLButtonElement>(".chat-ci__retry")!;
+    const retry = container.querySelector<HTMLButtonElement>(".panel-feedback__retry")!;
+    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
+    flush();
     expect(container.textContent).toContain("rate limit");
-    expect(retry.disabled).toBe(true);
+    expect(retry.getAttribute("aria-disabled")).toBe("true");
     await vi.advanceTimersByTimeAsync(30_000);
     await h.element.updateComplete;
     expect(h.request).toHaveBeenCalledTimes(1);
-    expect(retry.disabled).toBe(false);
+    expect(retry.getAttribute("aria-disabled")).toBe("false");
     retry.click();
     await settle(h.element);
     expect(h.request).toHaveBeenCalledTimes(2);
@@ -947,7 +964,7 @@ describe("CI job details", () => {
     h.disclosure.open = true;
     await settle(h.element);
     expect(container.textContent).toContain("External audit");
-    expect(container.textContent).toContain("does not provide GitHub Actions steps");
+    expect(container.querySelector(".chat-ci__empty-steps")).toBeNull();
     expect(container.querySelector(".chat-ci__step")).toBeNull();
     expect(container.querySelector(".chat-ci__job-link")).toBeNull();
     h.request.mockResolvedValue(

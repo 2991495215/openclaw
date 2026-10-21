@@ -78,12 +78,8 @@ it.each([false, true])("distinguishes retired vs unlisted (truncated: %s)", asyn
   });
   await vi.advanceTimersByTimeAsync(0);
   await panel.updateComplete;
-  expect(panel.querySelector(".chat-processes__output-empty")?.textContent).toContain(
-    "No output yet",
-  );
-  expect(
-    panel.querySelector(".chat-processes__output-empty .empty-state__icon svg"),
-  ).not.toBeNull();
+  expect(panel.querySelector(".chat-processes__output pre")?.textContent).toBe("");
+  expect(panel.textContent).not.toContain("No output yet");
   result = { ...completeList, processes: [], truncated };
   connection.publishEvent("sessions.processes.changed", {
     sessionKey: "agent:main:parent",
@@ -91,14 +87,20 @@ it.each([false, true])("distinguishes retired vs unlisted (truncated: %s)", asyn
   });
   await vi.advanceTimersByTimeAsync(0);
   await panel.updateComplete;
-  expect(panel.textContent).toContain(truncated ? "limited list" : "no longer retained");
-  if (truncated) {
-    expect(panel.textContent).not.toContain("no longer retained");
-  }
+  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
+  await settle(panel, 0);
+  expect(document.querySelector(".panel-feedback__messages")?.textContent).toContain(
+    truncated ? "limited list" : "no longer retained",
+  );
+  expect(panel.querySelector(".chat-processes__detail")?.textContent).not.toContain(
+    "no longer retained",
+  );
+  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
+  await settle(panel, 0);
   panel.querySelector<HTMLButtonElement>('button[aria-label="Back to Processes"]')!.click();
   await panel.updateComplete;
-  expect(panel.querySelector(".chat-processes__list")?.textContent).toContain("No processes");
-  expect(panel.querySelector(".chat-processes__list .empty-state__icon svg")).not.toBeNull();
+  expect(panel.querySelector(".chat-processes__list")?.textContent).toBe("");
+  expect(panel.querySelector(".panel-feedback")).toBeNull();
 });
 
 it("keeps Stop separate from opening output and restores list focus after returning", async () => {
@@ -270,12 +272,22 @@ it("keeps the full panel read-error flow while compact Details retains its share
   });
   await settle(panel, 0);
   expect(panel.textContent).not.toContain("Build app");
-  expect(panel.querySelector('[role="alert"]')?.textContent).toContain("Worker reconnecting");
+  expect(panel.querySelector(".panel-feedback")).not.toBeNull();
+  expect(panel.querySelector(".chat-processes__list")?.textContent).not.toContain(
+    "Worker reconnecting",
+  );
+  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
+  await settle(panel, 0);
+  expect(document.querySelector(".panel-feedback__messages")?.textContent).toContain(
+    "Worker reconnecting",
+  );
+  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
+  await settle(panel, 0);
   expect(details.textContent).toContain("Build app");
   expect(details.textContent).not.toContain("Worker reconnecting");
-  panel.querySelector<HTMLButtonElement>(".chat-processes__error button")!.click();
+  panel.querySelector<HTMLButtonElement>(".panel-feedback__retry")!.click();
   await settle(panel, 0);
-  expect(panel.querySelector('[role="alert"]')).toBeNull();
+  expect(panel.querySelector(".panel-feedback")).toBeNull();
   expect(panel.textContent).not.toContain("Build app");
   expect(panel.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe("Loading…");
   expect(details.textContent).toContain("Build app");

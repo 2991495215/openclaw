@@ -9,6 +9,7 @@ import {
   type PersonActivityRouting,
 } from "../../../components/person-activity-link.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { SessionOwnerAvatar } from "../../../components/solid/session-owner-chip.tsx";
 import { SettingsToggleRow } from "../../../components/solid/settings-ui.tsx";
@@ -110,7 +111,8 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
           type="button"
           class="chat-sharing-mobile__mode chat-sharing-mobile__group"
           disabled={Boolean(props.accessDisabledReason)}
-          aria-description={props.accessDisabledReason}
+          aria-description={props.accessDisabledReason ?? props.modes[props.visibility].description}
+          title={props.accessDisabledReason ?? props.modes[props.visibility].description}
           onClick={() => {
             if (!props.accessDisabledReason) {
               props.onOpenAccess();
@@ -122,7 +124,6 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
           </span>
           <span class="chat-sharing-mobile__mode-copy">
             <span>{sharingVisibilityLabel(props.visibility)}</span>
-            <small>{props.modes[props.visibility].description}</small>
           </span>
           <Icon name="chevronRight" class="chat-sharing-mobile__trailing-icon" />
         </button>
@@ -133,7 +134,7 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
             <h3 class="chat-sharing-mobile__heading">{props.labels.linkSharing}</h3>
             <div
               class="chat-sharing-mobile__group chat-sharing-mobile__public"
-              aria-description={link().disabledReason}
+              aria-description={link().disabledReason ?? link().description}
             >
               <SettingsToggleRow
                 icon={<Icon name="globe" class="chat-sharing-mobile__mode-icon" />}
@@ -147,7 +148,6 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
                 }}
               />
               <SharingDisclosure open={link().enabled}>
-                <p class="chat-sharing-mobile__public-description">{link().description}</p>
                 <Show when={link().url}>
                   <button
                     type="button"
@@ -170,11 +170,7 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
           </section>
         )}
       </Show>
-      <Show when={props.error}>
-        <p class="chat-sharing-mobile__error" role="alert">
-          {props.error}
-        </p>
-      </Show>
+      <PanelFeedback label={t("chat.sessionSharing.sharingOptions")} message={props.error} />
       <Show when={props.permissions}>
         {(permissions) => <SharingPermissions data={permissions()} labels={props.labels} />}
       </Show>
@@ -265,9 +261,9 @@ function SharingPermissions(props: {
           <For each={matches()} keyed={(row) => row.identity.id}>
             {(row) => <SharingPermissionRow row={row()} data={props.data} />}
           </For>
-          <Show when={matches().length === 0}>
+          <Show when={matches().length === 0 && query().trim()}>
             <p class="chat-sharing-mobile__status" role="status">
-              {t(query().trim() ? "sessionsView.noPeopleMatch" : "chat.sessionSharing.noPeople")}
+              {t("sessionsView.noPeopleMatch")}
             </p>
           </Show>
         </Show>
@@ -364,7 +360,8 @@ export function ChatSessionAccessMobile(props: ChatSessionAccessMobileProps) {
                 Boolean(props.disabledReason) ||
                 !props.allowedVisibilities.includes(visibility)
               }
-              aria-description={props.disabledReason}
+              aria-description={props.disabledReason ?? props.modes[visibility].description}
+              title={props.disabledReason ?? props.modes[visibility].description}
               onClick={() => {
                 void selectVisibility(visibility);
               }}
@@ -374,7 +371,6 @@ export function ChatSessionAccessMobile(props: ChatSessionAccessMobileProps) {
               </span>
               <span class="chat-sharing-mobile__mode-copy">
                 <span>{sharingVisibilityLabel(visibility)}</span>
-                <small>{props.modes[visibility].description}</small>
               </span>
               <span class="chat-sharing-mobile__check" aria-hidden="true">
                 <Show when={props.visibility === visibility}>
@@ -385,11 +381,7 @@ export function ChatSessionAccessMobile(props: ChatSessionAccessMobileProps) {
           )}
         </For>
       </div>
-      <Show when={props.error}>
-        <p class="chat-sharing-mobile__error" role="alert">
-          {props.error}
-        </p>
-      </Show>
+      <PanelFeedback label={props.label} message={props.error} />
     </div>
   );
 }

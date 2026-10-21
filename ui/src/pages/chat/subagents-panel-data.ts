@@ -25,6 +25,7 @@ import {
   resolveUiSessionRowAgentId,
 } from "../../lib/sessions/session-key.ts";
 import { parseSessionChangedEvent } from "../../lib/sessions/session-row-reconcile.ts";
+import { showToast } from "../../lib/toast.ts";
 import { requestChatAbort } from "./chat-abort-request.ts";
 import { requestSharedHistory } from "./chat-history-request.ts";
 import { historySessionId, isHistoryCursor } from "./chat-history-snapshot.ts";
@@ -574,7 +575,7 @@ export class SubagentsPanelData {
       sessionAbortable: true,
     }).abort;
     if (!access.allowed) {
-      this.error = access.reason;
+      showToast({ message: access.reason, severity: "error" });
       this.publish();
       return;
     }
@@ -591,7 +592,10 @@ export class SubagentsPanelData {
       return;
     }
     this.stopping.delete(session.key);
-    this.error = result.ok ? (result.warning ?? null) : formatUiError(result.error);
+    const message = result.ok ? result.warning : formatUiError(result.error);
+    if (message) {
+      showToast({ message, severity: "error" });
+    }
     this.publish();
     if (result.ok) {
       void this.refresh();

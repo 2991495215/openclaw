@@ -172,18 +172,26 @@ export abstract class ChatPaneRetainedPresentation extends ChatPaneBoard {
     const sessionKey = state.sessionKey;
     const sessionId = state.currentSessionId;
     const agentId = resolveChatAgentId(state);
+    const current = () =>
+      this.isConnectionScopeCurrent(scope) &&
+      state.sessionKey === sessionKey &&
+      state.currentSessionId === sessionId &&
+      resolveChatAgentId(state) === agentId;
     return {
       state: this.progressCardSnapshot.refreshState,
-      onRefresh: (card) => {
-        if (
-          this.isConnectionScopeCurrent(scope) &&
-          state.sessionKey === sessionKey &&
-          state.currentSessionId === sessionId &&
-          resolveChatAgentId(state) === agentId
-        ) {
+      onRefresh: (card, onFailure) => {
+        if (current()) {
           const target = this.initialProgressCardTarget();
           if (target) {
-            this.progressCards.refresh(target, card);
+            this.progressCards.refresh(target, card, (failure, retry) => {
+              if (current()) {
+                onFailure?.(failure, () => {
+                  if (current()) {
+                    retry();
+                  }
+                });
+              }
+            });
           }
         }
       },

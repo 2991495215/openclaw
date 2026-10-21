@@ -1,12 +1,13 @@
 /* @vitest-environment jsdom */
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
 import type { GatewaySessionRow, SessionsListResult } from "../../api/types.ts";
 import {
   createTestSessionCapability,
   sessionsResult,
 } from "../../lib/sessions/session-capability.test-support.ts";
+import { showToast } from "../../lib/toast.ts";
 import { disposeSidebarContextLifecycles } from "../../test-helpers/app-sidebar-context-lifecycle.ts";
 import { createContext, createGatewayHarness } from "../../test-helpers/app-sidebar.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
@@ -16,6 +17,9 @@ import {
 } from "../../test-helpers/gateway-methods.ts";
 import type { ChatHistoryResult } from "./chat-history-snapshot.ts";
 import { SubagentsPanelData } from "./subagents-panel-data.ts";
+
+vi.mock("../../lib/toast.ts", () => ({ showToast: vi.fn() }));
+beforeEach(() => vi.mocked(showToast).mockClear());
 
 const parentKey = "agent:main:parent";
 const otherParentKey = "agent:main:other-parent";
@@ -308,6 +312,39 @@ describe("Subagents panel data ownership", () => {
       ["sessions.abort", { key: row.key, agentId: "worker", runId: "replacement-run" }],
     ]);
   });
+
+  it.each(["failure", "warning", "retired"])(
+    "routes a Stop %s to current-session toast only",
+    async (outcome) => {
+      const row = runningChild("stop");
+      const f = rowFixture(() => row);
+      await ready(f, () => view(f)?.canStop === true);
+      const stop = createDeferred<{ aborted: boolean; warning?: string }>();
+      const request = f.request.getMockImplementation()!;
+      f.request.mockImplementation((method, params) =>
+        method === "sessions.abort" ? stop.promise : request(method, params),
+      );
+      const pending = f.data.stop(view(f)!);
+      if (outcome === "retired") {
+        f.open(otherParentKey);
+      }
+      if (outcome === "warning") {
+        stop.resolve({ aborted: true, warning: "Stop is not confirmed" });
+      } else {
+        stop.reject(new Error("Stop is not confirmed"));
+      }
+      await pending;
+      expect(f.data.error).toBeNull();
+      if (outcome === "retired") {
+        expect(showToast).not.toHaveBeenCalled();
+      } else {
+        expect(showToast).toHaveBeenCalledExactlyOnceWith({
+          message: "Stop is not confirmed",
+          severity: "error",
+        });
+      }
+    },
+  );
 
   it("withdraws an exact count on an item-only live frame without losing public activity", async () => {
     const row = runningChild("activity");

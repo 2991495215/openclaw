@@ -69,7 +69,11 @@ export type SessionProgressCardStore = {
   invalidate: (target: ProgressCardGetParams) => void;
   load: (target: ProgressCardGetParams) => Promise<ProgressCard | null>;
   dismiss: (target: ProgressCardGetParams, card: ProgressCard) => Promise<boolean>;
-  refresh: (target: ProgressCardGetParams, card: ProgressCard) => void;
+  refresh: (
+    target: ProgressCardGetParams,
+    card: ProgressCard,
+    onFailure?: (state: "failed" | "timeout", retry: () => void) => void,
+  ) => void;
   getRefreshState: (target: ProgressCardGetParams) => SessionProgressCardRefreshState | undefined;
   get: (target: ProgressCardGetParams) => ProgressCard | null | undefined;
   getLifetime: (target: ProgressCardGetParams) => object | undefined;
@@ -516,7 +520,7 @@ export function sessionProgressCardsForGateway(
     watch,
     unwatch: (owner) => watch(owner, []),
     load,
-    refresh: (target, card) => {
+    refresh: (target, card, onFailure) => {
       const client = gateway.snapshot.client;
       const resolved = resolveTarget(target);
       const entry = entries.get(resolved.key);
@@ -548,10 +552,22 @@ export function sessionProgressCardsForGateway(
         entries.get(resolved.key) === entry &&
         entry.refresh === refresh &&
         gateway.snapshot.client === client;
+      let failureReported = false;
+      const reportFailure = (state: "failed" | "timeout") => {
+        if (!failureReported && current()) {
+          failureReported = true;
+          onFailure?.(state, () => {
+            if (current() && refresh.state !== "updated" && entry.card) {
+              store.refresh(entry.target, entry.card, onFailure);
+            }
+          });
+        }
+      };
       refresh.timer = setTimeout(() => {
         if (current() && refresh.state === "pending") {
           refresh.state = "timeout";
           notify();
+          reportFailure("timeout");
         }
       }, REFRESH_TIMEOUT_MS);
       const params: ProgressCardRefreshParams = {
@@ -580,6 +596,7 @@ export function sessionProgressCardsForGateway(
               error.details.code === "PROGRESS_CARD_REFRESH_TERMINAL";
             refresh.state = "failed";
             notify();
+            reportFailure("failed");
           }
         });
       if (retry && current()) {

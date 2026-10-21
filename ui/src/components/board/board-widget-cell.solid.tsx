@@ -17,7 +17,6 @@ import {
   getPluginWidgetKindContribution,
   pluginIdForWidgetKind,
 } from "../../lib/board/widgets/index.ts";
-import { formatUiError } from "../../lib/format-error.ts";
 import { useOptionalApplication } from "../../lib/reactive/context.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { projectOwner, projectSource } from "../../lib/reactive/projection.ts";
@@ -62,20 +61,6 @@ function BoardWidgetCellContent(
     get: () => boardWidgetPresentationReady(host),
   });
   onCleanup(() => cells.delete(host));
-  const actionBinding = createMemo(
-    () =>
-      [
-        props.boardRevision,
-        props.widget?.name,
-        props.widget?.instanceId,
-        props.widget?.revision,
-      ] as const,
-    { equals: (previous, next) => previous.every((value, index) => value === next[index]) },
-  );
-  const [actionError, setActionError] = createSignal(() => {
-    actionBinding();
-    return "";
-  });
   const [actionPending, setActionPending] = createSignal(false);
   const [widgetRoot, setWidgetRoot] = createSignal<HTMLElement>();
   let mcpElement: HTMLElementTagNameMap["mcp-app-view"] | undefined;
@@ -167,18 +152,24 @@ function BoardWidgetCellContent(
       return;
     }
     actionInFlight = true;
+    const sessionKey = props.sessionKey;
+    const widget = props.widget;
     // A cell-local action would hold the shared owner's busy updates across bridge roots.
     setActionPending(true);
-    setActionError("");
     menu?.close();
     try {
       await run();
-    } catch (error) {
-      if (connected) {
-        setActionError(formatUiError(error));
-      }
-      if (failureMessage) {
-        showToast({ message: failureMessage });
+    } catch {
+      // Board mutations report at their owner, including pointer gestures.
+      // Grants have a separate callback and use their decision-specific message here.
+      if (
+        failureMessage &&
+        connected &&
+        sessionKey === props.sessionKey &&
+        widget?.name === props.widget?.name &&
+        widget?.instanceId === props.widget?.instanceId
+      ) {
+        showToast({ message: failureMessage, severity: "error", anchor: host });
       }
     } finally {
       actionInFlight = false;
@@ -309,11 +300,6 @@ function BoardWidgetCellContent(
             () => props.callbacks!.grant(props.widget!.name, decision),
             t(decision === "granted" ? "board.widget.allowFailed" : "board.widget.rejectFailed"),
           )
-        }
-        error={
-          <Show when={actionError()}>
-            <BoardWidgetError error={actionError()} action inline />
-          </Show>
         }
       />
     </Show>
@@ -496,7 +482,6 @@ function BoardWidgetCellContent(
   const scrollable = () =>
     Boolean(
       bodyErrored() ||
-      actionError() ||
       props.widget?.grantState === "pending" ||
       props.widget?.grantState === "rejected" ||
       props.widget?.contentKind === "mcp-app" ||
@@ -623,11 +608,6 @@ function BoardWidgetCellContent(
         >
           <Show when={bodyError()} fallback={<BodyBoundary />}>
             {(failure) => <BoardWidgetError error={failure().error} />}
-          </Show>
-          <Show when={actionError() && props.widget!.grantState !== "pending"}>
-            <div class="board-widget__error-overlay">
-              <BoardWidgetError error={actionError()} action />
-            </div>
           </Show>
         </div>
         <Show when={canMutate() && !props.pageChrome}>

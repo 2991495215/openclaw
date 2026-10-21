@@ -134,17 +134,15 @@ suite.define(() => {
         });
       const row = page.locator(".chat-prs");
       const menu = row.locator(".chat-pr-menu");
-      const warning = menu.locator(".chat-pr__stale");
+      const warning = page.locator(".chat-details .panel-feedback");
       await emit("ready");
       await openDetailsPullRequests(page);
       await row.locator(".chat-pr__actions-trigger").click();
       await expect.poll(() => menu.textContent()).toContain("#43");
       expect(await warning.count()).toBe(0);
       await emit("unavailable", "merged");
-      await expect
-        .poll(() => warning.textContent())
-        .toContain("Couldn’t update PR info. It may be outdated.");
-      expect(await warning.textContent()).not.toContain("rate limit");
+      await expect.poll(() => warning.textContent()).toContain("Pull requests unavailable");
+      expect(await menu.locator(".chat-pr__stale").count()).toBe(0);
       expect(await menu.textContent()).toContain("#43");
       expect(await row.locator("article").getAttribute("data-state")).toBe("merged");
       await emit("ready", "merged");

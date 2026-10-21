@@ -1,4 +1,5 @@
 import { For, Show, createMemo } from "solid-js";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerProcessesEnglish } from "../../../i18n/locales/en-processes.ts";
 import { registerSessionOrganizationEnglish } from "../../../i18n/locales/en-session-organization.ts";
@@ -28,19 +29,13 @@ export function ChatDetailsMobileProcesses(props: ChatDetailsMobileProcessesProp
   );
   return (
     <div class="chat-details-mobile-processes">
-      <Show when={rows().length === 0 && props.data.errorKind !== "read" && props.data.error}>
-        <div class="chat-details-mobile-processes__error" role="status">
-          <span>{t("chat.sessionDetails.processesError")}</span>
-          <button
-            type="button"
-            class="chip"
-            disabled={!props.presented || props.data.loading}
-            onClick={() => void props.data.refresh()}
-          >
-            {t("common.retry")}
-          </button>
-        </div>
-      </Show>
+      <PanelFeedback
+        label={t("chat.sessionDetails.processes")}
+        message={props.data.errorKind === "access" ? props.data.error : undefined}
+        onRetry={() => void props.data.refresh()}
+        retrying={props.data.loading}
+        presented={props.presented}
+      />
       <div role="list" aria-label={t("chat.sessionDetails.processes")}>
         <For each={rows().slice(0, 2)} keyed={(row) => row.instanceId}>
           {(row) => (

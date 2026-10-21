@@ -276,7 +276,6 @@
     .chat-details-subagents__count,
     .chat-pr__number,
     .chat-pr__state,
-    .chat-pr__stale,
     .chat-details__context-budget,
     .chat-details__context-budget strong,
     .chat-details__stats,
@@ -284,9 +283,7 @@
     .chat-context__percent,
     .chat-context__label small,
     .chat-context__entry > span:last-child,
-    .chat-context__note,
     .chat-details__muted,
-    .chat-outputs__status,
     .task-progress-details__count
   ) {
   font-family: var(--font-body);
@@ -363,11 +360,6 @@
     .session-progress-card__steps
   ) {
   row-gap: var(--details-row-list-gap);
-}
-
-.chat-details .chat-details-desktop-body .chat-summary__automation-error,
-.chat-details .chat-details-desktop-body .chat-summary__automation-message {
-  padding-inline: var(--details-row-padding);
 }
 
 .chat-details-desktop-body__content > openclaw-chat-details-progress {

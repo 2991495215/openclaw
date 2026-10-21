@@ -254,7 +254,7 @@ describe.skipIf(!hasBrowserLayout)("openclaw-board-view browser layout", () => {
         await cell.updateComplete;
       } else {
         await switchTab("ops");
-        expect(view.querySelector('[data-test-id="board-empty"]')).not.toBeNull();
+        expect(view.querySelector<HTMLElement>(".board-grid")?.hidden).toBe(true);
       }
       expect(frame.isConnected).toBe(true);
       expect(cell.active).toBe(false);

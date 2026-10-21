@@ -1,4 +1,4 @@
-import { For, Show, createStore } from "solid-js";
+import { For, Show, createMemo, createStore } from "solid-js";
 import type {
   ControlUiSessionPullRequestCheck,
   ControlUiSessionPullRequestCheckDetails,
@@ -6,6 +6,7 @@ import type {
 } from "../../../../../src/gateway/control-ui-contract.js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import type { MenuControls } from "../../../components/solid/menu.tsx";
+import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { StrokeIcon } from "../../../components/solid/stroke-icon.tsx";
 import { registerChatCiEnglish } from "../../../i18n/locales/en-chat-ci.ts";
 import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
@@ -313,8 +314,7 @@ type ChatCiDetailsProps = ChatCiDisclosureProps & {
 
 export type ChatCiDetailsElement = SolidBridgeElement<ChatCiDetailsProps>;
 function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElement) {
-  const retryRef = props.controls?.ref();
-  const skippedRef = props.controls?.ref();
+  const skippedRef = createMemo(() => props.controls?.ref());
   const model = createCiDetails(host);
   const state = model.state;
   const retryWait = () => Math.max(0, state.retryAt - Date.now());
@@ -332,8 +332,8 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
     result()?.status === "unavailable" ||
     result()?.error;
   const job = (check: () => ControlUiSessionPullRequestCheck) => {
-    const summaryRef = props.controls?.ref();
-    const linkRef = props.controls?.ref();
+    const summaryRef = createMemo(() => props.controls?.ref());
+    const linkRef = createMemo(() => props.controls?.ref());
     const jobState = (): CheckState =>
       check().state === "running" && check().status !== "in_progress" ? "queued" : check().state;
     const url = () =>
@@ -354,7 +354,7 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
         }}
       >
         <summary
-          ref={(element) => summaryRef?.(element)}
+          ref={summaryRef()}
           class="chat-ci__job-summary"
           data-form-control={props.menuControls ? "" : undefined}
         >
@@ -366,18 +366,7 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
           </span>
         </summary>
         <div class="chat-ci__job-detail">
-          <Show
-            when={check().steps?.length}
-            fallback={
-              <div class="chat-ci__empty-steps">
-                {t(
-                  check().source === "check"
-                    ? "chat.pullRequests.checksNoSteps"
-                    : "chat.pullRequests.checksStepsUnavailable",
-                )}
-              </div>
-            }
-          >
+          <Show when={check().steps?.length}>
             <ol class="chat-ci__steps" role="list">
               <For
                 each={check().steps?.toSorted((a, b) => a.number - b.number)}
@@ -398,7 +387,7 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
           <Show when={url()}>
             {(href) => (
               <a
-                ref={(element) => linkRef?.(element)}
+                ref={linkRef()}
                 class="chat-ci__job-link"
                 href={href()}
                 target="_blank"
@@ -418,60 +407,37 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
     );
   };
   return (
-    <>
-      <Show
-        when={state.loading && !result()}
-        fallback={
-          <Show when={showNotice()}>
-            <div
-              class="chat-ci__notice"
-              role="status"
-              data-state={result()?.rateLimited ? "rate-limited" : "unavailable"}
-            >
-              <span>
-                {state.error ??
-                  t(
-                    result()?.rateLimited
-                      ? "chat.pullRequests.checksRateLimited"
-                      : result()?.status === "stale"
-                        ? "chat.pullRequests.checksStale"
-                        : "chat.pullRequests.checksUnavailable",
-                  )}
-                {retryWait() > 0
-                  ? t("chat.pullRequests.checksRetryAfter", {
-                      duration: formatDurationCompact(retryWait()) ?? "",
-                    })
-                  : undefined}
-              </span>
-              <button
-                ref={(element) => retryRef?.(element)}
-                class="chat-ci__retry"
-                type="button"
-                disabled={state.loading || retryWait() > 0}
-                onClick={() => {
-                  void model.load();
-                }}
-              >
-                {t("common.retry")}
-              </button>
-            </div>
-          </Show>
+    <PanelFeedbackScope presented={props.presented}>
+      <PanelFeedback
+        label={t("chat.pullRequests.checksTitle")}
+        message={
+          showNotice()
+            ? (state.error ??
+                t(
+                  result()?.rateLimited
+                    ? "chat.pullRequests.checksRateLimited"
+                    : result()?.status === "stale"
+                      ? "chat.pullRequests.checksStale"
+                      : "chat.pullRequests.checksUnavailable",
+                )) +
+              (retryWait() > 0
+                ? t("chat.pullRequests.checksRetryAfter", {
+                    duration: formatDurationCompact(retryWait()) ?? "",
+                  })
+                : "")
+            : undefined
         }
-      >
-        <div class="chat-ci__notice" role="status">
-          {t("chat.pullRequests.checksLoading")}
-        </div>
-      </Show>
+        onRetry={() => void model.load()}
+        retryDisabled={retryWait() > 0}
+        retrying={state.loading}
+      />
       <div class="chat-ci__jobs" aria-busy={state.loading ? "true" : "false"}>
         <For each={jobs()} keyed={(check) => check.id}>
           {job}
         </For>
         <Show when={skipped().length}>
           <details class="chat-ci__skipped">
-            <summary
-              ref={(element) => skippedRef?.(element)}
-              data-form-control={props.menuControls ? "" : undefined}
-            >
+            <summary ref={skippedRef()} data-form-control={props.menuControls ? "" : undefined}>
               <CheckStatus state="skipped" />
               <span>
                 {t("chat.pullRequests.checksSkippedCount", { count: String(skipped().length) })}
@@ -485,30 +451,24 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
             </For>
           </details>
         </Show>
-        <Show
-          when={
-            result()?.status === "ready" &&
-            !checks().length &&
-            !result()?.rateLimited &&
-            !result()?.error
-          }
-        >
-          <div class="chat-ci__notice">{t("chat.pullRequests.checksEmpty")}</div>
-        </Show>
       </div>
-    </>
+    </PanelFeedbackScope>
   );
 }
 
-defineSolidBridge<ChatCiDetailsProps>("openclaw-chat-ci-details", ChatCiDetailsContent, {
-  propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
-  properties: {
-    gateway: { default: undefined, attribute: false },
-    pullRequest: { default: undefined, attribute: false },
-    sessionKey: { default: "", attribute: false },
-    presented: { default: true, type: Boolean },
-    inline: { default: false, attribute: false },
-    menuControls: { default: false, attribute: false },
-    controls: { default: undefined, attribute: false },
+export const ChatCiDetails = defineSolidBridge<ChatCiDetailsProps>(
+  "openclaw-chat-ci-details",
+  ChatCiDetailsContent,
+  {
+    propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
+    properties: {
+      gateway: { default: undefined, attribute: false },
+      pullRequest: { default: undefined, attribute: false },
+      sessionKey: { default: "", attribute: false },
+      presented: { default: true, type: Boolean },
+      inline: { default: false, attribute: false },
+      menuControls: { default: false, attribute: false },
+      controls: { default: undefined, attribute: false },
+    },
   },
-});
+);

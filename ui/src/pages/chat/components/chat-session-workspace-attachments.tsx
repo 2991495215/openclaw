@@ -1,6 +1,7 @@
 import type { JSX } from "@solidjs/web";
 import { createMemo, For, onSettled, refresh, Show, useContext } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -70,14 +71,11 @@ function TranscriptAttachmentsContent(props: WorkspaceTranscriptAttachmentsProps
     source().entries.filter((entry) => transcriptAttachmentMatches(entry, props.query)),
   );
   const notice = () =>
-    source().error ??
-    (source().loading
-      ? t("chat.workspaceFiles.attachmentsLoading")
-      : source().coverage === "unknown"
-        ? t("chat.workspaceFiles.attachmentsUnknown")
-        : source().coverage === "partial" || source().omittedMedia
-          ? t("chat.workspaceFiles.attachmentsPartial")
-          : undefined);
+    source().coverage === "unknown"
+      ? t("chat.workspaceFiles.attachmentsUnknown")
+      : source().coverage === "partial" || source().omittedMedia
+        ? t("chat.workspaceFiles.attachmentsPartial")
+        : undefined;
   return (
     <div
       class={
@@ -105,18 +103,12 @@ function TranscriptAttachmentsContent(props: WorkspaceTranscriptAttachmentsProps
           />
         )}
       </For>
+      <PanelFeedback label={t("chat.workspaceFiles.attachments")} message={source().error} />
       <Show when={notice()}>
         {(message) => (
-          <div
-            role={source().error ? "alert" : "status"}
-            class={
-              props.presentation === "desktop"
-                ? "workspace-desktop__notice"
-                : "chat-workspace-mobile__notice"
-            }
-          >
-            {message()}
-          </div>
+          <span class="panel-feedback__hint" role="img" title={message()} aria-label={message()}>
+            <Icon name="info" />
+          </span>
         )}
       </Show>
     </div>

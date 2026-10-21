@@ -114,13 +114,6 @@
   overflow-wrap: anywhere;
 }
 
-.chat-sharing-mobile__mode-copy small,
-.chat-sharing-mobile__public-description {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
-}
-
 .chat-sharing-mobile__mode-icon,
 .chat-sharing-mobile__mode-icon svg,
 .chat-sharing-mobile__check svg {
@@ -181,11 +174,6 @@
 
 .chat-sharing-mobile__public .settings-row__title {
   font: inherit;
-}
-
-.chat-sharing-mobile__public-description {
-  margin: 0;
-  padding: 0 12px 10px 42px;
 }
 
 .chat-sharing-mobile__copy {
@@ -361,15 +349,10 @@
   opacity: 0.42;
 }
 
-.chat-sharing-mobile__status,
-.chat-sharing-mobile__error {
+.chat-sharing-mobile__status {
   margin: 0;
   padding: 12px;
   color: var(--muted);
-}
-
-.chat-sharing-mobile__error {
-  color: var(--danger);
 }
 
 @media (prefers-reduced-motion: reduce) {

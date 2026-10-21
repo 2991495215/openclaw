@@ -2,7 +2,9 @@
 import { createSignal, flush } from "solid-js";
 import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
+import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
+import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import {
   createChatSessionSharingMobileAdapter,
   type ChatSessionSharingMobileAdapter,
@@ -56,7 +58,11 @@ function accessFixture(initial: PreparedChatSessionSharing) {
       onApplied: applied,
       accessTarget: () => target,
     });
-    return <ChatSessionAccessMobile {...adapter.access} />;
+    return (
+      <PanelFeedbackScope>
+        <ChatSessionAccessMobile {...adapter.access} />
+      </PanelFeedbackScope>
+    );
   });
   return {
     ...view,
@@ -146,7 +152,11 @@ it("keeps Public confirmed until its owner publishes and preserves membership fo
       onApplied: vi.fn(),
       accessTarget: () => undefined,
     });
-    return <ChatSessionSharingMobile {...adapter.sharing} />;
+    return (
+      <PanelFeedbackScope>
+        <ChatSessionSharingMobile {...adapter.sharing} />
+      </PanelFeedbackScope>
+    );
   });
   const toggle = view.getByRole("switch") as HTMLInputElement;
   expect(toggle.checked).toBe(false);
@@ -195,7 +205,7 @@ it("keeps Public confirmed until its owner publishes and preserves membership fo
   expect(member).toHaveBeenCalledTimes(1);
 });
 
-it("replaces initial permission loading with people and retains them through refresh and failure", () => {
+it("replaces initial permission loading with people and retains them through refresh and failure", async () => {
   const initial = prepared();
   const [source, setSource] = createSignal(prepared({ state: { loading: true } }));
   const view = mountSolid(() => {
@@ -205,7 +215,11 @@ it("replaces initial permission loading with people and retains them through ref
       onApplied: vi.fn(),
       accessTarget: () => undefined,
     });
-    return <ChatSessionSharingMobile {...adapter.sharing} />;
+    return (
+      <PanelFeedbackScope>
+        <ChatSessionSharingMobile {...adapter.sharing} />
+      </PanelFeedbackScope>
+    );
   });
   expect(view.getByRole("status", { name: "Loading…" }).getAttribute("aria-busy")).toBe("true");
   expect(view.queryByRole("checkbox", { name: /^Pat Member,/ })).toBeNull();
@@ -223,6 +237,12 @@ it("replaces initial permission loading with people and retains them through ref
     state: { ...initial.state!, loading: false, error: "Permission refresh failed" },
   });
   flush();
-  expect(view.getByRole("alert").textContent).toContain("Permission refresh failed");
+  view.getByRole("button", { name: "Details status" }).click();
+  await waitForSolid(() =>
+    expect(view.container.querySelector(".panel-feedback__messages")?.textContent).toContain(
+      "Permission refresh failed",
+    ),
+  );
+  expect(view.container.querySelector(".chat-sharing-mobile [role=alert]")).toBeNull();
   expect(view.getByRole("checkbox", { name: /^Pat Member,/ })).toBe(person);
 });

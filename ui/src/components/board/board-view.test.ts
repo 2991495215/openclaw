@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred as deferred } from "../../../../test/helpers/promise.js";
 import { BOARD_GRID_GAP, BOARD_GRID_ROW_HEIGHT } from "../../lib/board/grid.ts";
 import "../../lib/toast-host.tsx";
+import * as toast from "../../lib/toast.ts";
 import "../mcp-app-view-registration.ts";
 // Side-effect import: registers the custom elements mount() depends on
 // without relying on transitive fixture imports.
@@ -373,7 +374,10 @@ describe("openclaw-board-view", () => {
     expect(frameLoadFailed).not.toHaveBeenCalled();
   });
 
-  it("shows failed host operations in the board and originating cell", async () => {
+  it("toasts a failed host operation once without changing the board or widget", async () => {
+    const toastHost = document.createElement("openclaw-toast-host");
+    document.body.append(toastHost);
+    const shown = vi.spyOn(toast, "showToast");
     const applyOps = vi.fn(async () => {
       throw new Error("fixture write failed");
     });
@@ -381,16 +385,16 @@ describe("openclaw-board-view", () => {
     const frame = view.querySelector("iframe");
     await openBoardMenu(view);
     view.querySelector<HTMLButtonElement>(".board-widget__menu-danger")?.click();
-    await vi.waitFor(() => {
-      expect(view.querySelector(".board-view__error")?.textContent).toContain("could not be saved");
-      expect(
-        view.querySelector('[data-test-id="board-widget-action-error"]')?.textContent,
-      ).toContain("fixture write failed");
-    });
-    expect(view.querySelector("iframe")).toBe(frame);
-    view.snapshot = { ...snapshot(), revision: 2 };
+    await vi.waitFor(() =>
+      expect(toastHost.querySelector(".app-toast__message")?.textContent).toContain(
+        "could not be saved",
+      ),
+    );
     await settleCells(view);
+    expect(shown).toHaveBeenCalledOnce();
+    expect(view.querySelector("iframe")).toBe(frame);
     expect(view.querySelector(".board-view__error")).toBeNull();
+    expect(view.querySelector('[data-test-id="board-widget-action-error"]')).toBeNull();
   });
 
   it("allows only one snapshot-derived board mutation at a time", async () => {
@@ -411,21 +415,35 @@ describe("openclaw-board-view", () => {
     await vi.waitFor(() => expect(secondRemove?.disabled).toBe(false));
   });
 
-  it("ignores a late operation failure after switching sessions", async () => {
-    const pending = deferred();
-    const applyOps = vi.fn(() => pending.promise);
-    const view = await mount({ callbacks: callbacks({ applyOps }) });
-    await openBoardMenu(view);
-    view.querySelector<HTMLButtonElement>(".board-widget__menu-danger")?.click();
-    await vi.waitFor(() => expect(applyOps).toHaveBeenCalledTimes(1));
-    view.snapshot = { ...snapshot(), sessionKey: "agent:main:new-session" };
-    await settleCells(view);
-    pending.reject(new Error("old session failed"));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(view.querySelector(".board-view__error")).toBeNull();
-    expect(view.querySelector(".board-announcer")?.textContent?.trim()).toBe("");
-  });
+  it.each(["mutation", "grant"] as const)(
+    "ignores a late %s failure after switching sessions",
+    async (action) => {
+      const shown = vi.spyOn(toast, "showToast");
+      const pending = deferred();
+      const request = vi.fn(() => pending.promise);
+      const view = await mount({
+        callbacks: callbacks(action === "mutation" ? { applyOps: request } : { grant: request }),
+        snapshot: snapshot({
+          widgets: [boardWidget({ grantState: action === "grant" ? "pending" : "granted" })],
+        }),
+      });
+      if (action === "mutation") {
+        await openBoardMenu(view);
+        view.querySelector<HTMLButtonElement>(".board-widget__menu-danger")?.click();
+      } else {
+        view.querySelector<HTMLButtonElement>('[data-test-id="board-grant-allow"]')?.click();
+      }
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+      view.snapshot = { ...snapshot(), sessionKey: "agent:main:new-session" };
+      await settleCells(view);
+      pending.reject(new Error("old session failed"));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(shown).not.toHaveBeenCalled();
+      expect(view.querySelector(".board-view__error")).toBeNull();
+      expect(view.querySelector(".board-announcer")?.textContent?.trim()).toBe("");
+    },
+  );
 
   it.each([
     { profile: "read-only", canMutate: false, canGrant: false, controls: false },
@@ -597,18 +615,12 @@ describe("openclaw-board-view", () => {
 
     reject?.click();
     await vi.waitFor(() => {
-      expect(
-        view.querySelector('[data-test-id="board-widget-action-error"]')?.textContent,
-      ).toContain("approval service unavailable");
       expect(toastHost.querySelector(".app-toast__message")?.textContent).toContain(
         "Could not reject widget access. Try again.",
       );
     });
     expect(allow?.disabled).toBe(false);
     expect(reject?.disabled).toBe(false);
-
-    view.snapshot = structuredClone({ ...source, revision: source.revision + 1 });
-    await settleCells(view);
     expect(view.querySelector('[data-test-id="board-widget-action-error"]')).toBeNull();
   });
 

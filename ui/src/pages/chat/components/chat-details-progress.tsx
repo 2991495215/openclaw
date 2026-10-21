@@ -2,7 +2,6 @@ import { createMemo, createUniqueId, Show } from "solid-js";
 import {
   ProgressDetailsContent,
   ProgressDetailsRefresh,
-  ProgressDetailsRefreshStatus,
   SessionProgressCard,
   type ProgressDetailsContentProps,
 } from "../../../components/session-progress-card-solid.tsx";
@@ -157,11 +156,6 @@ export function MobileTaskProgressContent(props: MobileTaskProgressProps) {
       >
         {(card) => (
           <>
-            <ProgressDetailsRefreshStatus
-              card={card()}
-              action={props.refreshAction}
-              disabled={!props.presented}
-            />
             <ProgressDetailsContent {...props} card={card()} />
           </>
         )}

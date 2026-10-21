@@ -6,7 +6,7 @@ import type {
 } from "../../../../../src/gateway/control-ui-contract.js";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import "../../../components/tooltip.ts";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import type { PresentationValue } from "../../../lib/presentation.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
@@ -71,10 +71,7 @@ export function ChecksRows(props: {
   );
 }
 
-export function StatusWarning(props: {
-  status: ControlUiSessionPullRequestSnapshot["status"];
-  text?: boolean;
-}) {
+export function StatusWarning(props: { status: ControlUiSessionPullRequestSnapshot["status"] }) {
   const message = () =>
     t(
       props.status === "rate-limited"
@@ -82,25 +79,9 @@ export function StatusWarning(props: {
         : "chat.pullRequests.unavailable",
     );
   return (
-    <Show when={props.status !== "ready"}>
-      <Show
-        when={props.text}
-        fallback={
-          <openclaw-tooltip content={message()}>
-            <span class="chat-pr__warning" role="img" aria-label={message()}>
-              <Icon name="alertTriangle" />
-            </span>
-          </openclaw-tooltip>
-        }
-      >
-        <span class="chat-pr__stale">
-          {t(
-            props.status === "rate-limited"
-              ? "chat.pullRequests.rateLimitedShort"
-              : "chat.pullRequests.unavailableShort",
-          )}
-        </span>
-      </Show>
-    </Show>
+    <PanelFeedback
+      label={t("sessionHovercard.pullRequests")}
+      message={props.status !== "ready" ? message() : undefined}
+    />
   );
 }

@@ -95,9 +95,6 @@ export function SessionPanelGroups<Row>(props: {
             {props.children}
           </For>
         </div>
-        {!props.running.length && (
-          <div class={[`chat-${props.kind}__empty`]}>{t(`chat.${props.kind}Panel.noRunning`)}</div>
-        )}
       </section>
       <section class={[`chat-${props.kind}__finished`]}>
         <button

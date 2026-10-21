@@ -1,6 +1,7 @@
 import { createMemo, For } from "solid-js";
 import { pathForRoute } from "../../../app-route-paths.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerCronEnglish } from "../../../i18n/locales/en-cron.ts";
 import { shouldHandleNavigationClick } from "../../../lib/navigation-click.ts";
@@ -23,55 +24,21 @@ export function SessionAutomationMobileList(props: SessionAutomationMobileListPr
   const inventory = () => props.inventory;
   return (
     <div class="session-automation-mobile" aria-busy={inventory().loading() ? "true" : "false"}>
-      {!inventory().connected() && (
-        <p role="status" class="session-automation-mobile__note">
-          {t("chat.sessionDetails.automationOffline")}
-        </p>
-      )}
-      {inventory().error() && (
-        <div
-          class={[
-            "session-automation-mobile__message",
-            { "session-automation-mobile__empty": inventory().jobs().length === 0 },
-          ]}
-          role="alert"
-        >
-          <span>
-            {t(
-              inventory().loaded()
-                ? "chat.sessionDetails.automationUpdateError"
-                : "chat.sessionDetails.automationError",
-            )}
-          </span>
-          <button
-            type="button"
-            disabled={inventory().loading() || !inventory().connected()}
-            onClick={() => void inventory().refresh()}
-          >
-            {t("common.retry")}
-          </button>
-        </div>
-      )}
-      {!inventory().available() && (
-        <p role="status" class="session-automation-mobile__empty">
-          {t("chat.sessionDetails.automationUnavailable")}
-        </p>
-      )}
-      {!inventory().loaded() && inventory().loading() && (
-        <p role="status" class="session-automation-mobile__empty">
-          {t("chat.sessionDetails.automationLoading")}
-        </p>
-      )}
-      {inventory().loaded() &&
-        !inventory().error() &&
-        !inventory().loading() &&
-        inventory().total() === 0 && (
-          <div class="session-automation-mobile__empty">
-            <Icon name="clock" />
-            <strong>{t("chat.sessionDetails.automationEmpty")}</strong>
-            <p>{t("chat.sessionAutomation.emptyHint")}</p>
-          </div>
-        )}
+      <PanelFeedback
+        label={t("chat.sessionDetails.automations")}
+        message={
+          !inventory().connected()
+            ? t("chat.sessionDetails.automationOffline")
+            : !inventory().available()
+              ? t("chat.sessionDetails.automationUnavailable")
+              : inventory().error()
+                ? t("chat.sessionDetails.automationError")
+                : undefined
+        }
+        onRetry={() => void inventory().refresh()}
+        retrying={inventory().loading()}
+        retryDisabled={!inventory().connected()}
+      />
       <div class="session-automation-mobile__group">
         <For each={inventory().jobs()} keyed={(job) => job.id}>
           {(job) => {

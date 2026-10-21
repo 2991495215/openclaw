@@ -139,6 +139,20 @@ export function ChatDetailsContextContent(props: ChatDetailsContextContentProps)
   const context = createMemo(() => getContextNoticeViewModel(props.details.selectedSession));
   const [compacting, setCompacting] = createOptimistic(false);
   const budget = () => props.details.selectedSession?.contextBudgetStatus;
+  const budgetDescription = () => {
+    const usage = context();
+    const value = budget();
+    return value && usage && !usage.approximate
+      ? [
+          t("chat.sessionDetails.contextHeadroom", {
+            tokens: formatCompactTokenCount(Math.max(0, usage.limit - usage.used)),
+          }),
+          t("chat.sessionDetails.contextReserve", {
+            tokens: formatCompactTokenCount(value.effectiveReserveTokens),
+          }),
+        ].join(" · ")
+      : undefined;
+  };
   const compact = action(function* () {
     if (!props.presented || compacting() || props.details.runActive) {
       return;
@@ -158,7 +172,9 @@ export function ChatDetailsContextContent(props: ChatDetailsContextContentProps)
                   : "chat.composer.contextUsage.contextWindow",
               )}
             </span>
-            <strong>{usage().detail}</strong>
+            <strong title={budgetDescription()} aria-description={budgetDescription()}>
+              {usage().detail}
+            </strong>
           </div>
           <Show
             when={
@@ -184,18 +200,6 @@ export function ChatDetailsContextContent(props: ChatDetailsContextContentProps)
                 approximate={usage().approximate}
               />
             </Loading>
-          </Show>
-          <Show when={budget() && !usage().approximate}>
-            <p class="chat-context__note">
-              {t("chat.sessionDetails.contextHeadroom", {
-                tokens: formatCompactTokenCount(Math.max(0, usage().limit - usage().used)),
-              })}
-            </p>
-            <p class="chat-context__note">
-              {t("chat.sessionDetails.contextReserve", {
-                tokens: formatCompactTokenCount(budget()!.effectiveReserveTokens),
-              })}
-            </p>
           </Show>
           <Show when={props.details.onCompact}>
             <button

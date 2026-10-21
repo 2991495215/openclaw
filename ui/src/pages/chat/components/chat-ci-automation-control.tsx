@@ -18,6 +18,7 @@ import {
   type CiAutomationJobs,
 } from "../../../lib/session-pr-automation.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { showToast } from "../../../lib/toast.ts";
 import { ChatCiAutomationView, type ChatCiAutomationProps } from "./chat-ci-automation.tsx";
 import { createCiDisclosure, type ChatCiDisclosureProps } from "./chat-ci-disclosure.ts";
 
@@ -272,6 +273,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
           draft.jobs = jobs;
           draft.schedulerEnabled = status.enabled;
           draft.loaded = true;
+          draft.error = null;
         });
       }
     } catch (error) {
@@ -331,12 +333,16 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       });
     } catch (error) {
       if (owner.current()) {
+        showToast({
+          message: formatUiError(error, t("chat.pullRequests.automationSaveFailed")),
+          severity: "error",
+        });
         // A rejected acknowledgement may hide an accepted write. Never mutate again
         // until a complete authoritative inventory has reconciled the actual outcome.
         inventoryVersion = -1;
+        refreshPending = true;
         setState((draft) => {
           draft.loaded = false;
-          draft.error = formatUiError(error, t("chat.pullRequests.automationSaveFailed"));
         });
       }
     } finally {
@@ -393,22 +399,27 @@ function ChatCiAutomationContent(props: Props, host: SolidBridgeElement<Props>) 
   return (
     <ChatCiAutomationView
       {...read()}
+      presented={props.presented}
       menuPresentation={props.menuPresentation}
       controls={props.controls}
     />
   );
 }
 
-defineSolidBridge<Props>("openclaw-chat-ci-automation", ChatCiAutomationContent, {
-  propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
-  properties: {
-    gateway: { default: undefined, attribute: false },
-    pullRequest: { default: undefined, attribute: false },
-    sessionKey: { default: "", attribute: false },
-    sessionId: { default: "", attribute: false },
-    presented: { default: true, type: Boolean },
-    inline: { default: false, attribute: false },
-    menuPresentation: { default: false, attribute: false },
-    controls: { default: undefined, attribute: false },
+export const ChatCiAutomation = defineSolidBridge<Props>(
+  "openclaw-chat-ci-automation",
+  ChatCiAutomationContent,
+  {
+    propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
+    properties: {
+      gateway: { default: undefined, attribute: false },
+      pullRequest: { default: undefined, attribute: false },
+      sessionKey: { default: "", attribute: false },
+      sessionId: { default: "", attribute: false },
+      presented: { default: true, type: Boolean },
+      inline: { default: false, attribute: false },
+      menuPresentation: { default: false, attribute: false },
+      controls: { default: undefined, attribute: false },
+    },
   },
-});
+);

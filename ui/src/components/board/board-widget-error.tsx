@@ -5,28 +5,14 @@ import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 
 registerEnglishCatalog(registerBoardEnglish);
 
-export function BoardWidgetError(props: {
-  error: unknown;
-  onRetry?: () => void;
-  action?: boolean;
-  inline?: boolean;
-}) {
+export function BoardWidgetError(props: { error: unknown; onRetry?: () => void }) {
   return (
-    <div
-      class={[
-        "board-widget__error",
-        { "board-widget__error--inline": props.action && props.inline },
-      ]}
-      role="alert"
-      data-test-id={props.action ? "board-widget-action-error" : "board-widget-error"}
-    >
-      <strong>
-        {t(props.action ? "board.widget.actionErrorTitle" : "board.widget.errorTitle")}
-      </strong>
-      <span>{t(props.action ? "board.widget.actionErrorDetail" : "board.widget.errorDetail")}</span>
+    <div class="board-widget__error" role="alert" data-test-id="board-widget-error">
+      <strong>{t("board.widget.errorTitle")}</strong>
+      <span>{t("board.widget.errorDetail")}</span>
       <details>
         <summary>{t("board.widget.errorShow")}</summary>
-        <code>{props.action ? String(props.error) : formatUiError(props.error)}</code>
+        <code>{formatUiError(props.error)}</code>
       </details>
       <Show when={props.onRetry}>
         <button class="btn btn--small" type="button" onClick={() => props.onRetry?.()}>

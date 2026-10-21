@@ -103,7 +103,7 @@ describe("session workspace path actions", () => {
     ["reports", true, null],
   ] as const)(
     "keeps folder recovery available for %s (loading: %s)",
-    (path, loading, parentPath) => {
+    async (path, loading, parentPath) => {
       const onBrowsePath = vi.fn();
       const workspace = createWorkspace({
         browserPath: path,
@@ -118,7 +118,14 @@ describe("session workspace path actions", () => {
         expect(mount.textContent).not.toContain("This folder is unavailable.");
       } else {
         expect(parent).not.toBeNull();
-        expect(mount.textContent).toContain("This folder is unavailable.");
+        const feedback = mount.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!;
+        feedback.click();
+        await waitForSolid(() =>
+          expect(document.querySelector(".panel-feedback__messages")?.textContent).toContain(
+            "This folder is unavailable.",
+          ),
+        );
+        feedback.click();
         parent!.click();
         expect(onBrowsePath).toHaveBeenCalledExactlyOnceWith(parentPath);
       }
@@ -363,7 +370,7 @@ describe("session workspace path actions", () => {
       update();
       expect(mount.textContent).not.toContain("No matching files.");
     }
-    expect(mount.textContent).toContain(workspace.error);
+    expect(mount.querySelector(".panel-feedback__trigger")).not.toBeNull();
   });
 
   it("matches every Files group without collapsing internal spaces", () => {
@@ -530,17 +537,19 @@ it("desktop distinguishes incomplete matching searches from empty complete resul
   try {
     expect(
       [
-        ...mounted.container.querySelectorAll(".workspace-desktop__project-scroll [role=status]"),
-      ].filter((node) => node.textContent === warning),
+        ...mounted.container.querySelectorAll(".workspace-desktop__project-scroll [aria-label]"),
+      ].filter((node) => node.getAttribute("aria-label") === warning),
     ).toHaveLength(2);
     mounted.update({
       ...workspace,
       browserSearch: "different",
       navigation: { ...navigation, searchOpen: true },
     });
-    expect(
-      mounted.container.querySelector(".workspace-desktop__results")?.textContent,
-    ).not.toContain(warning);
+    const hasIncompleteResults = () =>
+      [...mounted.container.querySelectorAll(".workspace-desktop__results [aria-label]")].some(
+        (node) => node.getAttribute("aria-label") === warning,
+      );
+    expect(hasIncompleteResults()).toBe(false);
     mounted.update({
       ...workspace,
       browserSearch: "report",
@@ -548,7 +557,7 @@ it("desktop distinguishes incomplete matching searches from empty complete resul
     });
     const results = () =>
       mounted.container.querySelector(".workspace-desktop__results")?.textContent;
-    expect(results()).toContain(warning);
+    expect(hasIncompleteResults()).toBe(true);
     expect(results()).not.toContain("No matching files.");
     mounted.update({
       ...workspace,
@@ -559,7 +568,7 @@ it("desktop distinguishes incomplete matching searches from empty complete resul
         browser: { path: "", search: "report", entries: [] },
       },
     });
-    expect(results()).not.toContain(warning);
+    expect(hasIncompleteResults()).toBe(false);
     expect(results()).toContain("No matching files.");
   } finally {
     mounted.unmount();

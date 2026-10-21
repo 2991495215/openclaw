@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { createComponent, createSignal } from "solid-js";
+import { createComponent, createSignal, merge } from "solid-js";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { createDeferred as deferred } from "../../../../../test/helpers/promise.js";
@@ -27,46 +27,7 @@ function mountPanel() {
     openFile: null,
     revealFile: null,
   });
-  const view = mountSolid(() =>
-    createComponent(SessionDiffPanel, {
-      get mobile() {
-        return props().mobile;
-      },
-      get active() {
-        return props().active;
-      },
-      get scopeRequest() {
-        return props().scopeRequest;
-      },
-      get onResult() {
-        return props().onResult;
-      },
-      get openFileView() {
-        return props().openFileView;
-      },
-      get onOpenMobilePage() {
-        return props().onOpenMobilePage;
-      },
-      get owner() {
-        return props().owner;
-      },
-      get execNode() {
-        return props().execNode;
-      },
-      get loader() {
-        return props().loader;
-      },
-      get loadFileText() {
-        return props().loadFileText;
-      },
-      get openFile() {
-        return props().openFile;
-      },
-      get revealFile() {
-        return props().revealFile;
-      },
-    }),
-  );
+  const view = mountSolid(() => createComponent(SessionDiffPanel, merge(props)));
   return {
     panel: view.container.querySelector<HTMLElement>("openclaw-session-diff")!,
     unmount: view.unmount,
@@ -79,6 +40,18 @@ function settlePanel(panel: HTMLElement) {
   return waitForSolid(() =>
     expect(panel.querySelector(".session-diff")?.getAttribute("aria-busy")).toBe("false"),
   );
+}
+
+async function openFeedback(panel: HTMLElement) {
+  await waitForSolid(() => expect(panel.querySelector(".panel-feedback__trigger")).not.toBeNull());
+  const trigger = panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!;
+  if (trigger.getAttribute("aria-expanded") !== "true") {
+    trigger.click();
+  }
+  await waitForSolid(() =>
+    expect(document.querySelector(".panel-feedback__messages")).not.toBeNull(),
+  );
+  return document.querySelector(".panel-feedback__messages")!;
 }
 
 function setupDesktopResizeObserver() {
@@ -393,7 +366,9 @@ describe("SessionDiffPanel", () => {
     await settlePanel(panel);
 
     expect(panel.textContent).not.toContain("No changes in this session's checkout.");
-    expect(panel.textContent).toContain("Some changes could not be displayed.");
+    expect(
+      panel.querySelector('[aria-label="Some changes could not be displayed."]'),
+    ).not.toBeNull();
     expect(panel.querySelector(".session-diff__file")).toBeNull();
 
     update({
@@ -408,8 +383,10 @@ describe("SessionDiffPanel", () => {
     await settlePanel(panel);
 
     expect(panel.querySelector(".session-diff__filename")?.textContent).toBe("example.txt");
-    expect(panel.textContent).toContain("Diff preview is unavailable.");
-    expect(panel.textContent).toContain("Some changes could not be displayed.");
+    expect((await openFeedback(panel)).textContent).toContain("Diff preview is unavailable.");
+    expect(
+      panel.querySelector('[aria-label="Some changes could not be displayed."]'),
+    ).not.toBeNull();
     expect(panel.textContent).not.toContain("No changes in this session's checkout.");
 
     update({ loader: async () => ({ ...fileResult(SNAPSHOT_PATCH), truncated: true }) });
@@ -418,14 +395,16 @@ describe("SessionDiffPanel", () => {
     expect(panel.querySelector(".session-diff__filename")?.textContent).toBe("example.txt");
     expect(panel.textContent).toContain("snapshot line");
     expect(panel.textContent).not.toContain("Diff preview is unavailable.");
-    expect(panel.textContent).toContain("Some changes could not be displayed.");
+    expect(
+      panel.querySelector('[aria-label="Some changes could not be displayed."]'),
+    ).not.toBeNull();
     expect(panel.textContent).not.toContain("No changes in this session's checkout.");
 
     update({ loader: async () => result("feature/test") });
     await settlePanel(panel);
 
-    expect(panel.textContent).toContain("No changes in this session's checkout.");
-    expect(panel.textContent).not.toContain("Some changes could not be displayed.");
+    expect(panel.querySelector(".panel-feedback")).toBeNull();
+    expect(panel.querySelector('[aria-label="Some changes could not be displayed."]')).toBeNull();
     expect(panel.querySelector(".session-diff__file")).toBeNull();
   });
 
@@ -439,9 +418,10 @@ describe("SessionDiffPanel", () => {
         files: [{ path: "saved.txt", status: "modified", additions: 0, deletions: 0 }],
       }),
     });
-    await waitForSolid(() => expect(panel.textContent).toContain("Saved changed files are shown."));
+    const feedback = await openFeedback(panel);
+    expect(feedback.textContent).toContain("Saved changed files are shown.");
     expect(panel.textContent).toContain("saved.txt");
-    expect(panel.textContent).toContain("Start the cloud session to load this diff.");
+    expect(feedback.textContent).toContain("Start the cloud session to load this diff.");
     expect(panel.textContent).not.toContain("Diff preview is unavailable.");
     expect(panel.textContent).not.toContain("No changes in this session");
     expect(panel.querySelector(".session-diff__toolbar-button")).toBeNull();
@@ -490,9 +470,7 @@ describe("SessionDiffPanel", () => {
         throw new Error("Diff unavailable");
       },
     });
-    await waitForSolid(() =>
-      expect(panel.querySelector(".callout.danger")?.textContent).toContain("Diff unavailable"),
-    );
+    expect((await openFeedback(panel)).textContent).toContain("Diff unavailable");
     expect(panel.textContent).not.toContain("feature/replacement");
   });
 
@@ -618,7 +596,9 @@ describe("SessionDiffPanel", () => {
     const { panel, update } = mountPanel();
     update({ loader: (scope) => client.request<SessionsDiffResult>("sessions.diff", scope) });
 
-    await waitForSolid(() => expect(panel.querySelector(".callout.danger")).not.toBeNull());
+    await waitForSolid(() =>
+      expect(panel.querySelector(".panel-feedback__trigger")).not.toBeNull(),
+    );
     expect(panel.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
     expect(panel.querySelector(".session-diff")?.getAttribute("aria-busy")).toBe("false");
   });
