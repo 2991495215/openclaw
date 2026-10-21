@@ -311,7 +311,7 @@ it.for(
           outcome === "refused"
             ? REFUSAL
             : chat
-              ? LOST_REPLY
+              ? "Wait for current work to finish, then reopen the conversation."
               : "commitment is unknown; do not replay",
         );
       }
