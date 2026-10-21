@@ -1,5 +1,6 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
+  "extensions/memory-core/src/memory/manager-duplicate-chunks.postgres.test.ts",
   "test/scripts/upgrade-survivor-acp-metadata.test.ts",
   "src/gateway/server-methods/chat-send-admission.reads.test.ts",
   "src/sessions/background-session-result.test.ts",
@@ -1133,7 +1134,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/plugins/management-service.install.test.ts",
 
   "src/plugins/installed-plugin-index-generation-precedence.test.ts",
-  "src/plugins/installed-plugin-index-read-state.test.ts",
   "src/plugins/installed-plugin-index-store.availability.test.ts",
   "src/plugins/installed-plugin-index-store.test.ts",
   "src/plugins/install-record-commit.sqlite.test.ts",
