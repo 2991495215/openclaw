@@ -703,12 +703,30 @@ describe("ModelProvidersPage agent scope", () => {
       updatedAt: 1,
     });
     await page.updateComplete;
-    request.mockRejectedValueOnce(new Error("Priority could not be saved"));
+    const original = request.getMockImplementation()!;
+    let rejectOrder = true;
+    request.mockImplementation(async (method, ...args) => {
+      if (method === "models.authOrderSet" && rejectOrder) {
+        rejectOrder = false;
+        throw new Error("Priority could not be saved");
+      }
+      return original(method, ...args);
+    });
     page
       .querySelector<HTMLButtonElement>(
         '[data-profile-id="openai:two"] .model-providers__profile-grip',
       )!
       .dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith("models.authOrderSet", {
+        provider: "openai",
+        profileIds: ["openai:two", "openai:one"],
+        agentId: "main",
+      }),
+    );
+    await vi.waitFor(() => expect(toast.toast?.message).toBe("Priority could not be saved"));
+    await toast.updateComplete;
+    await vi.dynamicImportSettled();
     await vi.waitFor(() =>
       expect(toast.querySelector('[role="status"]')?.textContent).toContain(
         "Priority could not be saved",

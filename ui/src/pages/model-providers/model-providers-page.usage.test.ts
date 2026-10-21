@@ -297,11 +297,15 @@ describe("ModelProvidersPage usage convergence", () => {
     let costReads = 0;
     harness.request.mockImplementation(async (method, ...args) => {
       if (method === "usage.status") {
-        if (++usageReads === 1) return usage.promise;
+        if (++usageReads === 1) {
+          return usage.promise;
+        }
         throw new Error("Usage temporarily unavailable");
       }
       if (method === "sessions.usage") {
-        if (++costReads === 1) return cost.promise;
+        if (++costReads === 1) {
+          return cost.promise;
+        }
         throw new Error("Cost temporarily unavailable");
       }
       if (method === "models.authStatus") {

@@ -42,12 +42,18 @@ export class ModelProviderSupplementalLoader {
     return this.requests.has("usage");
   }
 
-  usageRead(): ModelProvidersData | null | Promise<ModelProvidersData | null> {
-    return this.requests.get("usage")?.completion ?? this.options.getData();
+  usageRead() {
+    return {
+      pending: this.requests.get("usage")?.completion ?? null,
+      value: this.options.getData()?.providerUsage ?? null,
+    };
   }
 
-  costRead(): ModelProvidersData | null | Promise<ModelProvidersData | null> {
-    return this.requests.get("cost")?.completion ?? this.options.getData();
+  costRead() {
+    return {
+      pending: this.requests.get("cost")?.completion ?? null,
+      value: this.options.getData()?.costByProvider ?? null,
+    };
   }
 
   adoptCoreData(client: GatewayBrowserClient | null, data: ModelProvidersData): void {

@@ -1,5 +1,5 @@
 import { asNullableRecord as asConfigRecord } from "@openclaw/normalization-core/record-coerce";
-import { createEffect, createMemo, createSignal, onSettled } from "solid-js";
+import { createEffect, createSignal, onSettled } from "solid-js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ApplicationContext } from "../../app/context.ts";
 import { hasOperatorAdminAccess, hasOperatorReadAccess } from "../../app/operator-access.ts";
@@ -34,7 +34,6 @@ import {
   collectProviderLocalCost,
   collectProviderUsage,
   type DefaultsDraft,
-  type ModelProviderMetrics,
 } from "./data.ts";
 import { createModelProviderDiscovery } from "./discovery-controller.tsx";
 import { createInstalledAgents } from "./installed-agents.tsx";
@@ -45,6 +44,7 @@ import { createModelProviderProfileActions } from "./profile-actions-controller.
 import { updateRecordEntry } from "./record-state.ts";
 import type { ModelProvidersRouteData } from "./route.ts";
 import { ModelProviderSupplementalLoader } from "./supplemental-load.ts";
+import { projectSupplementalRead } from "./supplemental-read.ts";
 
 export function createModelProviders(
   context: ApplicationContext,
@@ -119,17 +119,19 @@ export function createModelProviders(
     setDataClient: (client) => (dataClient = client),
     refreshPolicy,
   });
-  // Accessors keep pending data out of the synchronous page/roster projection.
-  const metrics: ModelProviderMetrics = {
-    usage: createMemo(async () => {
-      projection.read();
-      const result = (await supplemental.usageRead())?.providerUsage;
-      return collectProviderUsage(result?.ok ? result.value : null);
-    }),
-    cost: createMemo(async () => {
-      projection.read();
-      return collectProviderLocalCost((await supplemental.costRead())?.costByProvider ?? null);
-    }),
+  const metrics = {
+    usage: projectSupplementalRead(
+      projection.read,
+      () => supplemental.usageRead(),
+      (data) => data?.providerUsage ?? null,
+      (result) => collectProviderUsage(result?.ok ? result.value : null),
+    ),
+    cost: projectSupplementalRead(
+      projection.read,
+      () => supplemental.costRead(),
+      (data) => data?.costByProvider ?? null,
+      collectProviderLocalCost,
+    ),
   };
   const gateway = new GatewayPageBinding(notify, {
     getGateway: () => context.gateway,
@@ -170,10 +172,7 @@ export function createModelProviders(
     },
     onPageActivation: () => void refreshPolicy.request("focus"),
   });
-  const installedAgents = createInstalledAgents({
-    gateway,
-    context,
-  });
+  const installedAgents = createInstalledAgents({ gateway, context });
   const profileActions = createModelProviderProfileActions({
     getAgentEpoch: () => agentEpoch,
     getAgentId: () => state.selectedAgentId,
