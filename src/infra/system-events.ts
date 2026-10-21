@@ -733,19 +733,3 @@ export function resolveSystemEventDeliveryContext(
 export function resetSystemEventsForTest() {
   clearSystemEventQueues(queues);
 }
-
-export function peekDeliverableSystemEventEntries(sessionKey: string): SystemEvent[] {
-  return peekSystemEventEntries(sessionKey).filter(
-    (event) => !event.deliveryHeld && !isSystemEventTurnOwned(sessionKey, event),
-  );
-}
-export function holdSystemEventDelivery(
-  sessionKey: string,
-  attempted: readonly SystemEvent[],
-): void {
-  for (const event of getSessionQueue(sessionKey)?.queue ?? []) {
-    if (attempted.some((candidate) => matchesConsumedSystemEvent(event, candidate))) {
-      event.deliveryHeld = true;
-    }
-  }
-}

@@ -3,6 +3,11 @@ import path from "node:path";
 import { isMainThread } from "node:worker_threads";
 import { isValidAgentId, normalizeAgentId } from "@openclaw/normalization-core/agent-id";
 import { EXEC_TIMEOUT_RETRY_GUIDANCE } from "../../../../src/agents/bash-tools.exec-output.js";
+import { stripInternalRuntimeContext } from "../../../../src/agents/internal-runtime-context.js";
+import { isHeartbeatUserMessage } from "../../../../src/auto-reply/heartbeat-filter.js";
+import { HEARTBEAT_PROMPT } from "../../../../src/auto-reply/heartbeat.js";
+import { stripInboundMetadata } from "../../../../src/auto-reply/reply/strip-inbound-meta.js";
+import { HEARTBEAT_TOKEN } from "../../../../src/auto-reply/tokens.js";
 import { cloneEnvWithPlatformSemantics } from "../../../../src/config/config-env-vars.js";
 import {
   readTranscriptExportSnapshotReadOnlySync,
@@ -175,11 +180,12 @@ export const readSessionTranscriptCorpusInWorker = bindTranscriptInventory(
 );
 
 export { resolveSessionAgentId } from "../../../../src/agents/agent-scope.js";
-export { stripInternalRuntimeContext } from "../../../../src/agents/internal-runtime-context.js";
-export { isHeartbeatUserMessage } from "../../../../src/auto-reply/heartbeat-filter.js";
-export { HEARTBEAT_PROMPT } from "../../../../src/auto-reply/heartbeat.js";
-export { stripInboundMetadata } from "../../../../src/auto-reply/reply/strip-inbound-meta.js";
-export { HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN } from "../../../../src/auto-reply/tokens.js";
+export { stripInternalRuntimeContext };
+export { isHeartbeatUserMessage };
+export { HEARTBEAT_PROMPT };
+export { stripInboundMetadata };
+export { HEARTBEAT_TOKEN };
+export { SILENT_REPLY_TOKEN } from "../../../../src/auto-reply/tokens.js";
 export { getRuntimeConfig } from "../../../../src/config/config.js";
 export {
   isCompactionCheckpointTranscriptFileName,
@@ -299,4 +305,46 @@ export function isExecCompletionEvent(event: string): boolean {
       trimmed,
     );
   return Boolean(match && (match[5] === undefined || match[5] === EXEC_TIMEOUT_RETRY_GUIDANCE));
+}
+
+const DIRECT_CRON_PROMPT_RE = /^\[cron:[^\]]+\]\s*/;
+const GENERATED_SYSTEM_MESSAGE_RE = /^System(?: \(untrusted\))?: \[[^\]]+\]\s*/;
+
+function normalizeSessionText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function sanitizeSessionText(text: string, role: "user" | "assistant"): string | null {
+  // Metadata envelopes require their original newlines; strip them before whitespace normalization.
+  const strippedInbound = role === "user" ? stripInboundMetadata(text) : text;
+  const strippedInternal = stripInternalRuntimeContext(strippedInbound);
+  // Exec timeout notes have a meaningful blank-line separator; classify before
+  // whitespace normalization erases the historical producer's shape.
+  const withoutSystemEnvelope = strippedInternal.replace(GENERATED_SYSTEM_MESSAGE_RE, "").trim();
+  if (isExecCompletionEvent(withoutSystemEnvelope)) {
+    return null;
+  }
+  const normalized = normalizeSessionText(strippedInternal);
+  if (!normalized) {
+    return null;
+  }
+  if (
+    role === "user" &&
+    (GENERATED_SYSTEM_MESSAGE_RE.test(normalized) ||
+      DIRECT_CRON_PROMPT_RE.test(normalized) ||
+      isHeartbeatUserMessage({ role, content: normalized }, HEARTBEAT_PROMPT))
+  ) {
+    return null;
+  }
+  // Assistant-side machinery acks: HEARTBEAT_OK is the canonical "all clear,
+  // nothing to do" reply to a heartbeat tick. Drop on the assistant side
+  // directly so we do not have to rely on cross-message coupling with the
+  // preceding user message (which a real user could spoof).
+  if (role === "assistant" && normalized === HEARTBEAT_TOKEN) {
+    return null;
+  }
+  if (isExecCompletionEvent(normalized.replace(GENERATED_SYSTEM_MESSAGE_RE, "").trim())) {
+    return null;
+  }
+  return normalized;
 }

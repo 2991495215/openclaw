@@ -19,9 +19,8 @@ import {
   enqueueSystemEvent,
   enqueueSystemEventEntry,
   enqueueSystemEventWithReceipt,
-  holdSystemEventDelivery,
   isSystemEventContextChanged as contextChanged,
-  peekDeliverableSystemEventEntries as peekDeliverable,
+  isSystemEventTurnOwned,
   peekSystemEventEntries as peekEntries,
   peekSystemEvents,
   resetSystemEventsForTest,
@@ -54,17 +53,17 @@ describe("delivery-owned system event selection", () => {
 
   it.each(["cancel", "release"] as const)(
     "%s settles surviving batch members after one occurrence disappears",
-    (action) => {
+    async (action) => {
       const first = enqueueEntry("First", sessionKey);
       const second = enqueueEntry("Second", sessionKey);
       const cancelled = vi.fn();
       const owner = claim(sessionKey, [first, second], cancelled);
-      expect(peekDeliverable(sessionKey)).toEqual([]);
+      expect(await drainFormattedEvents(sessionKey)).toBeUndefined();
       consumeSelected(sessionKey, [first]);
       const replacement = enqueueEntry("Replacement", sessionKey);
       expect(() => owner.start()).toThrow("cancelled before admission");
       expect(owner[action]()).toBe(true);
-      expect(peekDeliverable(sessionKey)).toEqual(
+      expect(peekEntries(sessionKey)).toEqual(
         action === "cancel" ? [replacement] : [second, replacement],
       );
       expect(owner.cancel()).toBe(false);
@@ -89,11 +88,11 @@ describe("delivery-owned system event selection", () => {
           () => {},
         ),
       ).toBeUndefined();
-      expect(peekDeliverable(sessionKey)).toContainEqual(first);
+      expect(isSystemEventTurnOwned(sessionKey, first)).toBe(false);
     },
   );
 
-  it("leaves an ordinary occurrence with its owner through periodic and user selection", async () => {
+  it("leaves claimed occurrences with their owner while a user turn drains passive notices", async () => {
     const occurrence = enqueueEntry("Task completed", sessionKey);
     const cancelled = vi.fn();
     const sibling = enqueueEntry("Sibling completed", sessionKey);
@@ -102,21 +101,14 @@ describe("delivery-owned system event selection", () => {
       "ordinary owner",
     );
     enqueueSystemEvent("Passive notice", { sessionKey });
-    const held = enqueueEntry("Exec finished (gateway id=uncertain, code 0)", sessionKey);
-    holdSystemEventDelivery(sessionKey, [held]);
-    expect(peekDeliverable(sessionKey).map(({ text }) => text)).toEqual(["Passive notice"]);
     const prompt = await drainFormattedEvents(sessionKey);
     expect(prompt).toContain("Passive notice");
     expect(prompt).not.toContain("Task completed");
     expect(prompt).not.toContain("Sibling completed");
-    expect(peekEntries(sessionKey).map(({ id }) => id)).toEqual([
-      occurrence.id,
-      sibling.id,
-      held.id,
-    ]);
+    expect(peekEntries(sessionKey).map(({ id }) => id)).toEqual([occurrence.id, sibling.id]);
     expect(cancelled).not.toHaveBeenCalled();
     owner.start();
-    expect(peekEntries(sessionKey).map(({ id }) => id)).toEqual([held.id]);
+    expect(peekEntries(sessionKey)).toEqual([]);
     expect(cancelled).not.toHaveBeenCalled();
     expect(owner.cancel()).toBe(false);
   });
@@ -142,7 +134,7 @@ describe("delivery-owned system event selection", () => {
     const cancelled = vi.fn();
     const first = claim(sessionKey, [occurrence], cancelled);
     expect(first.release()).toBe(true);
-    expect(peekDeliverable(sessionKey)).toEqual([occurrence]);
+    expect(isSystemEventTurnOwned(sessionKey, occurrence)).toBe(false);
     const successor = claim(sessionKey, [occurrence], cancelled);
     expect(first.release()).toBe(false);
     expect(first.cancel()).toBe(false);
@@ -533,7 +525,7 @@ describe("system events (session routing)", () => {
   it.each([
     "Exec finished (gateway id=abc12345, code 0)",
     "Exec failed (abc12345, signal SIGTERM) :: browser auth timed out",
-  ])("drains generic events without consuming %s", async (completion) => {
+  ])("drains unowned exec-shaped notices once with generic events: %s", async (completion) => {
     enqueueSystemEvent("Model switched to gpt-5.5", { sessionKey: key });
     enqueueSystemEvent(completion, { sessionKey: key });
     enqueueSystemEvent("Node connected", { sessionKey: key });
@@ -541,9 +533,10 @@ describe("system events (session routing)", () => {
     const result = await drainFormattedEvents(key);
     expect(result).toContain("Model switched to gpt-5.5");
     expect(result).toContain("Node connected");
-    expect(peekSystemEvents(key)).toEqual([completion]);
+    expect(result).toContain(completion);
+    expect(peekSystemEvents(key)).toEqual([]);
     expect(await drainFormattedEvents(key)).toBeUndefined();
-    expect(peekSystemEvents(key)).toEqual([completion]);
+    expect(peekSystemEvents(key)).toEqual([]);
   });
 
   it.each([

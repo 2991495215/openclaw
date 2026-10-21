@@ -742,14 +742,16 @@ it("hands an interrupt to ordinary recovery ownership when the owed resend canno
   complete(admission);
 });
 
-it("preserves settled recovery delivery residue for a queued followup", async () => {
+it("preserves unsettled recovery delivery custody while refusing a queued followup", async () => {
   const f = recoveryFixture({
     abortedLastRun: false,
     restartRecoveryDeliveryRunId: "completed-recovery",
     restartRecoveryRuns: [recoveryRun("completed-recovery")],
   });
-  const result = owned(await f.admit({ kind: "queued_followup" }));
+  const mailboxClaim = await f.claim();
+  const result = await f.admit({ mailboxClaim, kind: "queued_followup" });
+  // A delivery ID and nonterminal fence retain custody even after the abort flag clears.
+  expect(result).toMatchObject({ status: "skipped", reason: "lifecycle-invalidated" });
   expect(f.read()).toMatchObject(f.entry);
   expect(f.read()?.mainRestartRecovery).toBeUndefined();
-  complete(result);
 });

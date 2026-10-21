@@ -128,7 +128,8 @@ vi.mock("./config-model-validation.js", () => ({
   checkTouchedTextModelRefs: (...args: unknown[]) => mockCheckTouchedTextModelRefs(...args),
 }));
 
-vi.mock("../gateway/config-reload-plan.js", () => ({
+vi.mock("../gateway/config-reload-plan.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../gateway/config-reload-plan.js")>()),
   buildGatewayReloadPlan: (changedPaths: string[]) => {
     const hotReasons = changedPaths.filter(
       (changedPath) =>
@@ -266,8 +267,7 @@ function firstMockArg(mock: { mock: { calls: ReadonlyArray<ReadonlyArray<unknown
 }
 
 function lastMockArg(mock: { mock: { calls: ReadonlyArray<ReadonlyArray<unknown>> } }): unknown {
-  const calls = mock.mock.calls;
-  const call = calls[calls.length - 1];
+  const call = mock.mock.calls.at(-1);
   if (!call) {
     throw new Error("expected mock to have at least one call");
   }

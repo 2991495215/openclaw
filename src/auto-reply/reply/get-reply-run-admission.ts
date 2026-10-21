@@ -274,7 +274,6 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     sessionEntryHandle?.replaceCurrent(sessionEntry);
   }
   const skillsSnapshot = skillResult.skillsSnapshot;
-  let promptBodies = await rebuildPromptBodies();
   if (!resolvedThinkLevel) {
     resolvedThinkLevel = await traceRunPhase("reply.resolve_default_thinking", () =>
       modelState.resolveDefaultThinkingLevel({ provider, model, agentRuntime: thinkingRuntime }),
@@ -556,7 +555,6 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         preparedSessionState = resolvePreparedSessionState();
         // The interrupted run may have changed goal or suggestion state while admission waited.
         refreshInboundContextAfterAdmissionWait();
-        promptBodies = await rebuildPromptBodies();
       },
       resolveBusyState: resolveQueueBusyState,
     });
@@ -569,7 +567,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     }
   }
   await traceRunPhase("reply.drain_system_events", () => drainSystemEventBlocks());
-  promptBodies = await rebuildPromptBodies();
+  const promptBodies = await rebuildPromptBodies();
 
   return {
     kind: "ready",

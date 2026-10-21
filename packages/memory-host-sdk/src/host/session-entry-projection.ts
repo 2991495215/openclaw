@@ -5,58 +5,8 @@ import {
 } from "@openclaw/normalization-core/record-coerce";
 import { readStringValue } from "@openclaw/normalization-core/string-coerce";
 import { avoidTrailingHighSurrogateBreak } from "@openclaw/normalization-core/utf16-slice";
-import {
-  HEARTBEAT_PROMPT,
-  HEARTBEAT_TOKEN,
-  isExecCompletionEvent,
-  isHeartbeatUserMessage,
-  stripInboundMetadata,
-  stripInternalRuntimeContext,
-} from "./openclaw-runtime-session.js";
 import type { SessionResetRecallCutoff } from "./session-reset-recall.js";
 import type { MemoryEntryProvenance } from "./types.js";
-
-const DIRECT_CRON_PROMPT_RE = /^\[cron:[^\]]+\]\s*/;
-const GENERATED_SYSTEM_MESSAGE_RE = /^System(?: \(untrusted\))?: \[[^\]]+\]\s*/;
-
-function normalizeSessionText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-export function sanitizeSessionText(text: string, role: "user" | "assistant"): string | null {
-  // Metadata envelopes require their original newlines; strip them before whitespace normalization.
-  const strippedInbound = role === "user" ? stripInboundMetadata(text) : text;
-  const strippedInternal = stripInternalRuntimeContext(strippedInbound);
-  // Exec timeout notes have a meaningful blank-line separator; classify before
-  // whitespace normalization erases the historical producer's shape.
-  const withoutSystemEnvelope = strippedInternal.replace(GENERATED_SYSTEM_MESSAGE_RE, "").trim();
-  if (isExecCompletionEvent(withoutSystemEnvelope)) {
-    return null;
-  }
-  const normalized = normalizeSessionText(strippedInternal);
-  if (!normalized) {
-    return null;
-  }
-  if (
-    role === "user" &&
-    (GENERATED_SYSTEM_MESSAGE_RE.test(normalized) ||
-      DIRECT_CRON_PROMPT_RE.test(normalized) ||
-      isHeartbeatUserMessage({ role, content: normalized }, HEARTBEAT_PROMPT))
-  ) {
-    return null;
-  }
-  // Assistant-side machinery acks: HEARTBEAT_OK is the canonical "all clear,
-  // nothing to do" reply to a heartbeat tick. Drop on the assistant side
-  // directly so we do not have to rely on cross-message coupling with the
-  // preceding user message (which a real user could spoof).
-  if (role === "assistant" && normalized === HEARTBEAT_TOKEN) {
-    return null;
-  }
-  if (isExecCompletionEvent(normalized.replace(GENERATED_SYSTEM_MESSAGE_RE, "").trim())) {
-    return null;
-  }
-  return normalized;
-}
 
 export function hashSessionEntrySnapshot(params: {
   content: string;

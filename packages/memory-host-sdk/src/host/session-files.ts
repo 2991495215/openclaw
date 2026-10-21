@@ -15,6 +15,7 @@ import {
   isDreamingNarrativeSessionStoreKey,
   extractAgentIdFromSessionPath,
   extractAgentIdFromSessionsDir,
+  sanitizeSessionText,
   hasInterSessionUserProvenance,
   isCompactionCheckpointTranscriptFileName,
   isSessionArchiveArtifactName,
@@ -40,7 +41,6 @@ import {
   parseSessionTimestampMs,
   projectSessionEntryRecord,
   renderSessionExportLines,
-  sanitizeSessionText,
 } from "./session-entry-projection.js";
 import { resolveBuildSessionSqliteIdentity } from "./session-entry-source.js";
 import { classifySessionMessageOrigin } from "./session-provenance.js";

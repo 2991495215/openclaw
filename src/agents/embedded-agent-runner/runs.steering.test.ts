@@ -157,30 +157,32 @@ describe("embedded-agent active-run question answers and waits", () => {
   it("keeps handle and session waiters distinct through replacements", async () => {
     vi.useFakeTimers();
     const visibleAbort = vi.fn();
-    const { handle: original } = start();
+    const { handle: original, operation: originalOperation } = start();
     const captured = captureEmbeddedRunDrainTarget(sessionId, { defaultAgentId: "test" });
     expect(captured).toBeDefined();
     const replacement = createEmbeddedRunHandle({ abort: visibleAbort });
     setActiveEmbeddedRun("visible", replacement);
     const originalWait = captured!.waitForEnd(1_000);
-    const sessionWait = waitForEmbeddedAgentRunEnd(sessionId, null);
     let originalDrained = false,
       sessionDrained = false;
     void originalWait.then(() => {
       originalDrained = true;
     });
+    // A logical replacement closes its owner before attaching the next turn.
+    originalOperation.complete();
+    setActiveEmbeddedRun(sessionId, replacement);
+    const sessionWait = waitForEmbeddedAgentRunEnd(sessionId, null);
     void sessionWait.then(() => {
       sessionDrained = true;
     });
-    setActiveEmbeddedRun(sessionId, replacement);
     await Promise.resolve();
     expect(originalDrained).toBe(false);
     clearActiveEmbeddedRun(sessionId, original);
     await expect(originalWait).resolves.toBe(true);
     expect(sessionDrained).toBe(false);
-    clearActiveEmbeddedRun(sessionId, replacement);
     const successor = createEmbeddedRunHandle();
     setActiveEmbeddedRun(sessionId, successor);
+    clearActiveEmbeddedRun(sessionId, replacement);
     await Promise.resolve();
     await Promise.resolve();
     expect(sessionDrained).toBe(false);

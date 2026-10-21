@@ -92,7 +92,7 @@ export function isSlackReplyLinkAction(parsed: ParsedSlackBlockAction): boolean 
   ) {
     return true;
   }
-  const legacyUrl = normalizeOptionalString((parsed.typedAction as { url?: unknown }).url);
+  const legacyUrl = normalizeOptionalString(parsed.typedAction.url);
   return Boolean(legacyUrl && isSlackReplyActionId(parsed.actionId));
 }
 
@@ -112,6 +112,7 @@ export function parseSlackBlockAction(params: {
   action: unknown;
   log?: (message: string) => void;
 }): ParsedSlackBlockAction | null {
+  // SAFETY: The Bolt action listener supplies the Slack-owned body; this projection reads only its optional interaction fields.
   const typedBody = params.body as SlackBlockActionBody;
   const typedAction = asOptionalRecord(params.action);
   if (!typedAction) {
@@ -122,6 +123,7 @@ export function parseSlackBlockAction(params: {
     );
     return null;
   }
+  // SAFETY: Bolt owns action metadata and plain-text labels; the record check above rejects absent action payloads.
   const typedActionWithText = typedAction as ParsedSlackBlockAction["typedActionWithText"];
   return {
     typedBody,

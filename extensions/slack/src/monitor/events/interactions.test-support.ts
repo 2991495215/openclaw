@@ -2,6 +2,7 @@ import type { SlackShortcutMiddlewareArgs } from "@slack/bolt";
 import { vi } from "vitest";
 import { encodeSlackApprovalAction, type SlackApprovalAction } from "../../approval-actions.js";
 import { installSlackTestRuntime } from "../../test-runtime.test-support.js";
+import type { SlackMonitorContext } from "../context.js";
 
 function buttonBlocks(blockId: string, control: { action_id: string; value?: string }) {
   return [
@@ -37,6 +38,37 @@ const execApprovals = (approver: string) => ({
 export function approvalContextOptions(pluginApprover: string, execApprover: string) {
   const account = { allowFrom: [pluginApprover], execApprovals: execApprovals(execApprover) };
   return { cfg: { channels: { slack: { accounts: { default: account } } } } };
+}
+
+export function approvedPluginBindingResult(): Extract<
+  Awaited<
+    ReturnType<
+      typeof import("openclaw/plugin-sdk/conversation-runtime").resolvePluginConversationBindingApproval
+    >
+  >,
+  { status: "approved" }
+> {
+  return {
+    status: "approved",
+    decision: "allow-once",
+    binding: {
+      bindingId: "binding-123",
+      pluginId: "codex",
+      pluginRoot: "/plugins/codex",
+      channel: "slack",
+      accountId: "default",
+      conversationId: "C1",
+      boundAt: 0,
+    },
+    request: {
+      id: "approval-123",
+      pluginId: "codex",
+      pluginName: "Codex",
+      pluginRoot: "/plugins/codex",
+      summary: "for this thread",
+      conversation: { channel: "slack", accountId: "default", conversationId: "C1" },
+    },
+  };
 }
 
 type ListenerArgs<Body> = {
@@ -153,7 +185,7 @@ export function createContext({
   } = {};
   const listenerClient = {
     chat: {
-      update: vi.fn().mockResolvedValue(undefined),
+      update: vi.fn<TestSlackClient["chat"]["update"]>().mockResolvedValue(undefined),
     },
   };
   const scoped =
@@ -199,11 +231,13 @@ export function createContext({
     }),
     client: listenerClient,
   };
-  const runtimeLog = vi.fn();
-  const resolveSessionKey = vi.fn().mockResolvedValue({
-    agentId: "ops",
-    sessionKey: "agent:ops:slack:channel:C1",
-  });
+  const runtimeLog = vi.fn<SlackMonitorContext["runtime"]["log"]>();
+  const resolveSessionKey = vi
+    .fn<SlackMonitorContext["resolveSlackSystemEventRoute"]>()
+    .mockResolvedValue({
+      agentId: "ops",
+      sessionKey: "agent:ops:slack:channel:C1",
+    });
   const isChannelAllowed = vi.fn(channelAllowed);
   const resolveUserName = vi.fn(userName);
   const resolveChannelName = vi.fn(channelName);

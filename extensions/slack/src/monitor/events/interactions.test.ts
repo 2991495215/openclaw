@@ -10,6 +10,7 @@ import {
   actionBody,
   approvalButtonBlocks,
   approvalContextOptions,
+  approvedPluginBindingResult,
   button,
   createContext,
   plainText,
@@ -549,11 +550,9 @@ describe("registerSlackInteractionEvents", () => {
   });
 
   it("resolves plugin binding approvals from shared interactive Slack actions", async () => {
-    resolvePluginConversationBindingApprovalMock.mockResolvedValueOnce({
-      status: "approved",
-      decision: "allow-once",
-      request: { pluginId: "codex", pluginName: "Codex", summary: "for this thread" },
-    });
+    resolvePluginConversationBindingApprovalMock.mockResolvedValueOnce(
+      approvedPluginBindingResult(),
+    );
     const { app, getHandler } = setupInteractions();
 
     await getHandler()({

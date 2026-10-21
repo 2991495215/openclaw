@@ -11,8 +11,14 @@ const enqueueSessionEventMock = vi.hoisted(() =>
 const captureSessionEventTargetMock = vi.hoisted(() =>
   vi.fn<PluginRuntime["system"]["captureSessionEventTarget"]>(),
 );
-const ack = vi.fn().mockResolvedValue(undefined);
-const respond = vi.fn().mockResolvedValue(undefined);
+const ack = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const respond = vi
+  .fn<
+    NonNullable<
+      Parameters<ReturnType<ReturnType<typeof createContext>["getHandler"]>>[0]["respond"]
+    >
+  >()
+  .mockResolvedValue(undefined);
 const readSlackMessagesMock = vi.hoisted(() =>
   vi.fn<typeof import("../../actions.js").readSlackMessages>(),
 );
@@ -34,8 +40,16 @@ type PluginDispatchParams = Parameters<
 const dispatchPluginInteractiveHandlerMock = vi.hoisted(() =>
   vi.fn<(arg: PluginDispatchParams) => Promise<DispatchPluginInteractiveHandlerResult>>(),
 );
-const resolvePluginConversationBindingApprovalMock = vi.hoisted(() => vi.fn());
-const buildPluginBindingResolvedTextMock = vi.hoisted(() => vi.fn(() => "Binding updated."));
+const resolvePluginConversationBindingApprovalMock = vi.hoisted(() =>
+  vi.fn<
+    typeof import("openclaw/plugin-sdk/conversation-runtime").resolvePluginConversationBindingApproval
+  >(),
+);
+const buildPluginBindingResolvedTextMock = vi.hoisted(() =>
+  vi.fn<typeof import("openclaw/plugin-sdk/conversation-runtime").buildPluginBindingResolvedText>(
+    () => "Binding updated.",
+  ),
+);
 type ApprovalResolveMockResult = {
   applied: boolean;
   approval: { presentation: { kind: "exec" | "plugin" | "system-agent" } } & (
@@ -74,17 +88,27 @@ vi.mock("../../test-runtime.test-support.js", async (importOriginal) => {
   };
 });
 
-vi.mock("openclaw/plugin-sdk/approval-gateway-runtime", () => ({
+vi.mock("openclaw/plugin-sdk/approval-gateway-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("openclaw/plugin-sdk/approval-gateway-runtime")>()),
   resolveApprovalOverGateway: (arg: unknown) => resolveApprovalOverGatewayMock(arg),
 }));
 
-vi.mock("../../actions.js", () => ({ readSlackMessages: readSlackMessagesMock }));
-
-vi.mock("openclaw/plugin-sdk/question-gateway-runtime", () => ({
-  questionGatewayRuntime: {
-    resolveOption: (arg: unknown) => resolveQuestionOverGatewayMock(arg),
-  },
+vi.mock("../../actions.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../actions.js")>()),
+  readSlackMessages: readSlackMessagesMock,
 }));
+
+vi.mock("openclaw/plugin-sdk/question-gateway-runtime", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("openclaw/plugin-sdk/question-gateway-runtime")>();
+  return {
+    ...actual,
+    questionGatewayRuntime: {
+      ...actual.questionGatewayRuntime,
+      resolveOption: (arg: unknown) => resolveQuestionOverGatewayMock(arg),
+    },
+  };
+});
 
 vi.mock("openclaw/plugin-sdk/plugin-runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/plugin-runtime")>();
@@ -99,14 +123,8 @@ vi.mock("openclaw/plugin-sdk/conversation-runtime", async (importOriginal) => {
 
   return {
     ...actual,
-    buildPluginBindingResolvedText: (...args: unknown[]) =>
-      (buildPluginBindingResolvedTextMock as (...innerArgs: unknown[]) => string)(...args),
-    resolvePluginConversationBindingApproval: (...args: unknown[]) =>
-      (
-        resolvePluginConversationBindingApprovalMock as (
-          ...innerArgs: unknown[]
-        ) => Promise<unknown>
-      )(...args),
+    buildPluginBindingResolvedText: buildPluginBindingResolvedTextMock,
+    resolvePluginConversationBindingApproval: resolvePluginConversationBindingApprovalMock,
   };
 });
 
@@ -155,6 +173,7 @@ beforeEach(() => {
 
 export function setupInteractions(options?: Parameters<typeof createContext>[0]) {
   const context = createContext(options);
+  // SAFETY: createContext supplies the listener registration, policy, routing, and runtime fields exercised by these handlers; unrelated monitor services stay absent.
   registerSlackInteractionEvents({ ctx: context.ctx as never });
   return context;
 }
