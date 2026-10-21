@@ -149,9 +149,7 @@ export function TranscriptSearchResults(props: TranscriptSearchViewProps) {
           </div>
         )}
       >
-        {/* Re-arm at issuance; a bare promise would make the dependency await its result. */}
         <Loading
-          on={[props.transcriptSearch]}
           fallback={
             <div class="sessions-transcript-search__status" aria-live="polite" aria-busy="true">
               <span class="muted">{t("sessionsView.transcriptSearchSearching")}</span>

@@ -169,9 +169,10 @@ export function SessionsView(props: SessionsProps) {
           </>
         }
       >
-        <Show when={props.transcriptSearch !== null}>
-          <TranscriptSearchResults {...props} readSearch={transcriptSearch} />
-        </Show>
+        {/* Each admitted request retires its results while the search controls stay mounted. */}
+        <For each={props.transcriptSearch === null ? [] : [props.transcriptSearch]}>
+          {() => <TranscriptSearchResults {...props} readSearch={transcriptSearch} />}
+        </For>
         <SessionsTable {...props} />
       </SettingsSection>
     </SettingsPage>
