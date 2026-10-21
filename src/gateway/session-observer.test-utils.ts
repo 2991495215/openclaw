@@ -1,3 +1,4 @@
+import "../config/sessions/session-entry-patch-delivery.test-support.js";
 import path from "node:path";
 import { beforeEach, onTestFinished, vi } from "vitest";
 import type { SessionObserverDigest } from "../../packages/gateway-protocol/src/schema/sessions.js";
@@ -8,7 +9,6 @@ import {
   readExactSessionEntryRow,
   writeSessionEntry,
 } from "../config/sessions/session-accessor.sqlite-entry-store.js";
-import { getSessionEntryPatchDelivery } from "../config/sessions/session-entry-patch-delivery.test-support.js";
 import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../config/sessions/session-sqlite-target-paths.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -29,6 +29,10 @@ import type { SessionObserverPersistDigest } from "./session-observer-model.js";
 import * as observerReads from "./session-observer-read.js";
 import { createSessionObserver } from "./session-observer.js";
 import { createSessionRowProjectionFixture } from "./session-row-projection.test-support.js";
+
+// Keep mock registration in the early side-effect import, ahead of native consumers.
+const { getSessionEntryPatchDelivery } =
+  await import("../config/sessions/session-entry-patch-delivery.test-support.js");
 
 const cfg = {
   gateway: { controlUi: { sessionObserver: true } },
