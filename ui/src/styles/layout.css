@@ -1317,6 +1317,10 @@ openclaw-settings-save-indicator:empty {
   cursor: var(--cursor-action);
 }
 
+.sidebar-recent-sessions--pinned {
+  margin-block-end: var(--sidebar-group-gap);
+}
+
 .shell:not(.shell--mobile-nav) .sidebar-recent-sessions {
   margin-inline: -6px;
 }

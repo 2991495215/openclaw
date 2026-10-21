@@ -1,5 +1,5 @@
 import type { AgentIdentityResult, GatewayAgentRow } from "../api/types.ts";
-import type { NavigationRouteId } from "../app-navigation.ts";
+import type { NavigationRouteId, SidebarZoneEntry } from "../app-navigation.ts";
 import type { ApplicationContext, ApplicationNavigationOptions } from "../app/context.ts";
 import type { NativeGatewaysSnapshot } from "../app/native-gateways.runtime.ts";
 import type { ThemeMode } from "../app/theme.ts";
@@ -60,6 +60,10 @@ export interface SidebarMenusOwner extends SidebarRouteView {
     request: import("../lib/session-method-access.ts").SessionMethodAccessRequest,
   ): import("../lib/session-method-access.ts").SessionMethodAccess;
   readonly sidebarEntries: readonly string[];
+  reconciledSidebarZone(): {
+    entries: readonly SidebarZoneEntry[];
+    sessionRows: ReadonlyMap<string, SidebarRecentSession>;
+  };
   readonly catalogProjectGrouping: CatalogProjectGrouping;
   setCatalogProjectGrouping(grouping: CatalogProjectGrouping): void;
   hideSessionCatalog(catalogId: string): void;

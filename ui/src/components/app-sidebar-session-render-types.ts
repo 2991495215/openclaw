@@ -1,7 +1,7 @@
 import type { JSX as SolidJSX } from "@solidjs/web";
 import type { SessionObserverDigest } from "../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { GatewaySessionRow } from "../api/types.ts";
-import type { NavigationRouteId } from "../app-navigation.ts";
+import type { NavigationRouteId, SidebarZoneEntry } from "../app-navigation.ts";
 import type { ApplicationContext, ApplicationNavigationOptions } from "../app/context.ts";
 import type { CatalogOpenTarget } from "../app/settings.ts";
 import type { PresenceActivity } from "../lib/presence-users.ts";
@@ -81,6 +81,10 @@ export interface SessionListHost {
     | "handleSessionListDragLeave"
     | "handleSessionListDragOver"
     | "handleSessionListDrop"
+    | "handleSidebarZoneDragOver"
+    | "handleSidebarZoneDragLeave"
+    | "handleSidebarZoneDrop"
+    | "sidebarZoneDropTarget"
     | "sectionDragLeave"
     | "sectionDragOver"
     | "sectionDrop"
@@ -173,6 +177,10 @@ export type SessionCatalogGroupsParams = {
 
 export type RenderableSessionSection = SidebarVisibleSections["sections"][number];
 export type SidebarSessionListHost = SessionListHost & {
+  reconciledSidebarZone(): {
+    entries: readonly SidebarZoneEntry[];
+    sessionRows: ReadonlyMap<string, SidebarRecentSession>;
+  };
   readonly sidebarAgentsMode: "chip" | "roster";
   readonly sessionData: SessionListHost["sessionData"] &
     Pick<

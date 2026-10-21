@@ -27,6 +27,7 @@ type RecentSessionParams = {
   session: SidebarRecentSession;
   display?: CatalogBackingSessionDisplay;
   listItem?: boolean;
+  pinned?: boolean;
   icon?: JSX.Element;
 };
 export function renderRecentSession(params: RecentSessionParams) {
@@ -124,7 +125,9 @@ function renderRecentSessionRow(params: RecentSessionParams) {
       requiredScope: "operator.write",
     }),
   );
-  const rowDraggable = createMemo(() => groupWriteAccess().allowed);
+  const rowDraggable = createMemo(
+    () => !host().sidebarSnapshot && (pinnable() || groupWriteAccess().allowed),
+  );
   const marqueeLabelTemplate = () => {
     const teamValue = team();
     const labelValue = label();
@@ -165,6 +168,10 @@ function renderRecentSessionRow(params: RecentSessionParams) {
       }}
       class={[
         "sidebar-recent-session session-row-host",
+        params.pinned &&
+        host().sessionOrganizer.sidebarZoneDropTarget?.entry === `session:${session().key}`
+          ? `sidebar-zone-entry--drop-${host().sessionOrganizer.sidebarZoneDropTarget?.position}`
+          : undefined,
         {
           "sidebar-recent-session--team": team(),
           "sidebar-recent-session--colored": Boolean(color()),
@@ -191,6 +198,7 @@ function renderRecentSessionRow(params: RecentSessionParams) {
       ]}
       style={{ "--session-color": color() ? `var(--session-color-${color()})` : undefined }}
       data-session-key={session().key}
+      data-sidebar-entry={params.pinned ? `session:${session().key}` : undefined}
       data-catalog-session-key={display()?.catalogIdentityKey ?? undefined}
       role={listItem() ? "listitem" : undefined}
       draggable={rowDraggable() ? "true" : "false"}
@@ -205,6 +213,24 @@ function renderRecentSessionRow(params: RecentSessionParams) {
         }
       }}
       onDragEnd={() => host().sessionOrganizer.finishSessionDrag()}
+      onDragOver={(event) => {
+        if (params.pinned) {
+          host().sessionOrganizer.handleSidebarZoneDragOver(
+            event,
+            `session:${session().key}`,
+            "sessions",
+          );
+        }
+      }}
+      onDrop={(event) => {
+        if (params.pinned) {
+          host().sessionOrganizer.handleSidebarZoneDrop(
+            event,
+            `session:${session().key}`,
+            "sessions",
+          );
+        }
+      }}
       onContextMenu={openMenuFromEvent}
       onKeyDown={openMenuFromEvent}
     >
@@ -296,6 +322,7 @@ function renderRecentSessionRow(params: RecentSessionParams) {
               ref={(element) => (controls.pin = element)}
               data-sidebar-session-pin="true"
               type="button"
+              disabled={Boolean(host().sidebarSnapshot)}
               title={pinLabel()}
               aria-label={pinLabel()}
               onClick={() => host().toggleSessionPin(session())}
@@ -313,7 +340,12 @@ function renderRecentSessionRow(params: RecentSessionParams) {
               return access.allowed ? archiveLabel() : access.reason;
             })()}
             aria-label={`${archiveLabel()}: ${label()}`}
-            disabled={!archiveAccess().allowed || !archiveAllowed() || archiving()}
+            disabled={
+              Boolean(host().sidebarSnapshot) ||
+              !archiveAccess().allowed ||
+              !archiveAllowed() ||
+              archiving()
+            }
             onClick={(event: MouseEvent) => {
               event.stopPropagation();
               if (session().archived) {
@@ -408,6 +440,7 @@ export function renderSessionTree(params: {
   host: SessionListHost;
   session: SidebarRecentSession;
   listItem?: boolean;
+  pinned?: boolean;
   icon?: JSX.Element;
 }): JSX.Element {
   const host = createMemo(() => params.host),
@@ -430,7 +463,13 @@ export function renderSessionTree(params: {
       data-session-tree={session().key}
       role={listItem() ? "listitem" : undefined}
     >
-      <RecentSession host={host()} session={session()} listItem={false} icon={icon()} />
+      <RecentSession
+        host={host()}
+        session={session()}
+        listItem={false}
+        icon={icon()}
+        pinned={params.pinned}
+      />
       {expanded() ? (
         <div class="sidebar-session-tree__children">
           {visibleChildren().length > 0 ? (

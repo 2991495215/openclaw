@@ -12,6 +12,7 @@ import {
   renderPersonalSessionEmpty,
   renderSessionMutationError,
 } from "./app-sidebar-session-filter-summary.tsx";
+import { sidebarPinnedSessionRows } from "./app-sidebar-session-projection.ts";
 import type {
   RenderableSessionSection,
   SidebarSessionListHost,
@@ -182,6 +183,30 @@ export function renderSessionList(params: {
     </div>,
   );
 }
+function PinnedSessionSection(props: { host: SidebarSessionListHost }) {
+  const rows = createMemo(() =>
+    sidebarPinnedSessionRows(props.host.reconciledSidebarZone(), (key) =>
+      props.host.sessionDataContext?.sessions.archiveVisibility(key),
+    ),
+  );
+  const section = createMemo<RenderableSessionSection>(() => ({
+    id: "pinned",
+    rows: rows(),
+    totalRowCount: rows().length,
+    visibleRowCount: props.host.collapsedSessionSections.has("pinned") ? 0 : rows().length,
+    visibleLimit: rows().length,
+    collapsedVisibleRowCount: rows().length,
+    renderHeader: true,
+  }));
+  return (
+    <Show when={rows().length > 0}>
+      <div class="sidebar-recent-sessions sidebar-recent-sessions--pinned">
+        <SessionSection host={props.host} section={section()} personHeaders={undefined} />
+      </div>
+    </Show>
+  );
+}
+
 export function renderSessionListFrame(host: () => SidebarSessionListHost, body: JSX.Element) {
   const home = createMemo(() =>
     host().sidebarAgentsMode === "roster" ? null : host().mainSessionRow(),
@@ -222,7 +247,9 @@ export function renderSessionListFrame(host: () => SidebarSessionListHost, body:
           {t("sessionsView.moveToTopLevel")}
         </div>
       ) : undefined}
-      {renderSessionMutationError(host())} {body}
+      {renderSessionMutationError(host())}
+      <PinnedSessionSection host={host()} />
+      {body}
     </section>
   );
 }

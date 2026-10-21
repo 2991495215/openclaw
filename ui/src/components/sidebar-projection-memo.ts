@@ -1,5 +1,6 @@
 import type { SessionObserverDigest } from "../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { GatewaySessionRow, SessionsListResult } from "../api/types.ts";
+import { parseSidebarEntry } from "../app-navigation.ts";
 import { isSessionRouteId, type RouteId } from "../app-route-paths.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { i18n } from "../i18n/index.ts";
@@ -33,6 +34,7 @@ import type {
 } from "./sidebar-projection-cache.ts";
 
 export type SidebarProjectionHost = {
+  readonly sidebarEntries: readonly string[];
   readonly sessionData: SessionDataOwner;
   readonly sessionDataContext: ApplicationContext | undefined;
   readonly sessionProjection: SidebarSessionProjection;
@@ -123,6 +125,7 @@ export function memoizedSidebarSections(
   return memo.read(
     () => [
       rows,
+      host.sidebarEntries,
       catalogs,
       roster,
       host.collapsedSessionSections,
@@ -140,9 +143,19 @@ export function memoizedSidebarSections(
     ],
     () => {
       const grouping = host.effectiveSessionsGrouping();
+      const pinnedKeys = new Set(
+        host.sidebarEntries.flatMap((value) => {
+          const entry = parseSidebarEntry(value);
+          return entry?.type === "session" ? [entry.key] : [];
+        }),
+      );
       const sections = roster?.agentIds.map((agentId) => ({
         id: `agent:${agentId}:recent` as const,
-        rows: rows.filter((row) => !row.pinned && host.sessionNavigationAgentId(row) === agentId),
+        rows: rows.filter(
+          (row) =>
+            (!pinnedKeys.has(row.key) || row.archived) &&
+            host.sessionNavigationAgentId(row) === agentId,
+        ),
       }));
       const collapsedSections = new Set(host.collapsedSessionSections);
       for (const agentId of roster?.collapsedAgentIds ?? []) {
@@ -150,6 +163,7 @@ export function memoizedSidebarSections(
       }
       return host.sessionProjection.project({
         rows,
+        pinnedKeys,
         sections,
         grouping,
         knownGroups: grouping === "category" ? host.knownSessionGroups() : [],

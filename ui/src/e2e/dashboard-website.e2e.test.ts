@@ -98,13 +98,14 @@ suite.define(() => {
         await catalogRow.hover();
         await catalogRow.getByRole("button", { name: "Pin", exact: true }).click();
         const pinned = sidebar.locator(
-          `.sidebar-rail__pin[data-sidebar-entry="session:${sessionKey}"]`,
+          `[data-session-section="pinned"] .sidebar-recent-session[data-session-key="${sessionKey}"]`,
         );
-        await pinned.getByRole("link", { name: "Service status", exact: true }).waitFor();
         expect(await catalogRow.getByRole("button", { name: "Unpin", exact: true }).count()).toBe(
           1,
         );
         expect(await gateway.getRequests("sessions.patch")).toHaveLength(0);
+        await sidebar.locator('[data-navigation-view="sessions"]').click();
+        await pinned.getByRole("link", { name: "Service status", exact: true }).waitFor();
         await content.getByRole("textbox", { name: "Status note" }).fill("Keep this note");
         const originalFrame = await frame.elementHandle();
         expect(
@@ -156,8 +157,10 @@ suite.define(() => {
         });
         await page.mouse.move(0, 0);
         await page.screenshot({ path: `${suite.artifactDir}/website-expanded.png` });
+        await sidebar.locator('[data-navigation-view="pages"]').click();
         await pages.getByRole("link", { name: "Agents", exact: true }).click();
         await page.waitForURL(`${suite.server.baseUrl}agents`);
+        await sidebar.locator('[data-navigation-view="sessions"]').click();
         await pinned.getByRole("link", { name: "Service status", exact: true }).click();
         await frame.waitFor();
         await expect.poll(() => page.locator(".sidebar-region--expanded").count()).toBe(1);

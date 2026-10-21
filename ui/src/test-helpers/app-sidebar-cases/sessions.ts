@@ -281,7 +281,9 @@ describe("AppSidebar session source lifecycle", () => {
     sidebar.sidebarEntries = [`session:${key}`];
     await sidebar.updateComplete;
     const pinnedEntry = () =>
-      sidebar.querySelector(`.sidebar-rail [data-sidebar-entry="session:${key}"] a`);
+      sidebar.querySelector(
+        `[data-session-section="pinned"] [data-session-key="${key}"] a.sidebar-recent-session__link`,
+      );
 
     expect(pinnedEntry()).not.toBeNull();
 

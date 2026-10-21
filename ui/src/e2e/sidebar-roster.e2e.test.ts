@@ -106,7 +106,7 @@ suite.define(() => {
             items.map((item) => item.getAttribute("data-agent-id")),
           ),
         ).toEqual(["main", "forge", "scout"]);
-        expect(await sidebar.locator(".sidebar-recent-session").count()).toBe(0);
+        expect(await sidebar.locator(".sidebar-recent-session").count()).toBe(1);
         expect(await sidebar.locator("[data-agent-collapse]").count()).toBe(0);
         expect(
           await sidebar.locator(".sidebar-agent-roster__signals .session-unread-dot").count(),
@@ -120,7 +120,7 @@ suite.define(() => {
         ).toBe(1);
         expect(
           await sidebar
-            .locator('.sidebar-rail [data-sidebar-entry="session:agent:forge:project"]')
+            .locator('[data-session-section="pinned"] [data-session-key="agent:forge:project"]')
             .count(),
         ).toBe(1);
         await captureSidebarUiProof(suite, page, "sidebar-agent-only-roster.png");

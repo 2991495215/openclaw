@@ -26,6 +26,9 @@ const suite = createSessionManagementE2eSuite();
 const baselineMode = process.env.OPENCLAW_SIDEBAR_BASELINE === "1";
 const selectedKey = "agent:main:dashboard:00000000-0000-4000-8000-000000000006";
 const railPins = ["route:agents-home", `session:${selectedKey}`, "plugin:reports/overview"];
+const visibleRailPins = baselineMode
+  ? railPins
+  : railPins.filter((entry) => !entry.startsWith("session:"));
 const pluginPath = "/__openclaw__/plugins/control-ui/reports/one/index.js";
 const avatarUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAIElEQVR4nGN4nhWCFTEQkPj64w8ag5AEPqPgiDgdmAgA9YRzYZfFh50AAAAASUVORK5CYII=";
@@ -46,7 +49,10 @@ async function observeShape(sidebar: Locator) {
       selectedBounds: { x: number; y: number; width: number; height: number } | null;
     }> = [];
     const sample = () => {
-      const selected = element.querySelector(`.sidebar-rail [data-sidebar-entry="session:${key}"]`);
+      // Personal pins are mounted only in Sessions; Pages catalog rows are a separate surface.
+      const selected = element.querySelector(
+        `[data-session-section="pinned"] .sidebar-recent-session[data-session-key="${key}"], .sidebar-rail [data-sidebar-entry="session:${key}"]`,
+      );
       const bounds = selected?.getBoundingClientRect();
       const next = {
         navigation: [...element.querySelectorAll("[data-sidebar-entry]")].map((row) =>
@@ -174,7 +180,7 @@ async function waitForSavedSidebar(page: Page, view: "sessions" | "pages") {
 
 suite.define(() => {
   it.each(baselineMode ? (["sessions"] as const) : (["sessions", "pages"] as const))(
-    "restores the %s view and pinned rail before hello through late counts and plugins",
+    "restores the %s view and personal pins before hello through late counts and plugins",
     async (view) => {
       const agents: AgentsListResult = {
         defaultId: "main",
@@ -369,7 +375,7 @@ suite.define(() => {
                 .locator(".sidebar-rail [data-sidebar-entry]")
                 .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-sidebar-entry"))),
             )
-            .toEqual(railPins);
+            .toEqual(visibleRailPins);
           if (!baselineMode) {
             await waitForSavedSidebar(page, view);
           }
@@ -384,10 +390,10 @@ suite.define(() => {
           await reference.evaluate((observer) => observer.stop());
           await reference.dispose();
           expect(settled.navigation.filter((key) => key?.startsWith("session:"))).toHaveLength(
-            view === "pages" ? 12 : 1,
+            view === "pages" ? (baselineMode ? 12 : 11) : 1,
           );
-          expect(settled.sessions).toEqual([]);
-          expect(settled.rail).toEqual(railPins);
+          expect(settled.sessions).toEqual(view === "pages" || baselineMode ? [] : [selectedKey]);
+          expect(settled.rail).toEqual(visibleRailPins);
           expect(settled.view).toBe(view);
           expect(settled.agents).toEqual(view === "pages" ? [] : ["main", "forge", "scout"]);
           expect(settled.agentNames).toEqual(view === "pages" ? [] : ["Harbor", "Forge", "Scout"]);
@@ -395,7 +401,7 @@ suite.define(() => {
           expect(settled.brand).toBe("OpenClaw");
           expect(settled.footer).toBe("Riley");
           expect(settled.online).toEqual([]);
-          expect(settled.selectedBounds).not.toBeNull();
+          expect(settled.selectedBounds === null).toBe(view === "pages" && !baselineMode);
 
           if (baselineMode) {
             await page.reload();
@@ -425,7 +431,7 @@ suite.define(() => {
               1,
             );
             expect(reloaded.sessions).toEqual(settled.sessions);
-            expect(reloaded.rail).toEqual(railPins);
+            expect(reloaded.rail).toEqual(visibleRailPins);
             expect(reloaded.avatarText).toEqual(["⚓", "🔧", "🔭"]);
             await capture(page, sidebar, "sidebar-old-settled.png");
             await writeFile(

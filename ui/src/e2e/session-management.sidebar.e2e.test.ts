@@ -697,7 +697,7 @@ suite.define(() => {
     }
   });
 
-  it("keeps a personal pin alongside its ordinary chat and presents its pin state", async () => {
+  it("keeps a personal pin once in Pinned and presents its pin state", async () => {
     const context = await suite.browser.newContext({
       colorScheme: "dark",
       locale: "en-US",
@@ -710,6 +710,7 @@ suite.define(() => {
       methodResponses: {
         "sessions.list": sessionsListResponse([
           sessionRow("agent:main:pinned", "Pinned only", Date.parse("2026-07-01T16:00:00.000Z")),
+          sessionRow("agent:main:other", "Other work", Date.parse("2026-07-01T15:59:00.000Z")),
         ]),
         "sessions.patch": {},
       },
@@ -723,8 +724,7 @@ suite.define(() => {
       const chatsGroup = page.locator('[data-session-section="ungrouped"]');
       await pinnedEntry.getByRole("link", { name: "Pinned only", exact: true }).waitFor();
       await expect.poll(() => chatsGroup.locator(".sidebar-recent-session").count()).toBe(1);
-      expect(await pinnedEntry.locator(".sidebar-recent-session").count()).toBe(0);
-      const ordinaryRow = chatsGroup.locator('[data-session-key="agent:main:pinned"]');
+      const ordinaryRow = pinnedEntry;
       await expect.poll(() => page.locator(".sidebar-recent-session--active").count()).toBe(1);
       const pin = ordinaryRow.getByRole("button", { name: "Unpin session" });
       const menu = ordinaryRow.locator("[data-sidebar-session-archive]");
@@ -746,19 +746,22 @@ suite.define(() => {
         })
         .toBe(true);
 
-      // Removing the rail shortcut by drag never moves or patches the shared row.
+      // Dragging out of Pinned removes only the personal pin.
       const patchCount = (await gateway.getRequests("sessions.patch")).length;
-      await pinnedEntry.dragTo(page.locator(".sidebar-recent-sessions"));
+      await pinnedEntry.dragTo(chatsGroup);
       await expect.poll(() => pinnedEntry.count()).toBe(0);
-      await expect.poll(() => chatsGroup.locator(".sidebar-recent-session").count()).toBe(1);
-      await ordinaryRow.getByRole("button", { name: "Pin session", exact: true }).waitFor();
+      await expect.poll(() => chatsGroup.locator(".sidebar-recent-session").count()).toBe(2);
+      await chatsGroup
+        .locator('[data-session-key="agent:main:pinned"]')
+        .getByRole("button", { name: "Pin session", exact: true })
+        .waitFor();
       expect(await gateway.getRequests("sessions.patch")).toHaveLength(patchCount);
     } finally {
       await context.close();
     }
   });
 
-  it("personally pins a session dropped below an existing rail shortcut without moving its group", async () => {
+  it("personally pins a session dropped below a pinned row without changing its group", async () => {
     const context = await suite.browser.newContext({
       locale: "en-US",
       serviceWorkers: "block",
@@ -814,15 +817,15 @@ suite.define(() => {
       await expect
         .poll(() =>
           page
-            .locator('.sidebar-rail [data-sidebar-entry^="session:"] a')
-            .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label"))),
+            .locator('[data-session-section="pinned"] .sidebar-recent-session__name')
+            .evaluateAll((labels) => labels.map((label) => label.textContent)),
         )
         .toEqual(["Already pinned", "Pin me"]);
       expect(await gateway.getRequests("sessions.patch")).toHaveLength(patchCount);
-      await expect.poll(() => researchGroup.locator(".sidebar-recent-session").count()).toBe(1);
+      await expect.poll(() => researchGroup.locator(".sidebar-recent-session").count()).toBe(0);
 
-      const pinnedCandidate = researchGroup.locator(
-        '.sidebar-recent-session[data-session-key="agent:main:candidate"]',
+      const pinnedCandidate = page.locator(
+        '[data-session-section="pinned"] [data-session-key="agent:main:candidate"]',
       );
       await pinnedCandidate.getByRole("button", { name: "Unpin session", exact: true }).waitFor();
       await pinnedCandidate.click({ button: "right" });

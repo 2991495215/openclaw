@@ -1,4 +1,5 @@
 import { isIncognitoSessionKey } from "../../../src/shared/incognito-session-key.js";
+import { parseSidebarEntry } from "../app-navigation.ts";
 import type { SidebarVisibleSections } from "./app-sidebar-session-projection.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
 import type { SidebarSnapshotModel, SidebarSnapshotSession } from "./sidebar-snapshot-data.ts";
@@ -72,7 +73,10 @@ export function snapshotSections(
   const retained = new Set<string>(sections.map((section) => section.id));
   return {
     sections,
-    collapsedSections: [...collapsedSections].filter((id) => id === "online" || retained.has(id)),
+    // Pinned is rendered separately from the ordinary section projection.
+    collapsedSections: [...collapsedSections].filter(
+      (id) => id === "online" || id === "pinned" || retained.has(id),
+    ),
   };
 }
 
@@ -80,11 +84,27 @@ export function restoreSnapshotSections(
   model: SidebarSnapshotModel,
   selected: string,
 ): SidebarVisibleSections {
+  const pinnedKeys = new Set(
+    model.entries.flatMap((value) => {
+      const entry = parseSidebarEntry(value);
+      return entry?.type === "session" ? [entry.key] : [];
+    }),
+  );
+  const hasPinnedRows = [...model.sessions, ...model.pinnedSessions].some(
+    (row) => pinnedKeys.has(row.key) && !row.archived,
+  );
   const sections: SidebarVisibleSections["sections"] = [];
   for (const section of model.sections) {
+    // Snapshots captured before the move also kept personal pins in ordinary lists.
+    const rows = section.rows.filter((row) => !pinnedKeys.has(row.key) || row.archived);
+    const removed = section.rows.length - rows.length;
     sections.push({
       ...section,
-      rows: section.rows.map((row) => restoreSnapshotSession(row, selected)),
+      rows: rows.map((row) => restoreSnapshotSession(row, selected)),
+      totalRowCount: section.totalRowCount - removed,
+      visibleRowCount: Math.min(section.visibleRowCount, rows.length),
+      collapsedVisibleRowCount: Math.min(section.collapsedVisibleRowCount, rows.length),
+      renderHeader: section.renderHeader || (section.id === "ungrouped" && hasPinnedRows),
     });
   }
   return { sections, visibleRows: sections.flatMap((section) => section.rows) };

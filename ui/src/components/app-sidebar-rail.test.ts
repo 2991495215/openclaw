@@ -87,8 +87,21 @@ function mockMobile(matches: (query: string) => boolean) {
 function rail(sidebar: Sidebar, entry: string) {
   return sidebar.querySelector(`.sidebar-rail [data-sidebar-entry="${entry}"]`);
 }
+function pinnedSession(sidebar: Sidebar, key: string) {
+  return sidebar.querySelector(
+    `[data-session-section="pinned"] .sidebar-recent-session[data-session-key="${key}"]`,
+  );
+}
+function pinnedLabels(sidebar: Sidebar) {
+  return [
+    ...sidebar.querySelectorAll('[data-session-section="pinned"] .sidebar-recent-session__name'),
+  ].map((label) => label.textContent?.trim());
+}
 function link(sidebar: Sidebar, entry: string) {
-  return rail(sidebar, entry)!.querySelector<HTMLAnchorElement>("a")!;
+  const row = entry.startsWith("session:")
+    ? pinnedSession(sidebar, entry.slice("session:".length))
+    : rail(sidebar, entry);
+  return row!.querySelector<HTMLAnchorElement>("a")!;
 }
 function tooltip() {
   return document.body.querySelector<HTMLElementTagNameMap["openclaw-tooltip"]>(
@@ -200,89 +213,119 @@ describe("personal navigation rail", () => {
     ).toEqual([false, false, true]);
   });
 
-  it("pins and unpins sessions personally without sessions.patch", async () => {
+  it("pins and unpins sessions personally without sessions.patch or an empty section", async () => {
     const { sidebar, sessions, dom } = await fixture();
-    const pin = dom.query<HTMLButtonElement>(
-      '[data-session-key="agent:main:mine"] [data-sidebar-session-pin]',
-    );
-    expect(pin).not.toBeNull();
+    expect(dom.query('[data-session-section="pinned"]')).toBeNull();
     for (const pinned of [true, false]) {
-      pin!.click();
-      await sidebar.updateComplete;
+      await click(sidebar, '[data-session-key="agent:main:mine"] [data-sidebar-session-pin]');
       expect(sidebar.sidebarEntries).toEqual(pinned ? ["session:agent:main:mine"] : []);
-      expect(
-        pin!.closest(".session-row-host")?.classList.contains("session-row-host--pinned"),
-      ).toBe(pinned);
-      if (pinned) {
-        expect(rail(sidebar, "session:agent:main:mine")).not.toBeNull();
-      }
+      const row = dom.query('[data-session-key="agent:main:mine"]')!;
+      expect(row.classList.contains("session-row-host--pinned")).toBe(pinned);
+      expect(Boolean(pinnedSession(sidebar, "agent:main:mine"))).toBe(pinned);
+      expect(Boolean(dom.query('[data-session-section="pinned"]'))).toBe(pinned);
+      expect(rail(sidebar, "session:agent:main:mine")).toBeNull();
+      expect(dom.all('[data-session-key="agent:main:mine"]')).toHaveLength(1);
       expect(sessions.sessions.patch).not.toHaveBeenCalled();
     }
   });
 
-  it("adds a session to an empty rail and shows the drop affordance only during its drag", async () => {
-    const { sidebar, sessions, publish, dom } = await fixture();
-    publish({ label: "Release Notes" });
-    await sidebar.updateComplete;
-    const pins = dom.query(".sidebar-rail__pins")!;
-    expect(pins.children).toHaveLength(0);
-    expect(pins.classList.contains("sidebar-rail__pins--drag-active")).toBe(false);
-    const unrelated = createDataTransferStub();
-    unrelated.setData("text/plain", "not a sidebar item");
-    expect(drag(pins, "dragover", unrelated).defaultPrevented).toBe(false);
-    await sidebar.updateComplete;
-    expect(pins.classList.contains("sidebar-rail__pins--drag-active")).toBe(false);
+  it.each(["collapsed", "archived"] as const)(
+    "excludes %s pins from visible selection and Shift ranges",
+    async (hidden) => {
+      const { sidebar, publish } = await fixture({
+        sidebarEntries: ["session:agent:main:mine"],
+      });
+      link(sidebar, "session:agent:main:mine").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, altKey: true }),
+      );
+      await sidebar.updateComplete;
+      expect(sidebar.selectedVisibleSessions().map((row) => row.key)).toEqual(["agent:main:mine"]);
+      if (hidden === "collapsed") {
+        await click(sidebar, '[data-session-section="pinned"] .sidebar-session-group-toggle');
+      } else {
+        publish({ archived: true });
+        await sidebar.updateComplete;
+      }
+      expect(pinnedSession(sidebar, "agent:main:mine")).toBeNull();
+      expect(sidebar.selectedVisibleSessions()).toEqual([]);
+      sidebar
+        .querySelector('[data-session-key="agent:main:other"] a')!
+        .dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }),
+        );
+      await sidebar.updateComplete;
+      expect([...sidebar.selectedSessionKeys]).toEqual(["agent:main:other"]);
+      expect(sidebar.selectedVisibleSessions().map((row) => row.key)).toEqual(["agent:main:other"]);
+    },
+  );
 
+  it("rejects session drops in the rail and reorders pins in Sessions without a dropzone", async () => {
+    const { sidebar, sessions, dom } = await fixture();
+    const railPins = dom.query(".sidebar-rail__pins")!;
     const source = dom.query('[data-session-key="agent:main:mine"]')!;
     const transfer = createDataTransferStub();
     drag(source, "dragstart", transfer);
     await sidebar.updateComplete;
-    expect(pins.classList.contains("sidebar-rail__pins--drag-active")).toBe(true);
-    expect(drag(pins, "dragover", transfer).defaultPrevented).toBe(true);
-    drag(pins, "drop", transfer);
+    expect(railPins.classList.contains("sidebar-rail__pins--drag-active")).toBe(false);
+    expect(drag(railPins, "dragover", transfer).defaultPrevented).toBe(false);
+    drag(railPins, "drop", transfer);
+    drag(source, "dragend", transfer);
     await sidebar.updateComplete;
-    expect(sidebar.sidebarEntries).toEqual(["session:agent:main:mine"]);
+    expect(sidebar.sidebarEntries).toEqual([]);
+    expect(dom.query('[data-session-section="pinned"]')).toBeNull();
+
+    await click(sidebar, '[data-session-key="agent:main:mine"] [data-sidebar-session-pin]');
+    const section = dom.query('[data-session-section="pinned"]')!;
+    const second = dom.query('[data-session-key="agent:main:other"]')!;
+    const secondDrag = createDataTransferStub();
+    drag(second, "dragstart", secondDrag);
+    expect(drag(section, "dragover", secondDrag).defaultPrevented).toBe(true);
+    await sidebar.updateComplete;
+    expect(section.classList.contains("sidebar-recent-sessions__group--session-drop")).toBe(false);
+    expect(railPins.classList.contains("sidebar-rail__pins--drag-active")).toBe(false);
+    drag(section, "drop", secondDrag);
+    await sidebar.updateComplete;
+    expect(sidebar.sidebarEntries).toEqual(["session:agent:main:mine", "session:agent:main:other"]);
+
+    const moved = pinnedSession(sidebar, "agent:main:other")!;
+    const target = pinnedSession(sidebar, "agent:main:mine")!;
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 10, 100, 20));
+    const reorder = createDataTransferStub();
+    drag(moved, "dragstart", reorder);
+    drag(target, "dragover", reorder);
+    drag(target, "drop", reorder);
+    await sidebar.updateComplete;
+    expect(sidebar.sidebarEntries).toEqual(["session:agent:main:other", "session:agent:main:mine"]);
     expect(
-      pins.querySelector('[aria-label="Release Notes"] .sidebar-rail__monogram')?.textContent,
-    ).toBe("RN");
-    expect(pins.classList.contains("sidebar-rail__pins--drag-active")).toBe(false);
+      [...section.querySelectorAll("[data-sidebar-entry]")].map((row) =>
+        row.getAttribute("data-sidebar-entry"),
+      ),
+    ).toEqual(sidebar.sidebarEntries);
+    expect(railPins.children).toHaveLength(0);
     expect(sessions.sessions.patch).not.toHaveBeenCalled();
-    const pin = pins.querySelector(".sidebar-rail__pin")!;
-    drag(pin, "dragstart", transfer);
-    await sidebar.updateComplete;
-    expect(pins.classList.contains("sidebar-rail__pins--drag-active")).toBe(true);
-    drag(pin, "dragend", transfer);
-    await sidebar.updateComplete;
-    expect(pins.classList.contains("sidebar-rail__pins--drag-active")).toBe(false);
   });
 
   it.each([
-    { label: "Résumé", icon: undefined, monogram: "R" },
+    { label: "Résumé", icon: undefined },
     {
       label: "Architecture",
       icon: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>')}`,
-      monogram: undefined,
     },
-  ])("uses the session artwork or title initials for $label", async ({ label, icon, monogram }) => {
+  ])("keeps the full title and session artwork for $label", async ({ label, icon }) => {
     const { sidebar, publish } = await fixture();
     publish({ label, icon });
     await update(sidebar, { sidebarEntries: ["session:agent:main:mine"] });
-    const pin = rail(sidebar, "session:agent:main:mine")!;
+    const pin = pinnedSession(sidebar, "agent:main:mine")!;
     const artwork = domProbe(pin);
-    expect({ label: artwork.attr("a", "aria-label"), title: pin.getAttribute("title") }).toEqual({
-      label,
-      title: label,
-    });
-    expect(artwork.text(".sidebar-rail__monogram")).toBe(monogram);
+    expect(artwork.text(".sidebar-recent-session__name")).toBe(label);
+    expect(artwork.text(".sidebar-rail__monogram")).toBeUndefined();
     if (icon?.startsWith("data:")) {
       expect(artwork.attr(".session-glyph__icon img", "src")).toBe(icon);
-    } else {
-      expect(artwork.text(".session-glyph__emoji")).toBe(icon);
     }
-    expect(artwork.present("svg", ".session-owner-chip")).toEqual([false, false]);
+    expect(rail(sidebar, "session:agent:main:mine")).toBeNull();
   });
 
-  it("keeps a session shortcut's identity with only running and unread decorations", async () => {
+  it("keeps full session attention and draft details in the pinned row", async () => {
     const { sidebar, sessions, publish, dom } = await fixture();
     const key = "agent:main:mine";
     publish(
@@ -303,7 +346,7 @@ describe("personal navigation rail", () => {
     );
     sessions.sessions.setPullRequestSummary(key, { numbers: [1], state: "open" });
     await update(sidebar, { storedOutboxes: outbox(key), sidebarEntries: [`session:${key}`] });
-    const row = dom.query(`[data-session-key="${key}"]`)!;
+    const row = pinnedSession(sidebar, key)!;
     expect(
       domProbe(row).present(
         ".sidebar-session-attention__icon",
@@ -311,15 +354,16 @@ describe("personal navigation rail", () => {
         ".session-row-badge--draft",
       ),
     ).toEqual([true, true, true]);
-    const pin = dom.query(`.sidebar-rail [data-sidebar-entry="session:${key}"]`)!;
-    expect(pin.querySelector(".session-glyph__emoji")?.textContent).toBe("📝");
-    expect(pin.querySelectorAll(".session-glyph__ring")).toHaveLength(1);
-    expect(pin.querySelectorAll(".session-glyph__badge--unread")).toHaveLength(1);
-    expect(
-      pin.querySelector(
-        ".sidebar-session-attention__icon, .session-row-badges, [data-pull-request-state], .session-owner-chip",
-      ),
-    ).toBeNull();
+    expect(row.querySelectorAll(".session-glyph__ring")).toHaveLength(1);
+    const descriptions = row
+      .querySelector("a")!
+      .getAttribute("aria-describedby")!
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(" ");
+    expect(descriptions).toContain("Unread");
+    expect(dom.all(`[data-session-key="${key}"]`)).toHaveLength(1);
+    expect(rail(sidebar, `session:${key}`)).toBeNull();
   });
 
   it("supports native page drop, direct pin reordering, and context-menu unpin with unloaded refs retained", async () => {
@@ -349,11 +393,11 @@ describe("personal navigation rail", () => {
 
   it("retires pending pin hints while a context menu owns keyboard focus", async () => {
     const { sidebar, dom } = await fixture({
-      sidebarEntries: ["session:agent:main:mine", "session:agent:main:other"],
+      sidebarEntries: ["person:self", "person:other"],
     });
     await sidebar.sidebarMenus.preloadMenuRenderer();
-    const source = link(sidebar, "session:agent:main:mine");
-    const hovered = link(sidebar, "session:agent:main:other");
+    const source = link(sidebar, "person:self");
+    const hovered = link(sidebar, "person:other");
     vi.useFakeTimers({
       toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],
     });
@@ -463,7 +507,6 @@ describe("personal navigation rail", () => {
       });
       await update(sidebar, { onToggleSidebar: toggle });
       for (const selector of [
-        '[data-sidebar-entry="session:agent:main:mine"] a',
         '[data-sidebar-entry="route:usage"] a',
         '[data-sidebar-entry="person:other"] a',
         '[data-sidebar-entry="plugin:logbook/logbook"] a',
@@ -476,7 +519,12 @@ describe("personal navigation rail", () => {
         await sidebar.updateComplete;
         expect(sidebar.navigationCollapsed, selector).toBe(!mobile);
       }
-      expect(toggle).toHaveBeenCalledTimes(mobile ? 0 : 5);
+      expect(toggle).toHaveBeenCalledTimes(mobile ? 0 : 4);
+      await update(sidebar, { navigationCollapsed: false });
+      link(sidebar, "session:agent:main:mine").click();
+      await sidebar.updateComplete;
+      expect(sidebar.navigationCollapsed).toBe(false);
+      expect(toggle).toHaveBeenCalledTimes(mobile ? 0 : 4);
     },
   );
 
@@ -593,14 +641,13 @@ describe("personal navigation rail", () => {
       pending,
       read: describeRead,
       navigate,
-      dom,
     } = await pinLookup();
     await update(sidebar, { sidebarEntries: [`session:${key}`] });
-    expect(dom.query(`.sidebar-rail [data-sidebar-entry="session:${key}"]`)).toBeNull();
+    expect(pinnedSession(sidebar, key)).toBeNull();
     expect(describeRead).toHaveBeenCalledExactlyOnceWith({ key });
     const cached = cachedPin(key);
     await seed(sidebar, [cached]);
-    expect(dom.query('.sidebar-rail a[aria-label="Saved title"]')).not.toBeNull();
+    expect(pinnedLabels(sidebar)).toContain("Saved title");
     expect(describeRead).toHaveBeenCalledTimes(1);
     pending.resolve({
       session: { ...result.sessions[1]!, key, label: "Release notes", icon: "📝" },
@@ -608,7 +655,9 @@ describe("personal navigation rail", () => {
     await pending.promise;
     await settleLitElement(sidebar);
     const loaded = link(sidebar, `session:${key}`);
-    expect(loaded.getAttribute("aria-label")).toBe("Release notes");
+    expect(loaded.querySelector(".sidebar-recent-session__name")?.textContent).toBe(
+      "Release notes",
+    );
     expect(loaded.querySelector(".session-glyph__emoji")?.textContent).toBe("📝");
     expect(loaded.getAttribute("href")).toContain("unloaded");
     expect(navigate).not.toHaveBeenCalled();
@@ -616,7 +665,9 @@ describe("personal navigation rail", () => {
     expect(navigate).toHaveBeenCalledTimes(1);
     expect(describeRead).toHaveBeenCalledTimes(1);
     await seed(sidebar, [cached]);
-    expect(loaded.getAttribute("aria-label")).toBe("Release notes");
+    expect(loaded.querySelector(".sidebar-recent-session__name")?.textContent).toBe(
+      "Release notes",
+    );
     // Once the authoritative row loads, it wins over the scoped descriptor snapshot.
     sessions.publishList({
       agentId: "main",
@@ -629,7 +680,9 @@ describe("personal navigation rail", () => {
       },
     });
     await settleLitElement(sidebar);
-    expect(link(sidebar, `session:${key}`).getAttribute("aria-label")).toBe("Current title");
+    expect(
+      link(sidebar, `session:${key}`).querySelector(".sidebar-recent-session__name")?.textContent,
+    ).toBe("Current title");
   });
 
   it("retires cached pin descriptors when the source changes without reading pins", async () => {
@@ -641,7 +694,7 @@ describe("personal navigation rail", () => {
       .mockResolvedValueOnce({ session: { ...result.sessions[1]!, key, label: "Fresh source" } });
     sidebar.sidebarEntries = [`session:${key}`];
     await settleLitElement(sidebar);
-    expect(sidebar.querySelector('.sidebar-rail a[aria-label="Old source"]')).not.toBeNull();
+    expect(pinnedLabels(sidebar)).toContain("Old source");
 
     sidebar.sidebarEntries = [];
     await sidebar.updateComplete;
@@ -654,12 +707,12 @@ describe("personal navigation rail", () => {
     await settleLitElement(sidebar);
 
     expect(read).toHaveBeenCalledTimes(2);
-    expect(sidebar.querySelector('.sidebar-rail a[aria-label="Fresh source"]')).not.toBeNull();
-    expect(sidebar.querySelector('.sidebar-rail a[aria-label="Old source"]')).toBeNull();
+    expect(pinnedLabels(sidebar)).toContain("Fresh source");
+    expect(pinnedLabels(sidebar)).not.toContain("Old source");
   });
 
   it("retains a lookup across a synchronous host move within the same connection", async () => {
-    const { sidebar, result, pending, read, dom } = await pinLookup();
+    const { sidebar, result, pending, read } = await pinLookup();
     await update(sidebar, { sidebarEntries: ["session:agent:other:unloaded"] });
     const parent = sidebar.parentElement!;
     sidebar.remove();
@@ -670,11 +723,11 @@ describe("personal navigation rail", () => {
     await pending.promise;
     await sidebar.updateComplete;
     expect(read).toHaveBeenCalledTimes(1);
-    expect(dom.query('.sidebar-rail a[aria-label="Detached result"]')).not.toBeNull();
+    expect(pinnedLabels(sidebar)).toContain("Detached result");
   });
 
   it("keeps cached pins while chat loads and skips queued reads after the sidebar is removed", async () => {
-    const { sidebar, sessions, result, dom } = await fixture();
+    const { sidebar, sessions, result } = await fixture();
     const key = "agent:other:unloaded";
     const bootstrap = sidebar.sessionDataContext!.connectionBootstrap;
     bootstrap.setForegroundRoute("agent:main:selected");
@@ -684,7 +737,7 @@ describe("personal navigation rail", () => {
     sidebar.sidebarEntries = [`session:${key}`];
     sidebar.pinnedSessions.seed([cachedPin(key)]);
     await sidebar.updateComplete;
-    expect(dom.query('.sidebar-rail a[aria-label="Saved title"]')).not.toBeNull();
+    expect(pinnedLabels(sidebar)).toContain("Saved title");
     expect(read).not.toHaveBeenCalled();
 
     const parent = sidebar.parentElement!;
@@ -696,7 +749,7 @@ describe("personal navigation rail", () => {
     parent.append(sidebar.hostElement);
     await settleLitElement(sidebar);
     expect(read).toHaveBeenCalledExactlyOnceWith({ key });
-    expect(dom.query('.sidebar-rail a[aria-label="Current title"]')).not.toBeNull();
+    expect(pinnedLabels(sidebar)).toContain("Current title");
   });
 
   it("paints a burst of unloaded pins together without changing their saved order", async () => {
@@ -732,7 +785,7 @@ describe("personal navigation rail", () => {
     await sidebar.updateComplete;
     expect(render).toHaveBeenCalledTimes(1);
     expect(
-      [...dom.all(".sidebar-rail [data-sidebar-entry]")].map((row) =>
+      [...dom.all('[data-session-section="pinned"] [data-sidebar-entry]')].map((row) =>
         row.getAttribute("data-sidebar-entry"),
       ),
     ).toEqual(keys.map((key) => `session:${key}`));
@@ -748,7 +801,7 @@ describe("personal navigation rail", () => {
       await update(sidebar, { sidebarEntries: entries });
       const cached = cachedPin("agent:other:missing");
       await seed(sidebar, [cached]);
-      expect(dom.query('.sidebar-rail a[aria-label="Saved title"]')).not.toBeNull();
+      expect(pinnedLabels(sidebar)).toContain("Saved title");
       if (outcome === "failure") {
         pending.reject(new Error("Unavailable"));
       } else {
@@ -757,7 +810,7 @@ describe("personal navigation rail", () => {
       await pending.promise.catch(() => undefined);
       await settleLitElement(sidebar);
       await seed(sidebar, [cached]);
-      expect(dom.all(".sidebar-rail__pin")).toHaveLength(0);
+      expect(dom.all('[data-session-section="pinned"], .sidebar-rail__pin')).toHaveLength(0);
       expect(sidebar.sidebarEntries).toEqual(entries);
       expect(read).toHaveBeenCalledTimes(1);
       expect(showToast).not.toHaveBeenCalled();
@@ -789,7 +842,7 @@ describe("personal navigation rail", () => {
       await pending.promise.catch(() => undefined);
       await sidebar.updateComplete;
       expect(read).toHaveBeenCalledTimes(2);
-      expect(dom.all(".sidebar-rail__pin")).toHaveLength(0);
+      expect(dom.all('[data-session-section="pinned"], .sidebar-rail__pin')).toHaveLength(0);
       expect(navigate).not.toHaveBeenCalled();
       expect(showToast).not.toHaveBeenCalled();
     },

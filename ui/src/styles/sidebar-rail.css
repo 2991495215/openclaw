@@ -45,21 +45,6 @@
   outline-offset: -1px;
 }
 
-.sidebar-rail__monogram {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-hover);
-  color: var(--text);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-}
-
 .sidebar-rail__button,
 .sidebar-rail .nav-item {
   display: flex;

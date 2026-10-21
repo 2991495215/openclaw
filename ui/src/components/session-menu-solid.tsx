@@ -62,6 +62,7 @@ type SessionMenuProps = {
   currentOwner: SessionCreatedActor | null;
   work: SessionMenuWork | null;
   pluginActions: readonly PluginSessionMenuAction[];
+  pinReorder?: { before: boolean; after: boolean; move: (position: "before" | "after") => void };
   onAction: (action: SessionMenuAction) => void;
   onClose: () => void;
 };
@@ -163,6 +164,21 @@ function SessionMenuContent(
       ...view.primary(),
       primaryDivider,
       ...view.organization(),
+      ...(!batch() && props.pinReorder
+        ? (["before", "after"] as const).map((position) => ({
+            id: `pin-${position}`,
+            label: t(position === "before" ? "chat.sidebar.moveUp" : "chat.sidebar.moveDown"),
+            class: "session-menu__item",
+            labelClass: "session-menu__text",
+            disabled: props.disabled || !props.pinReorder?.[position],
+            icon: (
+              <span class="session-menu__icon" aria-hidden="true">
+                <Icon name={position === "before" ? "arrowUp" : "arrowDown"} />
+              </span>
+            ),
+            closeOnSelect: false,
+          }))
+        : []),
       ...(!batch()
         ? props.pluginActions.map((action) => ({
             id: `plugin:${action.id}`,
@@ -229,6 +245,14 @@ function SessionMenuContent(
   const select = (item: MenuItem, event: CustomEvent<MenuItem>) => {
     event.preventDefault();
     const value = item.id;
+    if (value === "pin-before" || value === "pin-after") {
+      const position = value === "pin-before" ? "before" : "after";
+      if (props.pinReorder?.[position]) {
+        close();
+        props.pinReorder.move(position);
+      }
+      return;
+    }
     const nextView = compactSessionMenuViewForValue(value);
     if (nextView) {
       setCompactView(nextView);
@@ -350,6 +374,7 @@ export const SessionMenu = defineSolidBridge<SessionMenuProps>(
       currentOwner: { default: null, attribute: false },
       work: { default: null, attribute: false },
       pluginActions: { default: [], attribute: false },
+      pinReorder: { default: undefined, attribute: false },
       onAction: { default: () => {}, attribute: false },
       onClose: { default: () => {}, attribute: false },
     },

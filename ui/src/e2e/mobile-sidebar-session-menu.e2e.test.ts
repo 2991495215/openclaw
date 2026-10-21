@@ -139,7 +139,10 @@ suite.define(() => {
         await page.goto(controlUiSessionUrl(suite.server.baseUrl, groupedKey));
         await openDrawer(page);
         const rail = page.locator(".sidebar-rail");
-        const pinned = rail.locator('[data-sidebar-entry="session:agent:main:release-plan"]');
+        const pinned = page.locator(
+          '[data-session-section="pinned"] .sidebar-recent-session[data-session-key="agent:main:release-plan"]',
+        );
+        const route = rail.locator('[data-sidebar-entry="route:cron"]');
         const plugin = rail.locator('[data-sidebar-entry="plugin:reports/reports"]');
         const session = page.locator(
           '.sidebar-session-content .sidebar-recent-session[data-session-key="agent:main:release-plan"]',
@@ -149,8 +152,11 @@ suite.define(() => {
         await plugin.locator(".nav-item__icon").waitFor();
         await group.locator(".sidebar-recent-session").waitFor();
         await session.waitFor();
-        // Pins are flat navigation refs, while session actions stay in Sessions.
-        expect(await pinned.locator(".sidebar-recent-session").count()).toBe(0);
+        // The session pin is the full row; other shortcuts retain their rail menus.
+        expect(await page.locator('.sidebar-rail [data-sidebar-entry^="session:"]').count()).toBe(
+          0,
+        );
+        expect(await pinned.locator("[data-sidebar-session-pin]").count()).toBe(1);
         await rail.locator('[data-navigation-view="pages"]').click();
         await page
           .locator('.sidebar-pages [data-sidebar-entry="plugin:reports/reports"]')
@@ -165,7 +171,7 @@ suite.define(() => {
         for (const width of [320, 390, 768]) {
           await page.setViewportSize({ width, height: 844 });
           expect((await rail.boundingBox())?.width).toBe(52);
-          for (const row of [pinned, plugin]) {
+          for (const row of [plugin, route]) {
             const shortcut = row.getByRole("link");
             await row.hover();
             const [button, glyph] = await Promise.all([

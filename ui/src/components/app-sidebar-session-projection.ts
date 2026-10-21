@@ -46,6 +46,7 @@ type SidebarSubtitleValue = ReturnType<typeof resolveSidebarSessionSubtitle>;
 
 type SidebarProjectionInput = {
   rows: SidebarRecentSession[];
+  pinnedKeys?: ReadonlySet<string>;
   sections?: SidebarSessionSection<SidebarRecentSession>[];
   grouping: SidebarSessionsGrouping;
   knownGroups: string[] | undefined;
@@ -70,6 +71,19 @@ type SidebarProjectionInput = {
     observerDigests: ReadonlyMap<string, SessionObserverDigest>;
   };
 };
+
+export function sidebarPinnedSessionRows(
+  zone: {
+    entries: readonly SidebarZoneEntry[];
+    sessionRows: ReadonlyMap<string, SidebarRecentSession>;
+  },
+  archiveVisibility?: ApplicationContext["sessions"]["archiveVisibility"],
+): SidebarRecentSession[] {
+  return zone.entries.flatMap((entry) => {
+    const row = entry.type === "session" ? zone.sessionRows.get(entry.key) : undefined;
+    return row && !row.archived && !archiveVisibility?.(row.key) ? [row] : [];
+  });
+}
 
 export type SidebarVisibleSections = {
   sections: (SidebarSessionSection<SidebarRecentSession> & {
@@ -105,6 +119,10 @@ type SidebarPresentationHost = Pick<
     identities: ReadonlyMap<string, ReturnType<ApplicationContext["agentIdentity"]["get"]>>;
   };
   pluginNavigation(): readonly ControlUiRegistration<ControlUiNavigationItem>[];
+  reconciledSidebarZone(): {
+    entries: readonly SidebarZoneEntry[];
+    sessionRows: ReadonlyMap<string, SidebarRecentSession>;
+  };
   getSessionNavigationState(): { toSidebarSession(row: GatewaySessionRow): SidebarRecentSession };
   mainSessionRow(agentId: string): GatewaySessionRow | null;
   projectHomeSession(row: GatewaySessionRow, agentId: string): SidebarRecentSession;
@@ -226,6 +244,9 @@ export class SidebarSessionProjection {
       this.admittedPresencePresentation,
       sessionsVisible
         ? [
+            sidebarPinnedSessionRows(host.reconciledSidebarZone(), (key) =>
+              host.sessionDataContext?.sessions.archiveVisibility(key),
+            ).map(({ children: _children, ...row }) => row),
             readers.tree().map(({ children: _children, ...row }) => row),
             sections.map(({ rows: sectionRows, ...header }) => [
               header,
@@ -297,12 +318,21 @@ export class SidebarSessionProjection {
       sessionRows: ReadonlyMap<string, SidebarRecentSession>;
     },
     visibleRows: SidebarRecentSession[],
+    host: {
+      readonly collapsedSessionSections: ReadonlySet<string>;
+      readonly sessionDataContext?: {
+        sessions: Pick<ApplicationContext["sessions"], "archiveVisibility">;
+      };
+    },
   ): SidebarRecentSession[] {
-    const pinnedRows = zone.entries.flatMap((entry) => {
-      const row = entry.type === "session" ? zone.sessionRows.get(entry.key) : undefined;
-      return row ? [row] : [];
-    });
-    return [...pinnedRows, ...visibleRows];
+    return host.collapsedSessionSections.has("pinned")
+      ? visibleRows
+      : [
+          ...sidebarPinnedSessionRows(zone, (key) =>
+            host.sessionDataContext?.sessions.archiveVisibility(key),
+          ),
+          ...visibleRows,
+        ];
   }
 
   childSessionParents(rows: SidebarRecentSession[], host: SidebarPresentationHost): Set<string> {
@@ -508,13 +538,16 @@ export class SidebarSessionProjection {
       (input.emptyGroupsMode === "filtering" && input.ownerFiltered);
     const sections =
       input.sections ??
-      groupSidebarSessionRows(input.rows, {
-        grouping,
-        knownGroups,
-        selfOwnerId,
-        sectionOrder,
-        catalogIds,
-      }).filter(
+      groupSidebarSessionRows(
+        input.rows.filter((row) => !input.pinnedKeys?.has(row.key) || row.archived),
+        {
+          grouping,
+          knownGroups,
+          selfOwnerId,
+          sectionOrder,
+          catalogIds,
+        },
+      ).filter(
         (section) =>
           section.id !== "pinned" &&
           // Catalog rows have their own projection; these sections are placeholders.
@@ -533,11 +566,12 @@ export class SidebarSessionProjection {
     // Flat mode ("none") holds every native row, so its "Other" label would
     // lie; it stays headerless even beside catalog sections.
     const ungroupedHasPeerHeader =
-      input.grouping !== "none" &&
-      sections.some(
-        (section) =>
-          section.id !== "ungrouped" && (section.id !== "work" || section.rows.length > 0),
-      );
+      Boolean(input.pinnedKeys?.size) ||
+      (input.grouping !== "none" &&
+        sections.some(
+          (section) =>
+            section.id !== "ungrouped" && (section.id !== "work" || section.rows.length > 0),
+        ));
     const visibleRows: SidebarRecentSession[] = [];
     const limitedSections: SidebarVisibleSections["sections"] = [];
     for (const section of sections) {

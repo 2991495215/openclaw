@@ -214,13 +214,13 @@ suite.define(() => {
 
         const sidebar = page.locator("openclaw-app-sidebar");
         const lastPin = sidebar.locator(
-          `.sidebar-rail [data-sidebar-entry="session:${fixture.pinnedKeys[29]}"]`,
+          `[data-session-section="pinned"] [data-session-key="${fixture.pinnedKeys[29]}"]`,
         );
         await lastPin
           .getByRole("link", { name: "Project dashboard 30", exact: true })
           .waitFor({ state: "attached" });
         expect(
-          await sidebar.locator('.sidebar-rail [data-sidebar-entry^="session:"]').count(),
+          await sidebar.locator('[data-session-section="pinned"] .sidebar-recent-session').count(),
         ).toBe(30);
         await sidebar.locator('[data-sidebar-entry="plugin:team-scale-7/overview"]').waitFor();
         const activations = await gateway.getRequests("plugins.controlUi.report");

@@ -216,20 +216,16 @@ suite.define(() => {
     try {
       await page.goto(`${suite.server.baseUrl}chat`);
 
-      // A personal rail shortcut leaves its ordinary session row in recency order.
+      // Personal pins have one full row above the ordinary sessions.
       const sidebarRows = page.locator(".sidebar-recent-session");
       await sidebarRows.first().waitFor({ state: "visible", timeout: 10_000 });
-      const pinnedZoneRow = page.locator(
-        '.sidebar-rail [data-sidebar-entry="session:agent:main:release"]',
-      );
+      const pinnedZoneRow = page.locator('[data-session-section="pinned"]');
       await pinnedZoneRow.getByRole("link", { name: "Release planning", exact: true }).waitFor();
-      expect(await pinnedZoneRow.locator(".sidebar-recent-session").count()).toBe(0);
+      expect(await pinnedZoneRow.locator(".sidebar-recent-session").count()).toBe(1);
       const groups = page.locator(".sidebar-recent-sessions__group");
-      await expect.poll(() => groups.count()).toBe(1);
-      await expect
-        .poll(() => groups.first().getAttribute("data-session-section"))
-        .toBe("ungrouped");
-      await expect.poll(() => page.locator('[data-session-section="pinned"]').count()).toBe(0);
+      await expect.poll(() => groups.count()).toBe(2);
+      await expect.poll(() => groups.first().getAttribute("data-session-section")).toBe("pinned");
+      await expect.poll(() => page.locator('[data-session-section="pinned"]').count()).toBe(1);
 
       // Chats keep recency order with the open session highlighted in place —
       // selecting a row must not reshuffle the list.
@@ -238,7 +234,7 @@ suite.define(() => {
         chatRows.evaluateAll((rows) =>
           rows.map((row) => row.querySelector(".sidebar-recent-session__name")?.textContent ?? ""),
         );
-      await expect.poll(rowNames).toEqual(["Release planning", "Data migration", "Research notes"]);
+      await expect.poll(rowNames).toEqual(["Data migration", "Research notes"]);
       const sidebarMigration = sidebarRows.filter({ hasText: "Data migration" });
       await expect
         .poll(() =>

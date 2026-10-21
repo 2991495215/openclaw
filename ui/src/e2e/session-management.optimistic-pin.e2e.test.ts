@@ -76,7 +76,9 @@ function withPins(run: (fixture: PinFixture) => Promise<void>, initial: string[]
     await run({
       page,
       gateway,
-      pin: page.locator(`.sidebar-rail [data-sidebar-entry="${pinRef}"]`),
+      pin: page.locator(
+        `[data-session-section="pinned"] .sidebar-recent-session[data-session-key="${candidateKey}"]`,
+      ),
       row: page.locator(
         `.sidebar-session-content .sidebar-recent-session[data-session-key="${candidateKey}"]`,
       ),

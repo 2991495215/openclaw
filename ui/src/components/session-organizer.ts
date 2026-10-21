@@ -277,7 +277,7 @@ export class SessionOrganizer {
     this.draggingSidebarEntry = this.isPersonalSessionPin(session.key)
       ? `session:${session.key}`
       : null;
-    this.sidebarZoneDragActive = session.pinnable;
+    this.sidebarZoneDragActive = false;
     this.notify();
   }
 
@@ -315,7 +315,10 @@ export class SessionOrganizer {
     return sessionKey ? serializeSidebarEntry({ type: "session", key: sessionKey }) : null;
   }
 
-  private isSidebarZoneDragCompatible(dataTransfer: DataTransfer | null): boolean {
+  private isSidebarZoneDragCompatible(
+    dataTransfer: DataTransfer | null,
+    surface: "rail" | "sessions" = "rail",
+  ): boolean {
     const entry = this.draggingSidebarEntry
       ? parseSidebarEntry(this.draggingSidebarEntry)
       : this.draggedSidebarNavigation(dataTransfer);
@@ -325,15 +328,20 @@ export class SessionOrganizer {
         ? entry.key
         : (this.draggingSessionKey ?? readSessionDragData(dataTransfer));
     if (sessionKey) {
-      return this.deps.findSidebarMenuSessionByKey(sessionKey)?.pinnable !== false;
+      return (
+        surface === "sessions" &&
+        this.deps.findSidebarMenuSessionByKey(sessionKey)?.pinnable === true
+      );
     }
-    return Boolean(
-      entry || sidebarRouteDragActive(dataTransfer) || sessionDragActive(dataTransfer),
-    );
+    return surface === "rail" && Boolean(entry || sidebarRouteDragActive(dataTransfer));
   }
 
-  handleSidebarZoneDragOver(event: DragEvent, targetEntry?: string) {
-    if (!this.isSidebarZoneDragCompatible(event.dataTransfer)) {
+  handleSidebarZoneDragOver(
+    event: DragEvent,
+    targetEntry?: string,
+    surface: "rail" | "sessions" = "rail",
+  ) {
+    if (!this.isSidebarZoneDragCompatible(event.dataTransfer, surface)) {
       return;
     }
     event.preventDefault();
@@ -341,7 +349,7 @@ export class SessionOrganizer {
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = "move";
     }
-    this.sidebarZoneDragActive = true;
+    this.sidebarZoneDragActive = surface === "rail";
     if (!targetEntry) {
       this.sidebarZoneDropTarget = null;
       this.notify();
@@ -381,7 +389,14 @@ export class SessionOrganizer {
     this.deps.onUpdateSidebarEntries?.(next);
   }
 
-  handleSidebarZoneDrop(event: DragEvent, targetEntry?: string) {
+  handleSidebarZoneDrop(
+    event: DragEvent,
+    targetEntry?: string,
+    surface: "rail" | "sessions" = "rail",
+  ) {
+    if (!this.isSidebarZoneDragCompatible(event.dataTransfer, surface)) {
+      return;
+    }
     const entry = this.draggedSidebarEntry(event.dataTransfer);
     if (!entry) {
       return;
@@ -565,9 +580,6 @@ export class SessionOrganizer {
     category: string | undefined,
     session: SidebarRecentSession | undefined,
   ): boolean {
-    if (sectionId === "pinned") {
-      return true;
-    }
     if (
       this.deps.sessionsGrouping === "category" &&
       (sectionId === "ungrouped" || Boolean(category))
@@ -651,11 +663,10 @@ export class SessionOrganizer {
           ? this.sidebarSectionDropTarget.position
           : "before";
       void this.reorderSidebarSection(sourceSectionId, sectionId, position);
-    } else if (session && sectionId === "pinned") {
-      if (session.pinnable) {
-        this.setPersonalSessionPin(session.key, true);
-      }
     } else if (session) {
+      if (this.isPersonalSessionPin(session.key)) {
+        this.setPersonalSessionPin(session.key, false);
+      }
       const nextCategory = category ?? null;
       if (session.category !== nextCategory || session.isChild) {
         void this.assignSessionCategory(session, nextCategory);

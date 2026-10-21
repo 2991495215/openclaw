@@ -4,6 +4,7 @@ import { sessionsResult } from "../lib/sessions/session-capability.test-support.
 import {
   parseSidebarSnapshot,
   restoreSnapshotSession,
+  restoreSnapshotSections,
   snapshotSections,
   snapshotSessions,
 } from "./sidebar-snapshot-model.ts";
@@ -142,7 +143,10 @@ it("omits incognito-only section metadata and counts while preserving existing e
       collapsedVisibleRowCount: 0,
     },
   ];
-  const captured = snapshotSections(sections, new Set([...sections.map(({ id }) => id), "online"]));
+  const captured = snapshotSections(
+    sections,
+    new Set([...sections.map(({ id }) => id), "online", "pinned"]),
+  );
   const admitted = parseSidebarSnapshot({ ...model, ...captured });
   expect(admitted?.sections.map((section) => section.id)).toEqual([
     "category:shared",
@@ -154,6 +158,50 @@ it("omits incognito-only section metadata and counts while preserving existing e
     collapsedVisibleRowCount: 1,
   });
   expect(admitted?.sections[1]?.totalRowCount).toBe(0);
-  expect(admitted?.collapsedSections).toEqual(["category:shared", "category:empty", "online"]);
+  expect(admitted?.collapsedSections).toEqual([
+    "category:shared",
+    "category:empty",
+    "online",
+    "pinned",
+  ]);
   expect(JSON.stringify(admitted)).not.toContain("private");
+});
+
+it("restores old sidebar snapshots without duplicating personal pins in ordinary sections", () => {
+  const pinned = snapshotSessions([displayRow("agent:main:personal", "Personal pin")])[0]!;
+  const ordinary = snapshotSessions([displayRow("agent:main:shared", "Shared metadata", true)])[0]!;
+  const archived = { ...pinned, key: "agent:main:archived", label: "Archived pin", archived: true };
+  const rows = [pinned, ordinary, archived];
+  const saved = {
+    ...model,
+    entries: [`session:${pinned.key}`, `session:${archived.key}`, "route:usage"],
+    pinnedSessions: [pinned, archived],
+    sessions: rows,
+    sections: [
+      {
+        id: "ungrouped" as const,
+        rows,
+        totalRowCount: 3,
+        visibleRowCount: 3,
+        visibleLimit: 20,
+        collapsedVisibleRowCount: 3,
+        renderHeader: false,
+      },
+    ],
+  };
+  const restored = restoreSnapshotSections(saved, ordinary.key);
+  expect(restored.visibleRows.map((row) => row.key)).toEqual([ordinary.key, archived.key]);
+  expect(restored.sections[0]).toMatchObject({
+    totalRowCount: 2,
+    visibleRowCount: 2,
+    collapsedVisibleRowCount: 2,
+    renderHeader: true,
+  });
+  expect(restored.visibleRows[0]).toMatchObject({ visuallyActive: true, pinnable: false });
+  expect(saved.sections[0]?.rows).toEqual(rows);
+  expect(saved.entries).toEqual([
+    `session:${pinned.key}`,
+    `session:${archived.key}`,
+    "route:usage",
+  ]);
 });

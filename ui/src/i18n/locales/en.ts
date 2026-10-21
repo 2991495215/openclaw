@@ -2876,6 +2876,7 @@ export const en: TranslationMap & {
       serverUpdatedTitle: "Server updated",
       serverUpdatedRefresh: "Refresh for full capabilities",
       threads: "Sessions",
+      pinned: "Pinned",
       otherSessions: "Other",
       groups: "Groups",
       coding: "Coding",

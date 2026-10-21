@@ -32,6 +32,7 @@ import { renderSidebarIdentityMenu as SidebarIdentityMenu } from "./app-sidebar-
 import { SidebarDropdown, renderSidebarMenuAction } from "./app-sidebar-nav-menus.tsx";
 import { formatSidebarTimestamp } from "./app-sidebar-session-catalogs.ts";
 import { findActiveSidebarLineageRow } from "./app-sidebar-session-lookup.ts";
+import { sidebarPinnedSessionRows } from "./app-sidebar-session-projection.ts";
 import { canRetryGatewayStatus } from "./gateway-status.ts";
 import { sessionMenuReasons } from "./session-menu-access.ts";
 import "../styles/sidebar-menus.css";
@@ -229,6 +230,13 @@ export function renderSidebarSessionMenuForMenus(
   menu: NonNullable<SidebarMenus["sessionMenu"]>,
 ): JSX.Element {
   const context = () => host.sessionDataContext;
+  const pinNeighbor = (position: "before" | "after") => {
+    const rows = sidebarPinnedSessionRows(host.reconciledSidebarZone(), (key) =>
+      host.sessionDataContext?.sessions.archiveVisibility(key),
+    );
+    const index = rows.findIndex((row) => row.key === menu.session.key);
+    return index < 0 ? undefined : rows[index + (position === "before" ? -1 : 1)]?.key;
+  };
   const pluginActionSignal = () => menus.pluginActionLifetime.signal;
   const currentSession = () => host.findSidebarMenuSessionByKey(menu.session.key);
   // Read again at dispatch: session updates can arrive before the menu rerenders.
@@ -341,6 +349,24 @@ export function renderSidebarSessionMenuForMenus(
           sharedCategory() !== null &&
           rows().every((row) => categoryClearReturnsToGroups(row, host.sessionsGrouping)),
       }}
+      pinReorder={
+        !batchRows() && host.sessionOrganizer.isPersonalSessionPin(session().key)
+          ? {
+              before: Boolean(pinNeighbor("before")),
+              after: Boolean(pinNeighbor("after")),
+              move: (position) => {
+                const target = pinNeighbor(position);
+                if (target) {
+                  host.sessionOrganizer.writeSidebarEntryAt(
+                    `session:${menu.session.key}`,
+                    `session:${target}`,
+                    position,
+                  );
+                }
+              },
+            }
+          : undefined
+      }
       involvingMeContext={host.sessionInvolvingMeFilterActive}
       selectionCount={rows().length}
       compact={isMobileNavLayout()}
