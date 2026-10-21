@@ -119,7 +119,7 @@ export function createProfileSelectionOps({
     const tabs1 = await readTabs();
     await openWhenConfirmedEmpty(tabs1);
 
-    let listedTabs = await readTabs();
+    let listedTabs = canResolveSelection(candidateTabs(tabs1)) ? tabs1 : await readTabs();
     await openWhenConfirmedEmpty(listedTabs);
     let unfilteredTabs = mergeOpenedTabSnapshot(listedTabs, openedTab);
     let candidates = candidateTabs(unfilteredTabs);

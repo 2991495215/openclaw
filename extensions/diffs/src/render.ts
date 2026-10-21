@@ -89,55 +89,6 @@ function buildDiffOptions(options: DiffRenderOptions): DiffViewerOptions {
       [data-metadata] {
         gap: 10px;
       }
-
-      .oc-diff-toolbar {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin-inline-start: 6px;
-        flex: 0 0 auto;
-      }
-
-      .oc-diff-toolbar-button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        padding: 0;
-        margin: 0;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        opacity: 0.6;
-        line-height: 0;
-        overflow: visible;
-        transition: opacity 120ms ease;
-        flex: 0 0 auto;
-      }
-
-      .oc-diff-toolbar-button:hover {
-        opacity: 1;
-      }
-
-      .oc-diff-toolbar-button[data-active="true"] {
-        opacity: 0.92;
-      }
-
-      .oc-diff-toolbar-button svg {
-        display: block;
-        width: 16px;
-        height: 16px;
-        min-width: 16px;
-        min-height: 16px;
-        overflow: visible;
-        flex: 0 0 auto;
-        color: inherit;
-        fill: currentColor;
-        pointer-events: none;
-      }
     `,
   };
 }

@@ -2684,7 +2684,8 @@ button.evidence-matrix-cell {
   line-height: 1;
 }
 
-.capture-timeline-stat-key-request {
+.capture-timeline-stat-key-request,
+.capture-timeline-stat-key-focus {
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-surface));
   color: var(--accent);
 }
@@ -2697,11 +2698,6 @@ button.evidence-matrix-cell {
 .capture-timeline-stat-key-error {
   background: color-mix(in srgb, var(--danger) 16%, var(--bg-surface));
   color: var(--danger);
-}
-
-.capture-timeline-stat-key-focus {
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg-surface));
-  color: var(--accent);
 }
 
 .capture-timeline-stat-key-background {
@@ -2955,10 +2951,6 @@ button.evidence-matrix-cell {
 
   .capture-timeline-axis-spacer {
     display: none;
-  }
-
-  .capture-body--detail-right {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .capture-detail-splitter {
