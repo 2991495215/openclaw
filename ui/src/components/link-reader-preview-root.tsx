@@ -32,6 +32,7 @@ export function createPreviewRenderer<T>(
       });
     const dispose = render(() => {
       const [current, setCurrent] = createSignal<T>(() => value, { ownedWrite: true });
+      // eslint-disable-next-line solid/reactivity -- spread tracks this getter for the foreign card's attributes.
       spread(card, () => ({ "aria-label": label(current()) }), true);
       createResizeObserver(() => [card], afterCommit);
       updates.set(card, (next) => {
