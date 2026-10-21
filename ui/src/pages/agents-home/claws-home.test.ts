@@ -154,7 +154,7 @@ it("debounces catalog searches and retires superseded replies without replacing 
   await waitForSolid(() =>
     expect(page.querySelector(".claws-catalog__list")?.textContent).toContain("Fresh result"),
   );
-  stale.resolve({ entries: [workflowOperator] });
+  stale.resolve({ entries: [{ ...workflowOperator, installs: 0 }] });
   await stale.promise;
   flush();
   expect(page.querySelector(".claws-catalog__list")?.textContent).toContain("Fresh result");
@@ -203,7 +203,7 @@ it("retains the catalog query while retrying a failed search", async () => {
     expect(page.querySelector(".claws-catalog [role=status]")).not.toBeNull(),
   );
   expect(page.querySelector(".claws-catalog [role=alert]")).toBeNull();
-  recovered.resolve({ entries: [workflowOperator] });
+  recovered.resolve({ entries: [{ ...workflowOperator, installs: 0 }] });
   await waitForSolid(() =>
     expect(page.querySelectorAll(".claws-catalog [data-claws-entry]")).toHaveLength(1),
   );
@@ -240,7 +240,7 @@ it("refreshes a selected Claw after reconnect and ignores the retired catalog re
   setPhase("connected");
   await waitForSolid(() => expect(calls("claws.catalog.detail")).toHaveLength(2));
   await waitForSolid(() => expect(find(".plugin-capabilities")).not.toBeNull());
-  stale.resolve({ entries: [{ ...workflowOperator, latestVersion: "9.9.9" }] });
+  stale.resolve({ entries: [{ ...workflowOperator, installs: 0, latestVersion: "9.9.9" }] });
   await stale.promise;
   flush();
   expect(calls("claws.catalog.detail")).toHaveLength(2);
