@@ -297,7 +297,7 @@ export function createSkillLibrary(
         data.detailRead = {
           completion: pending.then(
             () => null,
-            (error) => (gateway.isCurrent(connection) ? { error } : null),
+            (error: unknown) => (gateway.isCurrent(connection) ? { error } : null),
           ),
         };
         await pending;
