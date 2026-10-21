@@ -379,6 +379,19 @@ async function runManagedMediaScenario() {
       await page
         .locator('openclaw-chat-pane[aria-hidden="false"] .chat-working-indicator')
         .waitFor({ state: "visible" });
+      const recapObservation = await page
+        .locator('openclaw-chat-pane[aria-hidden="false"]')
+        .evaluateHandle((element) => {
+          const pane = element as HTMLElement & { state: ChatPageHost };
+          return {
+            pane,
+            client: pane.state.client,
+            runId: pane.state.chatRunId,
+            workingRowKeys: Array.from(pane.querySelectorAll(".chat-working-indicator"), (entry) =>
+              entry.closest("[data-virtual-row-key]")?.getAttribute("data-virtual-row-key"),
+            ),
+          };
+        });
       provider.releaseEcho();
       const bubble = page.locator(".chat-group.assistant .chat-bubble").filter({ hasText: intro });
       const renderedImages = bubble.locator("img.chat-message-image");
@@ -569,7 +582,7 @@ async function runManagedMediaScenario() {
       } catch (error) {
         await withTimeout(
           page.evaluate(
-            ({ expectedSessionKey, assistantRunId }) => {
+            ({ expectedSessionKey, assistantRunId, observation }) => {
               const pane = document.querySelector<HTMLElement & { state?: ChatPageHost }>(
                 'openclaw-chat-pane[aria-hidden="false"]',
               );
@@ -578,8 +591,20 @@ async function runManagedMediaScenario() {
                 (entry) => entry.key === expectedSessionKey,
               );
               const recaps = Array.from(pane?.querySelectorAll(".chat-turn-recap") ?? []);
+              const indicators = Array.from(
+                pane?.querySelectorAll(".chat-working-indicator") ?? [],
+              );
               return {
                 recapPanePresent: Boolean(pane),
+                recapPaneRetained: pane === observation.pane,
+                recapClientRetained: state?.client === observation.client,
+                recapObservedRunMatchesAssistant: observation.runId === assistantRunId,
+                recapObservedWorkingCount: observation.workingRowKeys.length,
+                recapObservedWorkingRowKeys: observation.workingRowKeys,
+                recapWorkingIndicatorCount: indicators.length,
+                recapWorkingIndicatorRowKeys: indicators.map((entry) =>
+                  entry.closest("[data-virtual-row-key]")?.getAttribute("data-virtual-row-key"),
+                ),
                 recapSessionMatches: state?.sessionKey === expectedSessionKey,
                 recapRunCleared: state?.chatRunId === null,
                 recapCount: recaps.length,
@@ -603,6 +628,7 @@ async function runManagedMediaScenario() {
             {
               expectedSessionKey: sessionKey,
               assistantRunId: readSessionMessageIdentity(assistants[0])?.runId ?? null,
+              observation: recapObservation,
             },
           ),
           1_000,
@@ -610,6 +636,8 @@ async function runManagedMediaScenario() {
           .then((facts) => recordControlUiE2eFailureFacts(page, facts))
           .catch(() => undefined);
         throw error;
+      } finally {
+        await recapObservation.dispose();
       }
       const liveOrder = await captureOrder(page, bubble, "live");
       expect(await bubble.textContent()).not.toContain("MEDIA:");
