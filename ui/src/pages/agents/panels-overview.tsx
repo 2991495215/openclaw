@@ -311,6 +311,11 @@ export function AgentOverview(
                   </div>
                 </div>
               </div>
+              <Show when={params.identitySavePending}>
+                <span class="settings-row__desc" role="status">
+                  {t("common.saving")}
+                </span>
+              </Show>
               <For
                 each={params.readData().identityOutcome ? [params.readData().identityOutcome] : []}
               >

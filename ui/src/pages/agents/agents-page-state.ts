@@ -1,4 +1,4 @@
-import { action, createSignal, onSettled } from "solid-js";
+import { action, createOptimistic, createSignal, onSettled } from "solid-js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { AgentsFilesListResult, SkillStatusReport } from "../../api/types.ts";
 import { pathForAgentPanel } from "../../app-route-paths.ts";
@@ -36,6 +36,7 @@ import { ModelCatalogReader } from "../../lib/model-catalog-reader.ts";
 import { modelCatalogRefreshError, readAgentModelCatalog } from "../../lib/model-catalog-store.ts";
 import { observeState } from "../../lib/reactive/observe-state.ts";
 import { projectOwner } from "../../lib/reactive/projection.ts";
+import { createTimeout } from "../../lib/reactive/timers.ts";
 import { parseAgentSessionKey } from "../../lib/sessions/session-key.ts";
 import { createAgentConfigActions } from "./agent-config-actions.ts";
 import type { GeneratedAvatar } from "./avatar-picker.tsx";
@@ -173,7 +174,7 @@ export function createAgentsPageState(
   const publish = observation.invalidate;
   const selectionDrafts = createAgentSelectionDrafts(state, resetSelectionState);
   let identitySaves = selectionDrafts.bindContext(context);
-  let identityAutosaveTimer: ReturnType<typeof setTimeout> | null = null;
+  const identityAutosave = createTimeout(() => void saveSelectedIdentity(), 550);
   let catalogRecoveryPending = false;
   let catalogNeedsRecovery = false;
   const modelReader = new ModelCatalogReader(publish, {
@@ -299,7 +300,7 @@ export function createAgentsPageState(
   }
 
   function resetForSourceChange() {
-    clearIdentityAutosave();
+    identityAutosave.cancel();
     selectionDrafts.clear();
     identitySaves = selectionDrafts.bindContext(context);
     state.agentsList = null;
@@ -594,26 +595,18 @@ export function createAgentsPageState(
     }
   }
 
+  const [identitySavePending, setIdentitySavePending] = createOptimistic(false);
   const presentIdentitySave = action(function* (completion: Promise<void>) {
+    setIdentitySavePending(true);
     yield completion;
   });
 
-  function clearIdentityAutosave() {
-    if (identityAutosaveTimer !== null) {
-      clearTimeout(identityAutosaveTimer);
-      identityAutosaveTimer = null;
-    }
-  }
-
   function scheduleIdentitySave(delay = 550) {
-    clearIdentityAutosave();
+    identityAutosave.cancel();
     if (identityDraftStatus(state.identityDraft) !== "ready") {
       return;
     }
-    identityAutosaveTimer = setTimeout(() => {
-      identityAutosaveTimer = null;
-      void saveSelectedIdentity();
-    }, delay);
+    identityAutosave.schedule(delay);
   }
 
   async function saveSelectedIdentity() {
@@ -655,8 +648,11 @@ export function createAgentsPageState(
       onSaved: () => syncAgentState(agents),
     });
     identitySaves.set(agentId, { client, snapshot: gateway.snapshot, promise: save });
+    onSettled(() => {
+      void presentIdentitySave(save);
+    });
     try {
-      await presentIdentitySave(save);
+      await save;
     } finally {
       if (identitySaves.get(agentId)?.promise === save) {
         identitySaves.delete(agentId);
@@ -671,7 +667,7 @@ export function createAgentsPageState(
   }
 
   function resetSelectionState() {
-    clearIdentityAutosave();
+    identityAutosave.cancel();
     gateway.invalidate();
     resetModelCatalog();
     resetAgentFiles(state);
@@ -883,6 +879,7 @@ export function createAgentsPageState(
         identities.read().map((entry) => [entry.agentId, entry]),
       ),
       overview: {
+        identitySavePending: identitySavePending() && state.identitySaving,
         modelCatalog: modelCatalog.models,
         decisionModels: modelCatalog.decisionModels ?? [],
         modelSelectionPolicy: modelCatalog.modelSelectionPolicy,
@@ -1028,7 +1025,7 @@ export function createAgentsPageState(
     applyRoute();
     return () => {
       selectionDrafts.retainCurrentIdentity();
-      clearIdentityAutosave();
+      identityAutosave.cancel();
       active = false;
       observation.dispose();
       for (const stop of stops) {

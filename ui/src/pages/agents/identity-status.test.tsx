@@ -1,10 +1,23 @@
 /* @vitest-environment jsdom */
 
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import type { GatewayBrowserClient } from "../../api/gateway.ts";
+import type { ApplicationContext } from "../../app/context.ts";
 import { observeState } from "../../lib/reactive/observe-state.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
+import { mountSolid as mountView } from "../../test-helpers/solid-render.tsx";
 import { waitForSolid } from "../../test-helpers/solid-settle.ts";
+import {
+  agentsCapability,
+  agentsList,
+  agentsRouteData,
+  createAgentsPage,
+  gateway,
+  pageContext,
+  settingsSelection,
+  snapshot,
+} from "./agents-page.test-support.ts";
 import { createAgentViewTestProps } from "./agents-view.test-helpers.ts";
 import type { AgentIdentityOutcome } from "./identity-actions.ts";
 import { Agents } from "./view.tsx";
@@ -53,4 +66,80 @@ it("keeps identity inputs editable through an admitted save and clears its error
   await waitForSolid(() => expect(mounted.queryByRole("alert")).toBeNull());
   expect(state.identityDraft.name).toBe("Garden curator");
   expect(mounted.container.querySelector(".agent-identity-editor__fields input")).toBe(input);
+});
+
+it("switches identity editors while the previous agent save is pending", async () => {
+  const pending = createDeferred();
+  const request = vi.fn(() => pending.promise);
+  const client = { request } as unknown as GatewayBrowserClient;
+  const currentGateway = gateway(snapshot(client));
+  const roster = {
+    ...agentsList,
+    agents: [
+      { id: "main", name: "Main" },
+      { id: "research", name: "Research" },
+    ],
+  };
+  const selection = settingsSelection(roster);
+  const agents = agentsCapability(async () => ({ agentId: "main", workspace: "", files: [] }));
+  agents.state.agentsList = roster;
+  const context = pageContext(currentGateway, agents);
+  const runExternalMutation: ApplicationContext["runtimeConfig"]["runExternalMutation"] = async (
+    task,
+  ) => ({
+    ok: true,
+    value: await task(client),
+    refresh: { ok: true },
+  });
+  const page = createAgentsPage(
+    {
+      ...context,
+      settingsAgentSelection: selection,
+      runtimeConfig: { ...context.runtimeConfig, runExternalMutation },
+    },
+    { ...agentsRouteData(currentGateway, roster, "main", selection), panel: "overview" },
+  );
+  const mounted = mountView(Agents, page.read());
+  const input = () =>
+    mounted.container.querySelector<HTMLInputElement>(".agent-identity-editor__fields input")!;
+  try {
+    input().value = "Main draft";
+    input().dispatchEvent(new Event("input", { bubbles: true }));
+    input().dispatchEvent(new Event("blur"));
+    await waitForSolid(() =>
+      expect(request).toHaveBeenCalledWith("agents.update", {
+        agentId: "main",
+        name: "Main draft",
+      }),
+    );
+    await waitForSolid(() => {
+      mounted.update(page.read());
+      expect(
+        mounted.container.querySelector('.agent-identity-editor [role="status"]')?.textContent,
+      ).toContain("Saving");
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    selection.set("research");
+    await waitForSolid(() => {
+      mounted.update(page.read());
+      expect(input().value).toBe("Research");
+      expect(input().disabled).toBe(false);
+      expect(mounted.container.querySelector('.agent-identity-editor [role="status"]')).toBeNull();
+    });
+    pending.resolve();
+    await pending.promise;
+    expect(input().value).toBe("Research");
+    selection.set("main");
+    await waitForSolid(() => {
+      mounted.update(page.read());
+      expect(input().value).toBe("Main draft");
+    });
+  } finally {
+    pending.resolve();
+    mounted.dispose();
+    page.dispose();
+    selection.dispose();
+  }
 });
