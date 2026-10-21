@@ -2016,14 +2016,10 @@ export const single = {
   });
 
   it("keeps the top-level extensions watch target on its aggregate owner", () => {
-    expect(planRuns(["--watch", "extensions"])).toEqual([
-      {
-        config: configFile("full-extensions"),
-        forwardedArgs: [],
-        includePatterns: null,
-        watchMode: true,
-      },
-    ]);
+    expectRun(planRuns(["--watch", "extensions"]), {
+      config: configFile("full-extensions"),
+      watchMode: true,
+    });
   });
 
   it("bounds an explicit Telegram config target across process lifetimes", () => {
