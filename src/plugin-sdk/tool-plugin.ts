@@ -11,6 +11,8 @@ import {
   type OpenClawPluginToolContext,
 } from "./plugin-entry.js";
 
+export { gateAgentToolExecution } from "../agents/agent-tool-availability.js";
+
 const EMPTY_TOOL_PLUGIN_CONFIG_SCHEMA = Type.Object({}, { additionalProperties: false });
 
 /** Non-enumerable metadata symbol attached to entries created by `defineToolPlugin`. */

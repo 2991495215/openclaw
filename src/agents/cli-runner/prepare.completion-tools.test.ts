@@ -7,7 +7,7 @@ import {
 } from "../../config/runtime-snapshot.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
 import { assertNoRetainedSessionSharingReads } from "../../config/sessions/session-accessor.sqlite-diagnostics.test-support.js";
-import type { SessionEntry } from "../../config/sessions/types.js";
+import type { CliSessionBinding, SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { mintMcpLoopbackClientGrant as MintMcpLoopbackClientGrant } from "../../gateway/mcp-grant-store.js";
 import { handleMcpJsonRpc } from "../../gateway/mcp-http.handlers.js";
@@ -650,6 +650,110 @@ describe("restricted CLI tool preparation", () => {
     expect(turns[1]).toEqual(turns[0]);
     expect(turns[2]).toEqual(turns[0]);
     expect(nativeSkillsPlugin).not.toHaveBeenCalled();
+  });
+
+  it("keeps declarations and the native session across attached-client and completion turns", async () => {
+    const { sessionTarget } = fixture.session;
+    const childSessionKey = "agent:main:subagent:surface-tools";
+    const toolNames = ["read", "screen", "show_widget", "suggest_task", "dismiss_task"];
+    replaceSessionEntrySync(
+      { storePath: sessionTarget.storePath, sessionKey: childSessionKey },
+      {
+        sessionId: "surface-tools-child",
+        updatedAt: 1,
+        spawnedBy: sessionTarget.sessionKey,
+        spawnDepth: 1,
+        inheritedToolPolicyVersion: 1,
+        inheritedToolAllow: toolNames,
+      },
+    );
+    setCliRunnerPrepareTestDeps({
+      claudeCliSessionTranscriptHasContent: async () => true,
+      claudeCliSessionTranscriptHasOrphanedToolUse: async () => false,
+    });
+    const config: OpenClawConfig = {
+      session: { store: sessionTarget.storePath },
+      tools: { allow: toolNames },
+    };
+    let binding: CliSessionBinding | undefined;
+    const surfaces = [];
+    for (const completion of [false, true, false]) {
+      const context = await fixture.prepare({
+        sessionKey: sessionTarget.sessionKey,
+        sessionId: sessionTarget.sessionId,
+        provider: "claude-cli",
+        model: "opus",
+        modelHasVision: false,
+        sourceReplyDeliveryMode: "automatic",
+        senderIsOwner: !completion,
+        cliSessionBinding: binding,
+        config,
+        ...(completion
+          ? {
+              trustedInternalHandoff: {
+                kind: "subagent-completion" as const,
+                sourceSessionKey: childSessionKey,
+                sourceSessionId: "surface-tools-child",
+                targetSessionKey: sessionTarget.sessionKey,
+                targetSessionId: sessionTarget.sessionId,
+                provider: "claude-cli",
+                model: "opus",
+              },
+              inputProvenance: {
+                kind: "inter_session" as const,
+                sourceTool: "subagent_announce",
+                sourceSessionKey: childSessionKey,
+              },
+            }
+          : {
+              clientCaps: ["ui-commands", "inline-widgets"],
+              taskSuggestionDeliveryMode: "gateway" as const,
+            }),
+      });
+      try {
+        if (binding) {
+          expect(context.reusableCliSession).toEqual({
+            mode: "reuse",
+            sessionId: binding.sessionId,
+          });
+        }
+        const grant = mintGrant.mock.lastCall![0].context;
+        const scoped = await resolveMcpLoopbackScopedTools({
+          cfg: config,
+          context: grant,
+          admittedRunContext: context.params.admittedRunContext,
+        });
+        expect(scoped.tools.map((tool) => tool.name).toSorted()).toEqual(toolNames.toSorted());
+        surfaces.push({
+          schema: buildMcpToolSchema(scoped.tools),
+          systemPrompt: context.systemPrompt,
+          promptToolNamesHash: context.promptToolNamesHash,
+        });
+        if (completion) {
+          for (const tool of scoped.tools.filter((candidate) => candidate.name !== "read")) {
+            expect((await tool.execute("denied-" + tool.name, {})).details).toMatchObject({
+              gated: true,
+            });
+          }
+        }
+        binding = {
+          sessionId: "native-surface-session",
+          authEpoch: context.authEpoch,
+          authEpochVersion: context.authEpochVersion,
+          extraSystemPromptHash: context.extraSystemPromptHash,
+          messageToolPolicyHash: context.messageToolPolicyHash,
+          promptToolNamesHash: context.promptToolNamesHash,
+          cwdHash: context.cwdHash,
+          mcpConfigHash: context.preparedBackend.mcpConfigHash,
+          mcpResumeHash: context.preparedBackend.mcpResumeHash,
+        };
+      } finally {
+        await context.preparedBackend.cleanup?.();
+      }
+    }
+    expect(surfaces[0]?.promptToolNamesHash).toBeTruthy();
+    expect(surfaces[1]).toEqual(surfaces[0]);
+    expect(surfaces[2]).toEqual(surfaces[0]);
   });
 
   it.each([false, true])(

@@ -959,7 +959,8 @@ describe("CLI attempt execution", () => {
         expect(firstRunCliAgentArg(0).model).toBe("sonnet");
         expect(firstRunCliAgentArg(1).model).toBe("opus");
       }
-      const expectedBinding = suppression ? previousBinding : accepted ? binding : undefined;
+      const expectedBinding =
+        outcome === "heartbeat" ? previousBinding : accepted ? binding : undefined;
       expect(firstRunCliAgentArg(outerFallback ? 2 : 1)).toMatchObject({
         cliSessionId: expectedBinding?.sessionId,
         cliSessionBinding: expectedBinding,

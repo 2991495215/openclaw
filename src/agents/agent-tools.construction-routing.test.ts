@@ -40,7 +40,7 @@ vi.mock("./openclaw-tools.js", async (importOriginal) => {
       mocks.createOpenClawToolsOptions(options);
       return [AUTOMATIONS_TOOL_NAME, "gateway"].map(mocks.stubTool);
     },
-    filterToolsByClientCaps: actual.filterToolsByClientCaps,
+    gateToolsByClientCaps: actual.gateToolsByClientCaps,
   };
 });
 

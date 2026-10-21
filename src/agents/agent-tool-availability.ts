@@ -1,3 +1,4 @@
+import { overrideAgentToolCallbacks } from "./tool-callback-overrides.js";
 import { createToolExecutionMatcher } from "./tool-policy-shared.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { textResult } from "./tools/tool-results.js";
@@ -21,7 +22,7 @@ export type AgentToolAvailabilityBinding = {
 const availabilityBindings = new WeakMap<
   object,
   {
-    binding: AgentToolAvailabilityBinding;
+    binding?: AgentToolAvailabilityBinding;
     executionDenied?: true;
   }
 >();
@@ -30,7 +31,7 @@ export function bindAgentToolAvailability<T extends object>(
   tool: T,
   binding: AgentToolAvailabilityBinding,
 ): T {
-  availabilityBindings.set(tool, { binding });
+  availabilityBindings.set(tool, { ...availabilityBindings.get(tool), binding });
   return tool;
 }
 
@@ -51,10 +52,12 @@ export function copyAgentToolAvailability<T extends object>(source: object, targ
 /** Record an executor denial so later schema-only catalog projections cannot undo it. */
 export function markAgentToolExecutionUnavailable<T extends object>(tool: T): T {
   const metadata = availabilityBindings.get(tool);
-  if (metadata) {
-    availabilityBindings.set(tool, { ...metadata, executionDenied: true });
-  }
+  availabilityBindings.set(tool, { ...metadata, executionDenied: true });
   return tool;
+}
+
+export function isAgentToolExecutionAvailable(tool: object): boolean {
+  return !availabilityBindings.get(tool)?.executionDenied;
 }
 
 /**
@@ -62,17 +65,22 @@ export function markAgentToolExecutionUnavailable<T extends object>(tool: T): T 
  * while this turn may not run it.
  */
 export function gateAgentToolExecution<T extends AnyAgentTool>(tool: T, message: string): T {
+  if (!isAgentToolExecutionAvailable(tool)) {
+    return tool;
+  }
   return markAgentToolExecutionUnavailable(
-    copyAgentToolAvailability(tool, {
-      ...tool,
-      // Preparation can perform work too; a denied call must not enter the source path.
-      prepareArguments: undefined,
-      prepareBeforeToolCallParams: undefined,
-      finalizeBeforeToolCallParams: undefined,
-      // A denial is guidance for the model, not a tool failure that fails the run;
-      // a failure-like `status` detail would reclassify it as an error.
-      execute: async () => textResult(message, { gated: true }),
-    }),
+    copyAgentToolAvailability(
+      tool,
+      overrideAgentToolCallbacks(tool, {
+        // Preparation can perform work too; a denied call must not enter the source path.
+        prepareArguments: undefined,
+        prepareBeforeToolCallParams: undefined,
+        finalizeBeforeToolCallParams: undefined,
+        // A denial is guidance for the model, not a tool failure that fails the run;
+        // a failure-like `status` detail would reclassify it as an error.
+        execute: async () => textResult(message, { gated: true }),
+      }),
+    ),
   );
 }
 
@@ -94,8 +102,7 @@ export function finalizeAgentToolAvailability<T extends ToolDefinition>(
   const callableTools = new Map(
     [...winners].filter(
       ([, tool]) =>
-        !availabilityBindings.get(tool)?.executionDenied &&
-        (!executionAllowed || executionAllowed(tool.name)),
+        isAgentToolExecutionAvailable(tool) && (!executionAllowed || executionAllowed(tool.name)),
     ),
   );
   for (const tool of tools) {
@@ -109,5 +116,5 @@ export function finalizeAgentToolAvailability<T extends ToolDefinition>(
 }
 
 export function resolveAgentToolExecutionSchema(tool: object, schema: unknown): unknown {
-  return availabilityBindings.get(tool)?.binding.executionSchema?.(schema) ?? schema;
+  return availabilityBindings.get(tool)?.binding?.executionSchema?.(schema) ?? schema;
 }

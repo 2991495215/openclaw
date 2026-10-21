@@ -15,6 +15,7 @@ import {
   resolveAgentWorkspaceDir,
   resolveSessionAgentIds,
 } from "./agent-scope.js";
+import { gateAgentToolExecution } from "./agent-tool-availability.js";
 import { ensureAuthProfileStoreWithoutExternalProfiles } from "./auth-profiles/store-runtime.js";
 import {
   resolveOpenClawPluginToolsForOptions,
@@ -96,7 +97,7 @@ import { createVideoGenerateTool } from "./tools/video-generate-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
-export { filterToolsByClientCaps } from "./openclaw-tools.client-caps.js";
+export { gateToolsByClientCaps } from "./openclaw-tools.client-caps.js";
 export async function createOpenClawToolsAsync(
   options?: OpenClawToolsOptions,
   preparation: ToolConstructionPreparationOptions = {},
@@ -501,17 +502,25 @@ function* createOpenClawToolsSteps(
                 ...createAvailablePortalTools(options),
               ]),
         ]),
-    ...(!embedded && sessionKey && options?.taskSuggestionDeliveryMode === "gateway"
+    ...(!embedded && sessionKey
       ? createTaskSuggestionTools({
           sessionKey,
           agentId: sessionAgentId,
           cwd: resolveWorkspaceRoot(options?.cwd ?? options?.workspaceDir ?? inferredWorkspaceDir),
-        })
+        }).map((tool) =>
+          options?.taskSuggestionDeliveryMode === "gateway"
+            ? tool
+            : gateAgentToolExecution(
+                tool,
+                tool.name +
+                  " requires a task-suggestion delivery client. This turn has no eligible client; do not retry.",
+              ),
+        )
       : []),
     includeMessageTool ? messageTool : null,
     !isCoreCanvasHostEnabled(resolvedConfig) &&
     !hasRegisteredShowWidgetKinds() &&
-    !widgetPresentation.currentChannelPresenter
+    widgetPresentation.presenters.length === 0
       ? null
       : createShowWidgetTool({
           sessionId: options?.sessionId,

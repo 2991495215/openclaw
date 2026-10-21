@@ -53,7 +53,6 @@ function createShowWidgetToolSchema(
   kinds: readonly string[],
   presenters: readonly Exclude<WidgetPresenter, { target: "current_channel" }>[],
   capabilityGuidance: string,
-  pinnedOnly: boolean,
   reportAvailable: boolean,
 ) {
   const presenterTargets = presenters.map((presenter) => presenter.target);
@@ -87,16 +86,12 @@ function createShowWidgetToolSchema(
           "Stable dashboard widget name; reuse the same name with pin=true and new report data or widget_code to update",
       }),
     ),
-    pin: pinnedOnly
-      ? Type.Literal(true, {
-          description: "Required: this surface can only author pinned widgets",
-        })
-      : Type.Optional(
-          Type.Boolean({
-            description:
-              "Pin only for an explicit dashboard request or multiple non-code visualizations",
-          }),
-        ),
+    pin: Type.Optional(
+      Type.Boolean({
+        description:
+          "Pin only for an explicit dashboard request or multiple non-code visualizations",
+      }),
+    ),
     tab: Type.Optional(
       Type.String({ pattern: "^[a-z0-9-]{1,40}$", description: "Dashboard tab slug" }),
     ),
@@ -105,16 +100,12 @@ function createShowWidgetToolSchema(
     }),
     presentation: Type.Optional(
       Type.Object({
-        ...(pinnedOnly
-          ? {}
-          : {
-              target: optionalStringEnum(targets, {
-                description: [
-                  "Where to show the widget. assistant_message: inline in chat",
-                  ...presenterDescriptions,
-                ].join("; "),
-              }),
-            }),
+        target: optionalStringEnum(targets, {
+          description: [
+            "Where to show the widget. assistant_message: inline in chat",
+            ...presenterDescriptions,
+          ].join("; "),
+        }),
         frame: optionalStringEnum(["card", "full-bleed", "frameless"] as const, {
           description: "Pinned dashboard frame: card, full-bleed, or frameless",
         }),
@@ -272,7 +263,7 @@ export function createShowWidgetTool(options: ShowWidgetToolOptions = {}): AnyAg
   const inlineAvailable =
     !pinnedOnly && inlineHostEnabled && options.inlineClientAvailable !== false;
   const registeredKinds = listBoardWidgetContentKinds(currentPluginRegistry());
-  const allKinds = ["html", ...registeredKinds];
+  const kinds = ["html", ...registeredKinds];
   const presenters = options.presenters ?? [];
   const presenterContext =
     options.presenterContext ??
@@ -280,29 +271,21 @@ export function createShowWidgetTool(options: ShowWidgetToolOptions = {}): AnyAg
   const currentChannelPresenter = pinnedOnly
     ? undefined
     : resolveCurrentChannelWidgetPresenter(presenters, presenterContext);
-  const kinds =
-    currentChannelPresenter && !inlineAvailable
-      ? allKinds.filter((kind) => currentChannelPresenter.capabilities.sourceKinds.includes(kind))
-      : allKinds;
+  // The declaration describes configured surfaces; this turn's delivery limits are checked below.
   const advertisedRegisteredKinds = kinds.filter((kind) => kind !== "html");
   const reportAvailable = Boolean(options.agentSessionKey?.trim());
   const reportGuidance = reportAvailable
     ? " Prefer the report argument with pin=true for data reports; these render natively on the dashboard without a document frame. Reports are dashboard-only; omit widget_code, kind, capabilities, and presentation.target."
     : "";
-  const explicitPresenters = pinnedOnly
-    ? []
-    : presenters.filter((presenter) => presenter.target !== "current_channel");
+  const explicitPresenters = presenters.filter(
+    (presenter) => presenter.target !== "current_channel",
+  );
   const presenterPrompt =
     explicitPresenters.length > 0
       ? " Use presentation.target to choose a registered device surface."
       : "";
-  const usageGuidance = pinnedOnly
-    ? "This surface is pinned-only: set pin=true to create or update a durable session dashboard widget. Inline and device presentation are unavailable."
-    : currentChannelPresenter
-      ? "Show widgets through the current channel presenter; follow result.presentation for delivery."
-      : inlineAvailable
-        ? "Keep one-off visualizations inline; pin for explicit dashboard requests or multiple non-code visualizations."
-        : "Inline previews are unavailable this turn; set pin=true to save to the session dashboard.";
+  const usageGuidance =
+    "Keep one-off visualizations inline when this turn has a rendering client; follow result.presentation for delivery. Pin for explicit dashboard requests or multiple non-code visualizations. Pinned-only turns require pin=true and cannot present inline or on devices.";
   return {
     label: "Show Widget",
     name: "show_widget",
@@ -311,7 +294,6 @@ export function createShowWidgetTool(options: ShowWidgetToolOptions = {}): AnyAg
       kinds,
       explicitPresenters,
       describeDashboardCapabilities(currentPluginRegistry()),
-      pinnedOnly,
       reportAvailable,
     ),
     ...(currentChannelPresenter || pinnedOnly

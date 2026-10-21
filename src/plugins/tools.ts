@@ -1,6 +1,7 @@
 /** Builds agent tools registered by plugins, preserving plugin scope around callbacks and descriptors. */
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { compileGlobPatterns, matchesAnyGlobPattern } from "../agents/glob-pattern.js";
+import { gateToolByClientCaps } from "../agents/openclaw-tools.client-caps.js";
 import { normalizeToolPolicyName } from "../agents/tool-policy.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import { captureAgentWorkspaceReadiness } from "../agents/workspace-readiness.js";
@@ -626,12 +627,6 @@ function* resolvePluginToolsFromRegistry(
             const validCaps =
               Array.isArray(requiredClientCaps) &&
               requiredClientCaps.every((requiredCap) => typeof requiredCap === "string");
-            if (
-              validCaps &&
-              requiredClientCaps.some((requiredCap) => !clientCaps.has(requiredCap))
-            ) {
-              continue;
-            }
             const error = !toolName
               ? "missing non-empty name"
               : typeof toolRaw.execute !== "function"
@@ -647,7 +642,7 @@ function* resolvePluginToolsFromRegistry(
                   tool: bindPluginToolCallbacks(
                     entry,
                     owner.registry,
-                    toolRaw as AnyAgentTool,
+                    gateToolByClientCaps(toolRaw as AnyAgentTool, clientCaps),
                     factoryContext.assertInvocationCurrent,
                     factoryContext.memoryAudience,
                   ),

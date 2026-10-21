@@ -476,9 +476,9 @@ export async function runEmbeddedAgentAttempt(params: RunEmbeddedAgentAttemptPar
               cwd,
               body,
               transcriptBody,
-              preserveCliSessionBinding:
-                isHeartbeatLifecycleRunKind(logicalTurnOpts.bootstrapContextRunKind) ||
-                params.preserveUserFacingSessionModelState,
+              preserveCliSessionBinding: isHeartbeatLifecycleRunKind(
+                logicalTurnOpts.bootstrapContextRunKind,
+              ),
               resolvedThinkLevel: candidateThinkLevel,
               thinkingExplicit: candidateConfiguredThinkLevel !== undefined,
               fastMode,
