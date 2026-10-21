@@ -7,6 +7,7 @@ vi.mock("./scenario-runtime-shared.js", async (importOriginal) => ({
   primeMatrixQaDriverScenarioClient,
 }));
 
+import { createMatrixQaE2eeTestContext } from "./scenario-runtime-e2ee.test-helpers.js";
 import { runGeneratedImageDeliveryScenario, testing } from "./scenario-runtime-media.js";
 import type { MatrixQaScenarioContext } from "./scenario-runtime-shared.js";
 
@@ -25,7 +26,7 @@ const roomId = "!media:matrix-qa.test";
 function createGeneratedImageContext(
   observedEvents: MatrixQaScenarioContext["observedEvents"] = [],
 ): MatrixQaScenarioContext {
-  return {
+  return createMatrixQaE2eeTestContext({
     baseUrl: "http://127.0.0.1:28008",
     driverAccessToken: "driver-token",
     driverUserId: "@driver:matrix-qa.test",
@@ -57,7 +58,7 @@ function createGeneratedImageContext(
         },
       ],
     },
-  };
+  });
 }
 
 describe("Matrix generated image delivery", () => {
@@ -90,8 +91,8 @@ describe("Matrix generated image delivery", () => {
 
     expect(sendTextMessage).toHaveBeenCalledTimes(1);
     expect(waitForOptionalRoomEvent).toHaveBeenCalledTimes(1);
-    expect(result.artifacts?.driverEventId).toBe("$driver-trigger");
-    expect(result.artifacts?.attachmentEventId).toBe("$generated-image");
+    expect(result.details).toContain("driver event: $driver-trigger");
+    expect(result.details).toContain("generated image event: $generated-image");
   });
 
   it("bounds timeout diagnostics to the last eight room events", async () => {
