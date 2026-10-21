@@ -245,6 +245,27 @@ it("serializes quiet polls so an older cursor cannot overwrite a newer one", asy
   expect(request.mock.calls[2]![1]).toMatchObject({ cursor: 2 });
 });
 
+it("caps appended log rows and replaces the bounded window on refresh", async () => {
+  const batches = Array.from({ length: 5 }, (_, batch) =>
+    tail(
+      (batch + 1) * 500,
+      Array.from({ length: 500 }, (_line, row) => `row-${batch * 500 + row}`),
+    ),
+  );
+  const { page, request } = await setup(responding(...batches));
+  for (let batch = 1; batch < batches.length; batch += 1) {
+    await poll();
+  }
+  const rows = page.lines();
+  expect(rows).toHaveLength(2000);
+  expect(rows[0]).toBe("row-500");
+  expect(rows.at(-1)).toBe("row-2499");
+
+  request.mockResolvedValueOnce(tail(2501, ["fresh window"]));
+  await page.refresh();
+  expect(page.lines()).toEqual(["fresh window"]);
+});
+
 it("reloads a changed log file before publishing any rows from it", async () => {
   const reset = deferred<ReturnType<typeof tail>>();
   const request = responding(
