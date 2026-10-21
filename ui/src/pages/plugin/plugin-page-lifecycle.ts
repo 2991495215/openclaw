@@ -19,7 +19,7 @@ import { listen } from "../../lib/reactive/listener.ts";
 import { postWidgetTheme, registerWidgetThemeFrame } from "../../lib/widget-theme.ts";
 import type { LogbookProps } from "./logbook-view.tsx";
 import { openPluginFrameSession } from "./plugin-frame-session-navigation.ts";
-import { pluginTabKey } from "./route.ts";
+import { pluginTabKey } from "./route.tsx";
 
 /**
  * Views shipped with the Control UI use this adapter. Native plugin entries

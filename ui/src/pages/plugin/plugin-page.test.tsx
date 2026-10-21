@@ -16,7 +16,7 @@ import { createSolidApplicationContextProvider } from "../../test-helpers/solid-
 import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { BUNDLED_TAB_VIEWS } from "./plugin-page-lifecycle.ts";
 import { PluginPage, type PluginPageProps } from "./plugin-page.tsx";
-import { page as pluginRoute } from "./route.ts";
+import { page as pluginRoute } from "./route.tsx";
 
 type ApplicationConfig = ApplicationConfigCapability["current"];
 const cleanups: Array<() => void> = [];

@@ -10,7 +10,7 @@ import { isGatewayConnectionAttemptPending, resolveGatewayStatus } from "../lib/
 import { readSessionMethodAccess } from "../lib/session-method-access.ts";
 import { normalizeAgentId } from "../lib/sessions/session-key.ts";
 import { isTerminalAvailable } from "../lib/terminal-availability.ts";
-import { pluginTabKey, pluginTabRefFromSearch } from "../pages/plugin/route.ts";
+import { pluginTabKey, pluginTabRefFromSearch } from "../pages/plugin/route.tsx";
 import type { ShellRouteState } from "./app-host-route-state.ts";
 import type { DevicePairSetupLoader } from "./app-shell-device-pair-setup.tsx";
 import type { OutboxStoreRuntime } from "./app-shell-gateway.ts";

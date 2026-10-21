@@ -1,6 +1,5 @@
 import type { RouteLocation } from "@openclaw/uirouter";
 import { definePage } from "@openclaw/uirouter";
-import { createComponent } from "solid-js";
 import { routePageSpec } from "../../app-route-paths.ts";
 import type { SolidRouteProps } from "../../app-route-types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
@@ -21,11 +20,8 @@ export const page = definePage({
   component: () =>
     import("./custodian-page.tsx").then((module) => ({
       header: true,
-      renderSolid: (props: SolidRouteProps<CustodianRouteData>) =>
-        createComponent(module.CustodianRoute, {
-          get data() {
-            return props.data;
-          },
-        }),
+      renderSolid: (props: SolidRouteProps<CustodianRouteData>) => (
+        <module.CustodianRoute data={props.data} />
+      ),
     })),
 });

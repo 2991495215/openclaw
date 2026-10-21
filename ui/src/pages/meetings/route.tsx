@@ -1,5 +1,4 @@
 import { definePage } from "@openclaw/uirouter";
-import { createComponent } from "solid-js";
 import { routePageSpec } from "../../app-route-paths.ts";
 import type { SolidRouteProps } from "../../app-route-types.ts";
 
@@ -10,11 +9,8 @@ export const page = definePage({
   component: () =>
     import("./meetings-page.tsx").then((module) => ({
       header: true,
-      renderSolid: (props: SolidRouteProps<string>) =>
-        createComponent(module.MeetingsPage, {
-          get routeSearch() {
-            return props.data ?? "";
-          },
-        }),
+      renderSolid: (props: SolidRouteProps<string>) => (
+        <module.MeetingsPage routeSearch={props.data ?? ""} />
+      ),
     })),
 });
