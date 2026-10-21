@@ -84,6 +84,13 @@ suite.define(() => {
                 )
                 .toBe(true);
             }
+            if (testCase.id === "clawhub") {
+              // Compare settled catalog content, not the transient loading card.
+              await expectBrowser(page.locator(".chat-clawhub-card")).toHaveAttribute(
+                "aria-busy",
+                "false",
+              );
+            }
             const surface = `.chat-thread ${testCase.selector}`;
             await page.locator(surface).first().waitFor();
             // Reduced motion still gives newly mounted cards a brief entrance transform.
