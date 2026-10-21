@@ -809,15 +809,48 @@ describe("oxlint config", () => {
 
   it("trusts changed lint policy files only when they match authoritative main", () => {
     const config = { categories: { correctness: "off" }, rules: { "max-lines": ["error", 2] } };
-    const { root, write, json } = makeFixture("trusted-release-policy", config);
-    linkDependencies(root);
+    const root = fs.realpathSync(createTempDir("openclaw-oxlint-trusted-release-policy-"));
+    const write = (file: string, content: string) => {
+      const target = path.join(root, file);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, content);
+    };
+    const json = (file: string, value: unknown) => write(file, JSON.stringify(value));
+    const git = (...args: string[]) => {
+      const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      return result.stdout.trim();
+    };
+    const runFocused = (env: NodeJS.ProcessEnv) => {
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.resolve("scripts/run-oxlint.mts"),
+          "--openclaw-focused-config",
+          "--threads=1",
+          "--format=json",
+          "src/changed.ts",
+          "src/untouched.ts",
+        ],
+        { cwd: root, encoding: "utf8", env: { ...process.env, ...env } },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      return JSON.parse(result.stdout) as {
+        diagnostics: Array<{ filename: string; severity: string }>;
+      };
+    };
+    const severity = (report: ReturnType<typeof runFocused>, file: string) =>
+      report.diagnostics.find((item) => item.filename.replaceAll("\\", "/") === file)?.severity;
+    write(".oxlintrc.json", JSON.stringify(config));
+    fs.symlinkSync(path.resolve("node_modules"), path.join(root, "node_modules"), "junction");
     write("src/changed.ts", "export const changed = [\n  0,\n  1,\n];\n");
     write("src/untouched.ts", "export const untouched = [\n  0,\n  1,\n];\n");
     write("scripts/lib/oxlint-changed-scope.mts", 'export const policy = "base";\n');
     json("package.json", { name: "fixture", version: "2026.10.10-beta.3" });
-    git(root, ["init", "--quiet"]);
-    git(root, ["add", "."]);
-    git(root, [
+    git("init", "--quiet");
+    git("add", ".oxlintrc.json", "package.json", "scripts", "src");
+    git(
       "-c",
       "user.name=Test",
       "-c",
@@ -826,11 +859,11 @@ describe("oxlint config", () => {
       "--quiet",
       "-m",
       "base",
-    ]);
-    const base = git(root, ["rev-parse", "HEAD"]);
+    );
+    const base = git("rev-parse", "HEAD");
     write("scripts/lib/oxlint-changed-scope.mts", 'export const policy = "trusted";\n');
-    git(root, ["add", "scripts/lib/oxlint-changed-scope.mts"]);
-    git(root, [
+    git("add", "scripts/lib/oxlint-changed-scope.mts");
+    git(
       "-c",
       "user.name=Test",
       "-c",
@@ -839,8 +872,8 @@ describe("oxlint config", () => {
       "--quiet",
       "-m",
       "trusted policy",
-    ]);
-    const trustedPolicyRef = git(root, ["rev-parse", "HEAD"]);
+    );
+    const trustedPolicyRef = git("rev-parse", "HEAD");
     json("package.json", { name: "fixture", version: "2026.10.10-beta.4" });
 
     const changedPaths = ["package.json", "scripts/lib/oxlint-changed-scope.mts", "src/changed.ts"];
@@ -855,24 +888,22 @@ describe("oxlint config", () => {
     );
     expect(trustedEnv.OPENCLAW_OXLINT_CHANGED_BASE).toBe(base);
     expect(trustedEnv.OPENCLAW_OXLINT_CHANGED_PATHS).toBe(JSON.stringify(changedPaths));
-    const trusted = runFocused(root, ["src/changed.ts", "src/untouched.ts"], {
+    const trusted = runFocused({
       GITHUB_ACTIONS: "false",
       ...trustedEnv,
     });
-    const trustedReport = parseReport(checked(trusted, 1));
-    expect(byFile(trustedReport, "src/changed.ts")[0]?.severity).toBe("error");
-    expect(byFile(trustedReport, "src/untouched.ts")[0]?.severity).toBe("warning");
+    expect(severity(trusted, "src/changed.ts")).toBe("error");
+    expect(severity(trusted, "src/untouched.ts")).toBe("warning");
 
     write("scripts/lib/oxlint-changed-scope.mts", 'export const policy = "untrusted";\n');
-    const untrusted = runFocused(root, ["src/changed.ts", "src/untouched.ts"], {
+    const untrusted = runFocused({
       GITHUB_ACTIONS: "false",
       OPENCLAW_OXLINT_CHANGED_PATHS: JSON.stringify(changedPaths),
       OPENCLAW_OXLINT_CHANGED_BASE: base,
       OPENCLAW_OXLINT_TRUSTED_POLICY_REF: trustedPolicyRef,
     });
-    const untrustedReport = parseReport(checked(untrusted, 1));
-    expect(byFile(untrustedReport, "src/changed.ts")[0]?.severity).toBe("error");
-    expect(byFile(untrustedReport, "src/untouched.ts")[0]?.severity).toBe("error");
+    expect(severity(untrusted, "src/changed.ts")).toBe("error");
+    expect(severity(untrusted, "src/untouched.ts")).toBe("error");
   });
 
   it("preserves native config validation locally and in Actions", () => {
