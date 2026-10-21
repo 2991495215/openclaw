@@ -1,5 +1,6 @@
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
-import { createMemo, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createMemo, Errored, For, isPending, latest, Loading, Show } from "solid-js";
 import type { SkillStatusEntry } from "../../api/types.ts";
 import { handleMarkdownCodeBlockClick } from "../../components/markdown-code-blocks.ts";
 import { HubTabs } from "../../components/solid/hub-tabs.tsx";
@@ -13,7 +14,7 @@ import {
 } from "../../components/solid/settings-ui.tsx";
 import { registerSkillLibraryEnglish } from "../../i18n/locales/en-skill-library.ts";
 import { registerSkillsBrowserEnglish } from "../../i18n/locales/en-skills-browser.ts";
-import { formatUiExternalText } from "../../lib/format-error.ts";
+import { formatUiError, formatUiExternalText } from "../../lib/format-error.ts";
 import { clampText } from "../../lib/format.ts";
 import { resolveSafeExternalUrl } from "../../lib/open-external-url.ts";
 import { t } from "../../lib/reactive/i18n.ts";
@@ -59,24 +60,40 @@ function skillInstallLocked(view: SkillsProps): boolean {
 }
 
 export function Skills(props: SkillsProps) {
-  const skills = createMemo(() => props.state.skillsReport?.skills ?? []);
+  const acceptedReport = createMemo(() => props.state.skillsReport);
+  const completion = createMemo(() => props.state.skillsRead);
+  const read = createMemo(
+    () => completion()?.completion ?? { value: acceptedReport(), error: null },
+  );
+  // Toolbar counts and selection stay available outside the inventory's first-load boundary.
+  const acceptedSkills = createMemo(() => acceptedReport()?.skills ?? []);
+  const readError = () => {
+    if (props.error) {
+      throw new Error(props.error);
+    }
+    return null;
+  };
+  const emptyMessage = () =>
+    !props.state.connected && !props.state.skillsReport
+      ? t("skillsPage.disconnected")
+      : t("skillsPage.empty");
   const statusCounts = createMemo(() => {
     const counts: Record<SkillsStatusFilter, number> = {
-      all: skills().length,
+      all: acceptedSkills().length,
       ready: 0,
       "needs-setup": 0,
       disabled: 0,
     };
-    for (const skill of skills()) {
+    for (const skill of acceptedSkills()) {
       counts[skillStatus(skill)]++;
     }
     return counts;
   });
-  const filtered = createMemo(() => {
+  const filterSkills = (items: SkillStatusEntry[]) => {
     const afterStatus =
       props.state.skillsStatusFilter === "all"
-        ? skills()
-        : skills().filter((skill) => skillStatus(skill) === props.state.skillsStatusFilter);
+        ? items
+        : items.filter((skill) => skillStatus(skill) === props.state.skillsStatusFilter);
     const filter = normalizeLowercaseStringOrEmpty(props.state.skillsFilter);
     return filter
       ? afterStatus.filter((skill) =>
@@ -85,11 +102,23 @@ export function Skills(props: SkillsProps) {
           ).includes(filter),
         )
       : afterStatus;
-  });
-  const groups = createMemo(() => groupSkills(filtered()));
+  };
+  const acceptedFiltered = createMemo(() => filterSkills(acceptedSkills()));
+  const Inventory = () => {
+    const skills = createMemo(() => (acceptedReport() ?? read().value)?.skills ?? []);
+    const filtered = createMemo(() => filterSkills(skills()));
+    const groups = createMemo(() => groupSkills(filtered()));
+    return (
+      <Show when={filtered().length > 0} fallback={<SettingsEmpty message={emptyMessage()} />}>
+        <For each={groups()} keyed={(group) => group.id}>
+          {(group) => <SkillGroupView group={group()} view={props} />}
+        </For>
+      </Show>
+    );
+  };
   const detailSkill = createMemo(() =>
     props.state.skillsDetailKey
-      ? (skills().find((skill) => skill.skillKey === props.state.skillsDetailKey) ?? null)
+      ? (acceptedSkills().find((skill) => skill.skillKey === props.state.skillsDetailKey) ?? null)
       : null,
   );
   return (
@@ -104,33 +133,30 @@ export function Skills(props: SkillsProps) {
                 <SkillsToolbar
                   view={props}
                   statusCounts={statusCounts()}
-                  shownCount={filtered().length}
+                  shownCount={acceptedFiltered().length}
+                  refreshLabel={
+                    <Loading fallback={t("common.loading")}>
+                      {isPending(read) ? t("common.loading") : t("common.refresh")}
+                    </Loading>
+                  }
                 />
               </Show>
-              <Show when={props.error}>
-                {(error) => (
+              <Errored
+                fallback={(error) => (
                   <div class="callout danger" role="alert">
-                    {error()}
+                    {formatUiError(error())}
                   </div>
                 )}
-              </Show>
+              >
+                {readError()}
+              </Errored>
               <Show when={props.showInventory !== false}>
-                <Show
-                  when={filtered().length > 0}
-                  fallback={
-                    <SettingsEmpty
-                      message={
-                        !props.state.connected && !props.state.skillsReport
-                          ? t("skillsPage.disconnected")
-                          : t("skillsPage.empty")
-                      }
-                    />
-                  }
+                <Loading
+                  on={acceptedReport() ? null : completion()}
+                  fallback={<SettingsEmpty message={emptyMessage()} />}
                 >
-                  <For each={groups()} keyed={(group) => group.id}>
-                    {(group) => <SkillGroupView group={group()} view={props} />}
-                  </For>
-                </Show>
+                  <Inventory />
+                </Loading>
               </Show>
             </>
           }
@@ -171,6 +197,7 @@ function SkillsToolbar(props: {
   view: SkillsProps;
   statusCounts: Record<SkillsStatusFilter, number>;
   shownCount: number;
+  refreshLabel: JSX.Element;
 }) {
   return (
     <div class="plugins-toolbar plugins-toolbar--fields">
@@ -207,7 +234,7 @@ function SkillsToolbar(props: {
         disabled={skillControlsLocked(props.view) || !props.view.state.connected}
         onClick={() => props.view.onRefresh()}
       >
-        {props.view.loading ? t("common.loading") : t("common.refresh")}
+        {props.refreshLabel}
       </button>
     </div>
   );
@@ -215,6 +242,14 @@ function SkillsToolbar(props: {
 
 function SkillRow(props: { skill: SkillStatusEntry; view: SkillsProps }) {
   const verdict = createMemo(() => verdictForSkill(props.skill, props.view.state.clawhubVerdicts));
+  const status = () =>
+    verdictStatus(
+      verdictForSkill(
+        props.skill,
+        verdict() ? latest(props.view.readClawHubVerdicts) : props.view.readClawHubVerdicts(),
+      ),
+      isPending(props.view.readClawHubVerdicts),
+    );
   return (
     <div class="settings-row plugins-item plugins-item--clickable">
       <button
@@ -245,7 +280,9 @@ function SkillRow(props: { skill: SkillStatusEntry; view: SkillsProps }) {
             </Show>
           }
         >
-          <SettingsStatus {...verdictStatus(verdict(), props.view.state.clawhubVerdictsLoading)} />
+          <Loading fallback={<SettingsStatus {...verdictStatus(null, true)} />}>
+            <SettingsStatus {...status()} />
+          </Loading>
         </Show>
       </div>
     </div>
@@ -488,14 +525,22 @@ function InstalledClawHubOverview(props: {
   const auditHref = createMemo(() =>
     resolveSafeExternalUrl(props.verdict?.securityAuditUrl ?? "", window.location.href),
   );
-  const feedback = createMemo(
-    () =>
-      props.view.state.clawhubVerdictsError ||
-      (props.verdict?.reasons?.length
-        ? formatUiExternalText(props.verdict.reasons.join(", "))
-        : null),
-  );
-  const status = () => verdictStatus(props.verdict, props.view.state.clawhubVerdictsLoading);
+  const feedback = createMemo(() => {
+    if (props.view.state.clawhubVerdictsError) {
+      throw new Error(props.view.state.clawhubVerdictsError);
+    }
+    return props.verdict?.reasons?.length
+      ? formatUiExternalText(props.verdict.reasons.join(", "))
+      : null;
+  });
+  const status = () =>
+    verdictStatus(
+      verdictForSkill(
+        props.skill,
+        props.verdict ? latest(props.view.readClawHubVerdicts) : props.view.readClawHubVerdicts(),
+      ),
+      isPending(props.view.readClawHubVerdicts),
+    );
   return (
     <Show when={link()}>
       {(current) => (
@@ -522,21 +567,33 @@ function InstalledClawHubOverview(props: {
             <div
               style={{ display: "flex", "align-items": "center", gap: "8px", "flex-wrap": "wrap" }}
             >
-              <span class={["chip", status().chipClass]}>{status().label}</span>
+              <Loading fallback={<span class="chip">{t("skillsPage.refreshing")}</span>}>
+                <span class={["chip", status().chipClass]}>{status().label}</span>
+              </Loading>
               <span class="muted" style={{ "font-size": "12px" }}>
                 {installedRef()}
               </span>
-              <Show when={props.view.state.clawhubVerdictsLoading && props.verdict}>
-                <span class="muted">{t("skillsPage.refreshing")}</span>
-              </Show>
+              <Loading fallback={<span class="muted">{t("skillsPage.refreshing")}</span>}>
+                <Show when={props.verdict && isPending(props.view.readClawHubVerdicts)}>
+                  <span class="muted">{t("skillsPage.refreshing")}</span>
+                </Show>
+              </Loading>
             </div>
-            <Show when={feedback()}>
-              {(value) => (
+            <Errored
+              fallback={(error) => (
                 <div class="muted" style={{ "font-size": "13px" }}>
-                  {value()}
+                  {formatUiError(error())}
                 </div>
               )}
-            </Show>
+            >
+              <Show when={feedback()}>
+                {(value) => (
+                  <div class="muted" style={{ "font-size": "13px" }}>
+                    {value()}
+                  </div>
+                )}
+              </Show>
+            </Errored>
             <Show when={auditHref()}>
               {(href) => (
                 <div style={{ "font-size": "13px" }}>
@@ -554,29 +611,36 @@ function InstalledClawHubOverview(props: {
 }
 
 function InstalledSkillCard(props: { skill: SkillStatusEntry; view: SkillsProps }) {
-  const content = createMemo(() => props.view.state.skillCardContents[props.skill.skillKey]);
-  const error = () => props.view.state.skillCardErrors[props.skill.skillKey];
-  return (
-    <Show when={props.skill.skillCard?.present}>
+  const acceptedContent = createMemo(
+    () => props.view.state.skillCardContents[props.skill.skillKey],
+  );
+  const completion = createMemo(() => props.view.state.skillCardReads[props.skill.skillKey]);
+  const read = createMemo(
+    () =>
+      completion()?.completion ?? {
+        value: acceptedContent(),
+        error: props.view.state.skillCardErrors[props.skill.skillKey] ?? null,
+      },
+  );
+  const CardContent = () => {
+    const content = createMemo(() => {
+      const accepted = acceptedContent();
+      if (accepted !== undefined) {
+        return accepted;
+      }
+      const outcome = read();
+      if (outcome.error) {
+        throw new Error(outcome.error);
+      }
+      return outcome.value;
+    });
+    return (
       <Show
         when={content() !== undefined}
         fallback={
-          <Show
-            when={error()}
-            fallback={
-              <div class="muted" role="status" style={{ "font-size": "13px" }}>
-                {props.view.state.skillCardLoadingKey === props.skill.skillKey
-                  ? t("skillsPage.loadingSkillCard")
-                  : t("skillsPage.skillCardNotLoaded")}
-              </div>
-            }
-          >
-            {(value) => (
-              <div class="callout danger" role="alert">
-                {value()}
-              </div>
-            )}
-          </Show>
+          <div class="muted" role="status" style={{ "font-size": "13px" }}>
+            {t("skillsPage.skillCardNotLoaded")}
+          </div>
         }
       >
         <MarkdownContent
@@ -586,6 +650,28 @@ function InstalledSkillCard(props: { skill: SkillStatusEntry; view: SkillsProps 
           content={content() ?? ""}
         />
       </Show>
+    );
+  };
+  return (
+    <Show when={props.skill.skillCard?.present}>
+      <Loading
+        on={acceptedContent() === undefined ? completion() : null}
+        fallback={
+          <div class="muted" role="status" style={{ "font-size": "13px" }}>
+            {t("skillsPage.loadingSkillCard")}
+          </div>
+        }
+      >
+        <Errored
+          fallback={(error) => (
+            <div class="callout danger" role="alert">
+              {formatUiError(error())}
+            </div>
+          )}
+        >
+          <CardContent />
+        </Errored>
+      </Loading>
     </Show>
   );
 }

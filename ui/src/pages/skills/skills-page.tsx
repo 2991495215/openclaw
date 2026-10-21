@@ -63,11 +63,12 @@ function createSkillsData(): Omit<SkillsState, "client" | "connected" | "runtime
     clawhubDetailError: null,
     clawhubInstallMessage: null,
     clawhubVerdicts: {},
-    clawhubVerdictsLoading: false,
     clawhubVerdictsError: null,
     skillCardContents: {},
     skillCardContentKeys: {},
-    skillCardLoadingKey: null,
+    skillCardReads: {},
+    skillsRead: null,
+    clawhubVerdictsRead: null,
     skillCardErrors: {},
     clawhubIconUrls: {},
   };
@@ -127,6 +128,11 @@ export function SkillsPage(props: SkillsPageProps) {
     },
   });
   const data = skills.state;
+  const verdictCompletion = createMemo(() => skills.read().clawhubVerdictsRead);
+  const acceptedVerdicts = createMemo(() => skills.read().clawhubVerdicts);
+  const readClawHubVerdicts = createMemo(
+    () => verdictCompletion()?.completion.then((outcome) => outcome.value) ?? acceptedVerdicts(),
+  );
   const [detailReceipt, setDetailReceipt] = createSignal<{
     client: GatewayBrowserClient | null;
     epoch: number;
@@ -372,8 +378,9 @@ export function SkillsPage(props: SkillsPageProps) {
     data.skillsAgentRevision++;
     data.skillsLoading = false;
     data.skillOperation = null;
-    data.clawhubVerdictsLoading = false;
-    data.skillCardLoadingKey = null;
+    data.skillsRead = null;
+    data.clawhubVerdictsRead = null;
+    data.skillCardReads = {};
     data.clawhubSearchLoading = false;
     searchRequest.cancel();
     clearClawHubSearchTimer();
@@ -584,6 +591,7 @@ export function SkillsPage(props: SkillsPageProps) {
           <Skills
             state={viewState()}
             readClawHubDetail={readClawHubDetail}
+            readClawHubVerdicts={readClawHubVerdicts}
             surface={surface()}
             libraryEntries={library.state.list?.entries ?? []}
             onLibraryOpen={(skillId) => void library.open(skillId)}

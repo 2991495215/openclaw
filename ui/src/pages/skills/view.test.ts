@@ -1,11 +1,15 @@
 /* @vitest-environment jsdom */
 
 import { expectDefined } from "@openclaw/normalization-core";
+import { createMemo } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../../test/helpers/promise.ts";
 import type { SkillStatusReport } from "../../api/types.ts";
 import { i18n } from "../../i18n/index.ts";
-import { clawhubVerdictKey } from "../../lib/skills/index.ts";
+import { clawhubVerdictKey, type ClawHubSkillSecurityVerdict } from "../../lib/skills/index.ts";
 import { getRenderedModalDialog } from "../../test-helpers/modal-dialog.ts";
+import { mountSolid } from "../../test-helpers/mount-solid.ts";
+import { waitForFast } from "../../test-helpers/wait-for.ts";
 import { cleanupSkillsViews, renderSkills } from "./view.solid.test-support.tsx";
 import {
   createDialogMethodInstaller,
@@ -764,34 +768,171 @@ describe("renderSkills", () => {
     expect(normalizeText(container)).toContain("AgentReceipt Local trust card.");
   });
 
-  it.each([{ loading: true, label: "Refreshing…", warning: false }])(
-    "shows $label consistently for a missing ClawHub verdict while loading=$loading",
-    async ({ loading, label, warning }) => {
-      const container = createContainer();
-      installDialogMethod("showModal", function (this: HTMLDialogElement) {
-        this.setAttribute("open", "");
-      });
+  it("retains the toolbar and keyed rows across status reads", async () => {
+    const container = createContainer();
+    const initial = createDeferred<{ value: SkillStatusReport | null; error: string | null }>();
+    const initialRead = { completion: initial.promise };
+    renderView(container, { report: null, loading: true, skillsRead: initialRead });
+    const search = container.querySelector<HTMLInputElement>('input[name="skills-filter"]')!;
+    search.focus();
+    expect(container.querySelector(".plugins-item")).toBeNull();
+    const report = skillReport([createSkill()]);
+    initial.resolve({ value: report, error: null });
+    renderView(container, { report, skillsRead: initialRead });
+    await waitForFast(() => expect(container.querySelector(".plugins-item")).not.toBeNull());
+    const row = container.querySelector(".plugins-item");
+    const pending = createDeferred<{ value: SkillStatusReport | null; error: string | null }>();
+    const pendingRead = { completion: pending.promise };
+    renderView(container, { report, loading: true, skillsRead: pendingRead });
+    expect(container.querySelector(".plugins-item")).toBe(row);
+    expect(container.querySelector('input[name="skills-filter"]')).toBe(search);
+    expect(document.activeElement).toBe(search);
+    const refresh = () =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+        (button) =>
+          button.textContent?.trim() === "Loading…" || button.textContent?.trim() === "Refresh",
+      )!;
+    expect(refresh().disabled).toBe(true);
+    expect(refresh().textContent).toContain("Loading");
+    const updated = skillReport([createSkill({ description: "Updated description" })]);
+    pending.resolve({ value: updated, error: null });
+    renderView(container, { report: updated, skillsRead: pendingRead });
+    await waitForFast(() => expect(row?.textContent).toContain("Updated description"));
+    expect(container.querySelector(".plugins-item")).toBe(row);
+    expect(refresh().disabled).toBe(false);
+    expect(refresh().textContent).toContain("Refresh");
+  });
 
+  it("renders card read errors and retries inside the existing detail dialog", async () => {
+    const container = createContainer();
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    const report = skillReport([
+      createSkill({
+        skillCard: { present: true, path: "/tmp/skill/SKILL.md", sizeBytes: 12 },
+      }),
+    ]);
+    const pending = createDeferred<{ value: string | undefined; error: string | null }>();
+    const read = { cacheKey: "/tmp/skill/SKILL.md\0v1", completion: pending.promise };
+    renderView(container, {
+      report,
+      detailKey: "repo-skill",
+      detailTab: "card",
+      skillCardReads: { "repo-skill": read },
+    });
+    const { dialog } = await getRenderedModalDialog(container);
+    expect(normalizeText(dialog)).toContain("Loading");
+    pending.resolve({ value: undefined, error: "Card temporarily unavailable" });
+    await waitForFast(() =>
+      expect(normalizeText(dialog)).toContain("Card temporarily unavailable"),
+    );
+    const retry = createDeferred<{ value: string | undefined; error: string | null }>();
+    const retriedRead = { cacheKey: read.cacheKey, completion: retry.promise };
+    renderView(container, {
+      report,
+      detailKey: "repo-skill",
+      detailTab: "card",
+      skillCardReads: { "repo-skill": retriedRead },
+    });
+    retry.resolve({ value: "# Restored card", error: null });
+    renderView(container, {
+      report,
+      detailKey: "repo-skill",
+      detailTab: "card",
+      skillCardReads: { "repo-skill": retriedRead },
+      skillCardContents: { "repo-skill": "# Restored card" },
+    });
+    await waitForFast(() => expect(normalizeText(dialog)).toContain("Restored card"));
+    expect((await getRenderedModalDialog(container)).dialog).toBe(dialog);
+    expect(dialog.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("keeps the inventory and detail dialog while missing verdicts load", async () => {
+    const container = createContainer();
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    const pending = createDeferred<Record<string, ClawHubSkillSecurityVerdict>>();
+    const owner = mountSolid(() => {
+      const verdicts = createMemo(() => pending.promise);
       renderView(container, {
         report: skillReport([createLinkedSkill()]),
         detailKey: "agentreceipt",
-        clawhubVerdictsLoading: loading,
+        readClawHubVerdicts: verdicts,
       });
-      await Promise.resolve();
+      return null;
+    });
+    dialogRestores.push(owner.unmount);
+    const row = container.querySelector(".plugins-item");
+    const { dialog } = await getRenderedModalDialog(container);
+    const search = container.querySelector('input[name="skills-filter"]');
+    const verdictLabels = () =>
+      [...container.querySelectorAll(".settings-status, .chip")].map(normalizeText);
+    expect(verdictLabels().filter((label) => label === "Refreshing…")).toHaveLength(2);
 
-      const rowVerdict = Array.from(container.querySelectorAll(".settings-status")).find(
-        (element) => normalizeText(element) === label,
-      );
-      const detailVerdict = Array.from(container.querySelectorAll(".chip")).find(
-        (element) => normalizeText(element) === label,
-      );
-      expect(rowVerdict).toBeDefined();
-      expect(detailVerdict).toBeDefined();
-      expect(rowVerdict?.classList.contains("settings-status--warn")).toBe(warning);
-      expect(detailVerdict?.classList.contains("chip-warn")).toBe(warning);
-      expect(normalizeText(container).match(new RegExp(label, "gu")) ?? []).toHaveLength(2);
-    },
-  );
+    pending.resolve({});
+    await waitForFast(() =>
+      expect(verdictLabels().filter((label) => label === "Unavailable")).toHaveLength(2),
+    );
+    expect(container.querySelector(".plugins-item")).toBe(row);
+    expect(container.querySelector('input[name="skills-filter"]')).toBe(search);
+    expect((await getRenderedModalDialog(container)).dialog).toBe(dialog);
+  });
+
+  it("replaces the detail selection while a retained verdict read is pending", async () => {
+    const container = createContainer();
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    const report = skillReport([createLinkedSkill(), createSkill()]);
+    const verdictKey = clawhubVerdictKey({
+      registry: "https://clawhub.ai",
+      slug: "agentreceipt",
+      version: "1.2.3",
+    });
+    const verdicts: Record<string, ClawHubSkillSecurityVerdict> = {
+      [verdictKey]: {
+        registry: "https://clawhub.ai",
+        ok: true,
+        decision: "pass",
+        reasons: [],
+        requestedSlug: "agentreceipt",
+        requestedVersion: "1.2.3",
+        slug: "agentreceipt",
+        version: "1.2.3",
+        securityStatus: "clean",
+        securityPassed: true,
+      },
+    };
+    renderView(container, { report, detailKey: "agentreceipt", clawhubVerdicts: verdicts });
+    const { dialog } = await getRenderedModalDialog(container);
+    expect(normalizeText(dialog)).toContain("AgentReceipt");
+
+    const pending = createDeferred<Record<string, ClawHubSkillSecurityVerdict>>();
+    let read = () => verdicts;
+    const owner = mountSolid(() => {
+      read = createMemo(() => pending.promise);
+      renderView(container, {
+        report,
+        detailKey: "agentreceipt",
+        clawhubVerdicts: verdicts,
+        readClawHubVerdicts: read,
+      });
+      return null;
+    });
+    dialogRestores.push(owner.unmount);
+    await waitForFast(() => expect(normalizeText(dialog)).toContain("Refreshing"));
+    renderView(container, {
+      report,
+      detailKey: "repo-skill",
+      clawhubVerdicts: verdicts,
+      readClawHubVerdicts: read,
+    });
+    await waitForFast(() => expect(normalizeText(dialog)).toContain("Repo Skill"));
+    expect(normalizeText(dialog)).not.toContain("AgentReceipt");
+    pending.resolve(verdicts);
+  });
 
   it("fails closed for inconsistent ClawHub verdict envelopes", async () => {
     const container = createContainer();
