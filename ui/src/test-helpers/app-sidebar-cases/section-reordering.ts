@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
+import { activateSessionMenuValue } from "../app-sidebar-menu.ts";
 import {
   catalogPage,
   createGatewayHarness,
@@ -13,7 +14,7 @@ import "../../components/app-sidebar.tsx";
 
 function dispatchDragEvent(
   target: Element,
-  type: "dragstart" | "dragover" | "drop",
+  type: "dragstart" | "dragover" | "drop" | "dragend",
   dataTransfer: ReturnType<typeof createDataTransferStub>,
 ) {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -81,7 +82,7 @@ describe("AppSidebar section reordering", () => {
     return { sidebar, harness, section, header, moveSection };
   }
 
-  it("disables section and row dragging without group write access", async () => {
+  it("keeps group writes disabled while allowing personal session drags", async () => {
     const { sidebar, harness, header, section } = await mountWithGroups(["Alpha"], [], {
       scopes: ["operator.read"],
     });
@@ -90,7 +91,7 @@ describe("AppSidebar section reordering", () => {
 
     expect(source.getAttribute("draggable")).toBe("false");
     expect(source.getAttribute("title")).toBeTruthy();
-    expect(row?.getAttribute("draggable")).toBe("false");
+    expect(row?.getAttribute("draggable")).toBe("true");
     expect(row?.hasAttribute("title")).toBe(false);
 
     const dataTransfer = createDataTransferStub();
@@ -99,6 +100,17 @@ describe("AppSidebar section reordering", () => {
 
     expect(dataTransfer.types).toEqual([]);
     expect(harness.groupsPut).not.toHaveBeenCalled();
+
+    const sessionDrag = createDataTransferStub();
+    dispatchDragEvent(row!, "dragstart", sessionDrag);
+    expect(sidebar.sessionOrganizer.draggingSessionKey).toBe("agent:main:plain");
+    dispatchDragEvent(section("category:Alpha"), "dragover", sessionDrag);
+    dispatchDragEvent(section("category:Alpha"), "drop", sessionDrag);
+    dispatchDragEvent(row!, "dragend", sessionDrag);
+    await sidebar.updateComplete;
+    expect(harness.groupsPut).not.toHaveBeenCalled();
+    expect(harness.patch).not.toHaveBeenCalled();
+    expect(sidebar.sessionOrganizer.draggingSessionKey).toBeNull();
   });
 
   it("keeps new-session link gestures separate from section dragging and menus", async () => {
@@ -124,6 +136,7 @@ describe("AppSidebar section reordering", () => {
     const { sidebar, harness, section } = await mountWithGroups(["Done"], [], {
       groupSessions: true,
     });
+    await activateSessionMenuValue(sidebar, "empty-groups:never");
     const source = sidebar.querySelector('[data-session-key="agent:main:group-0"]');
     const groupsSection = section("groups");
     expect(source).not.toBeNull();

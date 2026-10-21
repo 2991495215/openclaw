@@ -26,7 +26,7 @@ const sessionKeys = ["agent:main:main", "agent:main:alpha", "agent:main:beta"];
 
 function dispatchDragEvent(
   target: Element,
-  type: "dragstart" | "dragover" | "drop",
+  type: "dragstart" | "dragover" | "drop" | "dragend",
   dataTransfer: ReturnType<typeof createDataTransferStub>,
 ) {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -299,6 +299,8 @@ it("does not pin or insert a promoted child dropped from Threads", async () => {
     expect(sidebar.querySelector(".sidebar-rail__pins--drag-active")).toBeNull();
   }
   dispatchDragEvent(target, "drop", dataTransfer);
+  // Rejected drops still end the native source gesture.
+  dispatchDragEvent(source, "dragend", dataTransfer);
   await sidebar.updateComplete;
   await vi.dynamicImportSettled();
   expect(sessions.patch).not.toHaveBeenCalled();

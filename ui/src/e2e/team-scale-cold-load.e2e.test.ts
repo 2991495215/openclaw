@@ -213,6 +213,10 @@ suite.define(() => {
         }
 
         const sidebar = page.locator("openclaw-app-sidebar");
+        const sessionsView = sidebar.locator('[data-navigation-view="sessions"]');
+        if ((await sessionsView.getAttribute("aria-pressed")) !== "true") {
+          await sessionsView.click();
+        }
         const lastPin = sidebar.locator(
           `[data-session-section="pinned"] [data-session-key="${fixture.pinnedKeys[29]}"]`,
         );

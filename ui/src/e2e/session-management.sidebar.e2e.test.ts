@@ -198,16 +198,15 @@ suite.define(() => {
       await captureUiProof(suite, page, "child-sessions-run-state-precedence.png");
 
       const tree = page.locator(`[data-session-tree="${parentKey}"]`);
-      // Personal pins are flat shortcuts; the ordinary session tree keeps its children.
-      expect(await tree.locator("xpath=ancestor::nav").count()).toBe(0);
-      const railPin = page.locator(`.sidebar-rail [data-sidebar-entry="session:${parentKey}"]`);
-      expect(await railPin.count()).toBe(pinned ? 1 : 0);
-      expect(await railPin.locator("[data-session-tree]").count()).toBe(0);
-      if (pinned) {
-        expect(await railPin.getByRole("link", { name: "Plan release", exact: true }).count()).toBe(
-          1,
-        );
-      }
+      expect(await tree.count()).toBe(1);
+      expect(
+        await page
+          .locator(`[data-session-section="pinned"] [data-session-tree="${parentKey}"]`)
+          .count(),
+      ).toBe(pinned ? 1 : 0);
+      expect(
+        await page.locator(`.sidebar-rail [data-sidebar-entry="session:${parentKey}"]`).count(),
+      ).toBe(0);
       const nesting = await tree.evaluate((element) => {
         const parentElement = element.querySelector(".sidebar-recent-session")!;
         const childContainer = element.querySelector(".sidebar-session-tree__children")!;

@@ -125,6 +125,7 @@ suite.define(() => {
         await expectNoSharedPinWrites(gateway);
       } else {
         await gateway.deferNext("users.prefs.set");
+        await row.hover();
         await row.getByRole("button", { name: "Unpin session", exact: true }).click();
         await expect.poll(() => pin.count()).toBe(0);
         await expect.poll(() => storedPins(page)).toEqual([]);
