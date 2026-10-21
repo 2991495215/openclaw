@@ -1023,7 +1023,7 @@ openclaw-chat-pane {
 /* One cell = pane header + pane; the header lives in-flow with its pane, so
    split geometry needs no mirrored toolbar layer. */
 .chat-split-view__cell {
-  --chat-surface: var(--bg-content, var(--bg));
+  --chat-surface: var(--shell-surface);
 
   display: flex;
   flex-direction: column;
@@ -1132,18 +1132,25 @@ openclaw-chat-sidebar-region,
 }
 
 .sidebar-region--bottom .sidebar-column__divider {
-  --resize-handle-line-block: 100%;
   width: 100%;
 }
 
 .sidebar-column__divider {
-  --resize-handle-line-inline: 100%;
   z-index: 2;
   grid-area: divider;
 }
 
-.sidebar-region--desktop .sidebar-column__divider {
-  --resize-handle-rest-color: var(--border);
+.sidebar-column__divider::after {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  transform: none;
+}
+
+.sidebar-column__divider[orientation="horizontal"]::after {
+  top: auto;
+  bottom: 0;
+  inset-inline-start: 0;
+  transform: none;
 }
 
 .sidebar-region--narrow.sidebar-region--open:not(.sidebar-region--expanded) {

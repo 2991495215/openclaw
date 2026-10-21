@@ -52,6 +52,17 @@
   --input: #1e2028;
   --ring: #ff5c5c;
 
+  /* Navigation surfaces use small foreground tints of the reading canvas.
+     Sticky sidebar headers and rail controls inherit their own surface. */
+  --shell-surface: var(--bg-content, var(--bg));
+  --sidebar-bg: color-mix(in oklch, var(--shell-surface) 99%, var(--text-strong));
+  --sidebar-rail-bg: color-mix(in oklch, var(--shell-surface) 97.5%, var(--text-strong));
+  --sidebar-rail-separator-color: color-mix(
+    in srgb,
+    var(--border-strong) 20%,
+    var(--resize-handle-rest-color)
+  );
+
   /* Shared rail chrome. Light and dark themes inherit their actual colors
      through --border/--accent while keeping one geometry contract. */
   --rail-header-height: 48px;
@@ -73,7 +84,7 @@
   --resize-handle-size: 6px;
   --resize-handle-line-size: 1px;
   --resize-handle-active-line-size: 2px;
-  --resize-handle-rest-color: color-mix(in srgb, var(--border) 74%, transparent);
+  --resize-handle-rest-color: color-mix(in srgb, var(--border) 74%, var(--shell-surface));
   --resize-handle-active-color: color-mix(in srgb, var(--text) 42%, transparent);
 
   /*
@@ -501,6 +512,7 @@
 /* Light theme tokens apply to every light-mode family. */
 /* Defaults must lose to named palettes even when their link precedes the app CSS. */
 :root:where([data-theme-mode="light"]) {
+  --shell-surface: var(--bg);
   --media-control-bg: rgba(12, 16, 24, 0.64);
   --media-control-bg-hover: rgba(12, 16, 24, 0.78);
   /*

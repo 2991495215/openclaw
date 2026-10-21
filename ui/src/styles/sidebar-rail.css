@@ -10,6 +10,7 @@
 }
 
 .sidebar-rail {
+  --sidebar-bg: var(--sidebar-rail-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -18,7 +19,8 @@
   min-height: 0;
   padding: 8px 4px;
   gap: 12px;
-  border-inline-end: 1px solid var(--border);
+  border-inline-end: 1px solid var(--resize-handle-rest-color);
+  background: var(--sidebar-bg);
 }
 
 .sidebar-rail__views,
@@ -92,12 +94,23 @@
 }
 
 .sidebar-rail__create {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   justify-content: center;
   width: 36px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-rail__create::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 50%;
+  width: 24px;
+  height: 1px;
+  transform: translateX(-50%);
+  background: var(--sidebar-rail-separator-color);
 }
 
 .sidebar-rail__create .sidebar-new-session {
@@ -326,9 +339,13 @@ html.openclaw-native-desktop[data-native-platform="macos"] {
     padding-top: var(--openclaw-native-titlebar-height, 52px);
     border-image: linear-gradient(
         transparent var(--openclaw-native-titlebar-height, 52px),
-        var(--border) 0
+        var(--resize-handle-rest-color) 0
       )
       1;
+    background: linear-gradient(
+      transparent var(--openclaw-native-titlebar-height, 52px),
+      var(--sidebar-bg) 0
+    );
   }
 
   /* A collapsed rail is the only nav surface left, so the titlebar row
@@ -340,6 +357,10 @@ html.openclaw-native-desktop[data-native-platform="macos"] {
           var(--resize-handle-rest-color) 0
         )
         1;
+    }
+
+    .sidebar-rail {
+      border-image: none;
     }
 
     .sidebar {
@@ -402,6 +423,11 @@ html.openclaw-native-macos:not(.openclaw-native-web-chrome)
 
 .shell--navigation-rail.shell--nav-collapsed:not(.shell--mobile-nav) .sidebar-shell {
   display: none;
+}
+
+/* The outer shell owns the boundary when only the rail remains. */
+.shell--navigation-rail.shell--nav-collapsed:not(.shell--mobile-nav) .sidebar-rail {
+  border-inline-end-color: transparent;
 }
 
 /* Keep identity and command access in the persistent rail. */

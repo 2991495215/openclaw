@@ -2,7 +2,7 @@
 
 .shell {
   /* One fixed canvas shared by routes; panels keep their own reading surfaces. */
-  background-color: var(--bg-content, var(--bg));
+  background-color: var(--shell-surface);
   background-image: var(--app-background-image);
   background-position: center;
   background-size: cover;
@@ -1033,14 +1033,22 @@ openclaw-settings-save-indicator:empty {
   display: none;
 }
 
-/* The shell owns the resting boundary. The wider resize target takes over
-   that same edge during interaction, avoiding a doubled divider. */
+/* Reserve the shell border width, but let a mounted resize handle paint it. */
+.shell-nav:has(+ .sidebar-resizer) {
+  border-inline-end-color: transparent;
+}
+
 .sidebar-resizer {
-  --resize-handle-line-inline: 100%;
   grid-area: nav;
   align-self: stretch;
   justify-self: end;
   z-index: 20;
+}
+
+.sidebar-resizer::after {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  transform: none;
 }
 
 .shell.shell--nav-resizing {
@@ -1048,18 +1056,11 @@ openclaw-settings-save-indicator:empty {
 }
 
 .sidebar {
-  /* Sticky headers inside the sidebar reuse --sidebar-bg so scrolled rows
-     never shine through with a mismatched tone. */
-  --sidebar-bg: color-mix(in srgb, var(--bg) 96%, var(--bg-elevated) 4%);
   /* One rhythm for every group boundary in the sidebar (Pages and each
      session section) so the column reads as separate shelves, not one list. */
   --sidebar-group-gap: var(--space-4);
   position: relative;
   background: var(--sidebar-bg);
-}
-
-:root[data-theme-mode="light"] .sidebar {
-  --sidebar-bg: color-mix(in srgb, var(--panel) 98%, white 2%);
 }
 
 .sidebar-shell {
