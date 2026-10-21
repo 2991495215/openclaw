@@ -45,6 +45,7 @@ declare module "@solidjs/web" {
     }
     interface IntrinsicElements {
       "openclaw-activity-page": HTMLAttributes<HTMLElement>;
+      "openclaw-cron-scratch-editor": HTMLAttributes<HTMLElement>;
       "openclaw-ip-location": HTMLAttributes<HTMLElement>;
       "openclaw-home-session": HTMLAttributes<HTMLElement>;
       "openclaw-session-owner-chip": HTMLAttributes<HTMLElement> & {
