@@ -28,14 +28,17 @@ vi.mock("./gateway-rpc.runtime.js", () => {
   };
 });
 
-vi.mock("../gateway/call.js", () => {
+vi.mock("../gateway/call.js", async (importOriginal) => {
   loaded.mark("gateway-transport-runtime");
-  return {};
+  return { ...(await importOriginal<typeof import("../gateway/call.js")>()) };
 });
 
-vi.mock("../gateway/call-error-json.js", () => {
+vi.mock("../gateway/call-error-json.js", async (importOriginal) => {
   loaded.mark("gateway-json-presentation");
-  return { formatGatewayTransportErrorJson: vi.fn(() => null) };
+  return {
+    ...(await importOriginal<typeof import("../gateway/call-error-json.js")>()),
+    formatGatewayTransportErrorJson: vi.fn(() => null),
+  };
 });
 
 vi.mock("./progress.js", () => {

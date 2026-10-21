@@ -26,9 +26,10 @@ describe("runGatewayHealthJsonRoute", () => {
         emitReachableGatewayAuthDiagnostic: mocks.emitReachableGatewayAuthDiagnostic,
       };
     });
-    vi.doMock("../../gateway/call-error-json.js", () => {
+    vi.doMock("../../gateway/call-error-json.js", async (importOriginal) => {
       mocks.loadJsonPresentation();
       return {
+        ...(await importOriginal<typeof import("../../gateway/call-error-json.js")>()),
         formatGatewayCallErrorJson: mocks.formatGatewayCallErrorJson,
       };
     });

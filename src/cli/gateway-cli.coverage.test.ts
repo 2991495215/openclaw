@@ -46,7 +46,8 @@ vi.mock(
     randomIdempotencyKey: () => "rk_test",
   }),
 );
-vi.mock("../gateway/call-error-json.js", () => ({
+vi.mock("../gateway/call-error-json.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../gateway/call-error-json.js")>()),
   formatGatewayCallErrorJson: (error: unknown) => formatGatewayCallErrorJson(error),
 }));
 

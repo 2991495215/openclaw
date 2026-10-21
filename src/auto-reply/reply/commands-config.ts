@@ -141,7 +141,7 @@ export const handleConfigCommand: CommandHandler = defineAuthorizedTextCommand(
 
 export const handleDebugCommand: CommandHandler = defineAuthorizedTextCommand(
   { label: "/debug", configKey: "debug", match: parseDebugCommand, ownerOnly: true },
-  (params, debugCommand) => {
+  (_params, debugCommand) => {
     if (debugCommand.action === "error") {
       return commandReply(`⚠️ ${debugCommand.message}`);
     }

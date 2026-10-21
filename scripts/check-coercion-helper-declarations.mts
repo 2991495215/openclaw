@@ -59,6 +59,7 @@ export const CANONICAL_COERCION_HELPER_OWNERS = [
       "readNonEmptyStringPreservingWhitespace",
       "readStringValue",
       "resolvePrimaryStringValue",
+      "trimAndStripSurroundingQuotes",
     ],
   },
   {

@@ -73,7 +73,8 @@ const TEST_GATEWAY_URL = "ws://127.0.0.1:18789";
 const TEST_GATEWAY_MESSAGE = `Gateway mode: local\nGateway target: ${TEST_GATEWAY_URL}`;
 // mock-isolation: Health scenarios use deterministic RPC responses, not the operator Gateway.
 vi.mock("../gateway/call.js", () => rpc);
-vi.mock("../gateway/call-error-json.js", () => ({
+vi.mock("../gateway/call-error-json.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../gateway/call-error-json.js")>()),
   formatGatewayCallErrorJson: rpc.formatGatewayCallErrorJson,
 }));
 
