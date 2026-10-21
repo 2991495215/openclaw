@@ -4,7 +4,7 @@
  * This module turns normalized MCP server config into stdio, SSE, or
  * streamable-HTTP SDK transports with OpenClaw auth, redirect, and logging rules.
  */
-import type { SSEClientTransportOptions, FetchLike, Transport } from "@modelcontextprotocol/client";
+import type { SSEClientTransportOptions, Transport } from "@modelcontextprotocol/client";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { logDebug } from "../logger.js";
 import type { SessionMcpRequesterScope } from "./agent-bundle-mcp-types.js";
@@ -36,48 +36,9 @@ type ResolvedMcpTransport = {
   detachStderr?: () => void;
 };
 
-function attachStderrLogging(serverName: string, transport: OpenClawStdioClientTransport) {
-  const stderr = transport.stderr;
-  let reported = false;
-  const onData = () => {
-    if (!reported) {
-      reported = true;
-      // External server output can contain message text or tool arguments.
-      logDebug(`bundle-mcp:${serverName}: stderr output omitted`);
-    }
-  };
-  // Keep consuming after the notice so stderr cannot block the server's shutdown.
-  stderr.on("data", onData);
-  return () => {
-    stderr.off("data", onData);
-  };
-}
-
 type SseEventSourceFetch = NonNullable<
   NonNullable<SSEClientTransportOptions["eventSourceInit"]>["fetch"]
 >;
-
-function buildSseEventSourceFetch(
-  headers: Record<string, string>,
-  baseFetch: FetchLike,
-): SseEventSourceFetch {
-  return (url: string | URL, init?: RequestInit) => {
-    // Header names are case-insensitive, but object spreads preserve case
-    // variants and can duplicate Authorization on the wire. Normalize before
-    // merging so operator headers override SDK headers as a single entry.
-    const mergedHeaders: Record<string, string> = {};
-    for (const [key, value] of new Headers(init?.headers)) {
-      mergedHeaders[key.toLowerCase()] = value;
-    }
-    for (const [key, value] of Object.entries(headers)) {
-      mergedHeaders[key.toLowerCase()] = value;
-    }
-    return baseFetch(url, {
-      ...(init as RequestInit),
-      headers: mergedHeaders,
-    }) as ReturnType<SseEventSourceFetch>;
-  };
-}
 
 /** Resolves a configured MCP server into a live SDK transport instance. */
 export function resolveMcpTransport(
@@ -114,10 +75,23 @@ export function resolveMcpTransport(
       cwd: resolved.cwd,
       prepareDataDir: options?.prepareDataDir,
     });
+    const stderr = transport.stderr;
+    let reported = false;
+    const onData = () => {
+      if (!reported) {
+        reported = true;
+        // External server output can contain message text or tool arguments.
+        logDebug(`bundle-mcp:${serverName}: stderr output omitted`);
+      }
+    };
+    // Keep consuming after the notice so stderr cannot block the server's shutdown.
+    stderr.on("data", onData);
     return {
       transport,
       ...metadata,
-      detachStderr: attachStderrLogging(serverName, transport),
+      detachStderr: () => {
+        stderr.off("data", onData);
+      },
     };
   }
   if (resolved.auth === "enterprise" && !resolved.enterprise) {
@@ -239,6 +213,8 @@ export function resolveMcpTransport(
   }
   const sseHeaders: Record<string, string> = { ...headers };
   const hasHeaders = Object.keys(sseHeaders).length > 0;
+  const eventSourceHeaders =
+    resolved.auth === "oauth" || resolved.auth === "enterprise" ? {} : sseHeaders;
   return {
     transport: new OpenClawSSEClientTransport(new URL(resolved.url), {
       requestInit:
@@ -247,10 +223,20 @@ export function resolveMcpTransport(
           : { headers: sseHeaders },
       fetch: httpFetch,
       eventSourceInit: {
-        fetch: buildSseEventSourceFetch(
-          resolved.auth === "oauth" || resolved.auth === "enterprise" ? {} : sseHeaders,
-          httpFetch,
-        ),
+        fetch: (url: string | URL, init?: RequestInit) => {
+          // Normalize case variants so operator headers override SDK headers once.
+          const mergedHeaders: Record<string, string> = {};
+          for (const [key, value] of new Headers(init?.headers)) {
+            mergedHeaders[key.toLowerCase()] = value;
+          }
+          for (const [key, value] of Object.entries(eventSourceHeaders)) {
+            mergedHeaders[key.toLowerCase()] = value;
+          }
+          return httpFetch(url, {
+            ...(init as RequestInit),
+            headers: mergedHeaders,
+          }) as ReturnType<SseEventSourceFetch>;
+        },
       },
     }),
     ...metadata,

@@ -11,80 +11,6 @@ import type {
 import { resolveMcpTransportConfig } from "./mcp-transport-config.js";
 import type { AgentToolResult } from "./runtime/index.js";
 
-async function connectRequesterOAuthServer(params: {
-  serverName: string;
-  publicOrigin?: string;
-  authorize: (
-    redirectUrl: string,
-  ) => ReturnType<(typeof import("./mcp-oauth.js"))["startMcpOAuthAuthorization"]>;
-}): Promise<AgentToolResult<unknown>> {
-  if (!params.publicOrigin) {
-    const message =
-      `MCP server "${params.serverName}" needs requester sign-in, but gateway.publicOrigin is not configured. ` +
-      "Ask the operator to set the public Gateway HTTP(S) origin.";
-    return {
-      content: [{ type: "text", text: message }],
-      details: { status: "error", error: message, mcpServer: params.serverName },
-    };
-  }
-  const result = await params.authorize(new URL("/oauth/mcp/callback", params.publicOrigin).href);
-  if (result.status === "authorized") {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `MCP server "${params.serverName}" is connected. Its tools become available on the next message.`,
-        },
-      ],
-      details: { mcpServer: params.serverName },
-    };
-  }
-  return {
-    content: [
-      {
-        type: "text",
-        text:
-          `Connect MCP server "${params.serverName}" at ${result.authorizationUrl}\n` +
-          "After sign-in completes, the server's tools become available on the next message.",
-      },
-    ],
-    details: {
-      mcpConnect: { serverName: params.serverName, authorizationUrl: result.authorizationUrl },
-    },
-  };
-}
-
-function buildRequesterConnectCatalog(
-  serverNames: Iterable<string>,
-  safeServerNamesByServer: ReadonlyMap<string, string>,
-): McpToolCatalog {
-  const entries = [...serverNames];
-  return {
-    version: 1,
-    generatedAt: Date.now(),
-    servers: Object.fromEntries(
-      entries.map((serverName) => [
-        serverName,
-        {
-          serverName,
-          safeServerName: safeServerNamesByServer.get(serverName),
-          launchSummary: "Requester OAuth",
-          toolCount: 1,
-        },
-      ]),
-    ),
-    tools: entries.map((serverName) => ({
-      serverName,
-      safeServerName: safeServerNamesByServer.get(serverName) ?? serverName,
-      toolName: "connect",
-      description: `Connect your ${serverName} account.`,
-      fallbackDescription: `Connect your ${serverName} account.`,
-      inputSchema: Type.Object({}),
-      oauthConnectBootstrap: true,
-    })),
-  };
-}
-
 /** Builds the per-message requester sign-in surface without opening MCP transports. */
 export async function createRequesterMcpConnect(params: {
   serverNames: ReadonlySet<string>;
@@ -120,18 +46,48 @@ export async function createRequesterMcpConnect(params: {
   const authorizedServerNames: string[] = [];
   for (const [index, { serverName, resolved }] of configured.entries()) {
     const status = expectDefined(statuses[index], "requester MCP OAuth status");
-    servers.set(serverName, () =>
-      connectRequesterOAuthServer({
-        serverName,
-        publicOrigin: params.cfg?.gateway?.publicOrigin,
-        authorize: (redirectUrl) =>
-          startMcpOAuthAuthorization(
-            requesterMcpOAuthIdentity(serverName, resolved.url, params.requesterScope),
-            resolved,
-            { redirectUrl },
-          ),
-      }),
-    );
+    servers.set(serverName, async () => {
+      const publicOrigin = params.cfg?.gateway?.publicOrigin;
+      if (!publicOrigin) {
+        const message =
+          `MCP server "${serverName}" needs requester sign-in, but gateway.publicOrigin is not configured. ` +
+          "Ask the operator to set the public Gateway HTTP(S) origin.";
+        return {
+          content: [{ type: "text", text: message }],
+          details: { status: "error", error: message, mcpServer: serverName },
+        };
+      }
+      const redirectUrl = new URL("/oauth/mcp/callback", publicOrigin).href;
+      const result = await startMcpOAuthAuthorization(
+        requesterMcpOAuthIdentity(serverName, resolved.url, params.requesterScope),
+        resolved,
+        { redirectUrl },
+      );
+      if (result.status === "authorized") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `MCP server "${serverName}" is connected. Its tools become available on the next message.`,
+            },
+          ],
+          details: { mcpServer: serverName },
+        };
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Connect MCP server "${serverName}" at ${result.authorizationUrl}\n` +
+              "After sign-in completes, the server's tools become available on the next message.",
+          },
+        ],
+        details: {
+          mcpConnect: { serverName, authorizationUrl: result.authorizationUrl },
+        },
+      };
+    });
     if (status.state === "authorized") {
       authorizedServerNames.push(serverName);
     }
@@ -141,8 +97,34 @@ export async function createRequesterMcpConnect(params: {
     authorizedServerNames,
     publicOrigin: params.cfg?.gateway?.publicOrigin,
   });
+  const safeServerNamesByServer = params.safeServerNamesByServer;
+  const entries = [...servers.keys()];
+  const catalog: McpToolCatalog = {
+    version: 1,
+    generatedAt: Date.now(),
+    servers: Object.fromEntries(
+      entries.map((serverName) => [
+        serverName,
+        {
+          serverName,
+          safeServerName: safeServerNamesByServer.get(serverName),
+          launchSummary: "Requester OAuth",
+          toolCount: 1,
+        },
+      ]),
+    ),
+    tools: entries.map((serverName) => ({
+      serverName,
+      safeServerName: safeServerNamesByServer.get(serverName) ?? serverName,
+      toolName: "connect",
+      description: `Connect your ${serverName} account.`,
+      fallbackDescription: `Connect your ${serverName} account.`,
+      inputSchema: Type.Object({}),
+      oauthConnectBootstrap: true,
+    })),
+  };
   return {
-    catalog: buildRequesterConnectCatalog(servers.keys(), params.safeServerNamesByServer),
+    catalog,
     authorizedServerNames,
     configFingerprint,
     createExecute: (serverName) => servers.get(serverName),

@@ -41,39 +41,6 @@ const resolveMcpAuthProfileBearerToken = createLazyRuntimeMethod(
   (runtime) => runtime.resolveMcpAuthProfileBearerToken,
 );
 
-async function resolveMcpBearerToken(params: {
-  serverName: string;
-  server: BundleMcpServerConfig;
-  cfg?: OpenClawConfig;
-  agentDir?: string;
-}): Promise<string | undefined> {
-  const authProfileId = resolveMcpAuthProfileId(params.server);
-  if (authProfileId) {
-    return await resolveMcpAuthProfileBearerToken({
-      serverName: params.serverName,
-      profileId: authProfileId,
-      cfg: params.cfg,
-      agentDir: params.agentDir,
-    });
-  }
-  if (params.server.auth !== "oauth") {
-    return undefined;
-  }
-  const resolved = resolveMcpTransportConfig(params.serverName, params.server);
-  if (!resolved || resolved.kind !== "http") {
-    return undefined;
-  }
-  const [{ operatorMcpOAuthIdentity }, { resolveMcpOAuthAccessToken }] = await Promise.all([
-    import("./mcp-oauth-identity.js"),
-    import("./mcp-oauth.js"),
-  ]);
-  return await resolveMcpOAuthAccessToken({
-    identity: operatorMcpOAuthIdentity(params.serverName, resolved.url),
-    config: resolved.oauth,
-    fetchFn: buildMcpOAuthAuthorizationFetch(resolved),
-  });
-}
-
 /** Wraps HTTP MCP fetch with same-origin, refreshed bearer injection. */
 export function withMcpAuthProfileBearer(
   params: {
@@ -129,12 +96,34 @@ export async function resolveMcpBearerBundleConfig(
   for (const [serverName, server] of Object.entries(params.config.mcpServers)) {
     let token: string | undefined;
     try {
-      token = await resolveMcpBearerToken({
-        serverName,
-        server,
-        cfg: params.cfg,
-        agentDir: params.agentDir,
-      });
+      const { cfg, agentDir } = params;
+      token = await (async (): Promise<string | undefined> => {
+        const authProfileId = resolveMcpAuthProfileId(server);
+        if (authProfileId) {
+          return await resolveMcpAuthProfileBearerToken({
+            serverName,
+            profileId: authProfileId,
+            cfg,
+            agentDir,
+          });
+        }
+        if (server.auth !== "oauth") {
+          return undefined;
+        }
+        const resolved = resolveMcpTransportConfig(serverName, server);
+        if (!resolved || resolved.kind !== "http") {
+          return undefined;
+        }
+        const [{ operatorMcpOAuthIdentity }, { resolveMcpOAuthAccessToken }] = await Promise.all([
+          import("./mcp-oauth-identity.js"),
+          import("./mcp-oauth.js"),
+        ]);
+        return await resolveMcpOAuthAccessToken({
+          identity: operatorMcpOAuthIdentity(serverName, resolved.url),
+          config: resolved.oauth,
+          fetchFn: buildMcpOAuthAuthorizationFetch(resolved),
+        });
+      })();
     } catch (error) {
       if (!params.omitUnavailableOAuthServers || !requiresMcpBearerProjection(server)) {
         throw error;
