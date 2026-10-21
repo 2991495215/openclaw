@@ -1,12 +1,9 @@
 import { definePage, type RouteLocation } from "@openclaw/uirouter";
-import { createComponent } from "solid-js";
 import {
   INTERNAL_ACTIVITY_PATH_PARAM,
   restoreBridgedRouteLocation,
   routePageSpec,
 } from "../../app-route-paths.ts";
-import type { SolidRouteProps } from "../../app-route-types.ts";
-import { ShellLayoutBoundary } from "../../app/shell-layout-traits-solid.tsx";
 
 function sessionActivityRouteLocation(location: RouteLocation): RouteLocation {
   return restoreBridgedRouteLocation(location, INTERNAL_ACTIVITY_PATH_PARAM);
@@ -22,16 +19,6 @@ export const page = definePage({
   component: () =>
     import("./activity-page.tsx").then((module) => ({
       header: true,
-      renderSolid: (props: SolidRouteProps<RouteLocation>) =>
-        createComponent(ShellLayoutBoundary, {
-          traits: { activityPage: true, settingsWorkspace: true },
-          get children() {
-            return createComponent(module.ActivityPage, {
-              get routeLocation() {
-                return props.data;
-              },
-            });
-          },
-        }),
+      renderSolid: module.renderSolid,
     })),
 });
