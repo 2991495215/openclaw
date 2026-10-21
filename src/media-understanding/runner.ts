@@ -100,10 +100,6 @@ type LazyProviderRegistry = ProviderRegistry | (() => ProviderRegistry);
 function resolveProviderRegistry(registry: LazyProviderRegistry): ProviderRegistry {
   return typeof registry === "function" ? registry() : registry;
 }
-type ModelCatalogApi = typeof import("../agents/model-catalog.js") &
-  typeof import("../agents/prepared-model-catalog.js");
-type ModelCatalog = Awaited<ReturnType<ModelCatalogApi["readPreparedModelCatalog"]>>;
-
 type RunCapabilityResult = {
   outputs: MediaUnderstandingOutput[];
   decision: MediaUnderstandingDecision;
@@ -140,20 +136,6 @@ function resolveConfiguredImageModelId(params: {
   return providerCfg?.models
     ?.find((entry) => entry?.id?.trim() && entry.input?.includes("image"))
     ?.id.trim();
-}
-
-function resolveCatalogImageModelId(params: {
-  providerId: string;
-  catalog: ModelCatalog;
-  modelSupportsVision: ModelCatalogApi["modelSupportsVision"];
-}): string | undefined {
-  const matches = params.catalog.filter(
-    (entry) =>
-      normalizeMediaProviderId(entry.provider) === normalizeMediaProviderId(params.providerId) &&
-      params.modelSupportsVision(entry),
-  );
-  const autoEntry = matches.find((entry) => normalizeLowercaseStringOrEmpty(entry.id) === "auto");
-  return normalizeOptionalString((autoEntry ?? matches[0])?.id);
 }
 
 async function explicitImageModelVisionStatus(
@@ -240,61 +222,14 @@ async function resolveAutoImageModelId(
     ...(params.agentDir ? { agentDir: params.agentDir } : {}),
     ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
   });
-  return resolveCatalogImageModelId({
-    providerId: params.providerId,
-    catalog,
-    modelSupportsVision,
-  });
-}
-
-function resolveImageModelFromAgentDefaults(params: {
-  cfg: OpenClawConfig;
-  agentId?: string;
-}): MediaUnderstandingModelConfig[] {
-  const refs = [
-    resolveAgentModelPrimaryValue(params.cfg.agents?.defaults?.imageModel),
-    ...resolveAgentModelFallbackValues(params.cfg.agents?.defaults?.imageModel),
-  ]
-    .map((ref) => ref?.trim())
-    .filter((ref): ref is string => Boolean(ref));
-  if (refs.length === 0) {
-    return [];
-  }
-  const defaultProvider = resolveDefaultModelForAgent({
-    cfg: params.cfg,
-    agentId: params.agentId,
-  }).provider;
-  const entries: MediaUnderstandingModelConfig[] = [];
-  for (const ref of refs) {
-    const effectiveDefaultProvider = ref.includes("/")
-      ? defaultProvider
-      : (inferUniqueProviderFromConfiguredModels({
-          cfg: params.cfg,
-          model: ref,
-          agentId: params.agentId,
-        }) ?? defaultProvider);
-    const aliasIndex = buildModelAliasIndex({
-      cfg: params.cfg,
-      defaultProvider: effectiveDefaultProvider,
-      agentId: params.agentId,
-    });
-    const resolved = resolveModelRefFromString({
-      cfg: params.cfg,
-      agentId: params.agentId,
-      raw: ref,
-      defaultProvider: effectiveDefaultProvider,
-      aliasIndex,
-    });
-    if (!resolved) {
-      continue;
-    }
-    entries.push({
-      type: "provider",
-      provider: resolved.ref.provider,
-      model: resolved.ref.model,
-    });
-  }
-  return entries;
+  const providerId = params.providerId;
+  const matches = catalog.filter(
+    (entry) =>
+      normalizeMediaProviderId(entry.provider) === normalizeMediaProviderId(providerId) &&
+      modelSupportsVision(entry),
+  );
+  const autoEntry = matches.find((entry) => normalizeLowercaseStringOrEmpty(entry.id) === "auto");
+  return normalizeOptionalString((autoEntry ?? matches[0])?.id);
 }
 
 function hasExplicitImageUnderstandingConfig(params: {
@@ -374,9 +309,50 @@ async function resolveAutoEntries(
   },
 ): Promise<ResolvedMediaModelEntry[]> {
   if (params.capability === "image" && !params.nativeVisionActive) {
-    const imageModelEntries = resolveImageModelFromAgentDefaults(params);
-    if (imageModelEntries.length > 0) {
-      return imageModelEntries.map((entry) => ({ entry }));
+    const refs = [
+      resolveAgentModelPrimaryValue(params.cfg.agents?.defaults?.imageModel),
+      ...resolveAgentModelFallbackValues(params.cfg.agents?.defaults?.imageModel),
+    ]
+      .map((ref) => ref?.trim())
+      .filter((ref): ref is string => Boolean(ref));
+    if (refs.length > 0) {
+      const defaultProvider = resolveDefaultModelForAgent({
+        cfg: params.cfg,
+        agentId: params.agentId,
+      }).provider;
+      const entries: MediaUnderstandingModelConfig[] = [];
+      for (const ref of refs) {
+        const effectiveDefaultProvider = ref.includes("/")
+          ? defaultProvider
+          : (inferUniqueProviderFromConfiguredModels({
+              cfg: params.cfg,
+              model: ref,
+              agentId: params.agentId,
+            }) ?? defaultProvider);
+        const aliasIndex = buildModelAliasIndex({
+          cfg: params.cfg,
+          defaultProvider: effectiveDefaultProvider,
+          agentId: params.agentId,
+        });
+        const resolved = resolveModelRefFromString({
+          cfg: params.cfg,
+          agentId: params.agentId,
+          raw: ref,
+          defaultProvider: effectiveDefaultProvider,
+          aliasIndex,
+        });
+        if (!resolved) {
+          continue;
+        }
+        entries.push({
+          type: "provider",
+          provider: resolved.ref.provider,
+          model: resolved.ref.model,
+        });
+      }
+      if (entries.length > 0) {
+        return entries.map((entry) => ({ entry }));
+      }
     }
   }
   const prepared = {

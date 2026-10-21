@@ -8,7 +8,6 @@ import { parseAgentSessionKey } from "../routing/session-key.js";
 import type { MediaGenerationOperation } from "./media-generation-activity.js";
 import { listMediaGenerationOperations } from "./media-generation-activity.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
-import { buildSessionAsyncTaskStatusDetails } from "./session-async-task-status.js";
 
 /** Marks media as ready while requester delivery is still being confirmed. */
 export const MEDIA_GENERATION_DELIVERING_COMPLETION_PROGRESS =
@@ -92,36 +91,6 @@ function selectActiveMediaGenerationTasks(
   ];
 }
 
-/** Finds a task that should block duplicate media generation for a session. */
-async function findDuplicateGuardMediaGenerationTaskForSession(params: {
-  sessionKey?: string;
-  agentId?: string;
-  taskKind: string;
-  sourcePrefix: string;
-  taskLabel?: string;
-  requestKey?: string;
-}): Promise<MediaGenerationOperation | undefined> {
-  const sessionKey = normalizeOptionalString(params.sessionKey);
-  if (!sessionKey) {
-    return undefined;
-  }
-  const tasks = listMediaGenerationOperations(sessionKey, params.agentId);
-  const active = selectActiveMediaGenerationTasks(params, tasks)[0];
-  if (active || !params.requestKey) {
-    return active;
-  }
-  const recent = tasks.findLast(
-    (task) =>
-      task.requestKey === params.requestKey &&
-      task.taskKind === params.taskKind &&
-      mediaGenerationSourceMatches(task, params.sourcePrefix) &&
-      (!params.agentId || resolveMediaGenerationTaskRequesterAgentId(task) === params.agentId),
-  );
-  return recent && recent.status === "succeeded" && recent.terminalOutcome !== "blocked"
-    ? recent
-    : undefined;
-}
-
 /** Builds bounded current-turn facts without instructions or elapsed-time fields. */
 export function buildActiveMediaGenerationTaskPromptContext(params: {
   tasks: readonly MediaGenerationOperation[];
@@ -173,8 +142,17 @@ export function createMediaGenerationTaskStatusOwner(params: {
   ): Record<string, unknown> {
     const provider = getMediaGenerationTaskProviderId(task, params.toolName);
     return {
-      ...buildSessionAsyncTaskStatusDetails(task),
+      async: true,
       active: isTaskStillBlockingDuplicateGuard(task),
+      existingTask: true,
+      status: task.status,
+      task: {
+        taskId: task.taskId,
+        ...(task.runId ? { runId: task.runId } : {}),
+      },
+      ...(task.taskKind ? { taskKind: task.taskKind } : {}),
+      ...(task.progressSummary ? { progressSummary: task.progressSummary } : {}),
+      ...(task.sourceId ? { sourceId: task.sourceId } : {}),
       ...(provider ? { provider } : {}),
     };
   }
@@ -196,18 +174,37 @@ export function createMediaGenerationTaskStatusOwner(params: {
     listActiveTasksForSession(this: void, sessionKey?: string, agentId?: string) {
       return listActiveMediaGenerationTasksForSession({ ...taskIdentity, sessionKey, agentId });
     },
-    findDuplicateGuardTaskForSession(
+    async findDuplicateGuardTaskForSession(
       this: void,
-      sessionKey?: string,
+      rawSessionKey?: string,
       request?: { prompt?: string; requestKey?: string; agentId?: string },
     ) {
-      return findDuplicateGuardMediaGenerationTaskForSession({
-        ...taskIdentity,
-        sessionKey,
-        taskLabel: request?.prompt,
-        requestKey: request?.requestKey,
-        agentId: request?.agentId,
-      });
+      const { taskKind, sourcePrefix } = taskIdentity;
+      const taskLabel = request?.prompt;
+      const requestKey = request?.requestKey;
+      const agentId = request?.agentId;
+      const sessionKey = normalizeOptionalString(rawSessionKey);
+      if (!sessionKey) {
+        return undefined;
+      }
+      const tasks = listMediaGenerationOperations(sessionKey, agentId);
+      const active = selectActiveMediaGenerationTasks(
+        { taskKind, sourcePrefix, sessionKey, taskLabel, agentId },
+        tasks,
+      )[0];
+      if (active || !requestKey) {
+        return active;
+      }
+      const recent = tasks.findLast(
+        (task) =>
+          task.requestKey === requestKey &&
+          task.taskKind === taskKind &&
+          mediaGenerationSourceMatches(task, sourcePrefix) &&
+          (!agentId || resolveMediaGenerationTaskRequesterAgentId(task) === agentId),
+      );
+      return recent && recent.status === "succeeded" && recent.terminalOutcome !== "blocked"
+        ? recent
+        : undefined;
     },
     buildTaskStatusDetails,
     buildTaskStatusListDetails(
