@@ -5,6 +5,7 @@ import type { SettingsMediaDeviceState } from "./view-state.ts";
 import type { TabIconViewProps } from "./view-tab-icon.tsx";
 
 type ConfigPageProps = ReturnType<ReturnType<typeof createConfigPage>["configProps"]>;
+// Most callbacks are fire-and-forget; actions retain their owner's completion receipt.
 type ConfigData = {
   [Key in keyof ConfigPageProps]: Key extends
     | "onSave"
