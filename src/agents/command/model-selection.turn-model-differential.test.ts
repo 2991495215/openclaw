@@ -176,7 +176,7 @@ async function observeCommandSelection(fixture: TurnModelDifferentialFixture) {
     messageChannel: fixture.ctx.Provider,
     groupId: fixture.child.groupId,
     groupChannel: fixture.child.groupChannel,
-    ...(fixture.heartbeat
+    ...(fixture.turnModelOverride
       ? {
           provider: TURN_MODEL_OVERRIDE_REF.provider,
           model: TURN_MODEL_OVERRIDE_REF.model,
@@ -209,7 +209,7 @@ async function observeCommandSelection(fixture: TurnModelDifferentialFixture) {
   });
   return turnModelVerdict(
     { provider: selection.provider, model: selection.model },
-    fixture.locked ? "locked" : fixture.heartbeat ? "explicit" : undefined,
+    fixture.locked ? "locked" : fixture.turnModelOverride ? "explicit" : undefined,
   );
 }
 

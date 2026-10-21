@@ -254,6 +254,28 @@ it("rejects arbitrary deprecated transcript path hints", () => {
 });
 
 describe("buildSessionEntry", () => {
+  it("omits historical exec completion forms without swallowing ordinary text", async () => {
+    const timeoutGuidance =
+      "The command was terminated, but external side effects may already have completed. Verify the resulting state before retrying. Do not automatically rerun commands unless repeating them is safe. Use a higher timeout only when the command is known to be safe to retry.";
+    const filePath = writeMessages("exec-history.jsonl", [
+      { role: "user", content: "Remember the deployment." },
+      { role: "user", content: "Exec finished: deployed" },
+      { role: "assistant", content: "Exec finished (job-1): deployed" },
+      { role: "user", content: "Exec\tcompleted (job-2, code 0) :: deployed" },
+      { role: "assistant", content: "Exec failed (job-3, code -1) :: failed" },
+      { role: "user", content: "Exec failed (job-4, signal SIGTERM)" },
+      { role: "assistant", content: `Exec failed (job-5, signal SIGTERM)\n\n${timeoutGuidance}` },
+      { role: "user", content: "Exec failed (job-6, code 1)\n\nPlease explain this failure." },
+      { role: "assistant", content: "Deployment is complete." },
+    ]);
+
+    const entry = await buildEntry(filePath);
+    expect(entry.content).toBe(
+      "User: Remember the deployment.\nUser: Exec failed (job-6, code 1) Please explain this failure.\nAssistant: Deployment is complete.",
+    );
+    expect(entry.lineMap).toEqual([1, 8, 9]);
+  });
+
   it("preserves the persisted export hash for wrapped Unicode messages", async () => {
     const records = Array.from({ length: 4 }, (_, index) => ({
       type: "message",

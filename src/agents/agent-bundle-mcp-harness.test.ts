@@ -154,10 +154,10 @@ function fullPermissionTools(sessionId: string, requesterSenderId: string) {
   return requesterTools(sessionId, { requesterSenderId, autoApproveCodexAppServerApprovals: true });
 }
 
-const heartbeatPolicy = {
+const scheduledPolicy = {
   config: { agents: { entries: { demo: {} } } },
   agentId: "demo",
-  sessionKey: "agent:demo:main:heartbeat",
+  sessionKey: "agent:demo:cron:scheduled",
   groupId: "-1000000000001",
   messageProvider: "telegram",
   modelProvider: "openai",
@@ -420,7 +420,7 @@ describe("materializeStaticMcpToolsForHarnessRunCore", () => {
   });
 
   it.each([false, true])(
-    "reports actual heartbeat omissions, not warnings (deny: %s)",
+    "reports actual scheduled omissions, not warnings (deny: %s)",
     async (deny) => {
       makeStaticRuntime("scheduled-group");
       const warnings: string[] = [];
@@ -428,9 +428,9 @@ describe("materializeStaticMcpToolsForHarnessRunCore", () => {
         toolsAllow: ["user-mail__inbox"],
         autoApproveCodexAppServerApprovals: true,
         policyContext: {
-          ...heartbeatPolicy,
+          ...scheduledPolicy,
           config: {
-            ...heartbeatPolicy.config,
+            ...scheduledPolicy.config,
             ...(deny ? { tools: { deny: ["user-mail__inbox"] } } : {}),
           },
         },

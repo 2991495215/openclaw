@@ -156,17 +156,26 @@ it.each([
 });
 
 it.each([
-  [["HEARTBEAT_OK", "Critical deployment failure"], { kind: "visible" }, 1],
-  [["Checked inbox and calendar.", "HEARTBEAT_OK"], { kind: "heartbeat", controlOnly: false }, 0],
-])("preserves heartbeat position in %j", (texts, disposition, start) => {
+  ["HEARTBEAT_OK", "Critical deployment failure"],
+  ["Checked inbox and calendar.", "HEARTBEAT_OK"],
+])("preserves ordinary token text in %j", (...texts) => {
   const payloads = texts.map((text) => ({ text }));
-  const result = resolveCronPayloadOutcome({
-    payloads,
-    finalAssistantVisibleText: texts.at(-1),
-  });
-  expect(result.deliveryPayloads).toEqual(texts.slice(start).map((text) => ({ text })));
-  expect(result.deliveryDisposition).toEqual(disposition);
+  const result = resolveCronPayloadOutcome({ payloads });
+  expect(result.deliveryPayloads).toEqual(payloads);
+  expect(result.deliveryDisposition).toEqual({ kind: "visible" });
 });
+
+it.each([false, true])(
+  "suppresses typed silence while preserving structured content: %s",
+  (structured) => {
+    const payloads = [{ text: "NO_REPLY", ...(structured ? { presentation } : {}) }];
+    const result = resolveCronPayloadOutcome({ payloads, terminalReplyDisposition: "silent" });
+    expect(result.deliveryPayloads).toEqual(payloads);
+    expect(result.deliveryDisposition).toEqual(
+      structured ? { kind: "visible" } : { kind: "silent" },
+    );
+  },
+);
 
 it("prefers typed failure signals over denial-token fallback", () => {
   const message = "SYSTEM_RUN_DENIED: approval required";

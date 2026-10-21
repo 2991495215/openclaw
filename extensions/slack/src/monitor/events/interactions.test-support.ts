@@ -3,12 +3,12 @@ import { vi } from "vitest";
 import { encodeSlackApprovalAction, type SlackApprovalAction } from "../../approval-actions.js";
 import { installSlackTestRuntime } from "../../test-runtime.test-support.js";
 
-function buttonBlocks(blockId: string, button: { action_id: string; value?: string }) {
+function buttonBlocks(blockId: string, control: { action_id: string; value?: string }) {
   return [
     {
       type: "actions",
       block_id: blockId,
-      elements: [{ type: "button", ...button }],
+      elements: [{ type: "button", ...control }],
     },
   ];
 }
@@ -240,5 +240,40 @@ export function createContext({
     getViewHandler: () => requireHandler(handlers.view_submission, "view"),
     getViewClosedHandler: () => requireHandler(handlers.view_closed, "view-closed"),
     getShortcutHandler: () => requireHandler(handlers.shortcut, "shortcut"),
+  };
+}
+
+export function plainText(text: string) {
+  return { type: "plain_text", text };
+}
+export function button(actionId: string, blockId: string, value: string, label: string) {
+  return { type: "button", action_id: actionId, block_id: blockId, value, text: plainText(label) };
+}
+type ActionBody = Parameters<ReturnType<ReturnType<typeof createContext>["getHandler"]>>[0]["body"];
+export function actionBody(
+  message: Omit<NonNullable<ActionBody["message"]>, "ts">,
+  {
+    userId = "U123",
+    channelId = "C1",
+    ts = "100.200",
+    threadTs,
+    container = true,
+    ...extra
+  }: {
+    userId?: string;
+    channelId?: string;
+    ts?: string;
+    threadTs?: string;
+    container?: boolean;
+  } & Pick<ActionBody, "team" | "trigger_id" | "response_url"> = {},
+): ActionBody {
+  return {
+    user: { id: userId },
+    channel: { id: channelId },
+    ...(container
+      ? { container: { channel_id: channelId, message_ts: ts, thread_ts: threadTs } }
+      : {}),
+    message: { ts, ...message },
+    ...extra,
   };
 }

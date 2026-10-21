@@ -8,7 +8,7 @@ import { testing as replyRunTesting } from "../../sessions/session-controller.te
 import { createDeferredCore } from "../../shared/deferred.js";
 import {
   claimPendingEmbeddedAgentQuestionAnswer,
-  preemptAndDrainEmbeddedHeartbeatRun,
+  captureEmbeddedRunDrainTarget,
   type EmbeddedAgentQueueHandle,
 } from "./runs.js";
 import {
@@ -156,32 +156,27 @@ describe("embedded-agent active-run question answers and waits", () => {
 
   it("keeps handle and session waiters distinct through replacements", async () => {
     vi.useFakeTimers();
-    const preempt = vi.fn(() => true),
-      visibleAbort = vi.fn();
-    const { handle: heartbeat } = start({
-      isAbortable: () => false,
-      preemptByVisibleTurn: preempt,
-    });
+    const visibleAbort = vi.fn();
+    const { handle: original } = start();
+    const captured = captureEmbeddedRunDrainTarget(sessionId, { defaultAgentId: "test" });
+    expect(captured).toBeDefined();
     const replacement = createEmbeddedRunHandle({ abort: visibleAbort });
     setActiveEmbeddedRun("visible", replacement);
-    const heartbeatWait = preemptAndDrainEmbeddedHeartbeatRun(sessionId, 1_000);
+    const originalWait = captured!.waitForEnd(1_000);
     const sessionWait = waitForEmbeddedAgentRunEnd(sessionId, null);
-    let heartbeatDrained = false,
+    let originalDrained = false,
       sessionDrained = false;
-    void heartbeatWait.then(() => {
-      heartbeatDrained = true;
+    void originalWait.then(() => {
+      originalDrained = true;
     });
     void sessionWait.then(() => {
       sessionDrained = true;
     });
-    await expect(preemptAndDrainEmbeddedHeartbeatRun("visible", 1_000)).resolves.toBe(
-      "not-heartbeat",
-    );
     setActiveEmbeddedRun(sessionId, replacement);
     await Promise.resolve();
-    expect(heartbeatDrained).toBe(false);
-    clearActiveEmbeddedRun(sessionId, heartbeat);
-    await expect(heartbeatWait).resolves.toBe("drained");
+    expect(originalDrained).toBe(false);
+    clearActiveEmbeddedRun(sessionId, original);
+    await expect(originalWait).resolves.toBe(true);
     expect(sessionDrained).toBe(false);
     clearActiveEmbeddedRun(sessionId, replacement);
     const successor = createEmbeddedRunHandle();
@@ -191,7 +186,6 @@ describe("embedded-agent active-run question answers and waits", () => {
     expect(sessionDrained).toBe(false);
     clearActiveEmbeddedRun(sessionId, successor);
     await expect(sessionWait).resolves.toBe(true);
-    expect(preempt).toHaveBeenCalledOnce();
     unused(visibleAbort);
   });
 });

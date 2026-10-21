@@ -39,9 +39,10 @@ function mockAgentRun({
     attempts: [],
   });
 }
-function mockChildRun(payloads: unknown[] = []) {
+function mockChildRun(payloads: unknown[] = [], silent = false) {
   mockAgentRun({
     payloads,
+    meta: silent ? { terminalReply: { disposition: "silent" } } : {},
     usage: { input: 10, output: 1 },
     acceptedSessionSpawns: [{ runId: "run-child", childSessionKey: "agent:default:child" }],
   });
@@ -178,26 +179,26 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
     },
   );
 
-  it("preserves a heartbeat-only accepted child handoff failure as a cron error", async () => {
-    const heartbeatPayload = { text: "HEARTBEAT_OK" };
+  it("preserves a silent accepted child handoff failure as a cron error", async () => {
+    const controlPayload = { text: "NO_REPLY" };
     const error = "cron child-session handoff timed out before producing a final assistant payload";
-    mockChildRun([heartbeatPayload]);
-    mockAnnounceOutcome([heartbeatPayload], heartbeatPayload.text, {
-      deliveryDisposition: { kind: "heartbeat", controlOnly: true },
+    mockChildRun([controlPayload], true);
+    mockAnnounceOutcome([controlPayload], controlPayload.text, {
+      deliveryDisposition: { kind: "silent" },
     });
     mockDelivery({
       disposition: { kind: "error", error },
     });
     const result = await runTurn();
     expectObjectFields(result, { status: "error", error, delivered: false });
-    expect(result.summary).not.toBe(heartbeatPayload.text);
-    expect(result.outputText).not.toBe(heartbeatPayload.text);
+    expect(result.summary).not.toBe(controlPayload.text);
+    expect(result.outputText).not.toBe(controlPayload.text);
   });
 
-  it("records the child result after a no-delivery parent returns only a heartbeat", async () => {
+  it("records the child result after a no-delivery parent returns explicit silence", async () => {
     await useRealOutcome();
     const reply = "Finished the delegated report";
-    mockChildRun([{ text: "HEARTBEAT_OK" }]);
+    mockChildRun([{ text: "NO_REPLY" }], true);
     harness.resolveCronDeliveryPlanMock.mockReturnValue({ mode: "none", requested: false });
     harness.listDescendantRunsForRequesterMock.mockResolvedValue([
       {

@@ -132,7 +132,7 @@ function twoAgentConfig(workspace: string, other: string): OpenClawConfig {
   return {
     agents: {
       ownership: "explicit",
-      defaults: { heartbeat: { agentId: "main" }, systemAgent: { agentId: "main" } },
+      defaults: { systemAgent: { agentId: "main" } },
       entries: { main: { workspace }, [other]: {} },
     },
     talk: { agentId: "main" },

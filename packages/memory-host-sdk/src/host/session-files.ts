@@ -15,12 +15,8 @@ import {
   isDreamingNarrativeSessionStoreKey,
   extractAgentIdFromSessionPath,
   extractAgentIdFromSessionsDir,
-  HEARTBEAT_PROMPT,
-  HEARTBEAT_TOKEN,
   hasInterSessionUserProvenance,
   isCompactionCheckpointTranscriptFileName,
-  isExecCompletionEvent,
-  isHeartbeatUserMessage,
   isSessionArchiveArtifactName,
   isUsageCountedSessionTranscriptFileName,
   materializeSessionArchiveForRead,
@@ -35,8 +31,6 @@ import {
   readTranscriptExportSnapshotReadOnlySync,
   resolveSessionTranscriptsDirForAgent,
   SessionTranscriptColdError,
-  stripInboundMetadata,
-  stripInternalRuntimeContext,
   warnPluginSdkDeprecation,
 } from "./openclaw-runtime-session.js";
 import { retryTransientMemoryRead } from "./read-retry.js";
@@ -46,6 +40,7 @@ import {
   parseSessionTimestampMs,
   projectSessionEntryRecord,
   renderSessionExportLines,
+  sanitizeSessionText,
 } from "./session-entry-projection.js";
 import { resolveBuildSessionSqliteIdentity } from "./session-entry-source.js";
 import { classifySessionMessageOrigin } from "./session-provenance.js";
@@ -72,7 +67,6 @@ export {
 } from "./openclaw-runtime-session.js";
 
 const SESSION_ENTRY_PARSE_YIELD_LINES = 250;
-const DIRECT_CRON_PROMPT_RE = /^\[cron:[^\]]+\]\s*/;
 const SESSION_RESET_RECALL_CUTOFF = Symbol.for("openclaw.memory.sessionResetRecallCutoff");
 type SessionResetRecallCutoff = ReturnType<typeof resolveSessionResetRecallCutoff>;
 
@@ -411,42 +405,6 @@ export function parseCanonicalSessionSyncTargetFromPath(
     return null;
   }
   return { agentId, sessionId };
-}
-
-function normalizeSessionText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-const GENERATED_SYSTEM_MESSAGE_RE = /^System(?: \(untrusted\))?: \[[^\]]+\]\s*/;
-
-function sanitizeSessionText(text: string, role: "user" | "assistant"): string | null {
-  // Metadata envelopes require their original newlines; strip them before whitespace normalization.
-  const strippedInbound = role === "user" ? stripInboundMetadata(text) : text;
-  const strippedInternal = stripInternalRuntimeContext(strippedInbound);
-  const normalized = normalizeSessionText(strippedInternal);
-  if (!normalized) {
-    return null;
-  }
-  if (
-    role === "user" &&
-    (GENERATED_SYSTEM_MESSAGE_RE.test(normalized) ||
-      DIRECT_CRON_PROMPT_RE.test(normalized) ||
-      isHeartbeatUserMessage({ role, content: normalized }, HEARTBEAT_PROMPT))
-  ) {
-    return null;
-  }
-  // Assistant-side machinery acks: HEARTBEAT_OK is the canonical "all clear,
-  // nothing to do" reply to a heartbeat tick. Drop on the assistant side
-  // directly so we do not have to rely on cross-message coupling with the
-  // preceding user message (which a real user could spoof).
-  if (role === "assistant" && normalized === HEARTBEAT_TOKEN) {
-    return null;
-  }
-  const withoutSystemEnvelope = normalized.replace(GENERATED_SYSTEM_MESSAGE_RE, "").trim();
-  if (isExecCompletionEvent(withoutSystemEnvelope)) {
-    return null;
-  }
-  return normalized;
 }
 
 function isRecalledMemoryMessage(message: { provenance?: unknown }): boolean {

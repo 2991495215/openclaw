@@ -32,7 +32,6 @@ const { logger, makeStorePath } = setupCronServiceSuite({
 });
 let storePath: string;
 let enqueueSystemEvent = vi.fn();
-let requestHeartbeat = vi.fn();
 let runSessionEvent = vi.fn<NonNullable<StateDeps["runSessionEvent"]>>(async () => ({
   status: "ok",
 }));
@@ -40,7 +39,6 @@ let states: ReturnType<typeof createCronServiceStateBase>[];
 beforeEach(async () => {
   ({ storePath } = await makeStorePath());
   enqueueSystemEvent = vi.fn();
-  requestHeartbeat = vi.fn();
   runSessionEvent = vi.fn<NonNullable<StateDeps["runSessionEvent"]>>(async () => ({
     status: "ok",
   }));
@@ -57,7 +55,6 @@ function createCronServiceState(
     nowMs: () => now,
     scheduler: createTestGatewayScheduler(),
     enqueueSystemEvent,
-    requestHeartbeat,
     runSessionEvent,
     runIsolatedAgentJob: vi.fn(async () => ({ status: "ok" as const })),
     cronEnabled: true,
@@ -141,12 +138,11 @@ describe("cron service timer seam coverage", () => {
 
     expect(runSessionEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "heartbeat seam tick",
-        job: expect.objectContaining({ id: "main-heartbeat-job", sessionTarget: "main" }),
+        text: "session event seam tick",
+        job: expect.objectContaining({ id: "main-session-job", sessionTarget: "main" }),
       }),
     );
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
-    expect(requestHeartbeat).not.toHaveBeenCalled();
 
     const persistedState = (await readJob()).state;
     expect(persistedState).toMatchObject({
@@ -154,16 +150,16 @@ describe("cron service timer seam coverage", () => {
       nextRunAtMs: now + 60_000,
     });
     expect(persistedState.runningAtMs).toBeUndefined();
-    const task = findRun("main-heartbeat-job");
+    const task = findRun("main-session-job");
     expect(task).toMatchObject({
-      jobId: "main-heartbeat-job",
+      jobId: "main-session-job",
       agentId: "ops",
       status: "succeeded",
       startedAt: now,
       lastEventAt: now,
       endedAt: now,
       cleanupAfter: now + 7 * 24 * 60 * 60_000,
-      runId: expect.stringMatching(new RegExp(`^cron:main-heartbeat-job:${now}:`)),
+      runId: expect.stringMatching(new RegExp(`^cron:main-session-job:${now}:`)),
     });
     expect(task?.sessionKey).toBeUndefined();
 
@@ -210,7 +206,6 @@ describe("cron service timer seam coverage", () => {
 
       await expect(result).resolves.toMatchObject({ status: "error" });
       expect(enqueueSystemEvent).not.toHaveBeenCalled();
-      expect(requestHeartbeat).not.toHaveBeenCalled();
       expect(runCommandJob).not.toHaveBeenCalled();
       expect(runScriptJob).not.toHaveBeenCalled();
       expect(runIsolatedAgentJob).not.toHaveBeenCalled();
@@ -318,7 +313,6 @@ describe("cron service timer seam coverage", () => {
         expect.objectContaining({ agentId: "ops", sessionKey, expectedTarget, deliveryContext }),
       );
       expect(enqueueSystemEvent).not.toHaveBeenCalled();
-      expect(requestHeartbeat).not.toHaveBeenCalled();
     },
   );
 
@@ -351,7 +345,6 @@ describe("cron service timer seam coverage", () => {
     expect(runSessionEvent).not.toHaveBeenCalled();
     expect(enqueueSessionEvent).not.toHaveBeenCalled();
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
-    expect(requestHeartbeat).not.toHaveBeenCalled();
   });
 
   it("rejects nextCheck without pacing before applying state", async () => {

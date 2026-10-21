@@ -104,6 +104,51 @@ function buildRemovedExportRecord(seed: (typeof REMOVED_EXPORT_SEEDS)[number]) {
 export const PLUGIN_SDK_REMOVED_EXPORT_RECORDS = [
   ...REMOVED_EXPORT_SEEDS.map(buildRemovedExportRecord),
   {
+    code: "plugin-sdk-heartbeat-reply-runtime",
+    status: "removed",
+    owner: "agent-runtime",
+    removeAfter: "2026-10-03",
+    replacement:
+      "Use ordinary Automations and the producer-owned terminal reply contract from openclaw/plugin-sdk/agent-harness-runtime; heartbeat-specific prompt and reply normalization no longer applies.",
+    docsPath: "/plugins/sdk-migration/removed-surfaces#heartbeat-runtime-and-reply-helpers",
+    surfaces: [
+      "openclaw/plugin-sdk/reply-runtime.HEARTBEAT_PROMPT",
+      "openclaw/plugin-sdk/reply-runtime.DEFAULT_HEARTBEAT_ACK_MAX_CHARS",
+      "openclaw/plugin-sdk/reply-runtime.resolveHeartbeatPromptCore",
+      "openclaw/plugin-sdk/reply-runtime.stripHeartbeatToken",
+      "openclaw/plugin-sdk/reply-runtime.resolveHeartbeatReplyPayload",
+      "openclaw/plugin-sdk/reply-runtime.HEARTBEAT_TOKEN",
+    ],
+    diagnostics: ["plugin SDK shipped-surface guard and migration guide"],
+    tests: [
+      "src/plugins/compat/registry.test.ts",
+      "test/scripts/plugin-sdk-shipped-surface.test.ts",
+    ],
+    releaseNote:
+      "Maintainer-approved breaking removal on 2026-10-03: heartbeat execution moved to ordinary Automations; these exports are removed without deprecated aliases.",
+  },
+  {
+    code: "plugin-sdk-heartbeat-agent-harness-runtime",
+    status: "removed",
+    owner: "agent-runtime",
+    removeAfter: "2026-10-03",
+    replacement:
+      "Use ordinary reply text and the standard silent reply convention; the heartbeat response tool and structured response no longer exist.",
+    docsPath: "/plugins/sdk-migration/removed-surfaces#heartbeat-runtime-and-reply-helpers",
+    surfaces: [
+      "openclaw/plugin-sdk/agent-harness-runtime.HeartbeatToolResponse",
+      "openclaw/plugin-sdk/agent-harness-runtime.HEARTBEAT_RESPONSE_TOOL_NAME",
+      "openclaw/plugin-sdk/agent-harness-runtime.normalizeHeartbeatToolResponse",
+    ],
+    diagnostics: ["plugin SDK shipped-surface guard and migration guide"],
+    tests: [
+      "src/plugins/compat/registry.test.ts",
+      "test/scripts/plugin-sdk-shipped-surface.test.ts",
+    ],
+    releaseNote:
+      "Maintainer-approved breaking removal on 2026-10-03: agent harnesses no longer register or normalize heartbeat response tools; no deprecated aliases remain.",
+  },
+  {
     code: "plugin-sdk-reply-silence-parsers",
     status: "removed",
     owner: "agent-runtime",

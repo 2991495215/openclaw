@@ -5,7 +5,6 @@ import {
   resolveEventSessionKeyForPolicy,
   resolveEventSessionRoutingPolicy,
   resolveMainScopedEventSessionKey,
-  scopedHeartbeatWakeOptionsForPolicy,
 } from "./event-session-routing.js";
 
 const telegramSessionKey = "agent:main:telegram:work:direct:123";
@@ -91,9 +90,6 @@ describe("event session routing", () => {
     const policy = resolveEventSessionRoutingPolicy({ cfg: singleOwnerConfig, sessionKey });
 
     expect(resolveEventSessionKeyForPolicy(sessionKey, policy)).toBe("agent:main:main");
-    expect(
-      scopedHeartbeatWakeOptionsForPolicy(sessionKey, { reason: "exec-event" }, policy),
-    ).toEqual({ reason: "exec-event", sessionKey: "agent:main:main" });
     expect(resolveEventSessionKeyForPolicy(`${sessionKey}:thread:1712345678.123`, policy)).toBe(
       "agent:main:main",
     );
@@ -140,12 +136,5 @@ describe("event session routing", () => {
     expect(resolveEventSessionKeyForPolicy("agent:ops:cron:nightly:run:abc", policy)).toBe(
       "agent:ops:primary",
     );
-    expect(
-      scopedHeartbeatWakeOptionsForPolicy(
-        "agent:ops:cron:nightly:run:abc",
-        { reason: "exec-event" },
-        policy,
-      ),
-    ).toEqual({ reason: "exec-event", sessionKey: "agent:ops:primary" });
   });
 });

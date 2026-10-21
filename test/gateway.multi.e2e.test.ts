@@ -217,7 +217,6 @@ const cron = new CronService({
   storePath: resolveCronJobsStorePath(),
   log: { debug() {}, info() {}, warn() {}, error() {} },
   enqueueSystemEvent() {},
-  requestHeartbeat() {},
   async runIsolatedAgentJob() { return { status: "ok", summary: "scheduler canary completed" }; },
 });
 try {

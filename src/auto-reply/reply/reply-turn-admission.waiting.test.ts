@@ -109,18 +109,6 @@ describe("reply turn admission", () => {
     completeOwned(await admitted);
   });
 
-  it("skips heartbeat turns while delivery settles", async () => {
-    const active = activeReply("agent:main:discord:channel:42", "active-session");
-    const { promise: barrier, resolve: releaseBarrier } = createDeferred();
-
-    active.completeWithAfterClearBarrier(barrier);
-    const result = await admitBehind(active, "heartbeat-session", { kind: "heartbeat" });
-
-    expect(result).toEqual({ status: "skipped", reason: "active-run" });
-    releaseBarrier();
-    await barrier;
-  });
-
   it("passes a visible turn's rotated session to after-clear work", async () => {
     const active = activeReply("agent:main:discord:channel:42", "active-session");
     const { promise: barrier, resolve: releaseBarrier } = createDeferred();
@@ -152,19 +140,6 @@ describe("reply turn admission", () => {
     active.updateSessionId("post-compact-session");
     active.complete();
     completeOwned(await admitted, "post-compact-session");
-  });
-
-  it("skips heartbeat turns while a visible turn owns the lane", async () => {
-    const active = activeReply("agent:main:telegram:topic:42", "visible-session");
-
-    const result = await admitBehind(active, "heartbeat-session", { kind: "heartbeat" });
-
-    expect(result).toMatchObject({
-      status: "skipped",
-      reason: "active-run",
-      activeOperation: active,
-    });
-    active.complete();
   });
 
   it("lets visible turns reclaim a stale active operation", async () => {
@@ -240,7 +215,7 @@ describe("reply turn admission", () => {
     abortController.abort();
   });
 
-  it.each(["heartbeat", "queued_followup"] as const)(
+  it.each(["queued_followup"] as const)(
     "does not let %s turns reclaim a stale active operation",
     async (kind) => {
       vi.useFakeTimers();

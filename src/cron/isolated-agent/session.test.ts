@@ -106,13 +106,13 @@ it.each([
 });
 
 it.each([
-  { forceNew: true, heartbeat: false, initializing: false, rolls: false },
-  { forceNew: true, heartbeat: true, initializing: true, rolls: false },
-  { forceNew: false, heartbeat: true, initializing: false, rolls: false },
-  { forceNew: true, heartbeat: true, initializing: false, rolls: true },
+  { forceNew: true, heartbeat: false, initializing: false },
+  { forceNew: true, heartbeat: true, initializing: true },
+  { forceNew: false, heartbeat: true, initializing: false },
+  { forceNew: true, heartbeat: true, initializing: false },
 ])(
   "guards archived sessions: forced=$forceNew, heartbeat=$heartbeat, initializing=$initializing",
-  ({ forceNew, heartbeat, initializing, rolls }) => {
+  ({ forceNew, heartbeat, initializing }) => {
     const sessionKey = `agent:main:main${heartbeat ? ":heartbeat" : ""}`;
     const resolve = () =>
       resolveWithStoredEntry({
@@ -125,21 +125,10 @@ it.each([
           ...(initializing ? { initializationPending: true as const } : {}),
         },
       });
-    if (!rolls) {
-      const error = initializing
-        ? "is still initializing. Retry after initialization completes."
-        : "is archived. Restore it before starting new work.";
-      expect(resolve).toThrow(`Session "${sessionKey}" ${error}`);
-    } else {
-      const result = resolve();
-      expect(result).toMatchObject({
-        isNewSession: true,
-        previousSessionId: "archived-heartbeat-session",
-      });
-      expect(result.sessionEntry.sessionId).not.toBe("archived-heartbeat-session");
-      expect(result.sessionEntry.archivedAt).toBeUndefined();
-      expect(result.sessionEntry.heartbeatIsolatedBaseSessionKey).toBeUndefined();
-    }
+    const error = initializing
+      ? "is still initializing. Retry after initialization completes."
+      : "is archived. Restore it before starting new work.";
+    expect(resolve).toThrow(`Session "${sessionKey}" ${error}`);
   },
 );
 

@@ -84,7 +84,6 @@ async function setup(initialSession?: string, options: JobOptions = {}) {
       resolveSessionStorePath: () => sessionStorePath,
       log: logger,
       enqueueSystemEvent: vi.fn(),
-      requestHeartbeat: vi.fn(),
       runIsolatedAgentJob: vi.fn(async () => ({ status: "ok" as const })),
     });
   const read = (sessionKey: string) => loadExactSessionEntry({ ...target, sessionKey });

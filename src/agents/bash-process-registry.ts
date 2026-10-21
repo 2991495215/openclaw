@@ -67,7 +67,6 @@ export interface ProcessSession {
   /** Start-time routing policy for detached exec system events. */
   eventRouting?: EventSessionRoutingPolicy;
   notifyDeliveryContext?: DeliveryContext;
-  notifyFromConversationTurn?: boolean;
   notifySessionTarget?: SessionEventTarget;
   assertExitNotificationAcceptanceCurrent?: () => void;
   persistExitNotification?: () => Promise<void>;

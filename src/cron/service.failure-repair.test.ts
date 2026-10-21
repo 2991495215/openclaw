@@ -31,7 +31,6 @@ function expectNotifications(f: RepairFixture, repairs: number, alerts: number, 
   expect(f.sendCronFailureAlert).toHaveBeenCalledTimes(alerts);
   if (notices !== undefined) {
     expect(f.enqueueSessionEvent).toHaveBeenCalledTimes(notices);
-    expect(f.requestHeartbeat).not.toHaveBeenCalled();
   }
 }
 
@@ -117,7 +116,6 @@ describe("CronService failure repair", () => {
         repairId: expect.any(String),
       });
       expect(f.enqueueSessionEvent).not.toHaveBeenCalled();
-      expect(f.requestHeartbeat).not.toHaveBeenCalled();
       const brief = request?.message ?? "";
       expect(brief).toContain(`(id ${job.id}), created in this conversation, failed 2`);
       expect(brief).not.toMatch(/^[^<]*gmail sync/u);

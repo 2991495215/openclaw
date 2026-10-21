@@ -41,7 +41,6 @@ async function fixture(
   const clock = createGatewaySchedulerClock(Date.now());
   const finished = createDeferred<CronEvent>();
   const enqueueSystemEvent = vi.fn();
-  const requestHeartbeat = vi.fn();
   const enqueueSessionEvent = vi.fn();
   const runSessionEvent = vi.fn<NonNullable<CronServiceDeps["runSessionEvent"]>>(
     options.runSessionEvent ?? (async () => ({ status: "ok" })),
@@ -52,7 +51,6 @@ async function fixture(
     cronEnabled: true,
     log: logger,
     enqueueSystemEvent,
-    requestHeartbeat,
     nowMs: options.nowMs,
     runSessionEvent,
     enqueueSessionEvent,
@@ -89,7 +87,6 @@ describe("CronService one-shot lifecycle", () => {
         expect.objectContaining({ job: expect.objectContaining({ id: job.id }), text: "hello" }),
       );
       expect(deps.enqueueSystemEvent).not.toHaveBeenCalled();
-      expect(deps.requestHeartbeat).not.toHaveBeenCalled();
       expect((await cron.update(job.id, { enabled: true })).state.nextRunAtMs).toBeUndefined();
       clock.setTime(clock.clock.now() + 1_000);
       await onTimer(state);
@@ -150,7 +147,6 @@ describe("CronService one-shot lifecycle", () => {
         ...(reason ? { deliverySuppressionReason: reason } : {}),
       });
       expect(deps.enqueueSystemEvent).not.toHaveBeenCalled();
-      expect(deps.requestHeartbeat).not.toHaveBeenCalled();
       const retained = cron.getJob(job.id);
       if (completion === "succeeded") {
         expect(retained).toBeUndefined();
@@ -198,7 +194,6 @@ describe("CronService one-shot lifecycle", () => {
       await cron.run(job.id, "force");
       expect(runSessionEvent).toHaveBeenCalledOnce();
       expect(deps.enqueueSystemEvent).not.toHaveBeenCalled();
-      expect(deps.requestHeartbeat).not.toHaveBeenCalled();
       expect(deps.enqueueSessionEvent).toHaveBeenCalledExactlyOnceWith(
         expect.stringContaining("auto-disabled"),
         expect.objectContaining({ contextKey: `cron:${job.id}:auto-disabled` }),
@@ -254,7 +249,6 @@ describe("CronService one-shot lifecycle", () => {
         "hello",
       ]);
       expect(deps.enqueueSystemEvent).not.toHaveBeenCalled();
-      expect(deps.requestHeartbeat).not.toHaveBeenCalled();
     } finally {
       await cleanup();
     }
@@ -290,11 +284,9 @@ describe("CronService one-shot lifecycle", () => {
             expect.stringContaining('Automation "one-shot" failed 1 times'),
             expect.objectContaining({ contextKey: `cron:${job.id}:failure-alert` }),
           );
-          expect(deps.requestHeartbeat).not.toHaveBeenCalled();
         } else {
           expect(stored?.state.nextRunAtMs).toBeTypeOf("number");
           expect(deps.enqueueSystemEvent).not.toHaveBeenCalled();
-          expect(deps.requestHeartbeat).not.toHaveBeenCalled();
         }
         expect(runIsolatedAgentJob).toHaveBeenCalledOnce();
       } finally {

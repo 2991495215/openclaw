@@ -47,7 +47,6 @@ export async function runReplyQuestionInput(
   ).trim();
   if (
     !sessionKey ||
-    opts?.isHeartbeat ||
     params.resetTriggered ||
     isExplicitFollowupCommandTurn(params.sessionCtx) ||
     opts?.messageInjectionDisposition === "accepted" ||

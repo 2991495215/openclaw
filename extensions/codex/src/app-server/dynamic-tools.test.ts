@@ -4,7 +4,6 @@ import path from "node:path";
 import type { AgentToolResult } from "openclaw/plugin-sdk/agent-core";
 import { createOpenClawCodingTools, type AnyAgentTool } from "openclaw/plugin-sdk/agent-harness";
 import {
-  HEARTBEAT_RESPONSE_TOOL_NAME,
   embeddedAgentLog,
   getPluginToolMeta,
   wrapToolWithBeforeToolCallHook,
@@ -53,15 +52,19 @@ import {
   projectCodexExecutableDynamicTools,
 } from "./dynamic-tools.js";
 import {
+  createBridge,
+  createDynamicToolCall,
+  createSingleToolBridge,
+  createTool,
+  flattenSpecsWithNamespace,
   installResultMiddleware,
+  specNames,
   mediaResult,
   textToolResult,
 } from "./dynamic-tools.test-support.js";
 import {
   CODEX_OPENCLAW_DIRECT_DYNAMIC_TOOL_NAMESPACE,
-  type CodexDynamicToolCallParams,
   type CodexDynamicToolCallResponse,
-  type CodexDynamicToolFunctionSpec,
   type CodexDynamicToolSpec,
   type JsonValue,
 } from "./protocol.js";
@@ -113,21 +116,6 @@ function frameImageIdentity(data: string, mimeType = "image/png") {
     .digest("hex");
 }
 
-function createDynamicToolCall(
-  tool: string,
-  arguments_: JsonValue = {},
-  callId = "call-1",
-): CodexDynamicToolCallParams {
-  return {
-    threadId: "thread-1",
-    turnId: "turn-1",
-    callId,
-    namespace: null,
-    tool,
-    arguments: arguments_,
-  };
-}
-
 function callTool(
   bridge: ReturnType<typeof createCodexDynamicToolBridge>,
   tool: string,
@@ -136,16 +124,6 @@ function callTool(
   options?: Parameters<typeof bridge.handleToolCall>[1],
 ) {
   return bridge.handleToolCall(createDynamicToolCall(tool, args, callId), options);
-}
-
-function createTool(name: string, overrides: Partial<AnyAgentTool> = {}): AnyAgentTool {
-  return {
-    name,
-    description: "Convert text to speech.",
-    parameters: { type: "object", properties: {}, additionalProperties: true },
-    execute: vi.fn(),
-    ...overrides,
-  } as unknown as AnyAgentTool;
 }
 
 function createDecisionToolForBridge(workspaceDir: string): AnyAgentTool {
@@ -169,20 +147,6 @@ function createDecisionToolForBridge(workspaceDir: string): AnyAgentTool {
     throw new Error("Configured decision_evaluate tool was not assembled");
   }
   return tool;
-}
-
-function createSingleToolBridge(tool: AnyAgentTool, options: BridgeOptions = {}) {
-  return createBridge([tool], options);
-}
-
-type BridgeOptions = Omit<
-  Parameters<typeof createCodexDynamicToolBridge>[0],
-  "tools" | "signal"
-> & {
-  signal?: AbortSignal;
-};
-function createBridge(tools: AnyAgentTool[], options: BridgeOptions = {}) {
-  return createCodexDynamicToolBridge({ tools, signal: new AbortController().signal, ...options });
 }
 
 function createBridgeWithToolResult(
@@ -224,20 +188,6 @@ function callArg(
     throw new Error(`Expected ${label}`);
   }
   return call[argIndex];
-}
-
-function flattenSpecsWithNamespace(
-  specs: readonly CodexDynamicToolSpec[],
-): Array<CodexDynamicToolFunctionSpec & { namespace?: string }> {
-  return specs.flatMap((spec) =>
-    spec.type === "namespace"
-      ? spec.tools.map((tool) => ({ ...tool, namespace: spec.name }))
-      : [spec],
-  );
-}
-
-function specNames(specs: readonly CodexDynamicToolSpec[]): string[] {
-  return flattenSpecsWithNamespace(specs).map((tool) => tool.name);
 }
 
 function expectExecuteCall(
@@ -549,41 +499,6 @@ describe("createCodexDynamicToolBridge", () => {
         tools: [expect.objectContaining({ name: "computer" })],
       }),
     ]);
-  });
-
-  it("can register a durable tool schema while denying execution for the current turn", async () => {
-    const heartbeatExecute = vi.fn(async () => textToolResult("heartbeat recorded"));
-    const onToolOutcome = vi.fn();
-    const bridge = createSingleToolBridge(createTool("message"), {
-      registeredTools: [
-        createTool("message"),
-        createTool(HEARTBEAT_RESPONSE_TOOL_NAME, { execute: heartbeatExecute }),
-      ],
-      hookContext: { runId: "run-unavailable", onToolOutcome },
-    });
-
-    expect(specNames(bridge.availableSpecs)).toEqual(["message"]);
-    expect(bridge.availableTools.map((tool) => tool.name)).toEqual(["message"]);
-    expect(specNames(bridge.specs)).toEqual([HEARTBEAT_RESPONSE_TOOL_NAME, "message"]);
-
-    const result = await callTool(bridge, HEARTBEAT_RESPONSE_TOOL_NAME);
-
-    expectInputText(
-      result,
-      `OpenClaw tool is not available for this turn: ${HEARTBEAT_RESPONSE_TOOL_NAME}`,
-      false,
-    );
-    expect(result).toEqual(
-      expect.objectContaining({ executionStarted: false, executedArguments: {} }),
-    );
-    expect(heartbeatExecute).not.toHaveBeenCalled();
-    expect(onToolOutcome).toHaveBeenLastCalledWith({
-      toolName: HEARTBEAT_RESPONSE_TOOL_NAME,
-      argsHash: "",
-      resultHash: "",
-      terminalPresentation: undefined,
-      presentationOnly: true,
-    });
   });
 
   it("publishes and executes a repaired schema with a literal prototype property", async () => {

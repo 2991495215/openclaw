@@ -214,7 +214,6 @@ async function createScheduledService(deps: Partial<CronServiceDeps> = {}, start
     cronEnabled: true,
     log: noopLogger,
     enqueueSystemEvent: vi.fn(),
-    requestHeartbeat: vi.fn(),
     runIsolatedAgentJob: vi.fn(async () => ({ status: "ok" as const })),
     ...deps,
     onEvent: (event) => {

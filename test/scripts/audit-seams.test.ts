@@ -35,7 +35,6 @@ it.each([
     "src/agents/subagents/spawn/acp-spawn-parent-stream.ts",
     `
       import { onAgentEvent } from "../../../infra/agent-events.js";
-      import { requestHeartbeat } from "../../../infra/heartbeat-wake.js";
       import { enqueueSystemEvent } from "../../../infra/system-events.js";
     `,
     ["subagent-parent-stream"],

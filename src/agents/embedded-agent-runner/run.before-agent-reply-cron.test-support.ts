@@ -100,21 +100,19 @@ describe("runEmbeddedAgent before_agent_reply seam", () => {
     expect(result.meta.providerStarted).toBe(false);
   });
 
-  it("passes the heartbeat queue and re-arms setup progress when its hook does not claim", async () => {
+  it("re-arms setup progress when a scheduled hook does not claim", async () => {
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult());
     const onExecutionPhase = vi.fn();
 
     await runEmbeddedAgent({
       ...createOverflowRunParams(state),
-      trigger: "heartbeat",
-      sessionKey: "agent:main:heartbeat:heartbeat",
-      heartbeatEventQueueSessionKey: "agent:main:heartbeat",
+      trigger: "cron",
+      sessionKey: "agent:main:cron:scheduled",
       onExecutionPhase,
     });
 
     expect(firstBeforeAgentReplyCall()[1]).toMatchObject({
-      sessionKey: "agent:main:heartbeat:heartbeat",
-      heartbeatEventQueueSessionKey: "agent:main:heartbeat",
+      sessionKey: "agent:main:cron:scheduled",
     });
     expect(onExecutionPhase).toHaveBeenCalledWith(
       expect.objectContaining({ phase: "before_agent_reply" }),

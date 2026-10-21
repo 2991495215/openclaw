@@ -206,7 +206,7 @@ describe("CronService failure alerts", () => {
 
   it("keeps fallback session events on the failing job owner", () =>
     withAlerts(
-      async ({ cron, enqueueSessionEvent, requestHeartbeat, addJob }) => {
+      async ({ cron, enqueueSessionEvent, addJob }) => {
         const sessionKey = "agent:work:cron:failure-alert";
         const job = await addJob("work-owned failure", {
           delivery: undefined,
@@ -221,7 +221,6 @@ describe("CronService failure alerts", () => {
           expect.stringContaining('Automation "work-owned failure" failed 1 times'),
           { agentId: "work", sessionKey, contextKey: `cron:${job.id}:failure-alert` },
         );
-        expect(requestHeartbeat).not.toHaveBeenCalled();
       },
       { useFallback: true },
     ));

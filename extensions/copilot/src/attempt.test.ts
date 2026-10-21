@@ -689,9 +689,9 @@ describe("runCopilotAttempt", () => {
         failure: { error: "delivery failed" },
       });
       input.attemptParams?.observeToolTerminal?.({
-        toolCallId: "heartbeat-1",
-        toolName: "heartbeat_respond",
-        arguments: { summary: "ok" },
+        toolCallId: "read-1",
+        toolName: "read",
+        arguments: { path: "AGENTS.md" },
         outcome: "success",
       });
       return createStubToolBridge();

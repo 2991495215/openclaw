@@ -24,7 +24,6 @@ function createCronService(storePath: string, cronEnabled = true) {
     cronEnabled,
     log: logger,
     enqueueSystemEvent: vi.fn(),
-    requestHeartbeat: vi.fn(),
     runIsolatedAgentJob: vi.fn(async () => ({ status: "ok" as const })),
   });
   services.add(service);

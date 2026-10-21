@@ -62,7 +62,6 @@ import {
   createGetGoalTool,
   createUpdateGoalTool,
 } from "./tools/goal-tools.js";
-import { resolveHeartbeatResponseTool } from "./tools/heartbeat-response-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
 import { callAgentToolGatewayRequest } from "./tools/in-process-gateway.js";
@@ -375,7 +374,6 @@ function* createOpenClawToolsSteps(
           workspaceDir,
         },
       })[0] ?? null);
-  const heartbeatTool = resolveHeartbeatResponseTool(options);
   options?.recordToolPrepStage?.("openclaw-tools:message-tool");
   const nodesToolBase = createNodesTool({
     ...options,
@@ -523,7 +521,6 @@ function* createOpenClawToolsSteps(
           presenters: widgetPresentation.presenters,
           presenterContext: widgetPresentation.context,
         }),
-    heartbeatTool,
     createDecisionTool(sessionAgentId, options),
     createTtsTool({ ...options, agentId: sessionAgentId }),
     options?.githubPublicationAvailable !== undefined ? createGitHubIdentityStatusTool() : null,

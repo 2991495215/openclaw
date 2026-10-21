@@ -349,7 +349,6 @@ describe("runReplyAgent media path normalization", () => {
       typingSignals: createTypingSignaler({
         typing: createMockTypingController(),
         mode: "instant",
-        isHeartbeat: false,
       }),
       blockReplyPipeline: null,
       blockStreamingEnabled: false,
@@ -358,7 +357,7 @@ describe("runReplyAgent media path normalization", () => {
       shouldEmitToolResult: () => false,
       shouldEmitToolOutput: () => false,
       pendingToolTasks: new Set(),
-      isHeartbeat: false,
+
       sessionKey: "main",
       getActiveSessionEntry: () => undefined,
       resolvedVerboseLevel: "off",

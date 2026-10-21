@@ -11,28 +11,36 @@ import {
 } from "../../packages/gateway-protocol/src/index.js";
 import { DesktopAvailabilitySchema } from "../../packages/gateway-protocol/src/schema/environments.js";
 import { resolveSessionAgentId } from "../agents/agent-scope.js";
+import {
+  captureSessionEventTargetForHost,
+  enqueueSessionEventForHost,
+} from "../auto-reply/reply/session-event-handoff.js";
 import { sendDurableMessageBatchCore } from "../channels/message/runtime.js";
 import { normalizeChannelId } from "../channels/plugins/index.js";
 import { createOutboundSendDeps } from "../cli/outbound-send-deps.js";
 import { agentCommandFromIngress } from "../commands/agent.js";
 import { getRuntimeConfig } from "../config/io.js";
+import { getRuntimeConfigSnapshotMetadata } from "../config/runtime-snapshot.js";
 import { resolveSystemMainSessionTarget } from "../config/sessions/main-session.js";
-import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { updatePairedDevicePresence } from "../infra/device-pairing.js";
 import { formatErrorMessage } from "../infra/errors.js";
-import { requestHeartbeat } from "../infra/heartbeat-wake.js";
+import {
+  resolveEventSessionKeyForPolicy,
+  resolveEventSessionRoutingPolicy,
+} from "../infra/event-session-routing.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { buildOutboundSessionContext } from "../infra/outbound/session-context.js";
 import { resolveOutboundTarget } from "../infra/outbound/targets.js";
 import { withSystemEventOwner } from "../infra/system-event-ownership.js";
-import { enqueueSystemEvent } from "../infra/system-events.js";
+import {
+  consumeSelectedSystemEventEntries,
+  enqueueSystemEventEntry,
+} from "../infra/system-events.js";
 import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import { deleteMediaBuffer } from "../media/store.js";
 import { runWithGatewayIndependentRootWorkContinuation } from "../process/gateway-work-admission.js";
-import { normalizeMainKey } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import { resolveAgentHarnessSessionContextError } from "../sessions/agent-harness-session-key.js";
-import { createDeferredCore } from "../shared/deferred.js";
 import { NODE_HOST_STATS_EVENT } from "../shared/node-host-stats.js";
 import {
   NODE_PRESENCE_ALIVE_EVENT,
@@ -57,6 +65,10 @@ import {
 } from "./server-node-event-source.js";
 import { registerNodeApnsEvent } from "./server-node-events-apns.js";
 import { enqueueNodeExecNotice } from "./server-node-events-exec-notice.js";
+import {
+  handleNodeVoiceTranscript,
+  touchNodeSessionStore,
+} from "./server-node-events-session-turn.js";
 import type {
   NodeEvent,
   NodeEventContext,
@@ -70,34 +82,15 @@ import { formatForLog } from "./ws-log.js";
 
 const MAX_EXEC_EVENT_OUTPUT_CHARS = 180;
 const MAX_NOTIFICATION_EVENT_TEXT_CHARS = 120;
-const VOICE_TRANSCRIPT_DEDUPE_WINDOW_MS = 1500;
-const MAX_RECENT_VOICE_TRANSCRIPTS = 200;
 const EXEC_FINISHED_RUN_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_RECENT_EXEC_FINISHED_RUNS = 2000;
 const NODE_PRESENCE_PERSIST_MIN_INTERVAL_MS = 60_000;
 const MAX_RECENT_NODE_PRESENCE_KEYS = 1024;
 
-const recentVoiceTranscripts = new Map<string, { fingerprint: string; ts: number }>();
-type VoiceTranscriptReservationAdmission = { work: Promise<unknown> } | null;
-type VoiceTranscriptReservation = {
-  fingerprint: string;
-  receivedAt: number;
-  status: "pending" | "ready" | "checking" | "rejected";
-  isConnectionCurrent?: () => boolean | Promise<boolean>;
-  assertCurrent?: () => void;
-  start?: () => Promise<unknown>;
-  resolve: (admission: VoiceTranscriptReservationAdmission) => void;
-  rejectDecision: (reason: unknown) => void;
-};
-const pendingVoiceTranscriptReservations = new Map<string, VoiceTranscriptReservation[]>();
 const recentExecFinishedRuns = new Map<string, number>();
 const recentNodePresencePersistAt = new Map<string, number>();
 
 type NodeAgentCommandInput = Parameters<typeof agentCommandFromIngress>[0];
-
-function normalizeFiniteInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null;
-}
 
 function dispatchNodeAgentCommand(
   ctx: NodeEventContext,
@@ -118,72 +111,6 @@ function dispatchNodeAgentCommand(
   }, "node-events:agent-turn").catch((err: unknown) => {
     ctx.logGateway.warn(`agent failed node=${nodeId}: ${formatForLog(err)}`);
   });
-}
-
-function resolveVoiceTranscriptFingerprint(obj: Record<string, unknown>, text: string): string {
-  const eventId =
-    normalizeOptionalString(obj.eventId) ??
-    normalizeOptionalString(obj.providerEventId) ??
-    normalizeOptionalString(obj.transcriptId);
-  if (eventId) {
-    return `event:${eventId}`;
-  }
-
-  const callId = normalizeOptionalString(obj.providerCallId) ?? normalizeOptionalString(obj.callId);
-  const sequence = normalizeFiniteInteger(obj.sequence) ?? normalizeFiniteInteger(obj.seq);
-  if (callId && sequence !== null) {
-    return `call-seq:${callId}:${sequence}`;
-  }
-
-  const eventTimestamp =
-    normalizeFiniteInteger(obj.timestamp) ??
-    normalizeFiniteInteger(obj.ts) ??
-    normalizeFiniteInteger(obj.eventTimestamp);
-  if (callId && eventTimestamp !== null) {
-    return `call-ts:${callId}:${eventTimestamp}`;
-  }
-
-  if (eventTimestamp !== null) {
-    return `timestamp:${eventTimestamp}|text:${text}`;
-  }
-
-  return `text:${text}`;
-}
-
-function shouldDropDuplicateVoiceTranscript(params: {
-  sessionKey: string;
-  fingerprint: string;
-  now: number;
-}): boolean {
-  // Voice providers can replay identical transcript fragments during reconnect.
-  // Keep only a bounded last fingerprint per session to avoid duplicate sends.
-  const previous = recentVoiceTranscripts.get(params.sessionKey);
-  if (
-    previous &&
-    previous.fingerprint === params.fingerprint &&
-    params.now - previous.ts <= VOICE_TRANSCRIPT_DEDUPE_WINDOW_MS
-  ) {
-    return true;
-  }
-  recentVoiceTranscripts.set(params.sessionKey, {
-    fingerprint: params.fingerprint,
-    ts: params.now,
-  });
-
-  if (recentVoiceTranscripts.size > MAX_RECENT_VOICE_TRANSCRIPTS) {
-    const cutoff = params.now - VOICE_TRANSCRIPT_DEDUPE_WINDOW_MS * 2;
-    for (const [key, value] of recentVoiceTranscripts) {
-      if (value.ts < cutoff) {
-        recentVoiceTranscripts.delete(key);
-      }
-      if (recentVoiceTranscripts.size <= MAX_RECENT_VOICE_TRANSCRIPTS) {
-        break;
-      }
-    }
-    pruneMapToMaxSize(recentVoiceTranscripts, MAX_RECENT_VOICE_TRANSCRIPTS);
-  }
-
-  return false;
 }
 
 function shouldDropDuplicateExecFinished(params: {
@@ -233,48 +160,17 @@ function compactNodeEventText(raw: string, maxChars: number) {
   return truncateUtf16WithEllipsis(raw.replace(/\s+/g, " ").trim(), maxChars);
 }
 
-type LoadedSessionEntry = Awaited<ReturnType<typeof loadGatewaySessionEntryReadOnlyInWorker>>;
-
-async function touchSessionStore(params: {
-  storePath: LoadedSessionEntry["storePath"];
-  canonicalKey: LoadedSessionEntry["canonicalKey"];
-  sessionId: string;
-  now: number;
-  assertCurrent?: () => void;
-}) {
-  const { storePath } = params;
-  if (!storePath) {
-    return;
-  }
-  await upsertSessionEntryCore(
-    {
-      sessionKey: params.canonicalKey,
-      storePath,
+function captureNodeEventConfig() {
+  const cfg = getRuntimeConfig();
+  const publication = getRuntimeConfigSnapshotMetadata();
+  return {
+    cfg,
+    assertCurrent: () => {
+      if (getRuntimeConfigSnapshotMetadata() !== publication) {
+        throw new Error("Node event configuration changed during preparation");
+      }
     },
-    {
-      sessionId: params.sessionId,
-      updatedAt: params.now,
-    },
-    { workerGuard: { assertCurrent: params.assertCurrent } },
-  );
-}
-
-function queueSessionStoreTouch(
-  params: Parameters<typeof touchSessionStore>[0] & {
-    ctx: NodeEventContext;
-    isConnectionCurrent?: () => boolean | Promise<boolean>;
-  },
-): Promise<void> {
-  // Voice dispatch intentionally does not wait for persistence, but a host
-  // snapshot must not race the accepted write after its node RPC returns.
-  return runWithGatewayIndependentRootWorkContinuation(async () => {
-    if (params.isConnectionCurrent && !(await params.isConnectionCurrent())) {
-      return;
-    }
-    await touchSessionStore(params);
-  }, "node-events:voice-persist").catch((err: unknown) => {
-    params.ctx.logGateway.warn("voice session-store update failed: " + formatForLog(err));
-  });
+  };
 }
 
 async function cleanupNodeEventMedia(
@@ -333,155 +229,8 @@ async function handlePreparedNodeEvent(
         reason: updated ? "updated" : "unchanged",
       };
     }
-    case "voice.transcript": {
-      const obj = parseNodeEventPayload(evt.payloadJSON);
-      if (!obj) {
-        return undefined;
-      }
-      const text = normalizeOptionalString(obj.text) ?? "";
-      if (!text) {
-        return undefined;
-      }
-      if (text.length > 20_000) {
-        return undefined;
-      }
-      const sessionKeyRaw = normalizeOptionalString(obj.sessionKey) ?? "";
-      const cfg = getRuntimeConfig();
-      const rawMainKey = normalizeMainKey(cfg.session?.mainKey);
-      const sessionKey = sessionKeyRaw.length > 0 ? sessionKeyRaw : rawMainKey;
-      const { storePath, entry, canonicalKey } =
-        source?.loaded ??
-        (await loadGatewaySessionEntryReadOnlyInWorker({
-          cfg,
-          key: sessionKey,
-          excludeInternalEffects: true,
-        }));
-      if (resolveAgentHarnessSessionContextError(canonicalKey, entry)) {
-        return undefined;
-      }
-      const receivedAt = Date.now();
-      const fingerprint = resolveVoiceTranscriptFingerprint(obj, text);
-      const sessionId = entry?.sessionId ?? randomUUID();
-      const runId = randomUUID();
-      source?.assertCurrent();
-      // Resolve reservations in receipt order so delayed currentness checks cannot
-      // change the dedupe window, while rejected connections leave no committed state.
-      const decision = createDeferredCore<VoiceTranscriptReservationAdmission>();
-      const reservation: VoiceTranscriptReservation = {
-        fingerprint,
-        receivedAt,
-        status: "pending",
-        resolve: decision.resolve,
-        rejectDecision: decision.reject,
-        assertCurrent: source?.assertCurrent,
-      };
-      const queue = pendingVoiceTranscriptReservations.get(canonicalKey) ?? [];
-      queue.push(reservation);
-      pendingVoiceTranscriptReservations.set(canonicalKey, queue);
-
-      const drain = () => {
-        while (queue[0]?.status === "rejected") {
-          queue.shift()?.resolve(null);
-        }
-        const next = queue[0];
-        if (!next) {
-          pendingVoiceTranscriptReservations.delete(canonicalKey);
-          return;
-        }
-        if (next.status !== "ready") {
-          return;
-        }
-        next.status = "checking";
-        void (async () => {
-          try {
-            const isCurrent = next.isConnectionCurrent ? await next.isConnectionCurrent() : true;
-            next.assertCurrent?.();
-            const admission =
-              isCurrent &&
-              !shouldDropDuplicateVoiceTranscript({
-                sessionKey: canonicalKey,
-                fingerprint: next.fingerprint,
-                now: next.receivedAt,
-              }) &&
-              next.start
-                ? { work: next.start() }
-                : null;
-            next.resolve(admission);
-          } catch (err) {
-            next.rejectDecision(err);
-          } finally {
-            queue.shift();
-            drain();
-          }
-        })();
-      };
-      const settle = (status: "ready" | "rejected") => {
-        if (reservation.status !== "pending") {
-          return;
-        }
-        reservation.status = status;
-        drain();
-      };
-
-      const isConnectionCurrent = opts?.isConnectionCurrent;
-      const voiceWork = runWithGatewayIndependentRootWorkContinuation(async () => {
-        if (isConnectionCurrent && !(await isConnectionCurrent())) {
-          settle("rejected");
-          return;
-        }
-        reservation.isConnectionCurrent = isConnectionCurrent;
-        reservation.start = () => {
-          const touch = queueSessionStoreTouch({
-            ctx,
-            storePath,
-            canonicalKey,
-            sessionId,
-            now: receivedAt,
-            assertCurrent: source?.assertCurrent,
-            isConnectionCurrent: opts?.isConnectionCurrent,
-          });
-
-          source?.pending.push(touch);
-
-          // Voice now has a unique per-turn run id, so it is also the stable
-          // client identity for chat streaming and abort lifecycle ownership.
-          ctx.addChatRun(runId, {
-            sessionKey: canonicalKey,
-            clientRunId: runId,
-          });
-          return agentCommandFromIngress(
-            {
-              runId,
-              message: text,
-              sessionId,
-              sessionKey: canonicalKey,
-              thinking: "low",
-              deliver: false,
-              messageChannel: "node",
-              inputProvenance: {
-                kind: "external_user",
-                sourceChannel: "voice",
-                sourceTool: "gateway.voice.transcript",
-              },
-              allowModelOverride: false,
-            },
-            defaultRuntime,
-            ctx.deps,
-          );
-        };
-        settle("ready");
-        const admission = await decision.promise;
-        if (!admission) {
-          return;
-        }
-        await admission.work;
-      }, "node-events:voice-turn").catch((err: unknown) => {
-        settle("rejected");
-        ctx.logGateway.warn(`agent failed node=${nodeId}: ${formatForLog(err)}`);
-      });
-      source?.pending.push(voiceWork);
-      return undefined;
-    }
+    case "voice.transcript":
+      return handleNodeVoiceTranscript(ctx, nodeId, evt, opts, source);
     case "agent.request": {
       if (!evt.payloadJSON) {
         return undefined;
@@ -606,7 +355,7 @@ async function handlePreparedNodeEvent(
         await cleanupNodeEventMedia(offloadedRefs ?? [], ctx);
         return pairingChangedResult(evt.event);
       }
-      await touchSessionStore({
+      await touchNodeSessionStore({
         storePath,
         canonicalKey,
         sessionId,
@@ -749,11 +498,12 @@ async function handlePreparedNodeEvent(
         return undefined;
       }
       const requestedSessionKey = normalizeOptionalString(obj.sessionKey);
+      const config = captureNodeEventConfig();
       let target: { sessionKey: string; agentId?: string };
       try {
         target = requestedSessionKey
           ? { sessionKey: requestedSessionKey }
-          : resolveSystemMainSessionTarget(getRuntimeConfig());
+          : resolveSystemMainSessionTarget(config.cfg);
       } catch (error) {
         ctx.logGateway.warn(
           `notification event not delivered node=${nodeId}: ${formatErrorMessage(error)}`,
@@ -766,11 +516,12 @@ async function handlePreparedNodeEvent(
         agentId,
       } = source?.loaded ??
       (await loadGatewaySessionEntryReadOnlyInWorker({
-        cfg: getRuntimeConfig(),
+        cfg: config.cfg,
         key: target.sessionKey,
         agentId: target.agentId,
         excludeInternalEffects: true,
       }));
+      config.assertCurrent();
       if (resolveAgentHarnessSessionContextError(sessionKey, entry)) {
         return undefined;
       }
@@ -796,22 +547,56 @@ async function handlePreparedNodeEvent(
         }
       }
 
+      const assertAcceptanceCurrent = () => {
+        config.assertCurrent();
+        source?.assertCurrent();
+        opts?.assertSessionEventCurrent?.();
+      };
+      const expectedTarget = await captureSessionEventTargetForHost(agentId, sessionKey, {
+        assertCaptureCurrent: assertAcceptanceCurrent,
+        assertCurrent: source?.assertCurrent,
+      });
       if (!(await isNodeEventConnectionCurrent(opts))) {
         return pairingChangedResult(evt.event);
       }
-      source?.assertCurrent();
-      const queued = enqueueSystemEvent(
-        summary,
-        withSystemEventOwner({ sessionKey, contextKey: `notification:${key}` }, agentId),
-      );
-      if (queued) {
-        requestHeartbeat({
-          source: "notifications-event",
-          intent: "event",
-          reason: "notifications-event",
-          agentId,
+      assertAcceptanceCurrent();
+      const eventOptions = withSystemEventOwner(
+        {
           sessionKey,
-        });
+          contextKey: `notification:${key}`,
+          deliveryContext: expectedTarget.deliveryContext,
+        },
+        agentId,
+      );
+      const occurrence = enqueueSystemEventEntry(summary, eventOptions);
+      if (occurrence) {
+        try {
+          const receipt = enqueueSessionEventForHost(summary, {
+            agentId,
+            sessionKey,
+            source: "device",
+            contextKey: eventOptions.contextKey,
+            expectedTarget,
+            occurrences: [occurrence],
+            createIfMissing: true,
+            assertAcceptanceCurrent,
+          });
+          source?.pending.push(receipt.settled);
+          const accepted = await receipt.accepted;
+          if (!accepted.ok) {
+            throw new Error(accepted.error);
+          }
+          void receipt.settled.then((outcome) => {
+            if (outcome.status !== "completed") {
+              ctx.logGateway.warn(
+                `notification event not delivered node=${nodeId}: ${outcome.status}`,
+              );
+            }
+          });
+        } catch (error) {
+          consumeSelectedSystemEventEntries(eventOptions.sessionKey, [occurrence]);
+          throw error;
+        }
       }
       return undefined;
     }
@@ -840,12 +625,26 @@ async function handlePreparedNodeEvent(
         return undefined;
       }
       const sessionKeyRaw = normalizeOptionalString(obj.sessionKey) ?? `node-${nodeId}`;
-      const cfg = getRuntimeConfig();
+      const config = captureNodeEventConfig();
+      const { cfg } = config;
       const { canonicalKey: sessionKey, agentId } = resolveSessionStoreIdentity({
         cfg,
         sessionKey: sessionKeyRaw,
       });
       const runId = normalizeOptionalString(obj.runId) ?? "";
+      const policy = resolveEventSessionRoutingPolicy({ cfg, sessionKey });
+      const eventSessionKey = resolveEventSessionKeyForPolicy(sessionKey, policy);
+      const assertAcceptanceCurrent = () => {
+        config.assertCurrent();
+        opts?.assertSessionEventCurrent?.();
+      };
+      const expectedTarget = await captureSessionEventTargetForHost(agentId, eventSessionKey, {
+        assertCaptureCurrent: assertAcceptanceCurrent,
+      });
+      if (!(await isNodeEventConnectionCurrent(opts))) {
+        return pairingChangedResult(evt.event);
+      }
+      assertAcceptanceCurrent();
       const auth = ctx.authorizeNodeSystemRunEvent({
         nodeId,
         connId: opts?.connId,
@@ -904,13 +703,40 @@ async function handlePreparedNodeEvent(
         }
       }
 
-      const notify = () =>
-        enqueueNodeExecNotice({ cfg, sessionKey, agentId, authorization: auth, runId, text });
+      const notify = async () => {
+        const receipt = enqueueNodeExecNotice({
+          sessionKey: eventSessionKey,
+          agentId,
+          authorization: auth,
+          runId,
+          text,
+          expectedTarget,
+          // The registry accepted this notice before the node connection could depart.
+          assertAcceptanceCurrent: config.assertCurrent,
+        });
+        if (receipt) {
+          const accepted = await receipt.accepted;
+          if (!accepted.ok) {
+            throw new Error(accepted.error);
+          }
+          void receipt.settled.then((outcome) => {
+            if (outcome.status !== "completed") {
+              ctx.logGateway.warn(`exec event not delivered node=${nodeId}: ${outcome.status}`);
+            }
+          });
+        }
+      };
       // A caller still waiting on this run gets its output inline; notify only if that fails.
       if (typeof auth === "object" && auth.holdNotice) {
-        auth.holdNotice(notify);
+        auth.holdNotice(() => {
+          void notify().catch((error: unknown) => {
+            ctx.logGateway.warn(
+              `exec event not delivered node=${nodeId}: ${formatErrorMessage(error)}`,
+            );
+          });
+        });
       } else {
-        notify();
+        await notify();
       }
       return undefined;
     }

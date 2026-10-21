@@ -89,7 +89,7 @@ async function resolveTextSlashDirective(
     aliasIndex: { byAlias: new Map(), byKey: new Map() },
     provider: "openai",
     model: "gpt-5.5",
-    hasResolvedHeartbeatModelOverride: false,
+
     typing: createTypingController({}),
   });
   return { result, read, storedBefore };

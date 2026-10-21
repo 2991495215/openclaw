@@ -186,7 +186,7 @@ describe("waitForDescendantSubagentSummary", () => {
   });
 
   it.each(["on it\n\nMEDIA:/workspace/report.png", "HEARTBEAT_OK"])(
-    "ignores unchanged/control-only parent reply %s",
+    "ignores unchanged parent reply %s",
     async (parentReply) => {
       vi.useFakeTimers();
       latestReply.mockResolvedValue(parentReply);

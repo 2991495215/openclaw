@@ -628,7 +628,6 @@ async function prepareRuntime(artifacts, packageRoot) {
     log: { debug: log, info: log, warn: log, error: log },
     enqueueSessionEvent: refuseExecution,
     runSessionEvent: refuseExecution,
-    requestHeartbeat: refuseExecution,
     runIsolatedAgentJob: refuseExecution,
   });
   try {

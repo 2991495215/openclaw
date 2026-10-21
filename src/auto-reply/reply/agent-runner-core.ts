@@ -39,7 +39,7 @@ import {
 } from "../reply-payload.js";
 import type { TemplateContext } from "../templating.js";
 import type { VerboseLevel } from "../thinking.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import type { ReplyPayload } from "../types.js";
 import type {
   ReplyAgentTurnContext,
   RuntimeFallbackAttempt,
@@ -51,13 +51,9 @@ import {
 import { hasBlockReplyDeliveryCustody } from "./block-reply-delivery.js";
 import type { BlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveReplyRoute } from "./effective-reply-route.js";
+import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import { sanitizePendingFinalDeliveryText } from "./pending-final-delivery-state.js";
-import {
-  type FollowupRun,
-  kickFollowupDrainIfIdle,
-  type QueueSettings,
-  scheduleFollowupDrain,
-} from "./queue.js";
+import { type FollowupRun, type QueueSettings, scheduleFollowupDrain } from "./queue.js";
 import { normalizeReplyPayloadDirectives, type DirectBlockDelivery } from "./reply-delivery.js";
 import {
   buildRestartLifecycleReplyText,
@@ -153,7 +149,7 @@ export function resolveSourceReplyPolicy(params: {
   sessionEntry?: SessionEntry;
   sessionKey: string;
   runtimePolicySessionKey?: string;
-  opts?: GetReplyOptions;
+  opts?: InternalGetReplyOptions;
 }): ReturnType<typeof resolveSourceReplyVisibilityPolicy> {
   const sendPolicy = resolveSendPolicy({
     cfg: params.cfg,
@@ -169,6 +165,7 @@ export function resolveSourceReplyPolicy(params: {
   return resolveSourceReplyVisibilityPolicy({
     cfg: params.cfg,
     ctx: params.sessionCtx,
+    scheduledAutomation: params.opts?.scheduledAutomation !== undefined,
     requested: params.opts?.sourceReplyDeliveryMode,
     sendPolicy,
   });
@@ -346,7 +343,6 @@ export async function handleReplyAgentRunError(
   error: unknown,
   context: {
     resolveVisibleReplyDelivery: () => Promise<boolean>;
-    isHeartbeat: boolean;
     replyExpectation: ReplyExpectation;
     userTurnAccepted?: boolean;
     isRestartRecoveryArmed: () => Promise<boolean>;
@@ -358,7 +354,6 @@ export async function handleReplyAgentRunError(
 ): Promise<ReplyPayload | undefined> {
   const {
     resolveVisibleReplyDelivery,
-    isHeartbeat,
     replyExpectation,
     isRestartRecoveryArmed,
     replyOperation,
@@ -419,11 +414,7 @@ export async function handleReplyAgentRunError(
     return returnWithQueuedFollowupDrain(knownFailurePayload);
   }
   const visibleReplyDelivered = await resolveVisibleReplyDelivery();
-  if (
-    !isHeartbeat &&
-    (visibleReplyDelivered || context.userTurnAccepted) &&
-    !replyOperation.abortSignal.aborted
-  ) {
+  if ((visibleReplyDelivered || context.userTurnAccepted) && !replyOperation.abortSignal.aborted) {
     replyOperation.fail("run_failed", error);
     return returnWithQueuedFollowupDrain(
       buildTerminalAgentRunFailureReplyPayload({ replyExpectation, visibleReplyDelivered }),
@@ -440,7 +431,6 @@ export async function cleanupReplyAgentRun(context: {
   blockReplyPipeline: BlockReplyPipeline | null;
   clearRestartRecoveryDeliveryClaim: () => Promise<void>;
   releaseSourceAdmission?: () => Promise<void>;
-  isHeartbeat: boolean;
   providedReplyOperation: ReplyOperation | undefined;
   queueKey: string;
   replyOperation: ReplyOperation;
@@ -453,7 +443,6 @@ export async function cleanupReplyAgentRun(context: {
     blockReplyPipeline,
     clearRestartRecoveryDeliveryClaim,
     releaseSourceAdmission,
-    isHeartbeat,
     providedReplyOperation,
     queueKey,
     replyOperation,
@@ -477,18 +466,11 @@ export async function cleanupReplyAgentRun(context: {
     );
   }
   if (shouldDrainQueuedFollowupsAfterClear) {
-    if (isHeartbeat) {
-      // Heartbeat-scoped options and dispatch must never run queued user turns after a restart.
-      runAfterReplyOperationClear(replyOperation, () => {
-        kickFollowupDrainIfIdle(queueKey, getSessionControllerEntryForOperation(replyOperation));
-      });
-    } else {
-      scheduleFollowupDrainAfterReplyOperationClear({
-        operation: replyOperation,
-        queueKey,
-        runFollowup: runFollowupTurn,
-      });
-    }
+    scheduleFollowupDrainAfterReplyOperationClear({
+      operation: replyOperation,
+      queueKey,
+      runFollowup: runFollowupTurn,
+    });
   }
   if (!providedReplyOperation) {
     replyOperation.complete();

@@ -110,7 +110,7 @@ it.each<[string, NativeStatusSelectionCase]>([
   ],
   ["locked model selection", { locked: true, expected: "openai/gpt-5.5" }],
   [
-    "prepared non-default heartbeat or fallback model",
+    "prepared non-default scheduled or fallback model",
     { preparedProvider: "xai", preparedModel: "grok-4.3", expected: "xai/grok-4.3" },
   ],
 ])("preserves canonical native /status %s", async (_, testCase) => {

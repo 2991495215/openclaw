@@ -89,8 +89,6 @@ export async function executeFollowupTurn(params: {
   const sourceOpts = defaults.opts;
   const terminalReplyExpectation = resolveFollowupReplyExpectation(turn.queued, turn.config);
   turn.queued.run.terminalReplyExpectation = terminalReplyExpectation;
-  // Queued turns are never heartbeats; heartbeat runs never supply the drain callback.
-  const isHeartbeat = false;
   const roomEvent = turn.queued.currentInboundEventKind === "room_event";
   const deliveryAllowed = () => turn.sendPolicy === "allow" && !roomEvent;
   const progressAllowed = () =>
@@ -191,7 +189,6 @@ export async function executeFollowupTurn(params: {
   const baseTypingSignals = createTypingSignaler({
     typing: defaults.typing,
     mode: progressAllowed() ? defaults.typingMode : "never",
-    isHeartbeat,
   });
   const typingSignals: TypingSignaler = {
     ...baseTypingSignals,
@@ -209,7 +206,6 @@ export async function executeFollowupTurn(params: {
     ...sourceOpts,
     // Presentation defaults can belong to another source or an already settled ingress.
     cronCreatorAuthorityCapability: undefined,
-    isHeartbeat,
     sourceReplyDeliveryMode: turn.queued.run.sourceReplyDeliveryMode,
     bootstrapContextMode: turn.queued.run.bootstrapContextMode,
     cleanupBundleMcpOnRunEnd: undefined,
@@ -419,7 +415,6 @@ export async function executeFollowupTurn(params: {
           shouldEmitToolResult,
           shouldEmitToolOutput,
           pendingToolTasks,
-          isHeartbeat,
           sessionKey: turn.session.kind === "session" ? turn.session.key : undefined,
           runtimePolicySessionKey: turn.queued.run.runtimePolicySessionKey,
           getActiveSessionEntry: turn.session.current,
@@ -449,7 +444,6 @@ export async function executeFollowupTurn(params: {
         isFreshChannelCronAuthorityTurn({
           messageProvider: run.messageProvider,
           senderId: run.senderId,
-          isHeartbeat,
           isRoomEvent: roomEvent,
           inputProvenance: run.inputProvenance,
           spawnedBy: run.spawnedBy,
@@ -487,7 +481,6 @@ export async function executeFollowupTurn(params: {
       outcome: {
         kind: "rejected",
         payload: buildTerminalAgentRunFailureReplyPayload({
-          isHeartbeat,
           replyExpectation: terminalReplyExpectation,
           visibleReplyDelivered,
         }),

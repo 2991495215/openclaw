@@ -512,15 +512,15 @@ describe("session tool surface", () => {
     const restored = surface([tool("read")], entries);
     expect(restored.map((entry) => entry.name).toSorted()).toEqual(["gateway", "read"]);
     expect(lease.state.pendingToolSurface).toBeUndefined();
-    const extended = surface([tool("read"), tool("heartbeat_respond")], entries);
+    const extended = surface([tool("read"), tool("fixture_status")], entries);
     expect(extended.map((entry) => entry.name).toSorted()).toEqual([
+      "fixture_status",
       "gateway",
-      "heartbeat_respond",
       "read",
     ]);
     expect(lease.state.pendingToolSurface?.tools.map((entry) => entry.name)).toEqual([
+      "fixture_status",
       "gateway",
-      "heartbeat_respond",
       "read",
     ]);
   });

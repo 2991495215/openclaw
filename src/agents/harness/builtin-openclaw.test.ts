@@ -75,7 +75,7 @@ describe("createOpenClawAgentHarness", () => {
       skillsSnapshot: { prompt: "ambient skills" },
       currentInboundContext: { text: "ambient inbound context" },
       internalEvents: [{ type: "ambient-event" }],
-      trigger: "heartbeat",
+      trigger: "event",
       onPartialReply: vi.fn(),
     };
     const attempt = {

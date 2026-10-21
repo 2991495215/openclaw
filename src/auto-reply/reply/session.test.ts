@@ -3171,12 +3171,10 @@ describe("drainFormattedSystemEvents", () => {
     }
   });
 
-  it("leaves tagged cron events queued during heartbeat runs instead of re-rendering them (#44922)", async () => {
+  it("leaves unselected cron events queued instead of re-rendering them (#44922)", async () => {
     try {
-      // A `sessionTarget: "main"` cron systemEvent is enqueued tagged `cron:<jobId>`
-      // and is surfaced by the heartbeat's dedicated reminder prompt. The generic
-      // render must not also emit it as a raw `System:` line during that heartbeat
-      // run, or the model sees the same text twice.
+      // An occurrence already owned by scheduled delivery stays outside this
+      // admission's captured event set, so the prompt cannot render it twice.
       enqueueSystemEvent("Reminder: rotate API keys", {
         sessionKey: "agent:main:main",
         contextKey: "cron:rotate-keys",
@@ -3197,7 +3195,7 @@ describe("drainFormattedSystemEvents", () => {
 
       expect(result).toContain("Model switched.");
       expect(result).not.toContain("rotate API keys");
-      // The cron event stays queued so the heartbeat path remains its single owner.
+      // The unselected cron occurrence stays queued for its delivery owner.
       expect(peekSystemEvents("agent:main:main")).toEqual(["Reminder: rotate API keys"]);
     } finally {
       resetSystemEventsForTest();

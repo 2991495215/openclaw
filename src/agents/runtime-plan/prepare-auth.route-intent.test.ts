@@ -20,7 +20,7 @@ function authStore(apiKeyProfile: string, oauthProfile: string) {
 
 function billingConfig(primary: string, apiProfile: string, oauthProfile: string): OpenClawConfig {
   return {
-    agents: { defaults: { model: primary, heartbeat: { model: "openai/gpt-5.4-mini" } } },
+    agents: { defaults: { model: primary } },
     auth: {
       profiles: {
         [apiProfile]: { provider: "openai", mode: "api_key" },

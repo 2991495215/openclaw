@@ -66,7 +66,6 @@ function config(pinPrimary: boolean): OpenClawConfig {
       defaults: {
         model: "openai/gpt-5.5",
         models: pinPrimary ? { "openai/gpt-5.5": { agentRuntime: { id: "codex" } } } : {},
-        heartbeat: { model: "openai/gpt-5.4-mini" },
       },
     },
   };
@@ -135,7 +134,7 @@ describe("registered provider route selection", () => {
   it.each([
     ["Codex primary", true, true, "gpt-5.5", "codex", "openai:chatgpt", "subscription"],
     ["API Completions", false, false, "gpt-5.5", "openclaw", "openai:platform", "api-key"],
-    ["heartbeat", true, true, "gpt-5.4-mini", "openclaw", "openai:chatgpt", "subscription"],
+    ["automation model", true, true, "gpt-5.4-mini", "openclaw", "openai:chatgpt", "subscription"],
   ] as const)(
     "keeps %s on its supported route",
     (_label, pinPrimary, subscription, modelId, harness, profile, requirement) => {

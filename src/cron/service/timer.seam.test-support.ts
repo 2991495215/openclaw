@@ -5,15 +5,15 @@ import type { CronJob } from "../types.js";
 
 export function createDueMainJob(params: { now: number; wakeMode: CronJob["wakeMode"] }): CronJob {
   return {
-    id: "main-heartbeat-job",
-    name: "main heartbeat job",
+    id: "main-session-job",
+    name: "main session job",
     enabled: true,
     createdAtMs: params.now - 60_000,
     updatedAtMs: params.now - 60_000,
     schedule: { kind: "every", everyMs: 60_000, anchorMs: params.now - 60_000 },
     sessionTarget: "main",
     wakeMode: params.wakeMode,
-    payload: { kind: "systemEvent", text: "heartbeat seam tick" },
+    payload: { kind: "systemEvent", text: "session event seam tick" },
     sessionKey: "agent:main:main",
     state: { nextRunAtMs: params.now - 1 },
   };

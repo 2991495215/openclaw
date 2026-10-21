@@ -30,3 +30,13 @@ describe("implicit thread reply expectation", () => {
     },
   );
 });
+
+it("keeps a scheduled automation optional even with direct-user channel context", () => {
+  expect(
+    resolveSourceReplyExpectation({
+      ctx: { ...ctx, ChatType: "direct" },
+      cfg: {},
+      scheduledAutomation: true,
+    }),
+  ).toBe("optional");
+});

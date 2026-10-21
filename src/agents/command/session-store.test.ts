@@ -491,7 +491,7 @@ describe("updateSessionStoreAfterAgentRun", () => {
     expect(s.read()).not.toHaveProperty("mainRestartRecovery");
   });
 
-  it("preserves the visible runtime model during a heartbeat using another model", async ({
+  it("preserves the visible runtime model during a preserved-state run using another model", async ({
     s,
   }) => {
     const visible = {
@@ -518,7 +518,7 @@ describe("updateSessionStoreAfterAgentRun", () => {
         model: "claude-sonnet-4-6",
         agentHarnessId: "codex",
         contextTokens: 128_000,
-        cliSessionBinding: { sessionId: "heartbeat-cli-session" },
+        cliSessionBinding: { sessionId: "preserved-cli-session" },
         contextBudgetStatus: contextBudgetStatusFixture({
           provider: "ollama",
           model: "llama3.2:1b",

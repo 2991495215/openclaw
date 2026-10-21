@@ -544,7 +544,7 @@ describe("harness context engine lifecycle", () => {
   });
 
   it.each(["batch", "message"] as const)(
-    "forwards heartbeat and visible turn messages to %s ingestion",
+    "preserves messages and session ownership through %s ingestion",
     async (mode) => {
       const turnUser = textMessage("user", "new ask", 4);
       const turnAssistant = textMessage("assistant", "new answer", 6);
@@ -574,7 +574,6 @@ describe("harness context engine lifecycle", () => {
         tokenBudget: 2048,
         runtimeContext: {},
         runMaintenance: async () => undefined,
-        isHeartbeat: true,
       });
 
       if (mode === "batch") {
@@ -583,7 +582,7 @@ describe("harness context engine lifecycle", () => {
       const calls = mode === "batch" ? ingestBatch.mock.calls : ingest.mock.calls;
       expect(calls).toHaveLength(mode === "batch" ? 1 : 2);
       for (const [params] of calls) {
-        expect(params).toMatchObject({ isHeartbeat: true, sessionKey });
+        expect(params).toMatchObject({ sessionKey });
       }
     },
   );

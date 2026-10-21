@@ -29,11 +29,12 @@ export function registerSystemEventAdmissionCases({
     });
     const captured = peekSystemEventEntries(sessionKey);
     const deferredEventIds = captured.map((event) => event.id!).filter(Boolean);
+    enqueueSystemEvent("Notification arrived after capture", { sessionKey });
     await runPrepared({
       agentId: "main",
       sessionKey,
       opts: withReplySystemEventContext(
-        { isHeartbeat: true },
+        {},
         {
           sessionKey,
           events: captured,
@@ -44,7 +45,13 @@ export function registerSystemEventAdmissionCases({
     expect(requireRunReplyAgentCall().followupRun.currentInboundContext?.text).toContain(
       "Restart continuation retained for delivery",
     );
-    expect(peekSystemEventEntries(sessionKey).map((event) => event.id)).toEqual(deferredEventIds);
+    expect(requireRunReplyAgentCall().followupRun.currentInboundContext?.text).not.toContain(
+      "Notification arrived after capture",
+    );
+    expect(peekSystemEventEntries(sessionKey).map((event) => event.text)).toEqual([
+      "Restart continuation retained for delivery",
+      "Notification arrived after capture",
+    ]);
   });
 
   it("admits only system events visible to the prepared agent", async () => {
@@ -68,7 +75,7 @@ export function registerSystemEventAdmissionCases({
       agentId: "alpha",
       sessionKey: "global",
       opts: withReplySystemEventContext(
-        { isHeartbeat: true },
+        {},
         { sessionKey: "global", events: peekSystemEventEntries("agent:alpha:global") },
       ),
     });

@@ -252,7 +252,6 @@ describe("runReplyAgent runtime config", () => {
             resolved: { provider: "openai", model: "gpt-5.4" },
             fallback: { exhausted: false, attempts: [] },
             autoCompactionCount: 0,
-            didLogHeartbeatStrip: false,
           },
         };
       });
@@ -331,7 +330,6 @@ describe("runReplyAgent runtime config", () => {
               resolved: { provider: "openai", model: "gpt-5.4" },
               fallback: { exhausted: false, attempts: [] },
               autoCompactionCount: 0,
-              didLogHeartbeatStrip: false,
             },
           };
         })

@@ -39,8 +39,6 @@ import type {
   FallbackRunnerParams,
   EmbeddedAgentParams,
 } from "./agent-runner-execution.test-support.js";
-import type { InternalGetReplyOptions } from "./get-reply.types.js";
-import { withReplySystemEventContext } from "./system-event-session-key.js";
 
 useBundledProviderPolicyArtifactsForTest(["openai", "anthropic"]);
 const state = await setupAgentRunnerExecutionTestState();
@@ -646,46 +644,6 @@ describe("executeAgentTurn: run lifecycle and ownership", () => {
       replyOperation.complete();
     }
   });
-
-  it.each([
-    { backend: "embedded", provider: "anthropic", model: "claude", text: "HEARTBEAT_OK" },
-    { backend: "CLI", provider: "claude-cli", model: "sonnet-4.6", text: "final" },
-  ])(
-    "forwards the event queue and bundle MCP retirement to isolated heartbeat $backend runs",
-    async ({ backend, provider, model, text }) => {
-      const isCli = backend === "CLI";
-      state.isCliProviderMock.mockReturnValue(isCli);
-      state.runWithModelFallbackMock.mockImplementationOnce(
-        async (params: FallbackRunnerParams) => ({
-          result: await params.run(provider, model, initialFallbackAttemptOptions(params)),
-          provider,
-          model,
-          attempts: [],
-        }),
-      );
-      const run = isCli ? state.runCliAgentMock : state.runEmbeddedAgentMock;
-      run.mockResolvedValueOnce({ payloads: [{ text }], meta: {} });
-      const followupRun = createFollowupRun();
-      followupRun.run.provider = provider;
-      followupRun.run.model = model;
-      const opts = withReplySystemEventContext<InternalGetReplyOptions>(
-        { isHeartbeat: true, cleanupBundleMcpOnRunEnd: true },
-        {
-          sessionKey: "agent:main:heartbeat:heartbeat",
-          heartbeatEventQueueSessionKey: "agent:main:heartbeat",
-        },
-      );
-      const params = createMinimalRunAgentTurnParams({ followupRun, opts });
-      params.isHeartbeat = true;
-      await executeAgentTurn(params);
-      expectMockCallArgFields(run, 0, "isolated heartbeat run params", {
-        trigger: "heartbeat",
-        requireExplicitMessageTarget: true,
-        heartbeatEventQueueSessionKey: "agent:main:heartbeat",
-        cleanupBundleMcpOnRunEnd: true,
-      });
-    },
-  );
 
   it("omits requireExplicitMessageTarget on ordinary embedded runs", async () => {
     state.runWithModelFallbackMock.mockImplementationOnce(async (params: FallbackRunnerParams) => ({

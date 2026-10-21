@@ -85,7 +85,6 @@ async function fixture(overrides: Partial<CronServiceDeps> = {}) {
     nowMs: () => Date.now(),
     log: logger,
     enqueueSystemEvent: vi.fn(),
-    requestHeartbeat: vi.fn(),
     runIsolatedAgentJob,
     ...overrides,
   });

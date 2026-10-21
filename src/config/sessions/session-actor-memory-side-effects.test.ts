@@ -2,10 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openContextEngineTurnOutboxWorkerStore } from "../../agents/harness/context-engine-turn-outbox-store.js";
 import { drainContextEngineTurnOutbox } from "../../agents/harness/context-engine-turn-outbox.js";
 import type { ContextEngine } from "../../context-engine/types.js";
-import {
-  claimHeartbeatOutcomeForRun,
-  persistHeartbeatOutcome,
-} from "../../infra/heartbeat-outcome-store.js";
 import { recordMessageToolRunOutcome } from "../../infra/message-tool-run-outcome-store.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { createSqliteTrajectoryRuntimeSink } from "../../trajectory/runtime-store-writer.js";
@@ -23,7 +19,6 @@ import { mutateSessionActorMemorySideEffects } from "./session-actor-memory-side
 import { createSessionActorMemoryState } from "./session-actor-memory-state.js";
 import type { SessionActorMemoryStorageContext } from "./session-actor-memory-storage-context.js";
 import { createMemorySessionActorOwner } from "./session-actor-memory.js";
-import { runWithSessionActorStorage } from "./session-actor-storage-binding.js";
 import type { SessionActorStorageOutcome } from "./session-actor-storage-contract.js";
 import type { TranscriptTurnBoundary } from "./transcript-entry-anchor.js";
 
@@ -47,7 +42,7 @@ const location = {
   agentId: "main",
   path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env }),
 };
-const filter = { engineId: "test", isHeartbeat: false };
+const filter = { engineId: "test" };
 const publishLimits = { maxEvents: 10, maxBytes: 10_000 };
 const actorAuthority = { assertCurrent() {}, assertReadable() {} };
 afterEach(() => {
@@ -155,22 +150,6 @@ async function trajectorySink(scope: Scope, sessionActor?: Binding) {
   return sink;
 }
 
-function heartbeat(
-  scope: Scope,
-  summary: string,
-  occurredAt = 1,
-  taskNames?: string[],
-  outcome: "progress" | "done" = "progress",
-) {
-  return persistHeartbeatOutcome({
-    ...scope,
-    runSessionKey: scope.sessionKey,
-    occurredAt,
-    response: { outcome, notify: false, summary },
-    taskNames,
-  });
-}
-
 async function publicationFails(scope: Scope, operation: () => Promise<unknown>) {
   const stop = failSessionActorMemoryPublication(scope.sessionKey);
   try {
@@ -206,16 +185,6 @@ function trajectory(sessionId: string, text: string, seq: number): TrajectoryEve
 }
 
 describe("memory session side-data consumers", () => {
-  it("reports committed heartbeat publication failures without releasing the claim", async () => {
-    const { scope } = await fixture();
-    await publicationFails(scope, () => heartbeat(scope, "saved"));
-    await publicationFails(scope, () => claimHeartbeatOutcomeForRun({ ...scope, runId: "first" }));
-    expect(await claimHeartbeatOutcomeForRun({ ...scope, runId: "other" })).toBeUndefined();
-    expect(await claimHeartbeatOutcomeForRun({ ...scope, runId: "first" })).toMatchObject({
-      summary: "saved",
-    });
-  });
-
   it("reports a committed message-tool outcome publication failure after one write", async () => {
     const { scope, actor } = await fixture();
     const sequence = actor.snapshot(authority)!.version.sequence;
@@ -273,10 +242,6 @@ describe("memory session side-data consumers", () => {
       updatedAt: 1,
       incognito: true,
     });
-    await heartbeat(scope, "unbound");
-    expect((await claimHeartbeatOutcomeForRun({ ...scope, runId: "user" }))?.summary).toBe(
-      "unbound",
-    );
     const outcome = {
       ...scope,
       runId: "user",
@@ -316,7 +281,6 @@ describe("memory session side-data consumers", () => {
       scope.sessionKey,
     );
     await expect(recordMessageToolRunOutcome(outcome)).rejects.toThrow("incognito");
-    expect(await claimHeartbeatOutcomeForRun({ ...scope, runId: "late" })).toBeUndefined();
     expect(await loadSqliteTrajectoryRuntimeEvents(scope)).toEqual([]);
     expect(loadSqliteTrajectoryRuntimeEventRowsSync(scope)).toEqual([]);
     expect(
@@ -324,34 +288,6 @@ describe("memory session side-data consumers", () => {
         .read({ agentId: scope.agentId, path: scope.storePath })
         ?.readSession(scope.sessionKey, authority),
     ).toBeUndefined();
-  });
-
-  it("claims heartbeat context once per run, sees replacements, and keeps returned data detached", async () => {
-    const { scope, binding } = await fixture();
-    await runWithSessionActorStorage(binding, () => heartbeat(scope, "first", 1, ["task"]));
-    const [winner, other] = await Promise.all([
-      claimHeartbeatOutcomeForRun({ ...scope, runId: "run-one" }),
-      claimHeartbeatOutcomeForRun({ ...scope, runId: "run-two" }),
-    ]);
-    expect(winner?.summary).toBe("first");
-    expect(other).toBeUndefined();
-    winner!.taskNames.push("mutated");
-    expect((await claimHeartbeatOutcomeForRun({ ...scope, runId: "run-one" }))?.taskNames).toEqual([
-      "task",
-    ]);
-    await heartbeat(scope, "replacement", 2, undefined, "done");
-    expect((await claimHeartbeatOutcomeForRun({ ...scope, runId: "run-two" }))?.summary).toBe(
-      "replacement",
-    );
-    await recordMessageToolRunOutcome({
-      ...scope,
-      runId: "run-two",
-      provider: "test",
-      model: "test",
-      outcome: "mute",
-      runStatus: "completed",
-      occurredAt: 2,
-    });
   });
 
   it("recovers ordered accepted turns and allows plugin callbacks to await the same actor", async () => {

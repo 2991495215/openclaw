@@ -14,8 +14,6 @@ import {
   createTestPluginServiceScheduler,
 } from "openclaw/plugin-sdk/plugin-test-api";
 import { createPluginRuntimeMock } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { enqueueSystemEvent } from "openclaw/plugin-sdk/system-event-runtime";
-import { resetSystemEventsForTest } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createCronHarness,
@@ -54,7 +52,6 @@ afterEach(async () => {
   registeredServiceStops.clear();
   await Promise.all(stops.map((stop) => stop()));
   vi.useRealTimers();
-  resetSystemEventsForTest();
 });
 
 type DreamingPluginApi = Parameters<typeof registerShortTermPromotionDreaming>[0];
@@ -170,7 +167,6 @@ function getBeforeAgentReplyHandler(onMock: ReturnType<typeof vi.fn>) {
       trigger?: string;
       workspaceDir?: string;
       sessionKey?: string;
-      heartbeatEventQueueSessionKey?: string;
     },
   ) => Promise<unknown>;
 }
@@ -565,77 +561,6 @@ describe("dreaming service reconciliation", () => {
     expect(harness.listCalls).toBe(1);
   });
 
-  it("only triggers managed dreaming when the queued cron event is still pending", async () => {
-    const { api, harness } = createDreamingTestContext({
-      config: createDreamingConfig({ enabled: true, phases: { deep: { limit: 0 } } }),
-    });
-
-    registerShortTermPromotionDreamingForTest(api);
-    await triggerDreamingServiceStart(api, {
-      config: api.config,
-      getCron: () => harness.cron,
-    });
-
-    const sessionKey = "agent:main:main";
-    enqueueSystemEvent(constants.DREAMING_SYSTEM_EVENT_TEXT, {
-      sessionKey,
-      contextKey: "cron:memory-dreaming",
-    });
-
-    const beforeAgentReply = getBeforeAgentReplyHandler(api.on);
-    const first = await beforeAgentReply(
-      { cleanedBody: constants.DREAMING_SYSTEM_EVENT_TEXT },
-      { trigger: "heartbeat", workspaceDir: ".", sessionKey },
-    );
-
-    expect(first).toEqual({
-      handled: true,
-      reason: "memory-core: short-term dreaming disabled by limit",
-    });
-
-    resetSystemEventsForTest();
-
-    const second = await beforeAgentReply(
-      { cleanedBody: constants.DREAMING_SYSTEM_EVENT_TEXT },
-      { trigger: "heartbeat", workspaceDir: ".", sessionKey },
-    );
-
-    expect(second).toBeUndefined();
-  });
-
-  it("resolves queued managed dreaming cron events from the base session for isolated heartbeats", async () => {
-    const { api, harness } = createDreamingTestContext({
-      config: createDreamingConfig({ enabled: true, phases: { deep: { limit: 0 } } }),
-    });
-
-    registerShortTermPromotionDreamingForTest(api);
-    await triggerDreamingServiceStart(api, {
-      config: api.config,
-      getCron: () => harness.cron,
-    });
-
-    enqueueSystemEvent(constants.DREAMING_SYSTEM_EVENT_TEXT, {
-      sessionKey: "agent:main:main",
-      contextKey: "cron:memory-dreaming",
-    });
-
-    const beforeAgentReply = getBeforeAgentReplyHandler(api.on);
-    const result = await beforeAgentReply(
-      { cleanedBody: constants.DREAMING_SYSTEM_EVENT_TEXT },
-      {
-        trigger: "heartbeat",
-        workspaceDir: ".",
-        sessionKey: "agent:main:main:heartbeat",
-        heartbeatEventQueueSessionKey: "agent:main:main",
-      },
-    );
-
-    expect(result).toEqual({
-      handled: true,
-      reason: "memory-core: short-term dreaming disabled by limit",
-    });
-  });
-
   it("does not start background reconciliation in a host without Gateway cron access", async () => {
     vi.useFakeTimers();
     const { api, harness, logger } = createDreamingTestContext();
@@ -802,11 +727,6 @@ describe("dreaming service reconciliation", () => {
     });
 
     const sessionKey = "agent:main:main";
-    enqueueSystemEvent(constants.DREAMING_SYSTEM_EVENT_TEXT, {
-      sessionKey,
-      contextKey: "cron:memory-dreaming",
-    });
-
     const beforeAgentReply = getBeforeAgentReplyHandler(api.on);
     const result = await beforeAgentReply(
       { cleanedBody: constants.DREAMING_SYSTEM_EVENT_TEXT },

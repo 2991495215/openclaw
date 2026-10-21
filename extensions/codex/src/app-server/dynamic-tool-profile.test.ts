@@ -11,8 +11,8 @@ const shell = `read write edit apply_patch exec process ${goals} message`;
 it.each([
   {
     name: "native-owned tools",
-    input: `read write edit apply_patch exec process update_plan ${goals} dispatch_action tool_describe tool_search web_search message heartbeat_respond sessions_spawn`,
-    expected: `${goals} web_search message heartbeat_respond sessions_spawn`,
+    input: `read write edit apply_patch exec process update_plan ${goals} dispatch_action tool_describe tool_search web_search message sessions_spawn`,
+    expected: `${goals} web_search message sessions_spawn`,
   },
   {
     name: "disabled native tools with shell replacements",

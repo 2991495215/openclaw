@@ -167,7 +167,6 @@ it("reads cold CLI fallback metadata while another connection holds a shared-sta
 
 it.each([
   "ordinary",
-  "heartbeat",
   "preserved",
   "revised",
   "revision-established",
@@ -175,12 +174,7 @@ it.each([
   "rejected",
   "rejected-clear",
 ])("settles the %s reply's native binding before releasing placement", async (kind) => {
-  const sessionKey =
-    kind === "ordinary"
-      ? "main"
-      : kind === "heartbeat"
-        ? "global"
-        : "agent:main:cli-binding-settlement";
+  const sessionKey = kind === "ordinary" ? "main" : "agent:main:cli-binding-settlement";
   const rejected = kind === "rejected" || kind === "rejected-clear";
   const revisionChanged = kind === "revised" || kind === "revision-established";
   const placementRetired = kind === "retired-placement";
@@ -253,7 +247,6 @@ it.each([
   onTestFinished(uninstall);
   const result = await executeAgentTurn({
     ...turn,
-    isHeartbeat: kind === "heartbeat",
   });
   if (revisionChanged || placementRetired) {
     expect(result.kind).toBe("final");

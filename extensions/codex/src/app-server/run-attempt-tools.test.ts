@@ -120,14 +120,9 @@ describe("Codex direct tool loading", () => {
 });
 
 it("keeps OpenClaw control-path tools direct when code-mode-only is enabled", () => {
-  const tools = [
-    "message",
-    "web_search",
-    "heartbeat_respond",
-    "agents_list",
-    "sessions_spawn",
-    "sessions_yield",
-  ].map(createRuntimeDynamicTool);
+  const tools = ["message", "web_search", "agents_list", "sessions_spawn", "sessions_yield"].map(
+    createRuntimeDynamicTool,
+  );
   const toolBridge = createCodexDynamicToolBridge({
     tools,
     signal: new AbortController().signal,
@@ -139,12 +134,10 @@ it("keeps OpenClaw control-path tools direct when code-mode-only is enabled", ()
     expect(spec).not.toHaveProperty("namespace");
     expect(spec).not.toHaveProperty("deferLoading");
   }
-  for (const name of ["web_search", "heartbeat_respond"]) {
-    expect(specs.find((tool) => tool.name === name)).toMatchObject({
-      namespace: "openclaw",
-      deferLoading: true,
-    });
-  }
+  expect(specs.find((tool) => tool.name === "web_search")).toMatchObject({
+    namespace: "openclaw",
+    deferLoading: true,
+  });
 });
 
 it("keeps session UI tools callable without native JavaScript discovery", async () => {

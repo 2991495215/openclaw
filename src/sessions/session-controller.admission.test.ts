@@ -19,7 +19,7 @@ import {
   type SessionControllerEntry,
 } from "./session-controller.state.js";
 
-const turnKinds = ["visible", "heartbeat", "queued_followup", "direct"] as const;
+const turnKinds = ["visible", "queued_followup", "direct"] as const;
 afterEach(() => {
   sessionControllers.clear();
 });
@@ -272,7 +272,7 @@ it.each(
 )(
   "makes mailbox and direct creation agree for $kind (delivery pending=$deliveryPending)",
   async ({ kind, deliveryPending }) => {
-    const blocked = deliveryPending && (kind === "heartbeat" || kind === "queued_followup");
+    const blocked = deliveryPending && kind === "queued_followup";
     const sessionKey = `agent:main:admission-parity:${kind}:${deliveryPending}`;
     const entry = getSessionControllerEntry(sessionKey);
     const input = reserveSessionControllerSource(sessionKey, { policy: { mode: "followup" } });

@@ -6,7 +6,6 @@ import { resolveSessionEntryResetFreshnessAsync } from "../config/sessions/entry
 import { loadSessionEntry, replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { areHeartbeatsEnabled, setHeartbeatsEnabled } from "../infra/heartbeat-wake.js";
 import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import {
   createGatewayConfigPath,
@@ -33,7 +32,6 @@ it.each([false, true])(
 async function verifyDashboardRollover(nativeReconnect: boolean) {
   resetGatewayTestState();
   const home = await setupGatewayTempHome({ prefix: "openclaw-dashboard-title-rollover-" });
-  const heartbeatsEnabled = areHeartbeatsEnabled();
   const provider = createServer((request, response) => {
     void readAndComplete(request, response).catch((error: unknown) => {
       response.destroy(error instanceof Error ? error : undefined);
@@ -42,7 +40,6 @@ async function verifyDashboardRollover(nativeReconnect: boolean) {
   let gateway: Awaited<ReturnType<typeof startGatewayWithClient>> | undefined;
   const transcript: string[] = [];
   try {
-    setHeartbeatsEnabled(false);
     await new Promise<void>((resolve, reject) => {
       provider.once("error", reject);
       provider.listen(0, "127.0.0.1", resolve);
@@ -61,7 +58,6 @@ async function verifyDashboardRollover(nativeReconnect: boolean) {
         defaults: {
           workspace: home.workspaceDir,
           skipBootstrap: true,
-          heartbeat: { every: "0m" },
           model: { primary: model.modelRef },
           models: {
             [model.modelRef]: {
@@ -218,7 +214,6 @@ async function verifyDashboardRollover(nativeReconnect: boolean) {
     await new Promise<void>((resolve) => {
       provider.close(() => resolve());
     });
-    setHeartbeatsEnabled(heartbeatsEnabled);
     home.envSnapshot.restore();
     await removeGatewayTempHome(home.tempHome);
     resetGatewayTestState();
