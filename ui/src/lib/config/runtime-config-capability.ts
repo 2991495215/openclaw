@@ -17,7 +17,6 @@ import {
 import {
   agentConfigEntry,
   clearConfigRequestVersions,
-  currentConfigRead,
   createInitialConfigState,
   currentConfigConnectionEpoch,
   type RuntimeConfigGateway,
@@ -183,9 +182,6 @@ export function createRuntimeConfigCapability(
   return {
     get state() {
       return state;
-    },
-    get configRead() {
-      return currentConfigRead(state)?.completion.promise ?? null;
     },
     get canSet() {
       return canCallConfigMethod("config.set");

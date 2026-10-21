@@ -661,29 +661,6 @@ describe("runtime config capability", () => {
 });
 
 describe("runtime config load subscriptions", () => {
-  it("exposes one admitted read while pending ensures share the request", async () => {
-    const response = deferred<ConfigSnapshot>();
-    const request = vi.fn(() => response.promise);
-    const { runtimeConfig, state } = createConfigCapabilityHarness(request);
-    try {
-      expect(runtimeConfig.configRead).toBeNull();
-      const loading = runtimeConfig.ensureLoaded();
-      const read = runtimeConfig.configRead;
-      const duplicate = runtimeConfig.ensureLoaded();
-      expect(read).not.toBeNull();
-      expect(runtimeConfig.configRead).toBe(read);
-      expect(state.configLoading).toBe(true);
-      expect(request).toHaveBeenCalledTimes(1);
-      response.resolve(makeSnapshot({ config: { value: "ready" }, hash: "read-ready" }));
-      await Promise.all([loading, duplicate]);
-      await expect(read).resolves.toEqual({ ok: true, value: undefined });
-      expect(state.configForm).toEqual({ value: "ready" });
-    } finally {
-      runtimeConfig.dispose();
-    }
-    expect(runtimeConfig.configRead).toBeNull();
-  });
-
   it("clears a settled load when an observer throws so an explicit retry can read again", async () => {
     const request = vi.fn().mockRejectedValueOnce(new Error("temporarily unavailable"));
     request.mockResolvedValue({ config: {}, hash: "ready", valid: true, issues: [] });
