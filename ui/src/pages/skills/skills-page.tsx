@@ -19,6 +19,7 @@ import { useApplication } from "../../lib/reactive/context.ts";
 import { projectAgents } from "../../lib/reactive/domain-capabilities.ts";
 import { useGatewayPage } from "../../lib/reactive/gateway-page.ts";
 import { t } from "../../lib/reactive/i18n.ts";
+import { listen } from "../../lib/reactive/listener.ts";
 import { observeState } from "../../lib/reactive/observe-state.ts";
 import { searchClawHub } from "../../lib/skills/clawhub-search.ts";
 import {
@@ -42,6 +43,7 @@ import { PluginsHubHeader } from "../plugins/plugins-hub-header.tsx";
 import { PLUGINS_HUB_PANEL_ID } from "../plugins/plugins-hub.ts";
 import { createSkillLibrary } from "./library-state.ts";
 import { SkillLibrary, SkillLibraryDialogs, SkillLibraryFeedback } from "./library-view.tsx";
+import { createSkillsMutationPresentation } from "./mutation-presentation.ts";
 import type { SkillDetailTab, SkillsPresentation } from "./view-types.ts";
 import { Skills } from "./view.tsx";
 
@@ -198,6 +200,18 @@ export function SkillsPage(props: SkillsPageProps) {
   const detailError = createMemo(() => skills.read().clawhubDetailError);
   const detailAgent = createMemo(() => skills.read().skillsAgentId);
   const detailAgentRevision = createMemo(() => skills.read().skillsAgentRevision);
+  const mutations = createSkillsMutationPresentation({
+    state: data,
+    readSkills: () => skills.read().skillsReport,
+    scope: () => ({
+      client: detailClient(),
+      epoch: detailEpoch(),
+      agentId: detailAgent(),
+      agentRevision: detailAgentRevision(),
+    }),
+    readEpoch: () => gateway.readEpoch(),
+    active: () => active,
+  });
   const readClawHubDetail = createMemo(() => {
     const client = detailClient();
     const epoch = detailEpoch();
@@ -263,6 +277,9 @@ export function SkillsPage(props: SkillsPageProps) {
     }),
     (current, previous) => {
       if (!previous || current.route !== previous.route || current.surface !== previous.surface) {
+        if (previous && current.surface !== previous.surface) {
+          mutations.retire();
+        }
         admittedSurface = current.surface;
         syncSelection();
         if (!previous || current.route !== previous.route) {
@@ -277,6 +294,16 @@ export function SkillsPage(props: SkillsPageProps) {
     },
   );
   onSettled(() => {
+    const stopLifecycle = context.lifecycleAbortSignal
+      ? listen(context.lifecycleAbortSignal, "abort", () => mutations.retire(), { once: true })
+      : () => undefined;
+    let location = context.router.getState().location;
+    const stopNavigation = context.router.subscribe((state) => {
+      if (state.location !== location) {
+        location = state.location;
+        mutations.retire();
+      }
+    });
     // Roster receipts reconcile the request target before admitting missing skill reads.
     const stopAgents = agents.subscribe(() => {
       reconcileAgentState();
@@ -319,7 +346,10 @@ export function SkillsPage(props: SkillsPageProps) {
     syncIcons();
     return () => {
       active = false;
-      [stopAgents, ...stopSelections, stopSkills].forEach((stop) => stop());
+      mutations.retire();
+      [stopLifecycle, stopNavigation, stopAgents, ...stopSelections, stopSkills].forEach((stop) =>
+        stop(),
+      );
       clearClawHubSearchTimer();
       searchRequest.cancel();
       skills.dispose();
@@ -362,12 +392,14 @@ export function SkillsPage(props: SkillsPageProps) {
       reconcileSkillsAgentId(data, agentState.agentsList);
     }
     if (previousAgentId !== data.skillsAgentId) {
+      mutations.retire();
       selectSkill(null);
       closeDetail();
     }
   }
 
   function invalidateSkillRequests() {
+    mutations.retire();
     setDetailReceipt(null);
     data.skillsAgentRevision++;
     data.skillsLoading = false;
@@ -382,6 +414,7 @@ export function SkillsPage(props: SkillsPageProps) {
   }
 
   function resetLoadedSkillState() {
+    mutations.retire();
     setDetailReceipt(null);
     library.reset();
     searchRequest.cancel();
@@ -583,6 +616,8 @@ export function SkillsPage(props: SkillsPageProps) {
         >
           <Skills
             state={viewState()}
+            mutationSkills={mutations.rows()}
+            saving={mutations.saving()}
             readClawHubDetail={readClawHubDetail}
             surface={surface()}
             libraryEntries={library.state.list?.entries ?? []}
@@ -634,7 +669,10 @@ export function SkillsPage(props: SkillsPageProps) {
             onRefresh={() => void refreshPage()}
             onToggle={(key, enabled) => {
               if (canUpdateSkills()) {
-                void updateSkillEnabled(data, key, enabled, canUpdateSkills);
+                void mutations.run(() => updateSkillEnabled(data, key, enabled, canUpdateSkills), {
+                  skillKey: key,
+                  enabled,
+                });
               }
             }}
             onEdit={(key, value) => {
@@ -644,12 +682,12 @@ export function SkillsPage(props: SkillsPageProps) {
             }}
             onSaveKey={(key) => {
               if (canUpdateSkills()) {
-                void saveSkillApiKey(data, key, canUpdateSkills);
+                void mutations.run(() => saveSkillApiKey(data, key, canUpdateSkills));
               }
             }}
             onInstall={(skillKey, name, installId) => {
               if (canInstallSkills()) {
-                void installSkill(data, skillKey, name, installId);
+                void mutations.run(() => installSkill(data, skillKey, name, installId));
               }
             }}
             onDetailOpen={selectSkill}
@@ -674,7 +712,7 @@ export function SkillsPage(props: SkillsPageProps) {
                 });
                 library.setImportOpen(true);
               } else {
-                void installFromClawHub(data, ref, version);
+                void mutations.run(() => installFromClawHub(data, ref, version));
               }
             }}
           />

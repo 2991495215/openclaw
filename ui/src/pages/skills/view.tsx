@@ -51,7 +51,7 @@ function skillStatus(skill: SkillStatusEntry): Exclude<SkillsStatusFilter, "all"
 }
 
 function skillControlsLocked(view: SkillsProps): boolean {
-  return view.loading || view.state.skillOperation !== null;
+  return view.saving || view.loading || view.state.skillOperation !== null;
 }
 
 function skillInstallLocked(view: SkillsProps): boolean {
@@ -59,7 +59,7 @@ function skillInstallLocked(view: SkillsProps): boolean {
 }
 
 export function Skills(props: SkillsProps) {
-  const skills = createMemo(() => props.state.skillsReport?.skills ?? []);
+  const skills = createMemo(() => props.mutationSkills);
   const statusCounts = createMemo(() => {
     const counts: Record<SkillsStatusFilter, number> = {
       all: skills().length,

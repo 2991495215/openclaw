@@ -71,6 +71,7 @@ function DiscoveryCard(props: { entry: SkillDiscoveryEntry; skills: SkillsProps 
               type="button"
               class="btn btn--sm plugin-catalog-card__install oc-action oc-action-secondary"
               disabled={
+                props.skills.saving ||
                 !props.skills.state.connected ||
                 !props.skills.canInstall ||
                 props.skills.loading ||
@@ -98,7 +99,7 @@ export function SkillDiscovery(props: SkillsProps) {
   let input: HTMLInputElement | undefined;
   const entries = createMemo(() =>
     skillDiscoveryEntries({
-      skills: props.state.skillsReport?.skills ?? [],
+      skills: props.mutationSkills,
       libraries: props.libraryEntries ?? [],
       results: props.state.clawhubSearchResults ?? [],
       query: props.state.clawhubSearchQuery,
