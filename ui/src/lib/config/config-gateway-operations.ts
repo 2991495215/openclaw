@@ -420,7 +420,6 @@ export async function loadConfigSchema(
     state.configSchema = res.schema ?? null;
     state.configUiHints = res.uiHints ?? {};
     state.configSchemaVersion = res.version ?? null;
-    return ok(undefined);
   } catch (err) {
     if (isCurrentConfigConnection(state, client, connectionEpoch)) {
       const error = formatUiError(err);

@@ -758,7 +758,7 @@ describe("runtime config load subscriptions", () => {
 
       await ensure();
       expect(runtimeConfig.schemaRead).not.toBe(read);
-      await expect(runtimeConfig.schemaRead).resolves.toEqual({ ok: true, value: undefined });
+      await expect(runtimeConfig.schemaRead).resolves.toBeUndefined();
       expect(request).toHaveBeenCalledTimes(2);
       expect(loaded()).not.toBeNull();
     } finally {
