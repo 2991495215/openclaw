@@ -677,7 +677,6 @@ async function resolveGatewayConnection(
     allowStoredOriginAuth: hasStoredOriginDeviceAuth,
     overrideAuthErrorHint:
       "Fix: pass --token or --password once to request pairing, approve it in that gateway's Control UI (Settings -> Devices), then retry with the same credential so OpenClaw can store the device token.",
-    buildConnectionDetails: buildGatewayConnectionDetails,
   });
   const hasStoredOriginAuth = Boolean(
     bootstrap.deviceAuthScope && (await hasStoredOriginDeviceAuth(bootstrap.deviceAuthScope)),

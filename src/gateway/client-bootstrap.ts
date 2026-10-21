@@ -119,15 +119,6 @@ export async function resolveGatewayClientBootstrap(params: {
   skipImplicitAuth?: boolean;
   allowStoredOriginAuth?: (scope: string) => boolean | Promise<boolean>;
   overrideAuthErrorHint?: string;
-  buildConnectionDetails?: (options: {
-    config: OpenClawConfig;
-    url?: string;
-    configPath?: string;
-    urlSource?: "cli" | "env";
-    ignoreEnvUrlOverride?: boolean;
-    localPortOverride?: number;
-    serviceTargetUrl?: string;
-  }) => GatewayConnectionDetails;
 }): Promise<{
   url: string;
   urlSource: string;
@@ -151,9 +142,7 @@ export async function resolveGatewayClientBootstrap(params: {
     ignoreEnvUrlOverride: params.ignoreEnvUrlOverride,
     localPortOverride: params.localPortOverride,
   });
-  const buildConnectionDetails =
-    params.buildConnectionDetails ?? buildGatewayConnectionDetailsWithResolvers;
-  const connection = buildConnectionDetails({
+  const connection = buildGatewayConnectionDetailsWithResolvers({
     config: params.config,
     url: urlOverride.url,
     ...(params.configPath ? { configPath: params.configPath } : {}),
@@ -181,7 +170,7 @@ export async function resolveGatewayClientBootstrap(params: {
     } else {
       const localGateway = { ...params.config.gateway, mode: "local" as const };
       delete localGateway.remote;
-      const localUrl = buildConnectionDetails({
+      const localUrl = buildGatewayConnectionDetailsWithResolvers({
         config: { ...params.config, gateway: localGateway },
         ignoreEnvUrlOverride: true,
         ...(params.localPortOverride !== undefined

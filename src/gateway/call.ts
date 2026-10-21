@@ -493,7 +493,6 @@ function gatewayCallBootstrapOptions(
       opts.serviceTargetUrl !== undefined,
     localPortOverride: opts.localPortOverride,
     explicitTlsFingerprint: opts.tlsFingerprint,
-    buildConnectionDetails: buildGatewayConnectionDetails,
     ...(opts.serviceTargetUrl ? { serviceTargetUrl: opts.serviceTargetUrl } : {}),
   };
 }

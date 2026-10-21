@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { PlatformMessageNotDispatchedError } from "openclaw/plugin-sdk/error-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { createXApiClient, XFetch } from "./test-support/api.js";
 import { createXTestApi } from "./test-support/api-client.js";
+import type { createXApiClient, XFetch } from "./test-support/api.js";
 
 type ClientOptions = Parameters<typeof createXApiClient>[0];
 type Media = Parameters<ReturnType<typeof createXApiClient>["uploadMedia"]>[0];

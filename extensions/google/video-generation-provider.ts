@@ -317,9 +317,7 @@ export const googleVideoGenerationProvider: VideoGenerationProvider = {
       throw new Error("Google video generation supports at most one input video.");
     }
     if ((req.inputImages?.length ?? 0) > 0 && (req.inputVideos?.length ?? 0) > 0) {
-      throw new Error(
-        "Google video generation does not support image and video inputs together.",
-      );
+      throw new Error("Google video generation does not support image and video inputs together.");
     }
     const apiKey = await resolveGoogleGenerationApiKey(req);
 
@@ -493,19 +491,14 @@ export const googleVideoGenerationProvider: VideoGenerationProvider = {
                   );
                 }
                 const downloadLabel = "Google generated video download";
-                const buffer = await readProviderBinaryResponse(
-                  response,
-                  downloadLabel,
-                  "video",
-                  {
-                    maxBytes: maxVideoBytes,
-                    chunkTimeoutMs: timeoutMs,
-                    onOverflow: ({ maxBytes }) =>
-                      new Error(`${downloadLabel} exceeds ${maxBytes} bytes`),
-                    onIdleTimeout: ({ chunkTimeoutMs }) =>
-                      new Error(`${downloadLabel} stalled after ${chunkTimeoutMs}ms`),
-                  },
-                );
+                const buffer = await readProviderBinaryResponse(response, downloadLabel, "video", {
+                  maxBytes: maxVideoBytes,
+                  chunkTimeoutMs: timeoutMs,
+                  onOverflow: ({ maxBytes }) =>
+                    new Error(`${downloadLabel} exceeds ${maxBytes} bytes`),
+                  onIdleTimeout: ({ chunkTimeoutMs }) =>
+                    new Error(`${downloadLabel} stalled after ${chunkTimeoutMs}ms`),
+                });
                 return {
                   buffer,
                   mimeType:
