@@ -45,6 +45,8 @@ export const ERROR_DETAILS_HINT =
   "For details, open Settings → Logs in the Control UI or run `openclaw logs --follow` in your terminal.";
 
 const STORAGE_FAILURE_COPY: Record<GatewayStorageFailure, string> = {
+  postgres_query_canceled:
+    "OpenClaw's database operation was canceled. Check the conversation for any completed work before trying again. If this keeps happening, ask the Gateway operator to check PostgreSQL timeouts and server activity.",
   SQLITE_BUSY:
     "OpenClaw is busy saving your conversation. Wait a moment, then check the conversation before trying again.",
   SQLITE_LOCKED:

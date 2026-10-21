@@ -14,7 +14,10 @@ import { SESSION_SETTINGS_CHANGED_ERROR_REASON } from "./chat-send-session-setti
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
 export function resolveChatSendStorageErrorMessage(error: unknown): string | undefined {
-  return renderStorageFailureSummary(classifyGatewayStorageFailure(error));
+  return renderStorageFailureSummary(
+    classifyGatewayStorageFailure(error) ??
+      (hasSqliteWorkerOutcomeUnknown(error) ? "session_actor_reconciliation" : undefined),
+  );
 }
 
 export function respondChatSessionRoutingChanged(respond: GatewayRequestHandlerOptions["respond"]) {
