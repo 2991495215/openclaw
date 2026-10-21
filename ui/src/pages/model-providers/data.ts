@@ -46,11 +46,6 @@ type ModelProviderLocalCost = {
   messageCount: number;
 };
 
-export type ModelProviderMetrics = {
-  usage(): ReturnType<typeof collectProviderUsage>;
-  cost(): ReturnType<typeof collectProviderLocalCost>;
-};
-
 export type ModelProviderLogoutTarget = {
   provider: string;
   profileIds: string[];

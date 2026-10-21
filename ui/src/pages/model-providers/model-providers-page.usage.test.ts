@@ -10,11 +10,13 @@ import {
   createPage,
   mountPage,
   createAuthStatus,
+  createApiKeyProviderData,
   createHarness,
   drainPageUpdates,
   requestCount,
   advanceUsageRetries,
   focusDocument,
+  publishRouteData,
 } from "./model-providers-page.test-support.tsx";
 
 afterEach(() => {
@@ -313,23 +315,34 @@ describe("ModelProvidersPage usage convergence", () => {
       }
       return original(method, ...args);
     });
-    const page = appendPage(harness.context);
+    const page = createPage(harness.context);
+    page.loaderPending = true;
+    publishRouteData(page, createApiKeyProviderData());
+    mountPage(page);
     await waitForSolid(() =>
       expect(
         page.querySelector('[data-provider-id="openai"] .model-providers__global-metrics')
           ?.textContent,
       ).toContain("Loading"),
     );
+    expect(usageReads).toBe(0);
+    expect(costReads).toBe(0);
     const search = page.querySelector<HTMLInputElement>(".model-providers__search input")!;
     const row = page.querySelector('[data-provider-id="openai"]')!;
     search.focus();
+    page.loaderPending = false;
+    await waitForSolid(() => {
+      expect(usageReads).toBe(1);
+      expect(costReads).toBe(1);
+    });
     usage.resolve({
       updatedAt: 1,
-      providers: [
-        { provider: "openai", displayName: "OpenAI", windows: [{ label: "5h", usedPercent: 25 }] },
-      ],
+      providers: [{ provider: "openai", displayName: "OpenAI", plan: "Pro", windows: [] }],
     });
-    await waitForSolid(() => expect(row.textContent).toContain("75% left"));
+    await waitForSolid(() =>
+      expect(row.querySelector(".settings-row__control")?.textContent).toContain("Pro"),
+    );
+    expect(row.querySelector(".model-providers__local-cost")).toBeNull();
     expect(page.querySelector('[data-provider-id="openai"]')).toBe(row);
     expect(page.querySelector(".model-providers__search input")).toBe(search);
     expect(document.activeElement).toBe(search);

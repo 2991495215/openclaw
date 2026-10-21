@@ -330,7 +330,9 @@ function ProviderActions(props: ModelProvidersViewProps & { card: ModelProviderC
 function ProviderRow(props: ModelProvidersViewProps & { card: ModelProviderCard }) {
   const card = () => props.card;
   const models = () => modelsText(card());
-  const supplementalLoading = createMemo(() => props.supplementalLoading);
+  const usage = () => props.metrics.usage.value().get(card().id)?.snapshot ?? card().usage;
+  const plan = (value: ModelProviderCard["usage"]) =>
+    value?.plan ? <SettingsValue value={value.plan} /> : undefined;
   const message = () => props.messages[`key:${card().id}`] ?? props.messages[card().id];
   return (
     <div
@@ -349,7 +351,11 @@ function ProviderRow(props: ModelProvidersViewProps & { card: ModelProviderCard 
           </div>
         </div>
         <div class="settings-row__control">
-          {card().usage?.plan ? <SettingsValue value={card().usage?.plan} /> : undefined}
+          <Errored fallback={() => plan(card().usage)}>
+            <Loading on={props.metrics.usage.request()} fallback={plan(card().usage)}>
+              {plan(usage())}
+            </Loading>
+          </Errored>
           {renderProviderStatus(card())}
         </div>
       </div>
@@ -370,18 +376,15 @@ function ProviderRow(props: ModelProvidersViewProps & { card: ModelProviderCard 
         <div class="model-providers__global-metrics-title">{t("modelProviders.globalUsage")}</div>
         <Errored fallback={() => renderGlobalUsage(card().usage, props.supplementalLoading)}>
           <Loading
-            on={supplementalLoading()}
+            on={props.metrics.usage.request()}
             fallback={renderGlobalUsage(card().usage, props.supplementalLoading)}
           >
-            {renderGlobalUsage(
-              props.metrics.usage().get(card().id)?.snapshot ?? card().usage,
-              props.supplementalLoading,
-            )}
+            {renderGlobalUsage(usage(), props.supplementalLoading)}
           </Loading>
         </Errored>
         <Errored fallback={() => renderLocalCost(card().localCost)}>
-          <Loading on={supplementalLoading()} fallback={renderLocalCost(card().localCost)}>
-            {renderLocalCost(props.metrics.cost().get(card().id) ?? card().localCost)}
+          <Loading on={props.metrics.cost.request()} fallback={renderLocalCost(card().localCost)}>
+            {renderLocalCost(props.metrics.cost.value().get(card().id) ?? card().localCost)}
           </Loading>
         </Errored>
       </div>

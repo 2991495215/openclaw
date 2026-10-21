@@ -7,7 +7,7 @@ export function projectSupplementalRead<T, R>(
   read: () => { pending: Promise<ModelProvidersData | null> | null; value: T },
   select: (data: ModelProvidersData | null) => T,
   collect: (value: T) => R,
-): () => R {
+): { value: () => R; request: () => Promise<ModelProvidersData | null> | null } {
   const source = createMemo(
     () => {
       revision();
@@ -19,8 +19,11 @@ export function projectSupplementalRead<T, R>(
         (next.pending !== null || previous.value === next.value),
     },
   );
-  return createMemo(() => {
-    const read = source();
-    return read.pending ? read.pending.then((data) => collect(select(data))) : collect(read.value);
+  const value = createMemo(() => {
+    const selected = source();
+    return selected.pending
+      ? selected.pending.then((data) => collect(select(data)))
+      : collect(selected.value);
   });
+  return { value, request: () => source().pending };
 }
