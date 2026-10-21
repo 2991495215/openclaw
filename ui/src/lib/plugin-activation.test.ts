@@ -3,18 +3,12 @@ import { describe, expect, it } from "vitest";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
 
 function isWikiEnabled(plugins: Record<string, unknown>): boolean {
-  return isPluginEnabledInConfigSnapshot({ hash: "hash-1", config: { plugins } }, "memory-wiki", {
-    enabledByDefault: false,
-  });
+  return isPluginEnabledInConfigSnapshot({ hash: "hash-1", config: { plugins } }, "memory-wiki");
 }
 
 describe("isPluginEnabledInConfigSnapshot", () => {
-  it("uses the supplied default when config has not loaded yet", () => {
-    expect(
-      isPluginEnabledInConfigSnapshot({ hash: "hash-1" }, "memory-wiki", {
-        enabledByDefault: false,
-      }),
-    ).toBe(false);
+  it("defaults to disabled when config has not loaded yet", () => {
+    expect(isPluginEnabledInConfigSnapshot({ hash: "hash-1" }, "memory-wiki")).toBe(false);
   });
 
   it("treats bundled default-off plugins as disabled when config is present but silent", () => {
@@ -32,13 +26,5 @@ describe("isPluginEnabledInConfigSnapshot", () => {
         entries: { "memory-wiki": { enabled: true } },
       }),
     ).toBe(false);
-  });
-
-  it("keeps default-on plugins enabled when config is silent", () => {
-    expect(
-      isPluginEnabledInConfigSnapshot({ hash: "hash-1" }, "browser", {
-        enabledByDefault: true,
-      }),
-    ).toBe(true);
   });
 });

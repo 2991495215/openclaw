@@ -5,19 +5,13 @@ import {
 } from "@openclaw/normalization-core/record-coerce";
 import type { ConfigSnapshot } from "../api/types.ts";
 
-type PluginActivationOptions = {
-  enabledByDefault?: boolean;
-};
-
 export function isPluginEnabledInConfigSnapshot(
   configSnapshot: ConfigSnapshot | null | undefined,
   pluginId: string,
-  options?: PluginActivationOptions,
 ): boolean {
-  const enabledByDefault = options?.enabledByDefault ?? true;
   const config = asNullableRecord(configSnapshot?.config);
   if (!config) {
-    return enabledByDefault;
+    return false;
   }
 
   const plugins = asNullableObjectRecord(config.plugins);
@@ -36,6 +30,5 @@ export function isPluginEnabledInConfigSnapshot(
   }
 
   const entries = asNullableObjectRecord(plugins?.entries);
-  const enabled = asNullableRecord(entries?.[pluginId])?.enabled;
-  return typeof enabled === "boolean" ? enabled : enabledByDefault;
+  return asNullableRecord(entries?.[pluginId])?.enabled === true;
 }

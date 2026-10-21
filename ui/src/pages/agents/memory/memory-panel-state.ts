@@ -445,7 +445,6 @@ export function createAgentMemory(
         memoryWikiEnabled: isPluginEnabledInConfigSnapshot(
           configState.configSnapshot,
           "memory-wiki",
-          { enabledByDefault: false },
         ),
         wikiImportInsightsLoading: dreaming.wikiImportInsightsLoading,
         wikiImportInsightsError: dreaming.wikiImportInsightsError,

@@ -234,9 +234,7 @@ type DreamingConfigCapability = Pick<
 function canCallMemoryWikiMethod(state: DreamingState, method: string): boolean {
   return (
     isGatewayMethodAdvertised(state, method) ??
-    isPluginEnabledInConfigSnapshot(state.configSnapshot, MEMORY_WIKI_PLUGIN_ID, {
-      enabledByDefault: false,
-    })
+    isPluginEnabledInConfigSnapshot(state.configSnapshot, MEMORY_WIKI_PLUGIN_ID)
   );
 }
 
