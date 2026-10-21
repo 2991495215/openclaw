@@ -85,8 +85,11 @@ suite.define(() => {
                 .toBe(true);
             }
             if (testCase.id === "clawhub") {
-              const card = page.locator(".chat-thread .chat-clawhub-card");
-              await card.waitFor();
+              // Compare settled catalog content, not the transient loading card.
+              await expectBrowser(page.locator(".chat-clawhub-card")).toHaveAttribute(
+                "aria-busy",
+                "false",
+              );
               // The card's entrance transform can outlive its first visible frame.
               await waitForLayoutSettled(page, ".chat-thread .chat-clawhub-card");
             }
