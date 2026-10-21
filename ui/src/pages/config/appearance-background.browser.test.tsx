@@ -3,15 +3,23 @@ import {
   DEFAULT_BACKGROUND_PREFERENCE,
   type BackgroundPreference,
 } from "../../../../packages/gateway-protocol/src/schema/background-preferences.ts";
+import type { UsersBackgroundResult } from "../../../../packages/gateway-protocol/src/schema/users-background.ts";
+import { createDeferred } from "../../../../test/helpers/promise.js";
+import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ApplicationContext, ApplicationTheme } from "../../app/context.ts";
+import {
+  rememberProfileAppearanceIdentity,
+  resetProfileAppearancePrefs,
+} from "../../app/server-prefs-profile.ts";
 import { loadSettings } from "../../app/settings.ts";
 import type { SessionBackground } from "../../components/session-background.tsx";
+import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import {
   createApplicationGateway,
   createSolidApplicationContextProvider,
 } from "../../test-helpers/solid-application-context.tsx";
-import { flush } from "../../test-helpers/solid-settle.ts";
+import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { createStorageMock } from "../../test-helpers/storage.ts";
 import { AppearanceBackground } from "./appearance-background.tsx";
 import "../../styles.css";
@@ -28,12 +36,27 @@ beforeEach(() => {
 });
 afterEach(() => {
   host.remove();
+  resetProfileAppearancePrefs();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
-async function mount(preference: Partial<BackgroundPreference> = {}) {
+async function mount(
+  preference: Partial<BackgroundPreference> = {},
+  client?: GatewayBrowserClient,
+) {
   const gateway = createApplicationGateway();
+  if (client) {
+    vi.spyOn(client, "connected", "get").mockReturnValue(true);
+    rememberProfileAppearanceIdentity(gateway.gateway.connection.gatewayUrl, "background-demo");
+    gateway.publish({
+      ...gateway.gateway.snapshot,
+      client,
+      phase: "connected",
+      selfUser: { id: "background-demo" },
+    });
+  }
   const notifications = new EventTarget();
   const subscribe = (type: string) => (listener: () => void) => {
     notifications.addEventListener(type, listener);
@@ -52,6 +75,7 @@ async function mount(preference: Partial<BackgroundPreference> = {}) {
   };
   const context = {
     gateway: gateway.gateway,
+    runtimeConfig: { state: { connected: true }, canPatch: true },
     theme,
     router: { subscribe: subscribe("route") },
   } as ApplicationContext;
@@ -234,4 +258,85 @@ it("passes live preferences to the shared renderer without enabling disabled pla
   theme.refresh();
   flush();
   expect(preview.presented).toBe(false);
+});
+
+function chooseBackgroundFile(input: HTMLInputElement) {
+  const transfer = new DataTransfer();
+  transfer.items.add(new File(["synthetic image"], "background.png", { type: "image/png" }));
+  input.files = transfer.files;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+it("presents background upload failure and retry without losing the selected controls", async () => {
+  const first = createDeferred<UsersBackgroundResult>();
+  const second = createDeferred<UsersBackgroundResult>();
+  let uploads = 0;
+  const request = vi.fn((method: string) => {
+    if (method === "users.background.upload") {
+      return uploads++ === 0 ? first.promise : second.promise;
+    }
+    return Promise.resolve({ status: "ok", asset: null, preference: null });
+  });
+  const { element } = await mount({}, createTestGatewayClient(request));
+  const input = element.querySelector<HTMLInputElement>("[data-background-file]")!;
+  const upload = element.querySelector<HTMLButtonElement>("[data-background-upload]")!;
+  chooseBackgroundFile(input);
+  await waitForSolid(() => {
+    expect(uploads).toBe(1);
+    expect(upload.disabled).toBe(true);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain("Preparing your image");
+  });
+  first.reject(new Error("Synthetic upload failure"));
+  await waitForSolid(() => {
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain(
+      "Synthetic upload failure",
+    );
+    expect(upload.disabled).toBe(false);
+  });
+  chooseBackgroundFile(input);
+  await waitForSolid(() => expect(uploads).toBe(2));
+  second.resolve({ status: "ok", asset: null, preference: null });
+  await waitForSolid(() => {
+    expect(element.querySelector('[role="status"]')?.textContent).toContain(
+      "Background image saved.",
+    );
+    expect(element.querySelector('[role="alert"]')).toBeNull();
+    expect(upload.disabled).toBe(false);
+  });
+  expect(element.querySelector("[data-background-file]")).toBe(input);
+  const writes = request.mock.calls.filter(([method]) => method === "users.background.upload");
+  expect(writes).toHaveLength(2);
+});
+
+it("retires an unresolved upload before admitting the replacement profile's upload", async () => {
+  const abandoned = createDeferred<UsersBackgroundResult>();
+  let uploads = 0;
+  const request = vi.fn((method: string) => {
+    if (method === "users.background.upload") {
+      uploads += 1;
+      return uploads === 1
+        ? abandoned.promise
+        : Promise.resolve({ status: "ok", asset: null, preference: null });
+    }
+    return Promise.resolve({ status: "ok", asset: null, preference: null });
+  });
+  const { element, gateway } = await mount({}, createTestGatewayClient(request));
+  const input = element.querySelector<HTMLInputElement>("[data-background-file]")!;
+  const upload = element.querySelector<HTMLButtonElement>("[data-background-upload]")!;
+  chooseBackgroundFile(input);
+  await waitForSolid(() => expect(uploads).toBe(1));
+  gateway.publish({ ...gateway.gateway.snapshot, selfUser: { id: "replacement-demo" } });
+  await waitForSolid(() => expect(upload.disabled).toBe(false));
+  chooseBackgroundFile(input);
+  await waitForSolid(() => {
+    expect(uploads).toBe(2);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain(
+      "Background image saved.",
+    );
+    expect(upload.disabled).toBe(false);
+  });
+  abandoned.reject(new Error("Retired upload failure"));
+  await waitForSolid(() => expect(element.querySelector('[role="alert"]')).toBeNull());
+  chooseBackgroundFile(input);
+  await waitForSolid(() => expect(uploads).toBe(3));
 });

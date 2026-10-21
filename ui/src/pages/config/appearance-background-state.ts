@@ -115,7 +115,9 @@ export function createAppearanceBackground(
     gatewayUrl: string;
   } | null = null;
   let metadataRevision = 0;
-  let mutationScope: BackgroundScope | null = null;
+  let mutationScope: (BackgroundScope & { retire: () => void }) | null = null;
+  let mutation: { kind: "uploading" | "removing"; completion: Promise<string | null> } | null =
+    null;
   let imagePreview: { identity: string; controller: AbortController } | null = null;
   function captureScope(): BackgroundScope | null {
     const snapshot = application.gateway.snapshot;
@@ -222,7 +224,9 @@ export function createAppearanceBackground(
   }
 
   function retireMutation() {
+    mutationScope?.retire();
     mutationScope = null;
+    mutation = null;
     publish();
     setMessage(null);
   }
@@ -371,6 +375,7 @@ export function createAppearanceBackground(
     }
     patchSettings({ background: { ...readPreference(), ...patch } });
     application.theme.refresh();
+    mutation = null;
     setMessage(null);
   }
 
@@ -394,11 +399,12 @@ export function createAppearanceBackground(
     change(selectBackgroundSource({ kind }, application.theme.settings.background));
   }
 
-  async function mutate(file?: File) {
+  function mutate(file?: File) {
     const scope = captureScope();
     if (!scope || !canUpload() || busy() || readWriteStatus().status !== "saved") {
-      return;
+      return undefined;
     }
+    mutation = null;
     if (
       file &&
       (!file.size ||
@@ -406,30 +412,36 @@ export function createAppearanceBackground(
         (file.type !== "" && !["image/jpeg", "image/png", "image/webp"].includes(file.type)))
     ) {
       setMessage({ kind: "error", text: t("configView.appearance.background.invalidFile") });
-      return;
+      return undefined;
     }
     dismissCanvasPreview();
-    mutationScope = scope;
-    publish();
-    setMessage({
-      kind: "status",
-      text: t(
-        file
-          ? "configView.appearance.background.uploading"
-          : "configView.appearance.background.removing",
-      ),
+    let retire!: () => void;
+    const retired = new Promise<null>((resolve) => {
+      retire = () => resolve(null);
     });
+    const admitted = { ...scope, retire };
+    mutationScope = admitted;
+    setMessage(null);
+    const completion = Promise.race([completeMutation(admitted, file), retired]);
+    mutation = { kind: file ? "uploading" : "removing", completion };
+    // The renderer observes the same rejection through its native error boundary.
+    void completion.catch(() => undefined);
+    publish();
+    return completion;
+  }
+
+  async function completeMutation(scope: NonNullable<typeof mutationScope>, file?: File) {
     const isCurrent = () => owns(scope) && mutationScope === scope;
     try {
       const imageBase64 = file ? await readFileBase64(file) : undefined;
       if (!isCurrent()) {
-        return;
+        return null;
       }
       // Read the authoritative image/preference pair before the guarded mutation;
       // another browser's later edit conflicts instead of being overwritten.
       const current = await scope.client.request<UsersBackgroundResult>("users.background.get", {});
       if (!isCurrent()) {
-        return;
+        return null;
       }
       if (current.status !== "ok") {
         throw new Error(t("configView.appearance.background.profileRequired"));
@@ -443,7 +455,7 @@ export function createAppearanceBackground(
         file ? { ...expected, imageBase64 } : expected,
       );
       if (!isCurrent()) {
-        return;
+        return null;
       }
       if (result.status !== "ok") {
         throw new Error(
@@ -464,18 +476,16 @@ export function createAppearanceBackground(
       });
       metadata = { ...scope, revision: metadataRevision, snapshot: result };
       application.theme.refresh();
-      setMessage({
-        kind: "status",
-        text: t(
-          file
-            ? "configView.appearance.background.saved"
-            : "configView.appearance.background.removed",
-        ),
-      });
+      return t(
+        file
+          ? "configView.appearance.background.saved"
+          : "configView.appearance.background.removed",
+      );
     } catch (error) {
       if (isCurrent()) {
-        setMessage({ kind: "error", text: formatUiError(error) });
+        throw error;
       }
+      return null;
     } finally {
       if (isCurrent()) {
         publish();
@@ -502,7 +512,7 @@ export function createAppearanceBackground(
       preference: readPreference(),
       imageUrl,
       hasImage: Boolean(readSnapshot()?.asset),
-      busy: busy(),
+      mutation,
       uploadAllowed: canUpload() && writeStatus.status === "saved",
       scopeHint: !scope
         ? t("configView.appearance.background.browserOnly")
@@ -513,8 +523,8 @@ export function createAppearanceBackground(
       onSource: (source: BackgroundPreference["source"]["kind"]) => selectSource(source),
       onChange: (patch: Partial<BackgroundPreference>) => change(patch),
       onChooseImage: chooseFile,
-      onRemoveImage: () => void mutate(),
-      onFile: (file: File) => void mutate(file),
+      onRemoveImage: () => mutate(),
+      onFile: (file: File) => mutate(file),
       onPreviewStart: startCanvasPreview,
       onPreviewInput: () => showCanvasPreview(),
       onPreviewEnd: endCanvasPreview,
