@@ -9,6 +9,7 @@ import { formatUiError } from "../../lib/format-error.ts";
 import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
 import "../../styles/plugins.css";
 import "../../styles/claws-catalog.css";
+import { PluginDetailLoadingHero } from "../plugins/detail-loading-hero.tsx";
 import type { ClawsCatalogViewProps } from "./claws-catalog-view-props.ts";
 import { ClawsDetailView } from "./claws-detail-view.tsx";
 
@@ -23,14 +24,7 @@ function CatalogLoading(props: { pageMode: boolean }) {
         </>
       }
     >
-      <div class="plugin-catalog-detail__hero">
-        <div class="plugin-catalog-detail__icon skeleton" />
-        <div>
-          <div class="plugin-catalog-detail__loading-title skeleton" />
-          <div class="plugin-catalog-detail__loading-publisher skeleton" />
-          <div class="plugin-catalog-detail__loading-summary skeleton" />
-        </div>
-      </div>
+      <PluginDetailLoadingHero />
       <div class="plugin-catalog-detail__content">
         <div class="plugin-catalog-detail__main" aria-hidden="true">
           <div class="plugin-catalog-detail__loading-card skeleton" />
