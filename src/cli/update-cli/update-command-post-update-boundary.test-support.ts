@@ -42,7 +42,7 @@ export function registerBoundaryFinalizationControls({
 }) {
   registerServiceStartRefusalFinalizationTests({ makeTempDir, mocks });
 
-  it.each(["confirmed", "unknown", "refused", "revoked"] as const)(
+  it.each(["confirmed", "unknown", "refused", "revoked", "replaced"] as const)(
     "settles progress before finalization and retains its failure (%s)",
     async (outcome) => {
       const entered = createDeferred();
@@ -65,7 +65,7 @@ export function registerBoundaryFinalizationControls({
       const rollback = vi.spyOn(rollbackModule, "rollbackFailedUpdate");
       const prepareService = vi.spyOn(postUpdateMaintenance, "preparePostUpdateService");
       const finishing = finishSuccessfulPackageSwitch(
-        outcome === "revoked" ? { run } : {},
+        outcome === "revoked" || outcome === "replaced" ? { run } : {},
         {},
         {
           beforeFinalization: async () => {
@@ -89,6 +89,9 @@ export function registerBoundaryFinalizationControls({
         expect(mocks.restartService).not.toHaveBeenCalled();
         expect(rollback).not.toHaveBeenCalled();
         current = outcome !== "revoked";
+        if (outcome === "replaced") {
+          run.executorFence = { assertCurrent() {} };
+        }
         release.resolve();
         if (outcome === "confirmed") {
           await finishing;
@@ -108,7 +111,16 @@ export function registerBoundaryFinalizationControls({
           });
         } else {
           await expect(finishing).rejects.toMatchObject({
-            errors: [expect.objectContaining({ message: "requester-revoked" }), receiptFailure],
+            errors: [
+              outcome === "revoked"
+                ? expect.objectContaining({ message: "requester-revoked" })
+                : expect.objectContaining({
+                    cause: expect.objectContaining({
+                      message: "Package finalization lost its original executor.",
+                    }),
+                  }),
+              receiptFailure,
+            ],
           });
           expect(getUpdateRun(record.runId, { env })?.status).toBe("running");
         }

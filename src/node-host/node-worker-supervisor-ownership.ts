@@ -102,7 +102,7 @@ export type NodeWorkerRunningChild = NodeWorkerActiveBase & {
   connectionFailure: { errorText?: string };
   turn?: NodeWorkerActiveTurn;
   retiring: boolean;
-  idleRetention?: boolean;
+  idleGeneration?: number;
   retention?:
     | { reason: "background"; turnId: string }
     | { reason: "idle"; turnId: string; since: number; timer: NodeJS.Timeout };

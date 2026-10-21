@@ -685,6 +685,7 @@ it.each([
                     runtimePin: originalRuntimePin!,
                   },
                   service: { serviceEnv: env },
+                  packageFingerprint: originalFingerprint,
                   packageIdentity: originalFingerprint,
                   // Deliberately uncertified; these fields must not grant recovery.
                   launcher: {

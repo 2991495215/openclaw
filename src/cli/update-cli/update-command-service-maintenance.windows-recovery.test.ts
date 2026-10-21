@@ -230,7 +230,7 @@ it.each(["disable", "restore", "compensation", "never", "stop-return", "stop-rej
     }),
 );
 
-it.each(["before-disable", "after-disable"] as const)(
+it.each(["before-disable", "after-disable", "invocation-replaced"] as const)(
   "preserves Windows task compensation authority when interrupted %s",
   (interruption) =>
     withServiceHome(async (home) => {
@@ -261,6 +261,9 @@ it.each(["before-disable", "after-disable"] as const)(
           enabled = nextEnabled;
           if (!nextEnabled) {
             run.interrupted = true;
+            if (interruption === "invocation-replaced") {
+              opts.run = { ...run };
+            }
             return { code: 124, stdout: "", stderr: "disable failed after commit" };
           }
           return { code: 0, stdout: "", stderr: "" };
@@ -299,13 +302,21 @@ it.each(["before-disable", "after-disable"] as const)(
       } catch (error) {
         failure = error;
       }
-      expect(mutations).toEqual(interruption === "before-disable" ? [] : ["/DISABLE", "/ENABLE"]);
-      expect(enabled).toBe(true);
+      expect(mutations).toEqual(
+        interruption === "before-disable"
+          ? []
+          : interruption === "invocation-replaced"
+            ? ["/DISABLE"]
+            : ["/DISABLE", "/ENABLE"],
+      );
+      expect(enabled).toBe(interruption !== "invocation-replaced");
       expect(service.stop).not.toHaveBeenCalled();
       expect(String(failure)).toMatch(
         interruption === "before-disable"
           ? /requester-revoked/
-          : /Scheduled Task disable failed: disable failed after commit/,
+          : interruption === "invocation-replaced"
+            ? /requester-revoked/
+            : /Scheduled Task disable failed: disable failed after commit/,
       );
     }),
 );

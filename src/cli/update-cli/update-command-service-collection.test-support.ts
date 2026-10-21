@@ -24,9 +24,9 @@ import * as verification from "./update-command-verification.js";
 const { bindExecutionGuards, executionParams, mocks, successfulUpdate } =
   await import("./update-command-execution.test-support.js");
 export function registerServiceCollectionTests() {
-  it.each([false, true])(
-    "checks publication authority after stopping a collected unit (revoked=%s)",
-    (revoked) =>
+  it.each(["unchanged", "definition changed", "authority revoked"] as const)(
+    "revalidates a collected systemd user unit before publication: %s",
+    (scenario) =>
       withServiceHome(async (home) => {
         expect(getFileLockProcessStartTime(process.pid)).not.toBeNull();
         mockProcessPlatform("linux");
@@ -66,6 +66,7 @@ export function registerServiceCollectionTests() {
         const runId = createUpdateRun({ trigger: "cli" }).runId;
         params.opts.run = { runId, env: process.env };
         let running = true;
+        let metadataLoads = 0;
         let inspections = 0;
         const service = createMockGatewayService({
           label: "systemd",
@@ -76,10 +77,19 @@ export function registerServiceCollectionTests() {
             }
             return structuredClone(command);
           },
-          readRuntime: async () => {
+          readRuntime: async (_env, options) => {
             if (!running) {
               // systemd can collect the stopped unit between its command and runtime reads.
-              return { status: "unknown" };
+              const inspection = options?.loadForInspection;
+              if (!inspection) {
+                return { status: "unknown" };
+              }
+              if (scenario === "authority revoked") {
+                params.opts.run!.interrupted = true;
+              }
+              inspection.assertCurrent();
+              expect(inspection.managerUid).toBe(2001);
+              metadataLoads++;
             }
             return {
               status: running ? "running" : "stopped",
@@ -89,18 +99,13 @@ export function registerServiceCollectionTests() {
           },
           stop: vi.fn(async () => {
             running = false;
+            if (scenario === "definition changed") {
+              command.programArguments.push("--port", "18790");
+            }
           }),
         });
         vi.spyOn(services, "resolveGatewayService").mockReturnValue(service);
-        mocks.maybeStopService.mockImplementation(
-          async (...args: Parameters<typeof maybeStopManagedServiceBeforeMutableUpdate>) => {
-            const stopped = await maybeStopManagedServiceBeforeMutableUpdate(...args);
-            if (revoked && stopped.stopped) {
-              params.opts.run!.interrupted = true;
-            }
-            return stopped;
-          },
-        );
+        mocks.maybeStopService.mockImplementation(maybeStopManagedServiceBeforeMutableUpdate);
         vi.spyOn(verification, "verifyPreviousManagedGatewayForUpdate").mockImplementation(
           async (options) => {
             options.assertCurrent?.();
@@ -121,21 +126,31 @@ export function registerServiceCollectionTests() {
             return executeMutableUpdate(await bindExecutionGuards(params));
           });
           expect(service.stop, JSON.stringify(execution?.result)).toHaveBeenCalledOnce();
-          expect(running).toBe(false);
           expect(execution?.preManagedServiceStop).toMatchObject({ stopped: true, running: true });
-          if (revoked) {
-            expect(execution?.result).toMatchObject({
-              status: "error",
-              reason: "requester-revoked",
-            });
-            expect(execution?.mutationStarted).toBe(false);
-            expect(published).not.toHaveBeenCalled();
-          } else {
+          if (scenario === "unchanged") {
             expect(execution?.result.status).toBe("ok");
             expect(execution?.mutationStarted).toBe(true);
+            expect(metadataLoads).toBeGreaterThan(0);
             expect(published).toHaveBeenCalledOnce();
+            expect(command).toEqual(originalCommand);
+          } else {
+            expect(execution?.mutationStarted).toBe(false);
+            expect(execution?.result).toMatchObject({
+              status: "error",
+              reason:
+                scenario === "authority revoked"
+                  ? "requester-revoked"
+                  : "managed-service-preflight",
+            });
+            expect(published).not.toHaveBeenCalled();
+            if (scenario === "authority revoked") {
+              expect(metadataLoads).toBe(0);
+            } else {
+              expect(execution?.result.steps.at(-1)?.failureFacts).toEqual([
+                expect.objectContaining({ code: "service-definition-changed" }),
+              ]);
+            }
           }
-          expect(command).toEqual(originalCommand);
           expect(service.install).not.toHaveBeenCalled();
           expect(service.start).not.toHaveBeenCalled();
           expect(service.restart).not.toHaveBeenCalled();

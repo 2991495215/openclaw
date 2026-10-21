@@ -2,6 +2,9 @@
 import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
+import { resolveGatewayProfileSuffix } from "../../daemon/constants.js";
+import { resolveLaunchAgentLabel } from "../../daemon/launchd-label.js";
 import { resolveTaskName } from "../../daemon/schtasks-layout.js";
 import {
   isScheduledTaskDefinitelyNotRunning,
@@ -12,6 +15,7 @@ import { summarizeGatewayServiceLayout } from "../../daemon/service-layout.js";
 import { withGatewayServiceOperationLock } from "../../daemon/service-operation-lock.js";
 import type { GatewayServiceState } from "../../daemon/service-types.js";
 import { readGatewayServiceState, resolveGatewayService } from "../../daemon/service.js";
+import { resolveSystemdServiceName } from "../../daemon/systemd-service-files.js";
 import { readActiveGatewayLockIdentity } from "../../infra/gateway-lock.js";
 import { acquireGatewayStateOwner } from "../../infra/gateway-state-owner.js";
 import { hasNodeErrorCode, isPathInside } from "../../infra/path-guards.js";
@@ -161,6 +165,18 @@ export async function withGatewayRuntimeArtifactPublication<T>(
       assertCurrent();
       const database = await outputIdentity(resolveOpenClawStateSqlitePath(state.env));
       assertCurrent();
+      const serviceName =
+        process.platform === "darwin"
+          ? resolveLaunchAgentLabel(state.env)
+          : process.platform === "win32"
+            ? resolveTaskName(state.env)
+            : resolveSystemdServiceName(state.env);
+      const nativeIdentity = stableStringify({
+        command: state.command,
+        serviceName,
+        profile: resolveGatewayProfileSuffix(state.env.OPENCLAW_PROFILE),
+        managerUid: observedSystemdManagerUid(state),
+      });
       const inspectServing = async (command: GatewayServiceState["command"]) => {
         const layout = await summarizeGatewayServiceLayout(command);
         assertCurrent();
@@ -245,7 +261,7 @@ export async function withGatewayRuntimeArtifactPublication<T>(
           return consumer ? !consumer.disjoint : null;
         },
       });
-      return { disjoint, database, serving, root: target.real, destinations };
+      return { disjoint, parents, destinations, database, nativeIdentity, serving };
     };
     const inspect = () => readInspection().catch(inspectionFailed);
     const before = await inspect();
@@ -254,11 +270,32 @@ export async function withGatewayRuntimeArtifactPublication<T>(
       refuse();
     }
     const assertPublicationCurrent = async () => {
-      // Pin write destinations, but let current service facts replace older observations.
       const current = await inspect();
+      assertCurrent();
+      const changedIdentity = (previous: PathIdentity, next: PathIdentity) =>
+        previous.real !== next.real ||
+        Boolean(
+          previous.stat &&
+          (!next.stat ||
+            previous.stat.dev !== next.stat.dev ||
+            previous.stat.ino !== next.stat.ino),
+        );
       if (
-        current.root !== before.root ||
-        current.destinations.some((entry, index) => entry.real !== before.destinations[index]!.real)
+        before.disjoint !== current.disjoint ||
+        before.database.real !== current.database.real ||
+        before.nativeIdentity !== current.nativeIdentity ||
+        before.parents.some((parent, index) => changedIdentity(parent, current.parents[index]!)) ||
+        before.destinations.some(
+          (destination, index) => destination.real !== current.destinations[index]!.real,
+        ) ||
+        (before.serving &&
+          (!current.serving ||
+            changedIdentity(before.serving.root, current.serving.root) ||
+            before.serving.entrypoint.real !== current.serving.entrypoint.real ||
+            (!before.destinations.some((destination) =>
+              isPathInside(destination.real, current.serving!.entrypoint.real),
+            ) &&
+              changedIdentity(before.serving.entrypoint, current.serving.entrypoint))))
       ) {
         refuse();
       }

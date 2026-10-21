@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fsp from "node:fs/promises";
 import { withTempWorkspace } from "@openclaw/fs-safe/temp";
+import { workspaceStatIdentity } from "../gateway/worker-environments/workspace-hash-memo.js";
 import { copyFileHandle } from "../infra/file-descriptor.js";
 import { root, type Root } from "../infra/fs-safe.js";
 import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
@@ -27,6 +28,8 @@ async function stageUploadSource(params: {
   const source = opened.handle;
   const destination = await fsp.open(params.destination, "wx", 0o600);
   try {
+    const before = await source.stat({ bigint: true });
+    const identity = workspaceStatIdentity("worker", before);
     const hash = createHash("sha256");
     const offset = await copyFileHandle(source, destination, {
       maxBytes: params.source.size,
@@ -35,7 +38,12 @@ async function stageUploadSource(params: {
         hash.update(chunk);
       },
     });
-    if (offset !== params.source.size || hash.digest("hex") !== params.source.sha256) {
+    const after = await source.stat({ bigint: true });
+    if (
+      offset !== params.source.size ||
+      workspaceStatIdentity("worker", after) !== identity ||
+      hash.digest("hex") !== params.source.sha256
+    ) {
       throw new Error("workspace changed while preparing its transfer snapshot");
     }
   } finally {

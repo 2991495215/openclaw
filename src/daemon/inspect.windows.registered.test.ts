@@ -229,6 +229,8 @@ it.each([
   { extension: "cmd", exhaustedBy: "fractional query" },
   { extension: "cmd", exhaustedBy: "source" },
   { extension: "vbs", exhaustedBy: "launcher" },
+  { extension: "cmd", exhaustedBy: "source revalidation" },
+  { extension: "vbs", exhaustedBy: "launcher revalidation" },
 ])(
   "retains completed $extension discovery when $exhaustedBy exhausts the shared inventory budget",
   async ({ extension, exhaustedBy }) => {
@@ -298,6 +300,7 @@ it.each([
       };
     });
     const fileObservations: number[] = [];
+    const reads = new Map<string, number>();
     vi.spyOn(fs, "readFile").mockImplementation(async (pathname) => {
       fileObservations.push(now);
       const observed = tasks.find(
@@ -306,9 +309,11 @@ it.each([
       if (typeof pathname !== "string" || !observed) {
         throw new Error("Unexpected file read in bounded inventory fixture");
       }
+      const read = (reads.get(pathname) ?? 0) + 1;
+      reads.set(pathname, read);
       if (observed === slow) {
         const phase = pathname === slow.scriptPath ? "source" : "launcher";
-        if (phase === exhaustedBy) {
+        if (`${phase}${read === 2 ? " revalidation" : ""}` === exhaustedBy) {
           now = 60_000;
         }
       }

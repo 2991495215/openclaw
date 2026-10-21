@@ -13,7 +13,10 @@ import {
 import { inspectUpdateDatabaseContexts } from "./update-command-database-context.js";
 import { createUpdateCommandExecutionGuards } from "./update-command-execution-guards.js";
 import type { FinishUpdateParams } from "./update-command-finish-types.js";
-import { captureOwnedManagedUpdateContext } from "./update-command-managed-context.js";
+import {
+  captureOwnedManagedUpdateContext,
+  revalidateUpdateDatabaseContext,
+} from "./update-command-managed-context.js";
 import { createPackageRuntimeRecovery } from "./update-command-node-runtime.js";
 import { preflightConfiguredNpmPluginTargets } from "./update-command-plugin-preflight.js";
 import { finishUpdate } from "./update-command-post-update.js";
@@ -86,7 +89,7 @@ export async function finishAlreadyCurrentUpdate(
     };
     const admission = await inspectUpdateDatabaseContexts(inspection);
     const service = admission.service;
-    const context = admission.foreground ? admission.contexts[0]! : admission.contexts.at(-1)!;
+    let context = admission.foreground ? admission.contexts[0]! : admission.contexts.at(-1)!;
     const membership = await mutableUpdateGatewayServiceBlock({
       preManagedServiceStop:
         service ?? admission.services.get(params.managedServiceRoot ?? params.root),
@@ -158,6 +161,13 @@ export async function finishAlreadyCurrentUpdate(
     for (const warning of pluginWarnings) {
       defaultRuntime[params.opts.json ? "error" : "log"](warning.message);
     }
+    await inspectUpdateDatabaseContexts({
+      ...inspection,
+      expectedServices: admission.services,
+      expectedForeground: admission.foreground,
+    });
+    admission.contexts = await Promise.all(admission.contexts.map(revalidateUpdateDatabaseContext));
+    context = admission.foreground ? admission.contexts[0]! : admission.contexts.at(-1)!;
     let stopState = admission.foreground
       ? undefined
       : admission.services.get(params.managedServiceRoot ?? params.root);

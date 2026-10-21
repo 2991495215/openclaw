@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -16,6 +17,7 @@ import { encodeWindowsLauncherScript } from "../infra/windows-launcher-encoding.
 import * as probeHosts from "./gateway-service-probe-hosts.js";
 import { findExtraGatewayServices } from "./inspect.js";
 import { discoverManagedGatewayBindings } from "./managed-gateway-bindings.js";
+import * as taskLayout from "./schtasks-layout.js";
 import { resolveStartupEntryPath } from "./schtasks-layout.js";
 import * as taskProcesses from "./schtasks-process-snapshot.js";
 import * as taskProbe from "./schtasks-state-probe.js";
@@ -289,64 +291,94 @@ describe("Windows Startup service inventory", () => {
     },
   );
 
-  it("settles exact Startup inspection when its initial file read stalls", async () => {
-    const { startupPath } = await startup("9.4");
-    const original = await fs.readFile(startupPath);
-    const pending = createDeferred<typeof original>();
-    const entered = createDeferred();
-    let nativeRead = false;
-    let signal: AbortSignal | undefined;
-    vi.mocked(spawnSync).mockImplementation(() => {
-      nativeRead = true;
-      return {
-        pid: 1234,
-        output: [null, "", ""],
-        stdout: JSON.stringify([
-          {
-            ProcessId: 4242,
-            CommandLine:
-              '"C:/Node/node.exe" "C:/Applications/openclaw/dist/index.js" gateway --port 19789',
-          },
-        ]),
-        stderr: "",
-        status: 0,
-        signal: null,
-      };
-    });
-    const readFile = fs.readFile.bind(fs);
-    vi.spyOn(fs, "readFile").mockImplementation((...args) => {
-      if (args[0] === startupPath) {
-        const options = args[1];
-        signal = typeof options === "object" && options !== null ? options.signal : undefined;
-        entered.resolve();
-        return pending.promise;
-      }
-      return readFile(...args);
-    });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
-    let result: Awaited<ReturnType<typeof readGatewayServiceState>> | undefined;
-    const inspection = readGatewayServiceState(resolveGatewayService(), {
-      env: environment(),
-      windowsStartupEntry: startupPath,
-      timeoutMs: 200,
-    }).then((state) => {
-      result = state;
-    });
-    try {
-      await entered.promise;
-      await vi.advanceTimersByTimeAsync(200);
-      expect(result).toMatchObject({
-        running: false,
-        runtime: { status: "unknown", inspectionFailure: { timeoutMs: 200 } },
+  it.each(["initial", "revalidation"] as const)(
+    "settles exact Startup inspection when its %s file read stalls",
+    async (phase) => {
+      const { startupPath } = await startup("9.4");
+      const original = await fs.readFile(startupPath);
+      const pending = createDeferred<typeof original>();
+      const entered = createDeferred();
+      let nativeRead = false;
+      let signal: AbortSignal | undefined;
+      vi.mocked(spawnSync).mockImplementation(() => {
+        nativeRead = true;
+        return {
+          pid: 1234,
+          output: [null, "", ""],
+          stdout: JSON.stringify([
+            {
+              ProcessId: 4242,
+              CommandLine:
+                '"C:/Node/node.exe" "C:/Applications/openclaw/dist/index.js" gateway --port 19789',
+            },
+          ]),
+          stderr: "",
+          status: 0,
+          signal: null,
+        };
       });
-      expect(signal?.aborted).toBe(true);
-      expect(nativeRead).toBe(false);
-    } finally {
-      pending.resolve(original);
-      await inspection;
-      vi.useRealTimers();
-    }
-  });
+      const readFile = fs.readFile.bind(fs);
+      vi.spyOn(fs, "readFile").mockImplementation((...args) => {
+        if (args[0] === startupPath && (phase === "initial" || nativeRead)) {
+          const options = args[1];
+          signal = typeof options === "object" && options !== null ? options.signal : undefined;
+          entered.resolve();
+          return pending.promise;
+        }
+        return readFile(...args);
+      });
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+      let result: Awaited<ReturnType<typeof readGatewayServiceState>> | undefined;
+      const inspection = readGatewayServiceState(resolveGatewayService(), {
+        env: environment(),
+        windowsStartupEntry: startupPath,
+        timeoutMs: 200,
+      }).then((state) => {
+        result = state;
+      });
+      try {
+        await entered.promise;
+        await vi.advanceTimersByTimeAsync(200);
+        expect(result).toMatchObject({
+          running: false,
+          runtime: { status: "unknown", inspectionFailure: { timeoutMs: 200 } },
+        });
+        expect(signal?.aborted).toBe(true);
+        expect(nativeRead).toBe(phase === "revalidation");
+      } finally {
+        pending.resolve(original);
+        await inspection;
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["launcher", "script"] as const)(
+    "rejects a changed Startup %s after runtime inspection",
+    async (changed) => {
+      const { startupPath, scriptPath } = await startup("9.4");
+      const changedPath = changed === "launcher" ? startupPath : scriptPath;
+      const original = await fs.readFile(changedPath);
+      vi.spyOn(taskProcesses, "readWindowsProcessSnapshot").mockImplementation(() => {
+        writeFileSync(
+          changedPath,
+          Buffer.concat([
+            original,
+            Buffer.from("\r\n", changed === "launcher" ? "utf16le" : "utf8"),
+          ]),
+        );
+        return null;
+      });
+      await expect(
+        readGatewayServiceState(resolveGatewayService(), {
+          env: environment(),
+          windowsStartupEntry: startupPath,
+          requireEffective: true,
+          requireLoadedCommand: true,
+        }),
+      ).rejects.toThrow("Startup launcher changed during runtime inspection");
+    },
+  );
 
   it.each([true])(
     "reports Startup entries through Doctor (selected Task exists=%s)",
@@ -449,7 +481,7 @@ describe("Windows Startup service inventory", () => {
       return [task];
     });
     vi.mocked(taskProbe.probeScheduledTaskState).mockImplementation(() => {
-      now += 9_999.5;
+      now += 4_999.75;
       return { status: "found", ...task };
     });
     const inventory = await findExtraGatewayServices(environment(), { deep: true });
@@ -461,6 +493,25 @@ describe("Windows Startup service inventory", () => {
       { source: "schtasks", message: expect.stringMatching(/deadline expired/) },
     ]);
   });
+
+  it.each(["entry", "script"] as const)(
+    "rejects the %s retargeted during inspection",
+    async (changed) => {
+      const { startupPath, scriptPath } = await startup("9.4");
+      await expect(
+        taskLayout.readStartupEntryCommand(startupPath, {
+          onLauncherContent: (content) => {
+            if (content.includes("OPENCLAW_SERVICE_KIND")) {
+              writeFileSync(
+                changed === "entry" ? startupPath : scriptPath,
+                "changed after capture",
+              );
+            }
+          },
+        }),
+      ).rejects.toThrow("Startup service command could not be inspected.");
+    },
+  );
 
   it("reports recognizable malformed and unreadable entries without treating unrelated files as Gateways", async () => {
     const env = { ...environment(), OPENCLAW_WINDOWS_TASK_NAME: "Selected Custom" };

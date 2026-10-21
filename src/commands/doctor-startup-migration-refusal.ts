@@ -46,6 +46,12 @@ export function throwStartupMigrationGuardRejected(): never {
   );
 }
 
+export function throwStartupMigrationIdentityChanged(reason?: string): never {
+  throwStartupMigrationRefusal(
+    `OpenClaw migration inputs changed during startup${reason ? ` (${reason})` : ""}; refusing to report the gateway ready. Restart OpenClaw so state migrations run against the final config and plugin inventory.`,
+  );
+}
+
 // Refuse before any startup writes. This probe borrows no ownership from the
 // runtime lock, which remains with the Gateway run loop's restart lifecycle.
 export async function refuseStartupMigrationsForLiveGatewayOwner(

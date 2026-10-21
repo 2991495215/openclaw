@@ -133,7 +133,9 @@ class NodeWorkerSupervisor {
         await this.recoverRunning(receipt, false);
       });
     })().catch((error: unknown) => {
-      this.initializationPromise = undefined;
+      if (this.initializationPromise === initialization) {
+        this.initializationPromise = undefined;
+      }
       throw error;
     });
     return (this.initializationPromise = initialization);
@@ -196,11 +198,13 @@ class NodeWorkerSupervisor {
       return await admission.done;
     }
     const abort = new AbortController();
-    const idleRetention =
+    const idleGeneration =
       input.idleRetention &&
       descriptor.admission.handshake.protocolFeatures.includes(
         NODE_WORKER_IDLE_RETENTION_PROTOCOL_FEATURE,
-      );
+      )
+        ? this.children.idleGeneration
+        : undefined;
     const admissionSignal = signal ? AbortSignal.any([signal, abort.signal]) : abort.signal;
     const done = (async () => {
       const workspace = await this.workspace.acquirePreparedWorkspace({
@@ -219,7 +223,7 @@ class NodeWorkerSupervisor {
           claimInput,
           admissionSignal,
           workspace?.homeDir,
-          idleRetention,
+          idleGeneration,
         );
       } finally {
         workspace?.release();
@@ -236,7 +240,9 @@ class NodeWorkerSupervisor {
     try {
       return await done;
     } finally {
-      this.admissions.delete(key);
+      if (this.admissions.get(key) === pending) {
+        this.admissions.delete(key);
+      }
     }
   }
 
@@ -246,7 +252,7 @@ class NodeWorkerSupervisor {
     claimInput: NodeWorkerLaunchClaim,
     signal: AbortSignal,
     homeDir?: string,
-    idleRetention?: boolean,
+    idleGeneration?: number,
   ): Promise<NodeWorkerLaunchReceipt> {
     await this.initialize();
     const supervisor = (this.supervisorIdentity ??= requireNodeWorkerProcessIdentity(process.pid));
@@ -311,7 +317,7 @@ class NodeWorkerSupervisor {
         signal.throwIfAborted();
         continue;
       }
-      return await this.children.startTurn(owner, descriptor, claimInput, signal, idleRetention);
+      return await this.children.startTurn(owner, descriptor, claimInput, signal, idleGeneration);
     }
     const claim = await this.capacity.claim(claimInput, supervisor, signal, () =>
       this.children.reclaimIdle(),
@@ -354,7 +360,7 @@ class NodeWorkerSupervisor {
       supervisor,
       signal,
       claim: claimInput,
-      idleRetention,
+      idleGeneration,
     });
     this.starting.set(input.launchId, startup);
     if (signal?.aborted) {
@@ -365,7 +371,9 @@ class NodeWorkerSupervisor {
       return cancellation ? ((await cancellation) ?? receipt) : receipt;
     } finally {
       signal?.removeEventListener("abort", cancelClaimed);
-      this.starting.delete(input.launchId);
+      if (this.starting.get(input.launchId) === startup) {
+        this.starting.delete(input.launchId);
+      }
     }
   }
 
@@ -662,7 +670,9 @@ class NodeWorkerSupervisor {
       this.closeCompleted = true;
     });
     const closePromise = operation.finally(() => {
-      this.closePromise = undefined;
+      if (this.closePromise === closePromise) {
+        this.closePromise = undefined;
+      }
     });
     return (this.closePromise = closePromise);
   }

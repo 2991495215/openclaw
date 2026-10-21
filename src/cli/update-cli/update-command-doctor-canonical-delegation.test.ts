@@ -21,6 +21,7 @@ const { bindExecutionGuards, executionParams, mocks, successfulUpdate } =
 it.each([
   { kind: "git", fault: "healthy" },
   { kind: "package", fault: "requester-revoked" },
+  { kind: "git", fault: "run-replaced" },
 ] as const)(
   "delegates $kind Doctor without reusing its suspended parent ($fault)",
   async ({ kind, fault }) => {
@@ -72,6 +73,9 @@ it.each([
             reachedSpawn = true;
             if (fault === "requester-revoked") {
               requesterCurrent = false;
+            }
+            if (fault === "run-replaced") {
+              params.opts.run = { runId: "replacement-run", env };
             }
             commandOptions.beforeInput?.(pid, spawnedArgv);
           },

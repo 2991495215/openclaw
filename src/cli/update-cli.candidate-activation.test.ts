@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, vi } from "vitest";
 import { sanitizeTriageUpdateFailure } from "../commands/triage-update.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveGatewayTaskScriptPath } from "../daemon/paths.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import type { UpdateDoctorConfigChange } from "../infra/update-doctor-config.js";
@@ -52,6 +54,7 @@ import {
   ExitError,
   getUpdateRun,
   invokeUpdateCli,
+  readConfigFileSnapshot,
   resolveGatewayInstallEntrypoint,
   runCommandWithTimeout,
   runDaemonRestart,
@@ -67,6 +70,7 @@ await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 describe("update-cli", () => {
   const nodeExecutable = resolveTestNodeExecPath();
   const {
+    configSnapshot,
     mockCurrentProcessFreshDoctor,
     mockFileBackedPathExists,
     mockNpmGlobalCommands,
@@ -84,7 +88,7 @@ describe("update-cli", () => {
     tempDirs,
   } = createUpdateCliFixture();
 
-  it.each(["config-change", "legacy-config-change", "invalid"] as const)(
+  it.each(["config-change", "legacy-config-change", "live-config-change", "invalid"] as const)(
     "validates the staged candidate without inference while the previous gateway serves (%s)",
     async (outcome) => {
       const valid = outcome !== "invalid";
@@ -121,6 +125,20 @@ describe("update-cli", () => {
             });
           }
           return runCommand(argv, options);
+        });
+      }
+      let liveConfigPath: string | undefined;
+      if (outcome === "live-config-change") {
+        liveConfigPath = path.join(tempDirs.make("openclaw-update-live-config-"), "openclaw.json");
+        await fs.writeFile(liveConfigPath, "{}\n");
+        vi.mocked(readConfigFileSnapshot).mockImplementation(async () => {
+          const configPath = requireValue(liveConfigPath, "live config path");
+          const raw = await fs.readFile(configPath, "utf8");
+          return configSnapshot(JSON.parse(raw) as OpenClawConfig, {
+            path: configPath,
+            raw,
+            hash: createHash("sha256").update(raw).digest("hex"),
+          });
         });
       }
       const events: string[] = [];
@@ -181,6 +199,12 @@ describe("update-cli", () => {
         ).toMatchObject({
           version: "1.0.0",
         });
+        if (outcome === "live-config-change") {
+          await fs.writeFile(
+            requireValue(liveConfigPath, "live config path"),
+            JSON.stringify({ logging: { level: "debug" } }),
+          );
+        }
         return reportCandidateSteps(options, {
           status: valid ? "ok" : "error",
           durationMs: 1,
@@ -225,7 +249,11 @@ describe("update-cli", () => {
         await updateCommand({ yes: true, json: true }).catch((cause: unknown) => {
           throw new Error(`${getErrorOutput()}\n${JSON.stringify(lastWriteJsonCall())}`, { cause });
         });
-        expect(events).toEqual(["validate", "stop", "plugins"]);
+        expect(events).toEqual(
+          outcome === "live-config-change"
+            ? ["validate", "validate", "stop", "plugins"]
+            : ["validate", "stop", "plugins"],
+        );
         expect(spawn).toHaveBeenCalledOnce();
         expect(runExec).toHaveBeenCalledWith(
           expect.any(String),
@@ -268,6 +296,18 @@ describe("update-cli", () => {
         expect(
           record?.steps.flatMap((step) => (step.configChange ? [step.configChange] : [])),
         ).toEqual(doctorChanges);
+      }
+      if (outcome === "live-config-change") {
+        expect(record?.reason).toBeNull();
+        expect(
+          candidateValidation.mock.calls.map(([options]) => options.config.logging?.level),
+        ).toEqual([undefined, "debug"]);
+        expect(getErrorOutput()).toContain(
+          "Configuration changed during update checks; validating the current configuration before activation.",
+        );
+        expect(
+          JSON.parse(await fs.readFile(requireValue(liveConfigPath, "live config path"), "utf8")),
+        ).toEqual({ logging: { level: "debug" } });
       }
       if (legacyConfigChange) {
         const warning =

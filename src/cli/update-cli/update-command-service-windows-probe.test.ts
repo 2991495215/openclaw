@@ -31,19 +31,19 @@ afterEach(() => vi.restoreAllMocks());
 it.each([
   {
     stage: "registration",
-    responses: ["timeout", "found", "found"],
+    responses: ["timeout", "found", "found", "found", "found", "found"],
     recovered: true,
   },
   {
-    stage: "runtime",
-    responses: ["found", "timeout", "found", "found"],
+    stage: "revalidation",
+    responses: ["found", "timeout", "found", "found", "found", "found", "found"],
     recovered: true,
   },
   { stage: "registration", responses: ["timeout", "timeout"], recovered: false },
-  { stage: "runtime", responses: ["found", "timeout", "found", "timeout"], recovered: false },
+  { stage: "revalidation", responses: ["found", "timeout", "found", "timeout"], recovered: false },
   {
     stage: "command then runtime",
-    responses: ["timeout", "found", "timeout"],
+    responses: ["timeout", "found", "found", "timeout"],
     recovered: false,
   },
   { stage: "unavailable", responses: ["unavailable"], recovered: false },
@@ -131,11 +131,11 @@ it.each([
       expect(inspected.serviceMutationSkipMessage).toContain(
         scenario.stage === "unavailable"
           ? "Task Scheduler check failed (exit 2)."
-          : scenario.stage === "command then runtime" || scenario.stage === "runtime"
+          : scenario.stage === "command then runtime"
             ? "Scheduled Task check timed out after 47000 ms (ETIMEDOUT)."
             : "Task Scheduler check timed out after 47000 ms.",
       );
-      if (scenario.stage === "registration" || scenario.stage === "unavailable") {
+      if (scenario.stage !== "command then runtime") {
         expect(inspected.serviceUpdateVerdict).toMatchObject({
           inspectionReason: "windows-task-inspection-failed",
         });

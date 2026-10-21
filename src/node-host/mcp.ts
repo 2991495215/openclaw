@@ -308,7 +308,13 @@ export async function startNodeHostMcpManager(
   };
 
   const scheduleRetry = (state: NodeHostMcpServerState): void => {
-    if (closed || lifecycleSignal.aborted || state.retryTimer || state.current) {
+    if (
+      closed ||
+      lifecycleSignal.aborted ||
+      states.get(state.serverName) !== state ||
+      state.retryTimer ||
+      state.current
+    ) {
       return;
     }
     const delayMs = state.retryDelayMs;

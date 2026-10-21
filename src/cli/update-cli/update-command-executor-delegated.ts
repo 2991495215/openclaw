@@ -186,6 +186,10 @@ export async function withDelegatedUpdateCommandExecutor<T>(
         return await withUpdateCommandExecutorOperation(
           {
             children: owner,
+            assertCurrent: () => {
+              fence.assertCurrent();
+              identityWarnings.flush();
+            },
             operation: () => {
               fence.assertCurrent();
               admittedAuthorities.set(fence, {
@@ -220,7 +224,6 @@ export async function withDelegatedUpdateCommandExecutor<T>(
           "delegated",
         );
       } finally {
-        identityWarnings.flush();
         active = false;
         childOwners.delete(fence);
         slotReservations.delete(fence);

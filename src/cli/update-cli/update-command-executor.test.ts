@@ -572,10 +572,9 @@ describe("candidate executor delegation", () => {
       if (refused) {
         await expect(result).rejects.toBeInstanceOf(UpdateCommandRecoveryPendingError);
       } else if (revoked) {
-        await expect(result).rejects.toMatchObject({
-          name: "UpdateCommandRecoveryPendingError",
-          message: "The update process no longer has permission to continue.",
-        });
+        await expect(result).rejects.toThrow(
+          /ownership|Unable to finish stopping the update process and its children/,
+        );
       } else {
         await expect(result).resolves.toBe("completed");
       }

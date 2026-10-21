@@ -69,6 +69,7 @@ export class NodeWorkerChildLifecycle {
   private readonly owners = new Map<string, NodeWorkerActiveOwnership>();
   readonly active: ReadonlyMap<string, NodeWorkerActiveOwnership> = this.owners;
   readonly reconcileActiveTerminal: ReturnType<typeof createNodeWorkerTerminalReconciliation>;
+  private generation = 0;
   private readonly processObservations = new NodeWorkerProcessObservations();
 
   observeProcesses(input: NodeWorkerProcessInput, signal?: AbortSignal) {
@@ -117,6 +118,10 @@ export class NodeWorkerChildLifecycle {
     });
   }
 
+  get idleGeneration(): number {
+    return this.generation;
+  }
+
   idleChildren(): NodeWorkerRunningChild[] {
     return [...this.owners.values()]
       .filter(
@@ -148,6 +153,7 @@ export class NodeWorkerChildLifecycle {
   }
 
   async retireIdle(admissions: ReadonlyMap<string, NodeWorkerPendingAdmission>): Promise<void> {
+    this.generation++;
     await Promise.allSettled([...admissions.values()].map((admission) => admission.done));
     const results = await Promise.allSettled(
       [...this.owners.values()].flatMap((owner) =>
@@ -172,7 +178,7 @@ export class NodeWorkerChildLifecycle {
     supervisor: NodeWorkerProcessIdentity;
     claim: NodeWorkerLaunchClaim;
     signal?: AbortSignal;
-    idleRetention?: boolean;
+    idleGeneration?: number;
   }): Promise<NodeWorkerLaunchReceipt> {
     const sensitiveValues = nodeWorkerLaunchSecrets(
       params.descriptor,
@@ -257,7 +263,7 @@ export class NodeWorkerChildLifecycle {
       binding: nodeWorkerEnvironmentBinding(params.input),
       turn: createNodeWorkerActiveTurn(params.claim),
       retiring: false,
-      idleRetention: params.idleRetention,
+      idleGeneration: params.idleGeneration,
       adapter,
       journalReady,
       gatewayNamespace: params.input.gatewayNamespace,
@@ -333,7 +339,7 @@ export class NodeWorkerChildLifecycle {
       }
       await sendNodeWorkerInput(
         adapter,
-        buildWorkerProcessTurn(params.descriptor, params.idleRetention === true),
+        buildWorkerProcessTurn(params.descriptor, params.idleGeneration !== undefined),
       );
     } catch {
       // Only cancellation and shutdown override the child's observed exit.
@@ -353,7 +359,7 @@ export class NodeWorkerChildLifecycle {
     descriptor: WorkerLaunchDescriptor,
     claim: NodeWorkerLaunchClaim,
     signal: AbortSignal,
-    idleRetention = false,
+    idleGeneration?: number,
   ): Promise<NodeWorkerLaunchReceipt> {
     assertNodeWorkerNativeInferenceAvailable(this.options.nativeInferenceSnapshot, descriptor);
     const isCurrent = () => this.owners.get(active.launchId) === active && !this.options.isClosed();
@@ -378,8 +384,8 @@ export class NodeWorkerChildLifecycle {
     }
     clearNodeWorkerRetention(active);
     active.turn = createNodeWorkerActiveTurn(claim);
-    const negotiated = active.idleRetention || idleRetention;
-    active.idleRetention = idleRetention;
+    const negotiated = active.idleGeneration !== undefined || idleGeneration !== undefined;
+    active.idleGeneration = idleGeneration;
     if (negotiated) {
       this.publishIdle();
     }
@@ -401,7 +407,7 @@ export class NodeWorkerChildLifecycle {
     try {
       await sendNodeWorkerInput(
         active.adapter,
-        buildWorkerProcessTurn(descriptor, active.idleRetention),
+        buildWorkerProcessTurn(descriptor, active.idleGeneration !== undefined),
       );
       if (signal.aborted) {
         await this.options.cancelTurn(claim);
@@ -590,7 +596,7 @@ export class NodeWorkerChildLifecycle {
     if (!reason) {
       return;
     }
-    if (!active.idleRetention) {
+    if (active.idleGeneration === undefined) {
       throw new Error("node worker reported unnegotiated retention");
     }
     clearNodeWorkerRetention(active);
@@ -604,7 +610,7 @@ export class NodeWorkerChildLifecycle {
       }, 120_000);
       timer.unref();
       active.retention = { reason, turnId: frame.turnId, since: Date.now(), timer };
-      if (this.options.isClosed()) {
+      if (this.options.isClosed() || active.idleGeneration !== this.generation) {
         void this.stopChild(active, "interrupted").catch(() => undefined);
       } else if (this.idleChildren().length > 2) {
         void this.reclaimIdle().catch(() => undefined);
@@ -623,7 +629,7 @@ export class NodeWorkerChildLifecycle {
     }
     this.owners.set(active.launchId, observed);
     clearNodeWorkerRetention(active);
-    if (active.idleRetention) {
+    if (active.idleGeneration !== undefined) {
       this.publishIdle();
     }
     try {
@@ -664,7 +670,9 @@ export class NodeWorkerChildLifecycle {
     const cleanup = (active.containerCleanup ??= this.requireContainerLifecycle()
       .remove(active.container, active)
       .finally(() => {
-        active.containerCleanup = undefined;
+        if (active.containerCleanup === cleanup) {
+          active.containerCleanup = undefined;
+        }
       }));
     await cleanup;
   }
@@ -690,7 +698,7 @@ export class NodeWorkerChildLifecycle {
         clearTimeout(forceKill);
       }
     })();
-    if (active.idleRetention) {
+    if (active.idleGeneration !== undefined) {
       this.publishIdle();
     }
     await stopping.catch((error: unknown) => {

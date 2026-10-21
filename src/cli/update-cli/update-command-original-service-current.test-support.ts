@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createServer } from "node:http";
 import path from "node:path";
 import { expect, it, vi, type Mock } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -18,11 +19,12 @@ import {
 } from "../../daemon/service-rebind.js";
 import type { GatewayServiceState } from "../../daemon/service.js";
 import * as integrity from "../../infra/package-update-integrity.js";
-import { createUpdateRun, getUpdateRun } from "../../infra/update-run-ledger.js";
+import { getUpdateRun } from "../../infra/update-run-ledger.js";
 import type { UpdateRunResult } from "../../infra/update-runner-types.js";
 import type { OpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { reserveTestPortListener } from "../../test-utils/port-claims.js";
 import type { UpdateCommandOptions } from "./shared.js";
-import { withUpdateCommandExecutor } from "./update-command-executor.js";
+import { withCurrentF3Admission } from "./update-command-original-service-current.admission.test-support.js";
 import {
   observeOriginalManagedServiceRuntime,
   revalidateOriginalManagedServiceRuntime,
@@ -56,20 +58,10 @@ type Fixture = {
 // Current composition only: real observations, admission and candidate-native helper;
 // receiver probe, native service and HTTP leaves are inert. No native command executes.
 export function registerCurrentF3Controls(fixture: () => Fixture) {
-  const admitted = async (
+  const admitted = (
     operation: (run: NonNullable<UpdateCommandOptions["run"]>) => Promise<void>,
     retained = true,
-  ) => {
-    const { state, rootA, rootB } = fixture();
-    const run: NonNullable<UpdateCommandOptions["run"]> = {
-      runId: createUpdateRun({ trigger: "cli" }, { env: state.env }).runId,
-      env: state.env,
-    };
-    await withUpdateCommandExecutor(run.runId, async (executor) => {
-      run.executorFence = await executor.enter(rootB, retained ? { serviceRoot: rootA } : {});
-      await operation(run);
-    });
-  };
+  ) => withCurrentF3Admission(fixture, operation, retained);
 
   it.each(["unchanged", "replaced"] as const)(
     "capable original recovery binds definition after native lock: %s",
@@ -389,7 +381,7 @@ export function registerCurrentF3Controls(fixture: () => Fixture) {
     });
   });
 
-  it.each(["slow", "generation-change"] as const)(
+  it.each(["slow", "revoked", "not-ready", "generation-change"] as const)(
     "retained readiness uses current bounded owner: %s",
     async (scenario) => {
       const { rootB, before, mocks } = fixture();
@@ -398,28 +390,39 @@ export function registerCurrentF3Controls(fixture: () => Fixture) {
         mocks.health.mockImplementation(async (params) => {
           expect(params.timeoutMs).toBeGreaterThan(3_000);
           const result = await initial(params);
+          if (scenario === "revoked") {
+            run.executorFence = undefined;
+          }
           return {
             ...result,
             gatewayBootId: scenario === "generation-change" ? "prior-boot" : undefined,
           };
         });
+        if (scenario === "not-ready") {
+          mocks.readiness.mockResolvedValue({ readyz: 503 });
+        }
         const observation = observeOriginalManagedServiceRuntime(
           { root: rootB, opts: { run }, updateStepTimeoutMs: 40_000 },
           before,
         );
         if (scenario === "slow") {
           expect(await observation).toMatchObject({ verified: true });
-          expect(mocks.readiness).toHaveBeenCalledWith(
+        } else {
+          await expect(observation).rejects.toThrow();
+        }
+        if (scenario !== "revoked") {
+          expect(mocks.readiness).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({
               attempts: expect.any(Number),
               probeTimeoutMs: expect.any(Number),
             }),
           );
+          expect(mocks.readiness.mock.calls[0]?.[0].attempts).toBeGreaterThan(1);
           expect(mocks.readiness.mock.calls[0]?.[0].probeTimeoutMs).toBeGreaterThan(3_000);
-        } else {
-          await expect(observation).rejects.toThrow();
         }
         expect(mocks.health).toHaveBeenCalledOnce();
+        expect(before.stopped).toBe(false);
+        expect(mocks.nativeRestart).not.toHaveBeenCalled();
       });
     },
   );
@@ -442,48 +445,135 @@ export function registerCurrentF3Controls(fixture: () => Fixture) {
     });
   });
 
-  it.each(["launcher-limit", "launcher-drift"] as const)(
-    "current F3 mandatory launcher identity: %s",
-    async (scenario) => {
-      const { rootA, rootB, before } = fixture();
-      const createReader = integrity.createPackageIntegrityReader;
-      vi.spyOn(integrity, "createPackageIntegrityReader").mockImplementation((timeout) => {
-        const reader = createReader(timeout);
-        return {
-          ...reader,
-          launcher: async (launcher) => {
-            if (scenario === "launcher-limit") {
-              throw new integrity.PackageIntegrityLimitError("byte");
-            }
-            return reader.launcher(launcher);
-          },
-        };
+  it("waits for HTTP readiness after restoring the retained service", async () => {
+    const { rootB, before, mocks } = fixture();
+    await admitted(async (run) => {
+      const original = await observeOriginalManagedServiceRuntime(
+        { root: rootB, opts: { run } },
+        before,
+      );
+      expect(original?.verified).toBe(true);
+      const actual = await vi.importActual<typeof import("../daemon-cli/restart-health.js")>(
+        "../daemon-cli/restart-health.js",
+      );
+      let readinessRequests = 0;
+      const listener = await reserveTestPortListener({
+        offsets: [0],
+        createListener: () =>
+          createServer((request, response) => {
+            const ready = request.url !== "/readyz" || ++readinessRequests > 1;
+            response.writeHead(ready ? 200 : 503).end();
+          }),
       });
-      await admitted(async (run) => {
-        const observation = observeOriginalManagedServiceRuntime(
-          { root: rootB, opts: { run } },
-          before,
-        );
-        if (scenario === "launcher-limit") {
-          await expect(observation).rejects.toMatchObject({
-            reason: "original-service-unverified",
-          });
-          return;
-        }
-        const original = await observation;
-        expect(original).toMatchObject({ root: rootA, version: "2026.9.3", verified: true });
-        if (!original || !run.executorFence) {
-          throw new Error("missing admitted observation");
-        }
+      // Route the mocked service's HTTP transport to a real loopback listener.
+      mocks.readiness.mockImplementation((params) =>
+        actual.waitForGatewayHttpReadiness({ ...params, port: listener.claim.port }),
+      );
+      try {
+        await expect(
+          maybeRestartServiceAfterFailedMutableUpdate({
+            updateRun: run,
+            preManagedServiceStop: { ...before, stopped: true },
+            originalManagedServiceRuntime: original,
+            jsonMode: true,
+            timeoutMs: 30_000,
+          }),
+        ).resolves.toBe("healthy");
+        expect(mocks.nativeRestart).toHaveBeenCalledOnce();
+        expect(readinessRequests).toBe(2);
+      } finally {
+        listener.listener.closeAllConnections();
+        await listener.releaseListener();
+        await listener.claim.release();
+      }
+    });
+  });
+
+  it.each([
+    "entry-limit",
+    "read-error",
+    "later-timeout",
+    "later-entry-limit",
+    "launcher-limit",
+    "launcher-drift",
+    "read-window",
+  ] as const)("current F3 mandatory identity and optional tree: %s", async (scenario) => {
+    const { rootA, rootB, before } = fixture();
+    const createReader = integrity.createPackageIntegrityReader;
+    let treeReads = 0;
+    let displaced = false;
+    vi.spyOn(integrity, "createPackageIntegrityReader").mockImplementation((timeout) => {
+      const reader = createReader(timeout);
+      return {
+        ...reader,
+        tree: async (root, originalRoot) => {
+          treeReads++;
+          if (scenario === "read-error") {
+            throw new Error("mandatory package access failed");
+          }
+          if (!scenario.startsWith("later-") || treeReads > 1) {
+            if (scenario.includes("entry-limit")) {
+              throw new integrity.PackageIntegrityLimitError("entry");
+            }
+            throw new integrity.PackageIntegrityTimeoutError(30_000);
+          }
+          return reader.tree(root, originalRoot);
+        },
+        launcher: async (launcher) => {
+          if (scenario === "launcher-limit") {
+            throw new integrity.PackageIntegrityLimitError("byte");
+          }
+          const value = await reader.launcher(launcher);
+          if (scenario === "read-window" && !displaced) {
+            displaced = true;
+            await fs.rename(rootA, `${rootA}-displaced`);
+            await fs.cp(`${rootA}-displaced`, rootA, { recursive: true });
+          }
+          return value;
+        },
+      };
+    });
+    await admitted(async (run) => {
+      const observation = observeOriginalManagedServiceRuntime(
+        { root: rootB, opts: { run } },
+        before,
+      );
+      if (["read-error", "read-window", "launcher-limit"].includes(scenario)) {
+        await expect(observation).rejects.toMatchObject({
+          reason: "original-service-unverified",
+        });
+        return;
+      }
+      const original = await observation;
+      expect(original).toMatchObject({ root: rootA, version: "2026.9.3", verified: true });
+      if (scenario.startsWith("later-")) {
+        expect(original).toHaveProperty("packageFingerprint");
+      } else {
+        expect(original).not.toHaveProperty("packageFingerprint");
+      }
+      expect(original).toHaveProperty(
+        "packageFingerprintWarning",
+        expect.stringContaining("full package contents are unverified"),
+      );
+      expect(treeReads).toBe(scenario.startsWith("later-") ? 2 : 1);
+      if (!original || !run.executorFence) {
+        throw new Error("missing admitted observation");
+      }
+      if (scenario === "launcher-drift") {
         await fs.appendFile(path.join(rootA, "dist/index.js"), "// replaced\n");
         await expect(
           revalidateOriginalManagedServiceRuntime(original, () =>
             run.executorFence!.assertCurrent(),
           ),
         ).rejects.toThrow("changed");
-      });
-    },
-  );
+      } else {
+        await revalidateOriginalManagedServiceRuntime(original, () =>
+          run.executorFence!.assertCurrent(),
+        );
+        expect(treeReads).toBe(scenario.startsWith("later-") ? 3 : 1);
+      }
+    });
+  });
 
   it.each([
     "healthy",

@@ -20,6 +20,7 @@ import {
 } from "./update-cli-assertions.test-support.js";
 import { createUpdateCliFixture } from "./update-cli-fixture.test-support.js";
 import {
+  databasePreflightMocks,
   gatewayFixturePid,
   readPackageVersion,
   restartHealthTestControl,
@@ -662,7 +663,7 @@ describe("update-cli", () => {
   it.each([
     { signal: "SIGINT", phase: "package suspension" },
     { signal: "SIGINT", phase: "service pre-stop inspection" },
-    { signal: "SIGBREAK", phase: "Git task suspension" },
+    { signal: "SIGBREAK", phase: "Git schema preflight" },
   ] as const)(
     "restores Windows Scheduled Task autostart on $signal during $phase",
     async ({ signal, phase }) => {
@@ -686,12 +687,9 @@ describe("update-cli", () => {
           await waitForSignal();
         }
         taskSuspended = true;
-        if (phase === "Git task suspension") {
-          await waitForSignal();
-        }
         return true;
       });
-      if (phase === "Git task suspension") {
+      if (phase === "Git schema preflight") {
         fixture.mockOwnedGitService();
         serviceLoaded.mockResolvedValue(true);
         vi.mocked(updateGitCheckout).mockImplementationOnce(async ({ opts: options }) => {
@@ -701,6 +699,12 @@ describe("update-cli", () => {
           )({ schemaVersions: { state: 3, agent: 11 } });
           gitMutation();
           return makeOkUpdateResult({ mode: "git" });
+        });
+        databasePreflightMocks.preflightOpenClawDatabaseSchemas.mockImplementation(async () => {
+          if (taskSuspended) {
+            await waitForSignal();
+          }
+          return { incompatible: [], indeterminate: [] };
         });
       } else {
         const root = await fixture.mockPackageInstallAtCaseDir("openclaw-update-suspension-signal");
@@ -764,7 +768,7 @@ describe("update-cli", () => {
         await updatePromise;
         expect(resumeScheduledTaskAutoStartAfterUpdate).toHaveBeenCalledOnce();
         expect(serviceStop).not.toHaveBeenCalled();
-        expect(Boolean(packageInstallCommandCall())).toBe(phase !== "Git task suspension");
+        expect(Boolean(packageInstallCommandCall())).toBe(phase !== "Git schema preflight");
         expect(gitMutation).not.toHaveBeenCalled();
         expect(freshRestartCalls()).toEqual([]);
         expect(listUpdateRuns({ limit: 1 })).toMatchObject([

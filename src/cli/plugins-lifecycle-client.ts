@@ -7,10 +7,12 @@ import type {
   PluginsInspectResult,
   PluginsReloadResult,
 } from "../../packages/gateway-protocol/src/schema/plugins.js";
+import { sleepWithAbort } from "../infra/backoff.js";
 import { readActiveGatewayLockIdentity } from "../infra/gateway-lock.js";
 import type { PluginCapabilityConsentHandler } from "../plugins/capability-consent.js";
 import type { PluginInstallBatchReload } from "../plugins/install-runtime-batch.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import { sleep } from "../utils/sleep.js";
 import { registerSignalExitGate } from "./signal-exit-barrier.js";
 
 /** Capture the local client before a Claw batch takes any package or plugin lease. */
@@ -47,8 +49,9 @@ export async function resolvePluginLifecycleGateway(): Promise<PluginLifecycleGa
   if (!owner) {
     return null;
   }
-  const { callGateway } = await import("../gateway/call.js");
+  const { callGateway, isGatewayClientRequestError } = await import("../gateway/call.js");
   const request = async <T>(method: string, params: Record<string, unknown>): Promise<T> => {
+    const deadline = Date.now() + 600_000;
     const controller =
       method === "plugins.reload" && params.waitForDrain === true
         ? new AbortController()
@@ -58,18 +61,43 @@ export async function resolvePluginLifecycleGateway(): Promise<PluginLifecycleGa
       ? registerSignalExitGate(finished.promise, () => controller.abort())
       : undefined;
     try {
-      return await callGateway<T>({
-        method,
-        params,
-        localPortOverride: owner.port,
-        ignoreEnvUrlOverride: true,
-        requiredMethods: [...new Set([method, "plugins.reload"])],
-        timeoutMs: controller ? null : 600_000,
-        ...(controller ? { signal: controller.signal } : {}),
-        scopes: ["operator.admin"],
-        clientName: GATEWAY_CLIENT_NAMES.CLI,
-        mode: GATEWAY_CLIENT_MODES.CLI,
-      });
+      for (;;) {
+        try {
+          controller?.signal.throwIfAborted();
+          return await callGateway<T>({
+            method,
+            params,
+            localPortOverride: owner.port,
+            ignoreEnvUrlOverride: true,
+            requiredMethods: [...new Set([method, "plugins.reload"])],
+            timeoutMs: controller ? null : Math.max(1, deadline - Date.now()),
+            ...(controller ? { signal: controller.signal } : {}),
+            scopes: ["operator.admin"],
+            clientName: GATEWAY_CLIENT_NAMES.CLI,
+            mode: GATEWAY_CLIENT_MODES.CLI,
+          });
+        } catch (error) {
+          // Lifecycle admission rejects before writes so a config reload can drain
+          // the request. Honor that response outside the Gateway's admission scope.
+          if (
+            !isGatewayClientRequestError(error) ||
+            error.gatewayCode !== "UNAVAILABLE" ||
+            !error.retryable ||
+            error.retryAfterMs === undefined ||
+            error.retryAfterMs >= deadline - Date.now()
+          ) {
+            throw error;
+          }
+          if (controller) {
+            await sleepWithAbort(error.retryAfterMs, controller.signal);
+          } else {
+            await sleep(error.retryAfterMs);
+          }
+          if (Date.now() >= deadline) {
+            throw error;
+          }
+        }
+      }
     } finally {
       finished.resolve();
       releaseExitGate?.();

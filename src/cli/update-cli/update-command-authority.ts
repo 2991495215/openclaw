@@ -14,7 +14,8 @@ export function createUpdateCommandAuthority(
   label = "Update",
 ) {
   const run = params.opts?.run;
-  const executorFence = run?.executorFence ?? params.executorFence;
+  const runExecutorFence = run?.executorFence;
+  const executorFence = runExecutorFence ?? params.executorFence;
   const runId = run?.runId;
   const requester = run?.requesterAuthority;
   let authorityFailure: { error: unknown } | undefined;
@@ -35,7 +36,13 @@ export function createUpdateCommandAuthority(
   };
   const assertRequesterCurrent = () =>
     checkAuthority(() => {
-      if (run && (!executorFence || !runId?.trim())) {
+      if (
+        params.opts?.run !== run ||
+        run?.executorFence !== runExecutorFence ||
+        run?.runId !== runId ||
+        run?.requesterAuthority !== requester ||
+        (run && (!runExecutorFence || !runId?.trim()))
+      ) {
         throw new UpdateCommandRecoveryPendingError(`${label} lost its original update executor.`);
       }
       if (requester?.isCurrent() === false) {

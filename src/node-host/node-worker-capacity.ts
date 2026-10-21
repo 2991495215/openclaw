@@ -4,6 +4,7 @@ import { NODE_WORKER_CAPACITY_MAX } from "../../packages/gateway-protocol/src/wo
 import { toErrorObject } from "../infra/errors.js";
 import { NODE_WORKER_CAPACITY_EXHAUSTED_ERROR_CODE } from "../infra/node-commands.js";
 import type { NodeWorkerCapacitySnapshot } from "../infra/node-runner-inventory.js";
+import type { NodeWorkerJournalAuthority } from "./node-worker-journal.types.js";
 import {
   NodeWorkerLaunchStore,
   type NodeWorkerLaunchClaim,
@@ -125,9 +126,10 @@ export class NodeWorkerCapacity {
   async finish(
     params: Parameters<NodeWorkerLaunchStore["finish"]>[0],
     notify = true,
+    authority?: NodeWorkerJournalAuthority,
   ): Promise<NodeWorkerLaunchReceipt> {
     return this.update(async () => {
-      const receipt = await this.store.finish(params);
+      const receipt = await this.store.finish(params, authority);
       if (notify && receipt.state !== "pending" && receipt.state !== "running") {
         await this.changed();
       }

@@ -88,6 +88,8 @@ describe("connected in-process plugin finalization authority", () => {
     "healthy",
     "index-revoked",
     "config-revoked",
+    "run-replaced",
+    "fence-replaced",
     "cohort-revoked",
     "host-link-recovery",
     "registry-revoked",
@@ -261,6 +263,10 @@ describe("connected in-process plugin finalization authority", () => {
                 runAtConvergence = getUpdateRun(created.runId, { env: state.env });
                 if (scenario === "index-revoked" || scenario === "cohort-revoked") {
                   releaseUpdateCommandPreflightForHandoff(fence);
+                } else if (scenario === "run-replaced") {
+                  params.opts.run = { ...run };
+                } else if (scenario === "fence-replaced") {
+                  run.executorFence = otherFence;
                 }
               };
               if (scenario === "registry-revoked") {
@@ -406,7 +412,9 @@ describe("connected in-process plugin finalization authority", () => {
                 name: "update-executor-settlement",
                 exitCode: 1,
                 stderrTail: expect.stringContaining(
-                  "Update executor ownership is no longer current.",
+                  scenario.endsWith("run-replaced") || scenario.endsWith("fence-replaced")
+                    ? "Package finalization lost its original executor."
+                    : "Update executor ownership is no longer current.",
                 ),
               },
             ],

@@ -228,7 +228,7 @@ export function registerForegroundFinalizationTests({
   };
 }): void {
   it.each([
-    ...(["noop", "runtime", "plugins", "park-failed"] as const).flatMap((outcome) =>
+    ...(["noop", "runtime", "plugins", "revoked", "park-failed"] as const).flatMap((outcome) =>
       [false, true].map((candidateRuntime) => ({ outcome, candidateRuntime })),
     ),
     { outcome: "retirement" as const, candidateRuntime: true },
@@ -260,7 +260,11 @@ export function registerForegroundFinalizationTests({
       });
       vi.spyOn(sourceRuntime, "completeSourceUpdateRuntime").mockImplementation(
         async ({ beforePublication }) => {
-          const changed = outcome === "runtime" || outcome === "park-failed";
+          const changed =
+            outcome === "runtime" || outcome === "revoked" || outcome === "park-failed";
+          if (outcome === "revoked") {
+            opts.run = { ...run };
+          }
           if (changed) {
             await beforePublication?.();
             events.push("publish");
@@ -300,9 +304,9 @@ export function registerForegroundFinalizationTests({
         },
         { candidateRuntime },
       );
-      if (outcome === "park-failed") {
+      if (outcome === "revoked" || outcome === "park-failed") {
         await expect(finishing).rejects.toBeInstanceOf(Error);
-        expect(events).toEqual(["park"]);
+        expect(events).toEqual(outcome === "revoked" ? [] : ["park"]);
       } else {
         await finishing;
         if (outcome === "retirement") {

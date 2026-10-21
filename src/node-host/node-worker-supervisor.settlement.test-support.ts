@@ -293,7 +293,11 @@ export function recoveryFixture(container = false) {
   mocks.launchGet.mockImplementation(async () => receipt);
   mocks.launchMatching.mockImplementation(async () => receipt);
   mocks.launchCount.mockImplementation(async () => (receipt.state === "running" ? 1 : 0));
-  const finish: InstanceType<typeof NodeWorkerLaunchStore>["finish"] = async (params) => {
+  const finish: InstanceType<typeof NodeWorkerLaunchStore>["finish"] = async (
+    params,
+    authority,
+  ) => {
+    authority?.assertCurrent();
     receipt = { ...receipt, state: params.state };
     return receipt;
   };

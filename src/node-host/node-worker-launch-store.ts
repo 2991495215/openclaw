@@ -90,13 +90,18 @@ export class NodeWorkerLaunchStore {
 
   finish(
     params: Parameters<NodeWorkerLaunchKernel["finish"]>[0],
+    authority?: NodeWorkerJournalAuthority,
   ): Promise<ReturnType<NodeWorkerLaunchKernel["finish"]>> {
-    return this.worker.execute({ type: "nodeWorker.launch.finish", input: [params] });
+    return this.worker.execute({ type: "nodeWorker.launch.finish", input: [params] }, authority);
   }
 
   markRunning(
     params: Parameters<NodeWorkerLaunchKernel["markRunning"]>[0],
+    authority?: NodeWorkerJournalAuthority,
   ): Promise<ReturnType<NodeWorkerLaunchKernel["markRunning"]>> {
-    return this.worker.execute({ type: "nodeWorker.launch.markRunning", input: [params] });
+    return this.worker.execute(
+      { type: "nodeWorker.launch.markRunning", input: [params] },
+      authority,
+    );
   }
 }
