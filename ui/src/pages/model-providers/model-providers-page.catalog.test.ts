@@ -480,7 +480,11 @@ describe("Models page catalog publication", () => {
       createCatalogHarness();
     const page = appendPage(context);
     await waitForProviders(page, savedModelConfig);
-    readPublished.mockReturnValue({ models: [], refreshFailed: true });
+    readPublished.mockReturnValue({
+      models: [],
+      refreshFailed: true,
+      pendingProviders: ["openai"],
+    });
 
     publishEvent({ type: "event", event: "config.changed", payload: {} });
     await waitForSolid(() =>
@@ -488,6 +492,7 @@ describe("Models page catalog publication", () => {
         page.querySelector('.model-providers__catalog-progress[role="alert"]')?.textContent,
       ).toContain("More models could not be discovered."),
     );
+    expect(page.querySelector('.model-providers__catalog-progress[role="status"]')).not.toBeNull();
     await openModelPicker(page);
     expect(displayedCatalog(page)?.models).toEqual([]);
     const selected: (string | null | undefined)[] = [];

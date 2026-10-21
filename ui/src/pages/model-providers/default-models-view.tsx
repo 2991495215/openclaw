@@ -1,5 +1,6 @@
+import { createDeferred } from "@solidjs/signals";
 import type { JSX } from "@solidjs/web";
-import { createMemo, For } from "solid-js";
+import { createMemo, Errored, For, isPending, Loading, Show } from "solid-js";
 import { splitTrailingAuthProfile } from "../../../../src/agents/model-ref-profile.js";
 import { dedupeByKey } from "../../../../src/shared/dedupe-by-key.js";
 import { formatFastModeValue } from "../../../../src/shared/fast-mode.js";
@@ -16,6 +17,7 @@ import {
   SettingsSegmented,
 } from "../../components/solid/settings-ui.tsx";
 import { formatThinkingOverrideLabel } from "../../lib/chat/thinking.ts";
+import { formatUiError } from "../../lib/format-error.ts";
 import {
   canonicalModelAuthProviderId,
   listEffectiveModelAuthProviders,
@@ -25,6 +27,7 @@ import { formatCompletionRoute, type CompletionRoute } from "../../lib/model-run
 import { modelSettingFallbacks, modelSettingPrimary } from "../../lib/model-setting.ts";
 import { t } from "../../lib/reactive/i18n.ts";
 import type { ModelProviderRowMessage } from "./config-mutation.ts";
+import type { ModelCatalogDiscoveryCompletion } from "./core-load.ts";
 import { modelCatalogRef, type DefaultModelSelection, type ModelPickerEntry } from "./data.ts";
 import { renderMutationMessage } from "./view-status.tsx";
 
@@ -41,8 +44,9 @@ export type DefaultModelsViewProps = {
   fastMode: FastMode | undefined;
   fastModeOverridden: boolean;
   loading?: boolean;
+  catalogCompletion?: ModelCatalogDiscoveryCompletion | null;
   catalogDiscovering?: boolean;
-  /** Retryable discovery error from the current catalog publication or explicit Retry. */
+  /** Retryable discovery error from the current catalog publication. */
   catalogDiscoveryError?: string | null;
   canMutate: boolean;
   mutationBlockedReason: string | null;
@@ -174,22 +178,56 @@ function fastModeOptionValue(value: ReturnType<typeof formatFastModeValue>): Fas
 
 // Discovery progress does not change the saved selection or disable known models.
 function CatalogProgress(props: DefaultModelsViewProps): JSX.Element {
+  const readError = (message: string | null | undefined) => {
+    if (message) {
+      throw new Error(message);
+    }
+    return null;
+  };
+  const discovery = createDeferred(() => {
+    const error = props.catalogDiscoveryError;
+    return (
+      props.catalogCompletion?.promise.then((message) => readError(message ?? error)) ??
+      readError(error)
+    );
+  });
   return (
     <div class="model-providers__catalog-feedback">
-      {props.catalogDiscovering ? (
-        <div class="model-providers__catalog-progress" role="status" aria-live="polite">
-          <span class="btn__spinner" aria-hidden="true" />
-          <span>{t("modelProviders.defaults.discoveringMore")}</span>
-        </div>
-      ) : undefined}
-      {props.catalogDiscoveryError ? (
-        <div class="model-providers__catalog-progress" role="alert" aria-live="polite">
-          <span>{props.catalogDiscoveryError}</span>
-          <button class="btn btn--sm" type="button" onClick={() => props.onCatalogRetry()}>
-            {t("modelProviders.defaults.retryDiscover")}
-          </button>
-        </div>
-      ) : undefined}
+      <Show
+        keyed
+        when={props.catalogCompletion ?? props.catalogDiscoveryError ?? props.catalogDiscovering}
+      >
+        <Errored
+          fallback={(error) => (
+            <>
+              <Show when={props.catalogDiscovering}>
+                <CatalogPending />
+              </Show>
+              <div class="model-providers__catalog-progress" role="alert" aria-live="polite">
+                <span>{formatUiError(error(), "request failed")}</span>
+                <button class="btn btn--sm" type="button" onClick={() => props.onCatalogRetry()}>
+                  {t("modelProviders.defaults.retryDiscover")}
+                </button>
+              </div>
+            </>
+          )}
+        >
+          <Loading on={props.catalogCompletion} fallback={<CatalogPending />}>
+            <Show when={isPending(discovery) || props.catalogDiscovering} fallback={discovery()}>
+              <CatalogPending />
+            </Show>
+          </Loading>
+        </Errored>
+      </Show>
+    </div>
+  );
+}
+
+function CatalogPending() {
+  return (
+    <div class="model-providers__catalog-progress" role="status" aria-live="polite">
+      <span class="btn__spinner" aria-hidden="true" />
+      <span>{t("modelProviders.defaults.discoveringMore")}</span>
     </div>
   );
 }

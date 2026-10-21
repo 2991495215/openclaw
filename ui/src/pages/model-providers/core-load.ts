@@ -9,6 +9,8 @@ import { loadModelProvidersData, type ModelProvidersData } from "./load.ts";
 
 export type ModelProviderRefreshReason = "publication" | "replacement" | "forced";
 
+export type ModelCatalogDiscoveryCompletion = { promise: Promise<string | null> };
+
 type CoreLoadOptions = {
   onStart: (reason: ModelProviderRefreshReason) => void;
   onComplete: (result: { client: GatewayBrowserClient; data: ModelProvidersData }) => void;
@@ -50,7 +52,7 @@ async function loadConnectedProviderData(
 export class ModelProviderCoreLoader {
   private active = false;
   private catalogRequest: AbortController | null = null;
-  catalogError: string | null = null;
+  catalogCompletion: ModelCatalogDiscoveryCompletion | null = null;
   retryProvider: string | undefined;
   private request: AbortController | null = null;
   private publicationPending = false;
@@ -71,7 +73,7 @@ export class ModelProviderCoreLoader {
   resetCatalog(): void {
     const retired = this.catalogRequest;
     this.catalogRequest = null;
-    this.catalogError = null;
+    this.catalogCompletion = null;
     retired?.abort();
     this.notify();
   }
@@ -87,32 +89,32 @@ export class ModelProviderCoreLoader {
     const request = new AbortController();
     const ownsResult = () => this.catalogRequest === request && isCurrent();
     this.catalogRequest = request;
-    this.catalogError = null;
-    this.notify();
-    try {
-      const result = await loadModelCatalog(client, {
-        agentId,
-        refresh: true,
-        signal: request.signal,
-      });
-      if (ownsResult()) {
-        this.catalogError = modelCatalogRefreshError(
-          result,
-          t("modelProviders.defaults.discoverFailed"),
-        );
+    const promise = (async () => {
+      try {
+        const result = await loadModelCatalog(client, {
+          agentId,
+          refresh: true,
+          signal: request.signal,
+        });
+        if (!ownsResult()) {
+          return null;
+        }
+        const error = modelCatalogRefreshError(result, t("modelProviders.defaults.discoverFailed"));
         this.options.onCatalogComplete(result);
+        return error;
+      } catch (failure) {
+        return ownsResult() ? formatUiError(failure, "request failed") : null;
+      } finally {
+        if (this.catalogRequest === request) {
+          this.catalogRequest = null;
+          this.refreshPendingPublication(client, agentId);
+          this.notify();
+        }
       }
-    } catch (failure) {
-      if (ownsResult()) {
-        this.catalogError = formatUiError(failure, "request failed");
-      }
-    } finally {
-      if (this.catalogRequest === request) {
-        this.catalogRequest = null;
-        this.refreshPendingPublication(client, agentId);
-        this.notify();
-      }
-    }
+    })();
+    this.catalogCompletion = { promise };
+    this.notify();
+    await promise;
   }
 
   async refresh(
