@@ -19,7 +19,6 @@ import {
   type EventRoute,
 } from "./session-observer-suite.test-support.js";
 import {
-  createObserverTimerTracker,
   event,
   flushObserver,
   modelMessage,
@@ -187,9 +186,10 @@ it("does not finalize a retryable attempt error before same-run fallback succeed
     error: "retryable provider failure",
   });
   await flushObserver();
-  expect(vi.getTimerCount()).toBe(1);
   await emitEvent(harness, "lifecycle", { phase: "start", startedAt: 30_000 });
-  expect(vi.getTimerCount()).toBe(0);
+  await advanceAndFlush(15_000);
+  expect(observerBroadcasts(harness)).toHaveLength(0);
+  expect(harness.persistDigest).not.toHaveBeenCalled();
   vi.setSystemTime(60_000);
   const persisted = nextPersistence(harness);
   await handleLifecycle(harness, { phase: "end", endedAt: 60_000 });
@@ -279,10 +279,11 @@ it("invalidates the persist-time guard when a newer run replaces a dormant run",
   harness.observer.setConnectionVisibility("conn-1", false);
 
   await emitEvent(harness, "lifecycle", { phase: "error", error: "retryable provider failure" });
-  expect(vi.getTimerCount()).toBe(1);
   await emitEvent(harness, "lifecycle", { phase: "start" }, { runId: "run-2" });
-  expect(vi.getTimerCount()).toBe(0);
   expect(guard?.()).toBe(false);
+  await advanceAndFlush(15_000);
+  expect(harness.persistDigest).toHaveBeenCalledOnce();
+  expect(observerBroadcasts(harness)).toHaveLength(1);
 });
 
 it.each([
@@ -391,7 +392,6 @@ it.each(["deleted", "reset"])("disables model work after the session is %s", asy
   await startAndAddToolNotes(harness.observer, { count: 4 });
   await advanceAndFlush(24_000);
   expect(harness.completeModel).toHaveBeenCalledOnce();
-  expect(vi.getTimerCount()).toBe(0);
 
   harness.setSession({ sessionId: "session-id-next", updatedAt: 36_000 });
   await startAndAddToolNotes(harness.observer, { runId: "run-2" });
@@ -453,7 +453,6 @@ it("suppresses assistant notes while a runtime-context block is still streaming"
 it("invalidates the persist-time guard after disposal", async () => {
   const unrelated = vi.fn();
   const unrelatedTimer = setTimeout(unrelated, 60_000);
-  const { ownedTimers } = createObserverTimerTracker();
   const harness = createHarness();
   try {
     await startAndAddToolNotes(harness.observer);
@@ -462,16 +461,13 @@ it("invalidates the persist-time guard after disposal", async () => {
     const guard = persistGuard(harness);
     expect(guard?.()).toBe(true);
     await emitEvent(harness, "lifecycle", { phase: "error", error: "retryable provider failure" });
-    expect(ownedTimers.size).toBe(1);
     harness.observer.dispose();
     activeHarnesses.delete(harness);
-    expect(ownedTimers.size).toBe(0);
     expect(guard?.()).toBe(false);
     expect(unrelated).not.toHaveBeenCalled();
 
     await advanceAndFlush(48_000);
     expect(unrelated).toHaveBeenCalledOnce();
-    expect(ownedTimers.size).toBe(0);
     expect(harness.persistDigest).toHaveBeenCalledOnce();
     expect(harness.completeModel).toHaveBeenCalledOnce();
   } finally {

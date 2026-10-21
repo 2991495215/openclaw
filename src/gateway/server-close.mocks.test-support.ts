@@ -3,7 +3,7 @@ import type { InternalHookEvent } from "../hooks/internal-hooks.js";
 
 type TriggerInternalHookMock = (event: InternalHookEvent) => Promise<void>;
 
-export const mocks = vi.hoisted(() => ({
+const mocks = vi.hoisted(() => ({
   logInfo: vi.fn(),
   logWarn: vi.fn(),
   listChannelPlugins: vi.fn((): Array<{ id: "telegram" | "discord" }> => []),
@@ -18,6 +18,8 @@ export const mocks = vi.hoisted(() => ({
   disposeAcpSessionManager: vi.fn(async (_reason: string) => undefined),
   fenceSessionSuspensionWritesForGatewayShutdown: vi.fn(),
 }));
+
+export { mocks };
 
 vi.mock("../channels/plugins/index.js", async () => ({
   ...(await vi.importActual<typeof import("../channels/plugins/index.js")>(

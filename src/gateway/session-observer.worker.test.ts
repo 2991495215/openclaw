@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
+import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import { writeSessionEntry } from "../config/sessions/session-accessor.sqlite-entry-store.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.sqlite-entry.js";
 import * as entryFacts from "../config/sessions/session-entry-read-facts.js";
@@ -422,16 +423,16 @@ it("lets the publisher finish its nested write before persisting the background 
   signal,
 }) => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
-    const options = { agentId: "main", path: state.path("sessions.sqlite"), env: state.env };
+    const options = { agentId: "main", env: state.env };
     const entered = createDeferred();
     const release = createDeferred();
     const order: string[] = [];
     let digestEntered = false;
     const harness = createHarness({
       config: {
-        session: { store: options.path },
+        session: { store: resolveSessionStorePathCore(undefined, options) },
         gateway: { controlUi: { sessionObserver: true } },
-        agents: { defaults: { utilityModel: "" } },
+        agents: { defaults: { utilityModel: "" }, entries: { main: {} } },
       },
     });
     const delivery = harness.delivery();
@@ -446,14 +447,19 @@ it("lets the publisher finish its nested write before persisting the background 
     let successor: Promise<void> | undefined;
     let disposal: Promise<void> | undefined;
     try {
-      await runOpenClawAgentWriteAdmission(options, async () => {
-        await harness.observer.handleEventAsync(preambleEvent("Reviewing"));
-        expect(harness.persistDigest).toHaveBeenCalledOnce();
-        expect(digestEntered).toBe(false);
-        await runOpenClawAgentWorkerWrite(options, async () => {
-          order.push("publisher");
-        });
-      });
+      // Admit the real direct reader before the publisher reserves the same writer FIFO.
+      await withinTest(send(harness.observer, "lifecycle", { phase: "start" }), signal);
+      await withinTest(
+        runOpenClawAgentWriteAdmission(options, async () => {
+          await harness.observer.handleEventAsync(preambleEvent("Reviewing"));
+          expect(harness.persistDigest).toHaveBeenCalledOnce();
+          expect(digestEntered).toBe(false);
+          await runOpenClawAgentWorkerWrite(options, async () => {
+            order.push("publisher");
+          });
+        }),
+        signal,
+      );
       await withinTest(entered.promise, signal);
       successor = runOpenClawAgentWriteAdmission(options, () =>
         runOpenClawAgentWorkerWrite(options, async () => {

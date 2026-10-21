@@ -114,7 +114,9 @@ const input = mailbox.reserveSessionControllerSource(sessionKey, {
   protocolRunId: runId, policy: { mode: "followup" }, adapter,
 });
 rpc.registerRpcSource(runId, { input, adapter });
-Reflect.set(globalThis, Symbol.for("fixture.controllerWriteFailure"), { state, databaseOwner, database, writer, sessionKey, input });
+const retainedKey = "agent:main:runner-failed-write-retained";
+const retainedMailbox = mailbox.getSessionControllerMailbox(retainedKey);
+Reflect.set(globalThis, Symbol.for("fixture.controllerWriteFailure"), { state, databaseOwner, database, writer, retainedKey, retainedMailbox, input });
 it("admits a real source before its SQLite terminal write fails", () => {
   expect(rpc.getRpcSource(runId)?.input).toBe(input);
   expect(database.db.isOpen).toBe(true);
@@ -129,7 +131,8 @@ it("retains the original controller module and SQLite custody after a real write
   try {
     await expect(prior.input.settlement.promise).rejects.toThrow(/readonly/u);
     expect(state).toBe(prior.state);
-    expect(state.findSessionControllerEntry(prior.sessionKey)).toBe(prior.input.mailbox.owner);
+    // Failed sources retire normally; unrelated original storage must survive the failed file drain.
+    expect(state.findSessionControllerEntry(prior.retainedKey)).toBe(prior.retainedMailbox.owner);
     expect(prior.database.db.isOpen).toBe(true);
     expect(Reflect.get(globalThis, Symbol.for("openclaw.sqliteTestRetainedCustody"))?.sqlite).toBe(true);
   } finally {

@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
-// Preserve module setup before modules that consume it.
-import { mocks } from "./server-close.mocks.test-support.js";
 import type { GatewayCloseParams } from "./server-close.test-support.js";
+
+const { mocks } = await vi.hoisted(() => import("./server-close.mocks.test-support.js"));
 
 let enqueueSwarmRun: typeof import("../agents/subagents/swarm/swarm-scheduler.js").enqueueSwarmRun;
 let PluginRuntimeCloseRetainedError: typeof import("../plugins/runtime-close-error.js").PluginRuntimeCloseRetainedError;

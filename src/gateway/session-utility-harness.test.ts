@@ -157,11 +157,11 @@ describe("utility completion with an unavailable implicit harness", () => {
         config,
         prepareModel: vi.fn(defaultPrepareModel),
         completeModel: vi.fn(defaultCompleteModel),
-        readSession: vi.fn(() => ({
+        initialEntry: {
           sessionId: "session-id",
           updatedAt: 0,
           agentHarnessId: "openclaw",
-        })),
+        },
       });
       dispose = () => observer.observer.disposeAsync();
       await startAndAddToolNotes(observer.observer);

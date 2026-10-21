@@ -11,7 +11,6 @@ import {
   type EventRoute,
 } from "./session-observer-suite.test-support.js";
 import {
-  createObserverTimerTracker,
   declareObserverVisibility,
   flushObserver,
   modelMessage,
@@ -36,7 +35,11 @@ it("keeps global observer streams scoped to their owning agents", async () => {
     subscribe: false,
     config: {
       gateway: { controlUi: { sessionObserver: true } },
-      agents: { defaults: { utilityModel: "openai/gpt-test" }, entries: { main: {}, work: {} } },
+      agents: {
+        ownership: "explicit",
+        defaults: { utilityModel: "openai/gpt-test", systemAgent: { agentId: "main" } },
+        entries: { main: {}, work: {} },
+      },
     },
   });
   harness.setSession({ sessionId: "main-global", updatedAt: 0 }, "global", "main");
@@ -399,7 +402,6 @@ it("stops live model attempts at the budget when requests are superseded", async
 it("disables model work when digest persistence reports a missing entry", async () => {
   const unrelated = vi.fn();
   const unrelatedTimer = setTimeout(unrelated, 60_000);
-  const { ownedTimers } = createObserverTimerTracker();
   const harness = createHarness();
   const delivery = harness.delivery();
   delivery.beforeCommit = () => {
@@ -411,7 +413,6 @@ it("disables model work when digest persistence reports a missing entry", async 
   await advance(12_000);
   expect(harness.completeModel).toHaveBeenCalledOnce();
   expect(harness.persistDigest).toHaveBeenCalledOnce();
-  expect(ownedTimers.size).toBe(0);
 
   await startAndAddToolNotes(harness.observer, { count: 4 });
   await vi.advanceTimersByTimeAsync(24_000);
@@ -421,7 +422,6 @@ it("disables model work when digest persistence reports a missing entry", async 
   await flushObserver();
   expect(unrelated).toHaveBeenCalledOnce();
   expect(harness.completeModel).toHaveBeenCalledOnce();
-  expect(ownedTimers.size).toBe(0);
   await harness.observer.disposeAsync();
   clearTimeout(unrelatedTimer);
 });

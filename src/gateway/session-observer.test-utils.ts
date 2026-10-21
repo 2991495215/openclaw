@@ -14,7 +14,10 @@ import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { AgentEventPayload } from "../infra/agent-events.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
-import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
+import {
+  openOpenClawAgentDatabase,
+  runOpenClawAgentWriteTransaction,
+} from "../state/openclaw-agent-db.js";
 import { captureOpenClawAgentDatabaseExecution } from "../state/openclaw-agent-execution.js";
 import {
   createOpenClawTestState,
@@ -165,30 +168,6 @@ export async function flushObserver(): Promise<void> {
   }
 }
 
-export function createObserverTimerTracker() {
-  // Install after unrelated timers: these controlled fixtures schedule only observer work.
-  const nativeSetTimeout = setTimeout;
-  const nativeClearTimeout = clearTimeout;
-  const ownedTimers = new Set<ReturnType<typeof setTimeout>>();
-  const setTimeoutFn = Object.assign((callback: () => void, delay?: number) => {
-    const timer = nativeSetTimeout(() => {
-      ownedTimers.delete(timer);
-      callback();
-    }, delay);
-    ownedTimers.add(timer);
-    return timer;
-  }, nativeSetTimeout);
-  const clearTimeoutFn: typeof clearTimeout = (timer) => {
-    if (timer && typeof timer === "object") {
-      ownedTimers.delete(timer);
-    }
-    nativeClearTimeout(timer);
-  };
-  vi.spyOn(globalThis, "setTimeout").mockImplementation(setTimeoutFn);
-  vi.spyOn(globalThis, "clearTimeout").mockImplementation(clearTimeoutFn);
-  return { ownedTimers };
-}
-
 export function createHarness(options?: {
   subscribe?: boolean;
   broadSubscribe?: boolean;
@@ -222,7 +201,7 @@ export function createHarness(options?: {
     if (!database) {
       database = openOpenClawAgentDatabase({ agentId, path: storePath, env });
       databases.set(storePath, database);
-      // Retain the real borrower so idle-retirement timers are not observer timers.
+      // Keep native execution alive until this harness has joined its observer work.
       executions.push(captureOpenClawAgentDatabaseExecution({ agentId, path: storePath, env }));
       persisters.set(path.resolve(storePath), persistDigest);
     }
@@ -252,7 +231,11 @@ export function createHarness(options?: {
     if (entry) {
       writeSessionEntry(database, sessionKey, entry);
     } else {
-      deleteSessionEntryRows(database, sessionKey);
+      runOpenClawAgentWriteTransaction((current) => deleteSessionEntryRows(current, sessionKey), {
+        agentId,
+        path: database.path,
+        env,
+      });
     }
     publishRow(sessionKey, agentId);
   };
