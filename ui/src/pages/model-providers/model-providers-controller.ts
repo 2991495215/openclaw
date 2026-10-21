@@ -1,5 +1,5 @@
 import { asNullableRecord as asConfigRecord } from "@openclaw/normalization-core/record-coerce";
-import { createEffect, createSignal, onSettled } from "solid-js";
+import { createEffect, createMemo, createSignal, onSettled } from "solid-js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ApplicationContext } from "../../app/context.ts";
 import { hasOperatorAdminAccess, hasOperatorReadAccess } from "../../app/operator-access.ts";
@@ -29,7 +29,13 @@ import {
   type ModelProviderRowMessage,
 } from "./config-mutation.ts";
 import { ModelProviderCoreLoader, type ModelProviderRefreshReason } from "./core-load.ts";
-import { buildModelProviderPresentation, type DefaultsDraft } from "./data.ts";
+import {
+  buildModelProviderPresentation,
+  collectProviderLocalCost,
+  collectProviderUsage,
+  type DefaultsDraft,
+  type ModelProviderMetrics,
+} from "./data.ts";
 import { createModelProviderDiscovery } from "./discovery-controller.tsx";
 import { createInstalledAgents } from "./installed-agents.tsx";
 import { EMPTY_MODEL_PROVIDERS_DATA } from "./load.ts";
@@ -113,6 +119,18 @@ export function createModelProviders(
     setDataClient: (client) => (dataClient = client),
     refreshPolicy,
   });
+  // Accessors keep pending data out of the synchronous page/roster projection.
+  const metrics: ModelProviderMetrics = {
+    usage: createMemo(async () => {
+      projection.read();
+      const result = (await supplemental.usageRead())?.providerUsage;
+      return collectProviderUsage(result?.ok ? result.value : null);
+    }),
+    cost: createMemo(async () => {
+      projection.read();
+      return collectProviderLocalCost((await supplemental.costRead())?.costByProvider ?? null);
+    }),
+  };
   const gateway = new GatewayPageBinding(notify, {
     getGateway: () => context.gateway,
     onIdentityChange: () => resetConnectionState(),
@@ -626,7 +644,9 @@ export function createModelProviders(
       refreshing: core.loading,
       error: rosterError ?? (noSelectableAgents ? t("agents.noAgents") : data.error),
       providerUsageFailed: data.providerUsage?.ok === false,
+      // Admission also coordinates usage retries; do not hold the shared row on either read.
       supplementalLoading: loaderPending || supplemental.loading,
+      metrics,
       updatedAt: data.updatedAt,
       credentialAgentLabel: agentLabel,
       cards: noSelectableAgents ? [] : installedAgents.filterProviders(cards),

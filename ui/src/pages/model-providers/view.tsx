@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, Errored, For, Loading, Show } from "solid-js";
 import type { ModelsProbeResult } from "../../api/types.ts";
 import { ShellLayoutBoundary } from "../../app/shell-layout-traits-solid.tsx";
 import { Icon } from "../../components/solid/icon.tsx";
@@ -93,8 +93,7 @@ function modelsText(card: ModelProviderCard): string | null {
       : t("modelProviders.models", { count: String(card.modelCount) });
 }
 
-function renderLocalCost(card: ModelProviderCard) {
-  const cost = card.localCost;
+function renderLocalCost(cost: ModelProviderCard["localCost"]) {
   const unavailable = cost?.usageReport?.state === "unavailable";
   if (!cost || (!unavailable && cost.totalTokens === 0 && cost.totalCost === 0)) {
     return undefined;
@@ -111,6 +110,16 @@ function renderLocalCost(card: ModelProviderCard) {
           messages: String(cost.messageCount),
         })}
       </div>
+    </div>
+  );
+}
+
+function renderGlobalUsage(usage: ModelProviderCard["usage"], loading: boolean) {
+  return usage ? (
+    renderProviderUsageDetails(usage)
+  ) : (
+    <div class="model-providers__no-stats">
+      {t(loading ? "common.loading" : "modelProviders.noStats")}
     </div>
   );
 }
@@ -321,6 +330,7 @@ function ProviderActions(props: ModelProvidersViewProps & { card: ModelProviderC
 function ProviderRow(props: ModelProvidersViewProps & { card: ModelProviderCard }) {
   const card = () => props.card;
   const models = () => modelsText(card());
+  const supplementalLoading = createMemo(() => props.supplementalLoading);
   const message = () => props.messages[`key:${card().id}`] ?? props.messages[card().id];
   return (
     <div
@@ -358,14 +368,22 @@ function ProviderRow(props: ModelProvidersViewProps & { card: ModelProviderCard 
         aria-busy={props.supplementalLoading ? "true" : "false"}
       >
         <div class="model-providers__global-metrics-title">{t("modelProviders.globalUsage")}</div>
-        {card().usage ? (
-          renderProviderUsageDetails(card().usage!)
-        ) : (
-          <div class="model-providers__no-stats">
-            {t(props.supplementalLoading ? "common.loading" : "modelProviders.noStats")}
-          </div>
-        )}
-        {renderLocalCost(card())}
+        <Errored fallback={() => renderGlobalUsage(card().usage, props.supplementalLoading)}>
+          <Loading
+            on={supplementalLoading()}
+            fallback={renderGlobalUsage(card().usage, props.supplementalLoading)}
+          >
+            {renderGlobalUsage(
+              props.metrics.usage().get(card().id)?.snapshot ?? card().usage,
+              props.supplementalLoading,
+            )}
+          </Loading>
+        </Errored>
+        <Errored fallback={() => renderLocalCost(card().localCost)}>
+          <Loading on={supplementalLoading()} fallback={renderLocalCost(card().localCost)}>
+            {renderLocalCost(props.metrics.cost().get(card().id) ?? card().localCost)}
+          </Loading>
+        </Errored>
       </div>
       <ProviderActions {...props} /> <KeyEditor {...props} />
       {renderProbeResult(props.probeResults[card().id])} {renderMutationMessage(message())}

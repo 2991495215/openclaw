@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createEmptyCostUsageTotals } from "../../../../src/infra/session-cost-usage-totals.js";
 import { createDeferred as deferred } from "../../../../test/helpers/promise.js";
 import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { EMPTY_MODEL_PROVIDERS_DATA } from "./load.ts";
@@ -285,5 +286,77 @@ describe("ModelProvidersPage usage convergence", () => {
     expect(page.view.props.cards.find((card) => card.id === "openai")?.usage).toEqual(
       replacementUsage,
     );
+  });
+
+  it("keeps provider controls while metrics settle independently and clears unavailable cost quietly", async () => {
+    const harness = createHarness("main");
+    const usage = deferred<unknown>();
+    const cost = deferred<unknown>();
+    const original = harness.request.getMockImplementation()!;
+    let usageReads = 0;
+    let costReads = 0;
+    harness.request.mockImplementation(async (method, ...args) => {
+      if (method === "usage.status") {
+        if (++usageReads === 1) return usage.promise;
+        throw new Error("Usage temporarily unavailable");
+      }
+      if (method === "sessions.usage") {
+        if (++costReads === 1) return cost.promise;
+        throw new Error("Cost temporarily unavailable");
+      }
+      if (method === "models.authStatus") {
+        return createAuthStatus([{ status: "missing", profiles: [] }]);
+      }
+      return original(method, ...args);
+    });
+    const page = appendPage(harness.context);
+    await waitForSolid(() =>
+      expect(
+        page.querySelector('[data-provider-id="openai"] .model-providers__global-metrics')
+          ?.textContent,
+      ).toContain("Loading"),
+    );
+    const search = page.querySelector<HTMLInputElement>(".model-providers__search input")!;
+    const row = page.querySelector('[data-provider-id="openai"]')!;
+    search.focus();
+    usage.resolve({
+      updatedAt: 1,
+      providers: [
+        { provider: "openai", displayName: "OpenAI", windows: [{ label: "5h", usedPercent: 25 }] },
+      ],
+    });
+    await waitForSolid(() => expect(row.textContent).toContain("75% left"));
+    expect(page.querySelector('[data-provider-id="openai"]')).toBe(row);
+    expect(page.querySelector(".model-providers__search input")).toBe(search);
+    expect(document.activeElement).toBe(search);
+    expect(row.querySelector(".model-providers__global-metrics")?.getAttribute("aria-busy")).toBe(
+      "true",
+    );
+    cost.resolve({
+      aggregates: {
+        byProvider: [
+          {
+            provider: "openai",
+            count: 2,
+            totals: { ...createEmptyCostUsageTotals(), totalTokens: 100, totalCost: 1 },
+          },
+        ],
+      },
+    });
+    await waitForSolid(() =>
+      expect(row.querySelector(".model-providers__local-cost-detail")?.textContent).toContain(
+        "100 tokens",
+      ),
+    );
+    page.view.props.onRefresh();
+    await waitForSolid(() =>
+      expect(page.renderRoot.textContent).toContain(
+        "Provider usage is unavailable; the last request failed. Refresh to retry.",
+      ),
+    );
+    await waitForSolid(() => expect(row.querySelector(".model-providers__local-cost")).toBeNull());
+    expect(page.querySelector('[data-provider-id="openai"]')).toBe(row);
+    expect(page.querySelector(".model-providers__search input")).toBe(search);
+    expect(document.activeElement).toBe(search);
   });
 });

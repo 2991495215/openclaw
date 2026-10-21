@@ -34,6 +34,7 @@ export function props(overrides: Partial<ModelProvidersViewProps> = {}): ModelPr
     error: null,
     providerUsageFailed: false,
     supplementalLoading: false,
+    metrics: { usage: () => new Map(), cost: () => new Map() },
     updatedAt: 1,
     credentialAgentLabel: "Writer",
     cards: [card()],
