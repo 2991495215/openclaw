@@ -63,6 +63,12 @@ function createChannelsPage(context: ApplicationContext) {
   const wizardHost = createChannelSetup({
     getContext: () => context,
     clearSelection: () => setSelectedChannel(null),
+    presentWizard: (pending) => mutations.run("wizard", pending),
+    retire: () => {
+      mutations.retire("wizard");
+      mutations.retire("whatsapp");
+    },
+    startWhatsApp,
   });
 
   let schemaLoadStarted = false;
@@ -95,6 +101,8 @@ function createChannelsPage(context: ApplicationContext) {
     const adminAccess = connected ? hasOperatorAdminAccess(snapshot.hello?.auth ?? null) : canAdmin;
     if (!adminAccess) {
       mutations.retire("config");
+      mutations.retire("whatsapp");
+      mutations.retire("wizard");
     }
     const pairingAuthSignature = connected
       ? resolveChannelPairingAuthSignature(snapshot)
@@ -300,6 +308,18 @@ function createChannelsPage(context: ApplicationContext) {
     );
   }
 
+  function presentWhatsApp(pending: Promise<void>) {
+    void mutations.run("whatsapp", pending).then(() => {
+      // Plugin views receive imperative snapshots, including the settled saving flag.
+      onSettled(() => pluginPresentation.details.sync());
+    });
+    return pending;
+  }
+
+  function startWhatsApp(force: boolean, accountId = wizardHost.whatsappAccountId()) {
+    return presentWhatsApp(context.channels.startWhatsApp(force, accountId));
+  }
+
   function viewProps(): ChannelsProps {
     operationState.read();
     gatewayProjection.read();
@@ -323,10 +343,12 @@ function createChannelsPage(context: ApplicationContext) {
       selectedChannel: selectedChannel(),
       onShowDetail: (channel) => {
         mutations.retire("config");
+        mutations.retire("whatsapp");
         setSelectedChannel(channel);
       },
       onCloseDetail: () => {
         mutations.retire("config");
+        mutations.retire("whatsapp");
         setSelectedChannel(null);
       },
       onStartSetup: (channelId) => {
@@ -346,9 +368,10 @@ function createChannelsPage(context: ApplicationContext) {
         updateOperations({ prompt: null });
       },
       onPairingPromptConfirm: () => void mutations.run("pairing", confirmPairingPrompt()),
-      onWhatsAppStart: (force) =>
-        void context.channels.startWhatsApp(force, wizardHost.whatsappAccountId()),
-      onWhatsAppWait: () => void context.channels.waitWhatsApp(wizardHost.whatsappAccountId()),
+      onWhatsAppStart: startWhatsApp,
+      onWhatsAppWait: () =>
+        presentWhatsApp(context.channels.waitWhatsApp(wizardHost.whatsappAccountId())),
+      onWhatsAppLogout: (accountId) => presentWhatsApp(context.channels.logoutWhatsApp(accountId)),
       onShowAdvancedSettings: setShowAdvancedSettings,
       onConfigPatch: (path, value) => context.runtimeConfig.patchForm(path, value),
       onConfigSave: () => void mutations.run("config", saveChannelConfig()),

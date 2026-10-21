@@ -1,8 +1,8 @@
-import { action, createMemo, createOptimisticStore } from "solid-js";
+import { action, createMemo, createOptimisticStore, onSettled } from "solid-js";
 import { formatUiError } from "../../lib/format-error.ts";
 import { showToast } from "../../lib/toast.ts";
 
-type ChannelMutation = "config" | "pairing";
+export type ChannelMutation = "config" | "pairing" | "whatsapp" | "wizard";
 
 /** Presents admitted work without changing its owner's write or settlement policy. */
 export function createChannelMutations(deps: {
@@ -13,12 +13,19 @@ export function createChannelMutations(deps: {
   const epoch = createMemo(deps.readEpoch);
   const presentation = createMemo(() => {
     const currentEpoch = epoch();
-    const [busy, setBusy] = createOptimisticStore({ config: false, pairing: false });
+    const [busy, setBusy] = createOptimisticStore({
+      config: false,
+      pairing: false,
+      whatsapp: false,
+      wizard: false,
+    });
     return { epoch: currentEpoch, busy, setBusy };
   });
   const lifetimes = {
     config: Promise.withResolvers<void>(),
     pairing: Promise.withResolvers<void>(),
+    whatsapp: Promise.withResolvers<void>(),
+    wizard: Promise.withResolvers<void>(),
   };
   const isCurrent = (view: ReturnType<typeof presentation>) =>
     deps.isActive() && view.epoch === deps.currentEpoch();
@@ -45,7 +52,7 @@ export function createChannelMutations(deps: {
   return {
     busy: () => presentation().busy,
     retire(kind?: ChannelMutation) {
-      for (const key of kind ? [kind] : (["config", "pairing"] as const)) {
+      for (const key of kind ? [kind] : (["config", "pairing", "whatsapp", "wizard"] as const)) {
         lifetimes[key].resolve();
         lifetimes[key] = Promise.withResolvers<void>();
       }
@@ -53,8 +60,10 @@ export function createChannelMutations(deps: {
     async run(kind: ChannelMutation, pending: Promise<unknown>) {
       const view = presentation();
       const retired = lifetimes[kind].promise;
-      // The owner's synchronous admission publication precedes the action.
-      await Promise.resolve();
+      // Let owner publication and any newly opened modal mount before joining the action.
+      await new Promise<void>((resolve) => {
+        onSettled(resolve);
+      });
       return present(view, kind, pending, retired);
     },
   };

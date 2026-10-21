@@ -1,23 +1,26 @@
-import { createRouter, definePage } from "@openclaw/uirouter";
 import { createComponent } from "solid-js";
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ControlUiChannelSettingsContext,
   ControlUiChannelSettingsSnapshot,
 } from "../../../../src/plugin-sdk/control-ui-settings.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
-import { GatewayRequestError, type GatewayBrowserClient } from "../../api/gateway.ts";
+import { GatewayRequestError } from "../../api/gateway.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context.ts";
-import { createChannelCapability } from "../../lib/channels/index.ts";
-import { createRuntimeConfigCapability } from "../../lib/config/runtime-config-capability.ts";
 import { ApplicationProvider } from "../../lib/reactive/context.ts";
 import type { ControlUiPluginDistribution } from "../../plugins/control-ui-distribution.ts";
-import { createApplicationGateway } from "../../test-helpers/application-context.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { updatePickers } from "../../test-helpers/select-picker.ts";
 import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
 import {
+  catalogFixture,
   channelSnapshot,
+  createContext,
+  createGateway,
+  choosePairingFilter,
+  profileButton,
+  setGatewayScopes,
+  sources,
   channelStatus,
   iconRequests,
   mockIcon,
@@ -33,27 +36,6 @@ vi.mock("../../plugins/control-ui-distribution.ts", async (importOriginal) => ({
 }));
 
 const mountedPages = new Map<HTMLElement, () => void>();
-const sources: Array<Pick<ApplicationContext, "runtimeConfig" | "channels">> = [];
-
-function catalogFixture(plugins: object[], initial = channelSnapshot(), scopes?: string[]) {
-  let refreshed: ReturnType<typeof channelSnapshot> | undefined;
-  const gateway = createGateway(scopes, {
-    "plugins.list": () => ({ plugins, diagnostics: [], mutationAllowed: true }),
-    "channels.status": () => refreshed ?? channelSnapshot(),
-  });
-  const source = createContext(gateway);
-  source.channels.state.channelsSnapshot = initial;
-  const request = vi.spyOn(gateway.snapshot.client!, "request");
-  return {
-    gateway,
-    source,
-    request,
-    refresh: async (snapshot: typeof initial) => {
-      refreshed = snapshot;
-      await source.channels.refresh(false);
-    },
-  };
-}
 
 function mountPage(context: ApplicationContext): HTMLElement {
   const page = document.createElement("div");
@@ -85,115 +67,6 @@ async function settle() {
   flush();
 }
 
-type TestGateway = ApplicationContext["gateway"] & {
-  emit: (patch: Partial<ApplicationGatewaySnapshot>) => void;
-};
-
-function createGateway(
-  scopes?: string[],
-  responses: Record<string, () => unknown> = {},
-): TestGateway {
-  const client = {
-    request: vi.fn(async (method: string) => {
-      if (responses[method]) {
-        return responses[method]();
-      }
-      return method === "channels.pairing.list"
-        ? {
-            accounts: [],
-            requests: [],
-            commandOwnerConfigured: true,
-            limits: { pendingPerAccount: 3, ttlMs: 3_600_000 },
-          }
-        : method === "channels.status"
-          ? channelSnapshot()
-          : method === "plugins.list"
-            ? { plugins: [], diagnostics: [], mutationAllowed: true }
-            : {};
-    }),
-  } as unknown as GatewayBrowserClient;
-  const snapshot: ApplicationGatewaySnapshot = {
-    client,
-    phase: "connected",
-    offlineStable: false,
-    canvasPluginSurfaceUrl: null,
-    hello: null,
-    assistantAgentId: null,
-    sessionKey: "main",
-    lastError: null,
-    lastErrorCode: null,
-  };
-  const fixture = createApplicationGateway(snapshot);
-  const gateway = Object.assign(fixture.gateway, {
-    emit(patch: Partial<ApplicationGatewaySnapshot>) {
-      fixture.publish(Object.assign(snapshot, patch));
-    },
-  });
-  gateway.connection.gatewayUrl = "";
-  if (scopes) {
-    setGatewayScopes(gateway, scopes);
-  }
-  return gateway;
-}
-
-function setGatewayScopes(gateway: TestGateway, scopes: string[]) {
-  gateway.emit({
-    hello: { auth: { role: "operator", scopes } } as ApplicationGatewaySnapshot["hello"],
-  });
-}
-
-function createContext(gateway: ApplicationContext["gateway"]) {
-  const channels = createChannelCapability(gateway);
-  channels.state.channelsSnapshot = channelSnapshot();
-  const runtimeConfig = createRuntimeConfigCapability(gateway);
-  runtimeConfig.state.configSnapshot = { config: {}, hash: "test" };
-  vi.spyOn(runtimeConfig, "ensureSchemaLoaded").mockResolvedValue();
-  const router = createRouter({
-    routes: [
-      definePage({ id: "channels", path: "/channels", component: () => ({}) }),
-      definePage({ id: "dashboard", path: "/dashboard", component: () => ({}) }),
-    ],
-  });
-  onTestFinished(() => router.stop());
-  const context = {
-    basePath: "",
-    resourceBasePath: "",
-    gateway,
-    channels,
-    runtimeConfig,
-    router,
-    navigate: vi.fn(),
-    preload: vi.fn(async () => undefined),
-  } as unknown as ApplicationContext;
-  const source = { context, runtimeConfig, channels };
-  sources.push(source);
-  return source;
-}
-
-function profileButton(page: HTMLElement, label: string): HTMLButtonElement {
-  const button = Array.from(page.querySelectorAll("button")).find(
-    (entry) => entry.textContent?.trim() === label,
-  );
-  if (!button) {
-    throw new Error(`Missing action: ${label}`);
-  }
-  return button;
-}
-
-async function choosePairingFilter(page: HTMLElement, index: number, value: string) {
-  const picker = page.querySelectorAll<HTMLElement>(
-    ".channels-pairing-filters openclaw-select-picker",
-  )[index]!;
-  picker.querySelector<HTMLButtonElement>(".picker-select__trigger")!.click();
-  await settle();
-  const option = Array.from(picker.querySelectorAll<HTMLElement>("[role=option]")).find(
-    (entry) => entry.dataset.value === value,
-  );
-  expect(option).toBeDefined();
-  option!.click();
-  await settle();
-}
-
 afterEach(() => {
   packaged.length = 0;
   for (const page of mountedPages.keys()) {
@@ -210,6 +83,50 @@ afterEach(() => {
 });
 
 describe("ChannelsPage lifecycle", () => {
+  it.each(["answer", "close"])(
+    "keeps a held wizard answer with its %s outcome",
+    async (outcome) => {
+      const starting = createDeferred<Record<string, unknown>>();
+      const pending = createDeferred<Record<string, unknown>>();
+      const step = { id: "token", type: "text", title: "Channel token" };
+      const gateway = createGateway(["operator.admin", "operator.read"], {
+        "wizard.start": () => starting.promise,
+        "wizard.next": () => pending.promise,
+      });
+      const source = createContext(gateway);
+      const page = mountPage(source.context);
+      await settle();
+      profileButton(page, "Set up").click();
+      await settle();
+      starting.resolve({ done: false, sessionId: "setup", step });
+      await waitForSolid(() =>
+        expect(page.querySelector("#channel-wizard-text-input")).not.toBeNull(),
+      );
+      await waitForSolid(() => expect(page.querySelector("dialog")?.open).toBe(true));
+      const input = page.querySelector<HTMLInputElement>("#channel-wizard-text-input")!;
+      input.value = "Draft token";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+      profileButton(page, "Continue").click();
+      await waitForSolid(() => expect(input.disabled).toBe(true));
+      expect(page.querySelector("#channel-wizard-text-input")).toBe(input);
+      if (outcome === "close") {
+        page.querySelector("openclaw-modal-dialog")!.dispatchEvent(new Event("modal-cancel"));
+        await waitForSolid(() => expect(page.querySelector(".channels-wizard")).toBeNull());
+      }
+      pending.resolve({ done: false, step, error: "Try another token" });
+      if (outcome === "close") {
+        await settle();
+        expect(page.querySelector(".channels-wizard")).toBeNull();
+      } else {
+        await waitForSolid(() => expect(input.disabled).toBe(false));
+        expect(page.querySelector("#channel-wizard-text-input")).toBe(input);
+        expect(input.value).toBe("Draft token");
+        expect(page.textContent).toContain("Try another token");
+      }
+    },
+  );
+
   it("keeps channel details available but waits for reconnect before starting setup", async () => {
     const gateway = createGateway(["operator.admin", "operator.read"], {
       "wizard.start": () => ({
@@ -959,6 +876,70 @@ it("binds plugin login actions to the existing owner and omits the default start
     channel: "whatsapp",
     accountId: "default",
   });
+});
+
+it.each([
+  ["start", "web.login.start"],
+  ["wait", "web.login.wait"],
+  ["logout", "channels.logout"],
+] as const)(
+  "settles the plugin %s saving snapshot after a failed owner request",
+  async (operation, method) => {
+    const f = await mountPackagedChannel("whatsapp");
+    const pending = createDeferred();
+    const request = vi.spyOn(f.gateway.snapshot.client!, "request");
+    request.mockImplementationOnce(async () => await pending.promise);
+    const login = f.context.login!;
+    const completion =
+      operation === "start"
+        ? login.start(false)
+        : operation === "wait"
+          ? login.wait()
+          : login.captureLogout()!.logout();
+    await waitForSolid(() =>
+      expect(f.mounts[0]!.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ login: expect.objectContaining({ busy: true }) }),
+      ),
+    );
+    expect(request.mock.calls.some(([name]) => name === method)).toBe(true);
+    expect(f.page.querySelector("[data-plugin-draft]")).toBe(f.mounts[0]!.input);
+    pending.reject(new Error("Login unavailable"));
+    await completion;
+    await waitForSolid(() =>
+      expect(f.mounts[0]!.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          login: expect.objectContaining({ busy: false, message: "Login unavailable" }),
+        }),
+      ),
+    );
+    expect(f.page.querySelector("[data-plugin-draft]")).toBe(f.mounts[0]!.input);
+  },
+);
+
+it("releases a plugin login presentation on disconnect before its admitted request settles", async () => {
+  const f = await mountPackagedChannel("whatsapp");
+  const pending = createDeferred<Record<string, unknown>>();
+  vi.spyOn(f.gateway.snapshot.client!, "request").mockImplementationOnce(
+    async () => await pending.promise,
+  );
+  let completed = false;
+  const completion = f.context.login!.start(false).then(() => {
+    completed = true;
+  });
+  await waitForSolid(() => expect(f.source.channels.state.whatsappBusy).toBe(true));
+  f.gateway.emit({ phase: "stopped" });
+  await waitForSolid(() =>
+    expect(f.mounts[0]!.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        connected: false,
+        login: expect.objectContaining({ busy: false }),
+      }),
+    ),
+  );
+  expect(completed).toBe(false);
+  pending.resolve({ connected: true });
+  await completion;
+  expect(f.source.channels.state.whatsappLoginConnected).not.toBe(true);
 });
 
 it("denies login and confirmation capabilities to an initially read-only operator", async () => {

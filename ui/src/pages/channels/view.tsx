@@ -400,7 +400,7 @@ function WizardStepBody(props: {
                 ? props.controls.wizardHost.draft.textValue
                 : props.wizard.step.initialValue
           }
-          busy={props.wizard.busy}
+          busy={props.controls.mutationBusy?.wizard || props.wizard.busy}
           inputId="channel-wizard-text-input"
           validationErrorId={
             props.wizard.validationError ? "channel-wizard-validation-error" : undefined
@@ -427,7 +427,7 @@ function WizardStepBody(props: {
       {message() ? <div class={outputClass()}>{message()}</div> : undefined}
       <openclaw-modal-actions class="channels-wizard__footer">
         {gatewayOwned() ? renderCloseButton(props.controls, "common.cancel") : undefined}
-        {gatewayOwned() || props.wizard.busy ? (
+        {gatewayOwned() || props.controls.mutationBusy?.wizard || props.wizard.busy ? (
           <WizardBusyButton
             statusLabel={(gatewayOwned() && message()) || t("channels.setup.working")}
           />
@@ -447,6 +447,7 @@ function WizardStepBody(props: {
 
 function renderWhatsAppLinking(props: ChannelsProps) {
   const connected = () => props.channels.whatsappLoginConnected === true;
+  const busy = () => props.mutationBusy?.whatsapp || props.channels.whatsappBusy;
   return (
     <>
       <div class="channels-wizard__message" role="status">
@@ -465,7 +466,7 @@ function renderWhatsAppLinking(props: ChannelsProps) {
                 src={props.channels.whatsappLoginQrDataUrl}
                 alt={t("channels.setup.whatsappQrAlt")}
               />
-            ) : props.channels.whatsappBusy ? undefined : (
+            ) : busy() ? undefined : (
               <div class="channels-wizard__spinner">{t("channels.setup.whatsappQrHint")}</div>
             )}
           </div>
@@ -477,17 +478,21 @@ function renderWhatsAppLinking(props: ChannelsProps) {
           renderCloseButton(props, "channels.setup.finish", true)
         ) : (
           <>
-            {props.channels.whatsappBusy ? (
+            {busy() ? (
               <WizardBusyButton statusLabel={t("channels.setup.whatsappQrLoading")} />
             ) : (
               <>
-                <button type="button" class="btn" onClick={() => props.onWhatsAppStart(true)}>
+                <button type="button" class="btn" onClick={() => void props.onWhatsAppStart(true)}>
                   {props.channels.whatsappLoginQrDataUrl
                     ? t("channels.setup.regenerateQr")
                     : t("common.showQr")}
                 </button>
                 {props.channels.whatsappLoginQrDataUrl ? (
-                  <button type="button" class="btn primary" onClick={() => props.onWhatsAppWait()}>
+                  <button
+                    type="button"
+                    class="btn primary"
+                    onClick={() => void props.onWhatsAppWait()}
+                  >
                     {t("common.waitForScan")}
                   </button>
                 ) : undefined}
