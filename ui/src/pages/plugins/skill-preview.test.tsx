@@ -1,14 +1,19 @@
 /* @vitest-environment jsdom */
-import { createRoot } from "solid-js";
+import { createRoot, createSignal } from "solid-js";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import type { PluginsSkillsReadResult } from "../../../../packages/gateway-protocol/src/index.ts";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
 import { GatewayBrowserClient } from "../../api/gateway.ts";
 import { GatewayPageBinding } from "../../lib/gateway-page-binding.ts";
+import { cleanupSolid, mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createApplicationGateway } from "../../test-helpers/solid-application-context.tsx";
-import { createPluginPreview } from "./skill-preview.tsx";
+import { waitForSolid } from "../../test-helpers/solid-settle.ts";
+import { createPluginPreview, PluginSkillPreview } from "./skill-preview.tsx";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  cleanupSolid();
+  vi.restoreAllMocks();
+});
 
 function setup() {
   const client = new GatewayBrowserClient({ url: "ws://fixture.invalid" });
@@ -18,11 +23,20 @@ function setup() {
   const binding = new GatewayPageBinding(vi.fn(), { getGateway: () => gateway });
   binding.connect();
   onTestFinished(() => binding.dispose());
-  const preview = createRoot((dispose) => {
+  const { preview, state } = createRoot((dispose) => {
     onTestFinished(dispose);
-    return createPluginPreview(binding, () => {});
+    const [revision, setRevision] = createSignal(0);
+    const owner = createPluginPreview(binding, () => setRevision((value) => value + 1));
+    return {
+      preview: owner,
+      state: () => {
+        revision();
+        return owner.state;
+      },
+    };
   });
-  return { preview, request, gateway, publish, client };
+  const view = mountSolid(() => <PluginSkillPreview preview={preview} state={state()} />);
+  return { preview, request, gateway, publish, client, container: view.container };
 }
 
 const params = { source: "installed", pluginId: "example", skillName: "guide" } as const;
@@ -87,24 +101,87 @@ it("fetches only selected bodies, deduplicates pending reads and retains late si
   expect(request).toHaveBeenCalledTimes(3);
 });
 
+it("opens before inventory settles and retains its shell across inventory failure and retry", async () => {
+  const { preview, request, container } = setup();
+  const initial = createDeferred<PluginsSkillsReadResult>();
+  const retry = createDeferred<PluginsSkillsReadResult>();
+  request.mockReturnValueOnce(initial.promise).mockReturnValueOnce(retry.promise);
+  const pending = preview.open(params);
+  await waitForSolid(() =>
+    expect(container.querySelector(".body")?.getAttribute("aria-busy")).toBe("true"),
+  );
+  const shell = ["openclaw-file-preview-modal", ".head", ".body", ".list"].map((selector) =>
+    container.querySelector(selector),
+  );
+  expect(container.querySelectorAll("openclaw-panel-loading-skeleton")).toHaveLength(2);
+  expect(container.querySelector(".close-button")).not.toBeNull();
+  initial.reject(new Error("Inventory failed"));
+  await pending;
+  await waitForSolid(() =>
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Inventory failed"),
+  );
+  expect(container.querySelector(".body")?.getAttribute("aria-busy")).toBe("false");
+  container.querySelector<HTMLButtonElement>(".detail button")!.click();
+  await waitForSolid(() =>
+    expect(container.querySelector(".body")?.getAttribute("aria-busy")).toBe("true"),
+  );
+  expect(container.querySelectorAll("openclaw-panel-loading-skeleton")).toHaveLength(2);
+  retry.resolve(lazyResult);
+  await waitForSolid(() =>
+    expect(container.querySelector(".markdown")?.textContent).toContain("Full instructions."),
+  );
+  ["openclaw-file-preview-modal", ".head", ".body", ".list"].forEach((selector, index) => {
+    expect(container.querySelector(selector)).toBe(shell[index]);
+  });
+});
+
 it("keeps selected-file failures retryable without refetching the entry or losing the inventory", async () => {
-  const { preview, request } = setup();
+  const { preview, request, container } = setup();
+  const retry = createDeferred<PluginsSkillsReadResult>();
   request
     .mockResolvedValueOnce(lazyResult)
     .mockRejectedValueOnce(new Error("Read failed"))
-    .mockResolvedValueOnce(selectedResult("a.md"));
+    .mockReturnValueOnce(retry.promise);
   await preview.open(params);
   await preview.select("a.md");
-  expect(preview.state?.fileErrors.get("a.md")).toBe("Read failed");
+  await waitForSolid(() =>
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Read failed"),
+  );
+  expect(container.querySelectorAll(".item")).toHaveLength(3);
   expect(preview.state?.result?.files[0]?.content).toBe("Full instructions.");
-  await preview.select("a.md");
-  expect(preview.state?.fileErrors.size).toBe(0);
-  expect(preview.state?.pendingPaths.size).toBe(0);
+  container.querySelector<HTMLButtonElement>(".detail button")!.click();
+  await waitForSolid(() =>
+    expect(container.querySelector(".body")?.getAttribute("aria-busy")).toBe("true"),
+  );
+  expect(container.querySelectorAll(".item")).toHaveLength(3);
+  expect(container.querySelectorAll("openclaw-panel-loading-skeleton")).toHaveLength(1);
+  retry.resolve(selectedResult("a.md"));
+  await waitForSolid(() =>
+    expect(container.querySelector(".markdown")?.textContent).toContain("a.md"),
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(request).toHaveBeenLastCalledWith("plugins.skills.read", {
     ...params,
     version: "1.0.0",
     path: "a.md",
   });
+});
+
+it("keeps an unavailable body retryable when it arrives in the inventory or a selected-file reply", async () => {
+  const { preview, request, container } = setup();
+  const unavailable: PluginsSkillsReadResult = {
+    ...result,
+    files: [{ ...result.files[0]!, status: "unavailable", content: undefined }],
+  };
+  request.mockResolvedValueOnce(unavailable).mockResolvedValueOnce(unavailable);
+  await preview.open(params);
+  await waitForSolid(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+  expect(container.querySelectorAll(".item")).toHaveLength(1);
+  container.querySelector<HTMLButtonElement>(".detail button")!.click();
+  await waitForSolid(() => expect(request).toHaveBeenCalledTimes(2));
+  await waitForSolid(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+  expect(container.querySelector(".detail button")).not.toBeNull();
+  expect(request).toHaveBeenLastCalledWith("plugins.skills.read", { ...params, path: "SKILL.md" });
 });
 
 it.each([
