@@ -538,7 +538,11 @@ describe("Models page catalog publication", () => {
     expect(displayedCatalog(page)?.models).toEqual(preparedCatalog.models);
     await retryCatalog(page);
     expect(discover).toHaveBeenCalledTimes(2);
-    expect(page.querySelector('.model-providers__catalog-progress[role="status"]')).not.toBeNull();
+    await waitForSolid(() =>
+      expect(
+        page.querySelector('.model-providers__catalog-progress[role="status"]'),
+      ).not.toBeNull(),
+    );
     expect(modelPicker(page, "primary")).toBe(retainedPicker);
     await openModelPicker(page);
     expect(discover).toHaveBeenCalledTimes(2);

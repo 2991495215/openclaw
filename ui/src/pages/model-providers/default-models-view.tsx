@@ -217,8 +217,8 @@ function CatalogProgress(props: DefaultModelsViewProps): JSX.Element {
       <Errored
         fallback={(error, reset) => (
           <CatalogFeedback
-            discovering={Boolean(props.catalogDiscovering)}
-            error={formatUiError(error())}
+            discovering={Boolean(props.catalogDiscovering) || isPending(read)}
+            error={isPending(read) ? null : formatUiError(error())}
             onRetry={() => {
               props.onCatalogRetry();
               reset();
