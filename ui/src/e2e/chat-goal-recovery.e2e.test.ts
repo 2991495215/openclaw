@@ -214,11 +214,9 @@ suite.define(() => {
             message: "ACK still unavailable",
           });
         } else if (committed) {
-          await page
-            .getByText(action === "pause" ? "Pause not confirmed" : "Resume not confirmed", {
-              exact: true,
-            })
-            .waitFor();
+          await expect
+            .poll(() => page.locator(".agent-chat__goal-label").textContent())
+            .toBe(action === "pause" ? "Pause not confirmed" : "Resume not confirmed");
         } else {
           await expect.poll(() => page.locator(".agent-chat__goal").count()).toBe(0);
         }
@@ -240,6 +238,18 @@ suite.define(() => {
           const mobileGoal = page.locator('.chat-mobile-details-page[data-details-page="goal"]');
           await mobileGoal.getByText(goal.objective, { exact: true }).waitFor();
           await mobileGoal.getByRole("button", { name: "Retry resume", exact: true }).waitFor();
+          const host = page.locator('.chat-mobile-host[data-mobile-page="goal"]');
+          expect(await host.getAttribute("data-presentation")).toBeNull();
+          await host
+            .locator("header")
+            .getByRole("button", { name: "Expand Side panel", exact: true })
+            .click();
+          await expect.poll(() => host.getAttribute("data-mode")).toBe("expanded");
+          await host
+            .locator("header")
+            .getByRole("button", { name: "Restore", exact: true })
+            .click();
+          await expect.poll(() => host.getAttribute("data-mode")).toBe("dock");
           expect(await checkOutcome.isVisible()).toBe(true);
           await closeChatDetails(page);
           await page.setViewportSize(viewport);
@@ -334,8 +344,13 @@ suite.define(() => {
       const automatic = await gateway.waitForRequest(method, { after: 1 });
       expect(automatic.params).toEqual(first.params);
       await gateway.rejectDeferred(method, unavailable);
-      await page.getByText("Technical details", { exact: true }).click();
+      const card = page.locator(".agent-chat__goal");
+      const cardHeight = (await card.boundingBox())!.height;
+      await page.getByRole("button", { name: "Technical details", exact: true }).click();
+      await page.getByRole("dialog", { name: "Technical details", exact: true }).waitFor();
       await page.getByText("Gateway response unavailable", { exact: false }).waitFor();
+      expect((await card.boundingBox())!.height).toBe(cardHeight);
+      await page.keyboard.press("Escape");
       expect(await checkOutcome.isEnabled()).toBe(true);
       expect(await gateway.getRequests(method)).toHaveLength(2);
       expect(await gateway.getRequests("chat.send")).toHaveLength(0);

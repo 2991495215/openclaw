@@ -748,7 +748,7 @@
 .agent-chat__goal-recovery-detail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
   width: 100%;
   grid-column: 1 / -1;
@@ -791,9 +791,16 @@
 
 .agent-chat__goal-recovery-decision {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+}
+
+.agent-chat__goal-recovery-message {
+  flex: 1 1 200px;
 }
 
 .agent-chat__goal-recovery-decision p {
@@ -842,63 +849,44 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 16px;
-  margin-top: 2px;
-}
-
-.agent-chat__goal-recovery-footer > details[open] {
-  flex-basis: 100%;
+  margin-top: 0;
 }
 
 .agent-chat__goal-recovery-error {
-  min-width: 0;
-  max-width: 100%;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.agent-chat__goal-recovery-error summary {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  width: fit-content;
-  min-height: 28px;
-  border-radius: var(--radius-sm);
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
   color: var(--muted);
-  list-style: none;
+  font: inherit;
+  font-size: 12px;
   cursor: var(--cursor-action);
-  white-space: normal;
 }
-
-.agent-chat__goal-recovery-error summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-chat__goal-recovery-error summary:hover {
+.agent-chat__goal-recovery-error:hover {
   color: var(--text);
 }
-
-.agent-chat__goal-recovery-error summary:focus-visible {
+.agent-chat__goal-recovery-error:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-
-.agent-chat__goal-recovery-error summary svg {
-  flex: 0 0 auto;
+.agent-chat__goal-recovery-error svg {
   width: 12px;
   height: 12px;
-  transform: rotate(-90deg);
 }
-
-.agent-chat__goal-recovery-error[open] summary svg {
-  transform: none;
-}
-
 .agent-chat__goal-recovery-error-body {
-  margin-top: 4px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--text) 4%, transparent);
+  max-width: min(360px, calc(100vw - 48px));
+  max-height: min(240px, 45dvh);
+  overflow: auto;
+  padding: 12px;
   color: var(--text);
+  font: 13px/1.5 var(--font-body);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+.agent-chat__goal-objective-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }

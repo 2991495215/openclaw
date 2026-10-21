@@ -1,7 +1,8 @@
 import type { JSX } from "@solidjs/web";
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, createUniqueId } from "solid-js";
 import type { SessionGoal } from "../../../api/types.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { Popover } from "../../../components/solid/popover.tsx";
 import { useScrollState } from "../../../components/solid/scroll-state.ts";
 import { StrokeIcon } from "../../../components/solid/stroke-icon.tsx";
 import { registerChatGoalsEnglish } from "../../../i18n/locales/en-chat-goals.ts";
@@ -200,10 +201,10 @@ function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
           <openclaw-tooltip prop:content={pauseReason() ?? ""} disabled={!pauseReason()}>
             <span
               class="agent-chat__goal-label"
-              role="status"
+              role={props.expanded && props.recovery ? undefined : "status"}
               tabindex={pauseReason() ? "0" : undefined}
             >
-              {statusLabel()}
+              {props.expanded && props.recovery ? t("chat.goals.composerMode") : statusLabel()}
             </span>
           </openclaw-tooltip>
           <span class="agent-chat__goal-objective">{props.goal.objective}</span>
@@ -255,7 +256,7 @@ function GoalCard(props: Omit<ChatGoalProps, "goal"> & { goal: SessionGoal }) {
               recovery={props.recovery!}
               goal={props.goal}
               connected={Boolean(props.connected)}
-              heading={false}
+              presented={props.expanded}
             />
           </Show>
         </div>
@@ -296,11 +297,12 @@ export function renderChatGoalRecoverySolid(
 }
 
 export function ChatGoalRecoveryPanel(props: {
+  presented?: boolean;
   recovery: ChatGoalRecovery;
   goal?: SessionGoal;
   connected: boolean;
-  heading?: boolean;
 }) {
+  const diagnosticId = createUniqueId();
   const copy = () => goalRecoveryPresentation(props.recovery);
   const changedObjective = () =>
     props.recovery.requestedObjective &&
@@ -310,17 +312,14 @@ export function ChatGoalRecoveryPanel(props: {
       class="agent-chat__goal-recovery-detail"
       aria-busy={props.recovery.pending ? "true" : "false"}
     >
-      <Show when={props.heading !== false}>
-        <div class="agent-chat__goal-recovery-title" role="status">
-          <Show when={props.recovery.pending} fallback={<Icon name="alertTriangle" />}>
-            <span class="session-run-spinner" />
-          </Show>
-          <strong>{copy().title}</strong>
-        </div>
-      </Show>
       <Show when={props.goal || changedObjective()}>
         <div class="agent-chat__goal-recovery-objective">
           <Show when={props.goal}>
+            <Show when={changedObjective()}>
+              <span class="agent-chat__goal-objective-label">
+                {t("chat.goals.currentObjective")}
+              </span>
+            </Show>
             <ChatGoalBody goal={props.goal!} recovery={props.recovery} />
           </Show>
           <Show when={changedObjective()}>
@@ -332,9 +331,18 @@ export function ChatGoalRecoveryPanel(props: {
         </div>
       </Show>
       <div class="agent-chat__goal-recovery-decision">
-        <Show when={copy().description}>
-          <p>{copy().description}</p>
-        </Show>
+        <div class="agent-chat__goal-recovery-message">
+          <div class="agent-chat__goal-recovery-title" role="status">
+            <Show when={props.recovery.pending} fallback={<Icon name="alertTriangle" />}>
+              <span class="session-run-spinner" />
+            </Show>
+            <strong>{copy().title}</strong>
+          </div>
+
+          <Show when={copy().description}>
+            <p>{copy().description}</p>
+          </Show>
+        </div>
         <div class="agent-chat__goal-recovery-action-row">
           <button
             class="btn btn--sm"
@@ -353,14 +361,22 @@ export function ChatGoalRecoveryPanel(props: {
         <Show when={props.goal}>
           <ChatGoalMetrics goal={props.goal!} />
         </Show>
-        <Show when={props.recovery.error && !props.recovery.pending}>
-          <details class="agent-chat__goal-recovery-error">
-            <summary>
-              <span>{t("chat.goals.technicalDetails")}</span>
-              <Icon name="chevronDown" />
-            </summary>
+        <Show when={props.presented !== false && props.recovery.error && !props.recovery.pending}>
+          <Popover
+            id={diagnosticId}
+            label={t("chat.goals.technicalDetails")}
+            triggerClass="agent-chat__goal-recovery-error"
+            class="agent-chat__goal-recovery-diagnostic"
+            placement="top-start"
+            trigger={
+              <>
+                <span>{t("chat.goals.technicalDetails")}</span>
+                <Icon name="chevronRight" />
+              </>
+            }
+          >
             <div class="agent-chat__goal-recovery-error-body">{props.recovery.error}</div>
-          </details>
+          </Popover>
         </Show>
       </div>
     </section>

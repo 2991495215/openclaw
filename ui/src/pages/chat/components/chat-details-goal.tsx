@@ -240,6 +240,7 @@ export function ChatDetailsGoal(props: ChatDetailsGoalProps) {
             recovery={props.recovery!}
             goal={props.goal}
             connected={props.connected && props.presented}
+            presented={props.presented}
           />
         </Show>
       </div>

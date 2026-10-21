@@ -89,10 +89,7 @@ export abstract class ChatPaneSidePanels extends ChatPaneStateOwner {
   }
 
   /** Presentation memory belongs to this pane, never to a leaf or the saved desktop layout. */
-  protected mobileHost(
-    layout: SidebarLayout,
-    compactGoalRecovery = false,
-  ): ChatMobileHost | undefined {
+  protected mobileHost(layout: SidebarLayout): ChatMobileHost | undefined {
     if (!this.usesMobileHost) {
       return undefined;
     }
@@ -111,19 +108,6 @@ export abstract class ChatPaneSidePanels extends ChatPaneStateOwner {
       this.mobilePresentation.composerEditing = false;
       this.mobilePresentation.viewportRecovery = undefined;
     }
-    const currentDestination = this.mobilePresentation.destination;
-    const compactGoal = compactGoalRecovery && currentDestination.page?.details?.kind === "goal";
-    const destination: MobileHostDestination = compactGoal
-      ? {
-          ...currentDestination,
-          page: {
-            ...currentDestination.page!,
-            presentation: "sheet",
-            resizable: false,
-            expandable: false,
-          },
-        }
-      : currentDestination;
     return {
       scopeKey: this.mobilePresentation.session,
       open:
@@ -132,16 +116,15 @@ export abstract class ChatPaneSidePanels extends ChatPaneStateOwner {
           (sidebarMainPanel(layout)?.slot ?? "conversation") !== "conversation"),
       suspended: this.mobilePresentation.suspended,
       mode: this.mobilePresentation.mode,
-      height: compactGoal
-        ? undefined
-        : destination.page?.presentation === "sheet"
+      height:
+        this.mobilePresentation.destination.page?.presentation === "sheet"
           ? this.mobilePresentation.sheetHeight
           : this.mobilePresentation.height,
       reservedHeight: this.mobilePresentation.reservedHeight,
-      destination,
+      destination: this.mobilePresentation.destination,
       detailsMount: this.mobilePresentation.detailsMount,
       setDetailsMount: this.setMobileDetailsMount,
-      navigate: (nextDestination, source) => this.navigateMobileHost(nextDestination, source),
+      navigate: (destination, source) => this.navigateMobileHost(destination, source),
       reveal: (source) => this.navigateMobileHost(this.mobilePresentation.destination, source),
       close: () => {
         this.mobilePresentation.open = false;
@@ -159,7 +142,7 @@ export abstract class ChatPaneSidePanels extends ChatPaneStateOwner {
         }
       },
       toggleExpanded: (visibleDockHeight) => {
-        if (destination.page?.expandable === false) {
+        if (this.mobilePresentation.destination.page?.expandable === false) {
           return;
         }
         if (this.mobilePresentation.mode === "dock") {
@@ -172,7 +155,7 @@ export abstract class ChatPaneSidePanels extends ChatPaneStateOwner {
         this.mobilePresentation.height = undefined;
       },
       resize: (height, mode, reservedHeight) => {
-        if (destination.page?.presentation === "sheet") {
+        if (this.mobilePresentation.destination.page?.presentation === "sheet") {
           this.mobilePresentation.sheetHeight = height;
           return;
         }

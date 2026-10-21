@@ -144,10 +144,7 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
       openPanelSlot,
       closePanelSlot,
     } = params;
-    const mobileHost = this.mobileHost(
-      savedLayout,
-      Boolean(chatProps.goalRecovery) || !chatProps.connected,
-    );
+    const mobileHost = this.mobileHost(savedLayout);
 
     // What the pane shows. Its controls keep working on the layout as it is saved.
     const sidebarLayout = this.presentSidebarLayout(savedLayout);

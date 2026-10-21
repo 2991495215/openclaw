@@ -19,6 +19,7 @@ const enChatGoals = {
       actionPending: "Wait for the pending goal action.",
       invalidRequest: "Goal update is invalid. Check the objective and try again.",
       outcomeUnknown: "Goal update not confirmed. Check its outcome before making another change.",
+      currentObjective: "Current goal",
       requestedObjective: "Requested objective",
       technicalDetails: "Technical details",
       reconnectRecovery: "Reconnect to try again.",
@@ -32,7 +33,7 @@ const enChatGoals = {
         pause: {
           title: "Pause not confirmed",
           pending: "Pausing goal…",
-          description: "The goal may already be paused. You can retry the pause request.",
+          description: "The goal may already be paused.",
           action: "Retry pause",
         },
         resume: {
