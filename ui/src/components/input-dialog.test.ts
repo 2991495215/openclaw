@@ -4,6 +4,7 @@ import { flush } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGatewayHarness } from "../app/overlays-access.test-support.ts";
 import { getRenderedModalDialog, installDialogPolyfill } from "../test-helpers/modal-dialog.ts";
+import { waitForSolid } from "../test-helpers/solid-settle.ts";
 import { showInputDialog } from "./input-dialog.ts";
 
 let restoreDialogPolyfill: () => void;
@@ -181,11 +182,51 @@ describe("showInputDialog", () => {
     expect(document.body.querySelector("openclaw-modal-dialog")).toBeNull();
   });
 
+  it.each(["resolve", "reject"])(
+    "opens a successor after owner abort while the old submit awaits a late %s",
+    async (outcome) => {
+      const pending = Promise.withResolvers<string | null>();
+      const controller = new AbortController();
+      const closed = showInputDialog({
+        ...REQUIRED,
+        signal: controller.signal,
+        submit: () => pending.promise,
+      });
+      await getRenderedModalDialog(document.body);
+      await type("Old draft");
+      submitForm();
+      flush();
+      expect(dialogInput().disabled).toBe(true);
+
+      controller.abort();
+      await expect(closed).resolves.toBeNull();
+      const successor = showInputDialog({ ...REQUIRED, title: "Successor" });
+      await getRenderedModalDialog(document.body);
+      await type("New draft");
+      const input = dialogInput();
+      expect(input.disabled).toBe(false);
+
+      if (outcome === "resolve") {
+        pending.resolve("Old failure");
+      } else {
+        pending.reject(new Error("Old failure"));
+      }
+      await waitForSolid(() => {
+        expect(dialogInput()).toBe(input);
+        expect(input.value).toBe("New draft");
+        expect(document.body.querySelector('[role="alert"]')).toBeNull();
+      });
+      submitForm();
+      await expect(successor).resolves.toBe("New draft");
+    },
+  );
+
   it.each(["synchronous", "asynchronous"])(
     "recovers from a %s failure without discarding the input",
     async (mode) => {
+      const retry = Promise.withResolvers<string | null>();
       const submit = vi
-        .fn((): Promise<string | null> => Promise.resolve(null))
+        .fn((): Promise<string | null> => retry.promise)
         .mockImplementationOnce(() => {
           const error = new Error("gateway exploded");
           if (mode === "synchronous") {
@@ -208,6 +249,11 @@ describe("showInputDialog", () => {
       expect(document.activeElement).toBe(dialogInput());
 
       submitForm();
+      flush();
+      expect(dialogInput().disabled).toBe(true);
+      expect(dialogInput().hasAttribute("aria-invalid")).toBe(false);
+      expect(document.body.querySelector('[role="alert"]')).toBeNull();
+      retry.resolve(null);
       await closed;
       expect(document.body.querySelector("openclaw-modal-dialog")).toBeNull();
     },

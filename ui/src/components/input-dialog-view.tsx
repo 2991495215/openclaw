@@ -1,4 +1,5 @@
-import { createSignal, untrack } from "solid-js";
+import { racePromiseWithAbortSignal } from "@openclaw/retry";
+import { action, createOptimistic, createSignal, onSettled, untrack } from "solid-js";
 import { formatUiError } from "../lib/format-error.ts";
 import { projectGateway } from "../lib/reactive/application.ts";
 import { t } from "../lib/reactive/i18n.ts";
@@ -15,10 +16,9 @@ export function InputDialogView(props: {
   let input!: HTMLInputElement;
   // Submission admission stays synchronous; signals publish the visible state.
   let submitting = false;
-  const [state, setState] = createSignal<{ submitting: boolean; failure: string | null }>({
-    submitting: false,
-    failure: null,
-  });
+  const [busy, setBusy] = createOptimistic(false);
+  const [failure, setFailure] = createSignal<string | null>(null);
+  const visibleFailure = () => (busy() ? null : failure());
   const [rawValue, setRawValue] = createSignal(initialOptions.defaultValue ?? "");
   const entryValue = (raw: string) => (initialOptions.requireValue ? raw.trim() : raw);
   const submitBlocked = (raw: string) => {
@@ -32,21 +32,15 @@ export function InputDialogView(props: {
       (initialOptions.requireChange === true && value === (initialOptions.defaultValue ?? ""))
     );
   };
-  async function submit(event: SubmitEvent) {
-    event.preventDefault();
-    if (props.settled() || submitting || submitBlocked(input.value)) {
-      return;
-    }
-    const value = entryValue(input.value);
-    if (!initialOptions.submit) {
-      props.finish(value);
-      return;
-    }
-    submitting = true;
-    setState({ submitting: true, failure: null });
+  const presentSubmit = action(function* (
+    value: string,
+    pending: Promise<string | null>,
+  ): Generator<Promise<string | null>, void, string | null> {
+    setBusy(true);
+    setFailure(null);
     let message: string | null;
     try {
-      message = await initialOptions.submit(value);
+      message = yield pending;
     } catch (error) {
       message = formatUiError(error);
     }
@@ -58,9 +52,24 @@ export function InputDialogView(props: {
       props.finish(value);
       return;
     }
-    setState({ submitting: false, failure: message });
-    // The view update re-enables the input before restoring its editing focus.
-    queueMicrotask(() => {
+    setFailure(message);
+  });
+  function submit(event: SubmitEvent) {
+    event.preventDefault();
+    if (props.settled() || submitting || submitBlocked(input.value)) {
+      return;
+    }
+    const value = entryValue(input.value);
+    const submitValue = initialOptions.submit;
+    if (!submitValue) {
+      props.finish(value);
+      return;
+    }
+    submitting = true;
+    // Owner abort retires presentation without cancelling the admitted operation.
+    const pending = racePromiseWithAbortSignal(() => submitValue(value), initialOptions.signal);
+    void presentSubmit(value, pending);
+    onSettled(() => {
       if (!props.settled()) {
         input.focus();
       }
@@ -79,12 +88,7 @@ export function InputDialogView(props: {
         }
       }}
     >
-      <form
-        class="exec-approval-card"
-        onSubmit={(event) => {
-          void submit(event);
-        }}
-      >
+      <form class="exec-approval-card" onSubmit={submit}>
         <div class="exec-approval-header">
           <div class="exec-approval-title">{initialOptions.title}</div>
         </div>
@@ -99,31 +103,22 @@ export function InputDialogView(props: {
             autocomplete="off"
             spellcheck="false"
             value={rawValue()}
-            disabled={state().submitting}
-            aria-invalid={state().failure ? "true" : undefined}
+            disabled={busy()}
+            aria-invalid={visibleFailure() ? "true" : undefined}
             onInput={(event) => setRawValue(event.currentTarget.value)}
             autofocus
           />
         </label>
-        {state().failure ? (
+        {visibleFailure() ? (
           <div class="exec-approval-error" role="alert">
-            {state().failure}
+            {visibleFailure()}
           </div>
         ) : undefined}
         <openclaw-modal-actions class="exec-approval-actions">
-          <button
-            type="submit"
-            class="btn primary"
-            disabled={state().submitting || submitBlocked(rawValue())}
-          >
+          <button type="submit" class="btn primary" disabled={busy() || submitBlocked(rawValue())}>
             {initialOptions.submitLabel ?? t("common.save")}
           </button>
-          <button
-            type="button"
-            class="btn"
-            disabled={state().submitting}
-            onClick={() => props.finish(null)}
-          >
+          <button type="button" class="btn" disabled={busy()} onClick={() => props.finish(null)}>
             {initialOptions.cancelLabel ?? t("common.cancel")}
           </button>
         </openclaw-modal-actions>
