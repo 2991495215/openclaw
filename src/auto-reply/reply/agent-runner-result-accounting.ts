@@ -157,7 +157,6 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
   if (pendingToolTasks.size > 0) {
     await drainPendingToolTasks({
       tasks: pendingToolTasks,
-      onTimeout: logVerbose,
     });
   }
 
