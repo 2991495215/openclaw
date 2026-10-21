@@ -1,3 +1,4 @@
+import { createSignal, Show } from "solid-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   DEFAULT_BACKGROUND_PREFERENCE,
@@ -82,10 +83,25 @@ async function mount(
   const provider = createSolidApplicationContextProvider(context);
   host.innerHTML = '<div class="config-content"><div class="settings-page"></div></div>';
   const container = host.querySelector<HTMLElement>(".settings-page")!;
-  const { unmount: dispose } = mountSolid(() => <AppearanceBackground />, {
-    container,
-    wrapper: provider.wrapper,
-  });
+  let leavePage!: () => void;
+  const { unmount: dispose } = mountSolid(
+    () => {
+      const [visible, setVisible] = createSignal(true);
+      leavePage = () => {
+        notify("route");
+        setVisible(false);
+      };
+      return (
+        <Show when={visible()} fallback={<p>Background destination</p>}>
+          <AppearanceBackground />
+        </Show>
+      );
+    },
+    {
+      container,
+      wrapper: provider.wrapper,
+    },
+  );
   flush();
   const element = container.querySelector<HTMLElement>("openclaw-appearance-background")!;
   const range = element.querySelector<HTMLInputElement>('input[type="range"]')!;
@@ -100,6 +116,7 @@ async function mount(
     theme,
     context,
     navigate: () => notify("route"),
+    leavePage,
     dispose,
     setContext: (next: ApplicationContext) => {
       provider.setContext(next);
@@ -266,6 +283,29 @@ function chooseBackgroundFile(input: HTMLInputElement) {
   input.files = transfer.files;
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
+
+it("leaves the background page while an upload is still pending", async () => {
+  const pending = createDeferred<UsersBackgroundResult>();
+  const saved = { status: "ok", asset: null, preference: null } as const;
+  const request = vi.fn((method: string) =>
+    method === "users.background.upload" ? pending.promise : Promise.resolve(saved),
+  );
+  const { element, leavePage } = await mount({}, createTestGatewayClient(request));
+  chooseBackgroundFile(element.querySelector<HTMLInputElement>("[data-background-file]")!);
+  await waitForSolid(() => {
+    expect(request.mock.calls.some(([method]) => method === "users.background.upload")).toBe(true);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain("Preparing");
+  });
+  try {
+    leavePage();
+    await waitForSolid(() => {
+      expect(host.textContent).toContain("Background destination");
+      expect(element.isConnected).toBe(false);
+    });
+  } finally {
+    pending.resolve(saved);
+  }
+});
 
 it("presents background upload failure and retry without losing the selected controls", async () => {
   const first = createDeferred<UsersBackgroundResult>();
