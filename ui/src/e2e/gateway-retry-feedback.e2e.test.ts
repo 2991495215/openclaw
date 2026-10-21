@@ -101,14 +101,17 @@ suite.define(() => {
         await animation.evaluate((current) => current.play());
         await page.clock.resume();
         const moving = async () => {
-          const before = await spinner!.evaluate((element) => ({
+          const before = await status.locator(".session-run-spinner").evaluate((element) => ({
             time: Number(element.getAnimations()[0]!.currentTime),
             transform: getComputedStyle(element).transform,
           }));
-          // A complete rotation can return to the sampled transform while still moving.
+          // A full iteration can return to the same rotation; observe a distinct painted phase.
           await expect
             .poll(() =>
-              spinner!.evaluate((element, previous) => {
+              status.locator(".session-run-spinner").evaluate(async (element, previous) => {
+                await new Promise<void>((resolve) => {
+                  requestAnimationFrame(() => resolve());
+                });
                 const current = element.getAnimations()[0]!;
                 return {
                   advanced: Number(current.currentTime) > previous.time,
