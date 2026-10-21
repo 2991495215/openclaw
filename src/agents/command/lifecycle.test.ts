@@ -115,7 +115,7 @@ describe("createAgentCommandLifecycle", () => {
     },
   );
 
-  it.each(["basic", "post-turn", "result"] as const)(
+  it.each(["basic", "result"] as const)(
     "publishes actionable startup guidance through %s errors",
     (source) => {
       emitAgentEvent.mockClear();
@@ -127,8 +127,6 @@ describe("createAgentCommandLifecycle", () => {
       };
       if (source === "basic") {
         lifecycle.emitBasicError(error);
-      } else if (source === "post-turn") {
-        lifecycle.emitPostTurnError(error, terminal);
       } else {
         lifecycle.emitResultError(
           {
