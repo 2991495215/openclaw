@@ -39,7 +39,7 @@ export async function createSessionGroupDialog(
   sessions: readonly SidebarRecentSession[],
   notify: () => void,
 ) {
-  const dialog = await loadDialog(deps, import("./input-dialog.ts"));
+  const dialog = await loadDialog(deps, import("./input-dialog.tsx"));
   await dialog?.showInputDialog({
     signal,
     gateway: scope.gateway,
@@ -77,7 +77,7 @@ export async function renameSessionGroupDialog(
   group: string,
   onRenamed: (next: string) => void,
 ) {
-  const dialog = await loadDialog(deps, import("./input-dialog.ts"));
+  const dialog = await loadDialog(deps, import("./input-dialog.tsx"));
   await dialog?.showInputDialog({
     signal,
     gateway: scope.gateway,
