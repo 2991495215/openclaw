@@ -99,6 +99,7 @@ export type CronSystemEventEnqueueResult =
   | {
       accepted?: boolean;
       remove?: () => boolean | void;
+      adopted?: Promise<boolean>;
     };
 
 /** Notifications queued by cron mutations until their state is durable. */
@@ -205,6 +206,24 @@ export type CronServiceDeps = {
         outputText?: string;
         nextCheck?: CronNextCheckProposal;
       }
+  >;
+  /** Shared-conversation work settles through the session controller's ordinary turn owner. */
+  runSessionEvent?: (params: {
+    admissionSource: NonNullable<AdmittedRunContext["admissionSource"]>;
+    deliveryAttemptFence: CronCompletionDeliveryFence | null;
+    onExecutionStarted?: (info?: CronAgentExecutionStarted) => void;
+    onExecutionPhase?: (info: CronAgentExecutionPhaseUpdate) => void;
+    onLaneWait?: (info?: { waiting?: boolean }) => void;
+    executionIdentity?: CronExecutionIdentityAdmission;
+    job: CronStoredJob;
+    text: string;
+    abortSignal?: AbortSignal;
+    prepare?: () => Promise<void>;
+    assertCurrent: () => void;
+  }) => Promise<
+    CronRunOutcome &
+      CronRunTelemetry &
+      CronRunDeliveryResult & { nextCheck?: CronNextCheckProposal }
   >;
   runCommandJob?: (params: {
     deliveryAttemptFence: CronCompletionDeliveryFence | null;
@@ -447,6 +466,8 @@ export type CronAddOptions = {
   operatorSource?: NonNullable<CronStoredJob["operatorSource"]>["source"];
   inferenceBinding?: CronStoredJob["inferenceBinding"];
   sourceConversation?: CronStoredJob["sourceConversation"];
+  /** Logical sandbox target captured from the admitted creator, never public input. */
+  streamSandbox?: CronStoredJob["streamSandbox"];
   /** Selected revisions captured from a validated caller session, never public input. */
   skillLibrarySelections?: CronStoredJob["skillLibrarySelections"];
   matchesExisting?: (job: CronJob) => boolean;
@@ -482,6 +503,7 @@ export type CronUpdateOptions = Pick<
   | "inferenceBinding"
   | "execPolicy"
   | "streamExecApproval"
+  | "streamSandbox"
   | "sessionEntryCurrent"
 > & {
   /** Null forbids policy adoption; undefined retains in-process operator defaults. */
