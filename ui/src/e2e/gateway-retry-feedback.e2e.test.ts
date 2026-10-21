@@ -101,20 +101,22 @@ suite.define(() => {
         await animation.evaluate((current) => current.play());
         await page.clock.resume();
         const moving = async () => {
-          const spinner = status.locator(".session-run-spinner");
-          const before = await spinner.evaluate((element) => ({
+          const before = await status.locator(".session-run-spinner").evaluate((element) => ({
             time: Number(element.getAnimations()[0]!.currentTime),
             transform: getComputedStyle(element).transform,
           }));
-          // A full rotation can return to the same transform; observe an intermediate frame.
+          // A full iteration can return to the same rotation; observe a distinct painted phase.
           await expect
             .poll(() =>
-              spinner.evaluate((element, before) => {
+              status.locator(".session-run-spinner").evaluate(async (element, previous) => {
+                await new Promise<void>((resolve) => {
+                  requestAnimationFrame(() => resolve());
+                });
                 const current = element.getAnimations()[0]!;
                 return {
-                  advanced: Number(current.currentTime) > before.time,
+                  advanced: Number(current.currentTime) > previous.time,
                   running: current.playState === "running",
-                  changed: getComputedStyle(element).transform !== before.transform,
+                  changed: getComputedStyle(element).transform !== previous.transform,
                 };
               }, before),
             )
