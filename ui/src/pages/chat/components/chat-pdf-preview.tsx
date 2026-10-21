@@ -1,6 +1,5 @@
 import {
   type Accessor,
-  createDeferred,
   createMemo,
   createSignal,
   Errored,
@@ -69,7 +68,7 @@ export function ChatPdfPreview(props: PdfPreviewProps) {
     if (sizeBytes !== undefined && sizeBytes > PDF_PREVIEW_MAX_BYTES) {
       return unavailable();
     }
-    const result = createDeferred<PdfRead>(
+    const result = createMemo<PdfRead>(
       async () => {
         const src = props.src;
         const controller = new AbortController();

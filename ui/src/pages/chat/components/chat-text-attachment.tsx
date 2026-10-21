@@ -1,6 +1,5 @@
 import type { JSX as SolidJSX } from "@solidjs/web";
 import {
-  createDeferred,
   createMemo,
   createSignal,
   Errored,
@@ -100,7 +99,8 @@ function TextAttachment(props: TextAttachmentProps, host: SolidBridgeElement<Tex
         /\.(?:md|markdown)$/i.test(props.label))
     );
   };
-  const sourceInput = createMemo(
+  // Ticket renewal retains a reader; changed identity or validation retires its observers.
+  const readScope = createMemo(
     () => ({
       src: props.src,
       identity: props.sourceIdentity,
@@ -113,26 +113,15 @@ function TextAttachment(props: TextAttachmentProps, host: SolidBridgeElement<Tex
     }),
     {
       equals: (before, after) =>
-        before.src === after.src &&
         before.identity === after.identity &&
         before.size === after.size &&
         before.plain === after.plain &&
         before.mime === after.mime &&
         before.label === after.label &&
-        before.retry === after.retry,
+        before.retry === after.retry &&
+        (after.identity ? Boolean(before.src) === Boolean(after.src) : before.src === after.src),
     },
   );
-  // Ticket renewal retains a reader; changed identity or validation retires its observers.
-  const readScope = createMemo(() => sourceInput(), {
-    equals: (before, after) =>
-      before.identity === after.identity &&
-      before.size === after.size &&
-      before.plain === after.plain &&
-      before.mime === after.mime &&
-      before.label === after.label &&
-      before.retry === after.retry &&
-      (after.identity ? Boolean(before.src) === Boolean(after.src) : before.src === after.src),
-  });
   const htmlLoadState = () => {
     const state = previewState.read();
     return state?.status === "error" ? (
@@ -147,8 +136,8 @@ function TextAttachment(props: TextAttachmentProps, host: SolidBridgeElement<Tex
   };
   // Keep one pending presentation through metadata resolution and the first body read.
   const skeleton = <AttachmentPreviewSkeleton />;
-  const readSource = (scope: ReturnType<typeof sourceInput>) => {
-    const result = createDeferred<TextRead>(async (previous) => {
+  const readSource = (scope: ReturnType<typeof readScope>) => {
+    const result = createMemo<TextRead>(async (previous) => {
       const current = { ...scope, src: props.src };
       if (!current.src) {
         return { status: "empty" };

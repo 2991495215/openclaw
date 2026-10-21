@@ -67,11 +67,7 @@ it("enforces Solid 2 rules through the UI oxlint configuration", () => {
     invalidHelperDiagnostics
       .map(({ code, severity }) => `${code}:${severity}`)
       .toSorted((a, b) => a.localeCompare(b)),
-  ).toEqual([
-    "solid(no-single-arg-create-effect):error",
-    "solid(removed-api):error",
-    "solid(removed-api):error",
-  ]);
+  ).toEqual(["solid(no-single-arg-create-effect):error", "solid(removed-api):error"]);
   expect(
     report.diagnostics.filter(
       (diagnostic) =>
