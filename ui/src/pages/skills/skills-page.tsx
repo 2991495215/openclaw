@@ -19,6 +19,7 @@ import { useApplication } from "../../lib/reactive/context.ts";
 import { projectAgents } from "../../lib/reactive/domain-capabilities.ts";
 import { useGatewayPage } from "../../lib/reactive/gateway-page.ts";
 import { t } from "../../lib/reactive/i18n.ts";
+import { listen } from "../../lib/reactive/listener.ts";
 import { observeState } from "../../lib/reactive/observe-state.ts";
 import { searchClawHub } from "../../lib/skills/clawhub-search.ts";
 import {
@@ -263,6 +264,9 @@ export function SkillsPage(props: SkillsPageProps) {
     }),
     (current, previous) => {
       if (!previous || current.route !== previous.route || current.surface !== previous.surface) {
+        if (previous && current.surface !== previous.surface) {
+          library.retire();
+        }
         admittedSurface = current.surface;
         syncSelection();
         if (!previous || current.route !== previous.route) {
@@ -277,6 +281,16 @@ export function SkillsPage(props: SkillsPageProps) {
     },
   );
   onSettled(() => {
+    let location = context.router?.getState().location;
+    const stopRoute = context.router?.subscribe((state) => {
+      if (state.location !== location) {
+        library.retire();
+        location = state.location;
+      }
+    });
+    const stopLifecycle = context.lifecycleAbortSignal
+      ? listen(context.lifecycleAbortSignal, "abort", () => library.retire(), { once: true })
+      : undefined;
     // Roster receipts reconcile the request target before admitting missing skill reads.
     const stopAgents = agents.subscribe(() => {
       reconcileAgentState();
@@ -319,6 +333,9 @@ export function SkillsPage(props: SkillsPageProps) {
     syncIcons();
     return () => {
       active = false;
+      library.retire();
+      stopRoute?.();
+      stopLifecycle?.();
       [stopAgents, ...stopSelections, stopSkills].forEach((stop) => stop());
       clearClawHubSearchTimer();
       searchRequest.cancel();
@@ -362,6 +379,7 @@ export function SkillsPage(props: SkillsPageProps) {
       reconcileSkillsAgentId(data, agentState.agentsList);
     }
     if (previousAgentId !== data.skillsAgentId) {
+      library.retire();
       selectSkill(null);
       closeDetail();
     }
