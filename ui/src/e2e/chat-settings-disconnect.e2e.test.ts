@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { expect as expectBrowser } from "playwright/test";
 import { expect, it } from "vitest";
@@ -53,18 +52,6 @@ suite.define(() => {
         // Keep baseline capture reachable when the interrupted row retained the input.
         const send = main.locator("button.chat-send-btn--send");
         await expectBrowser(send).toBeVisible();
-        const entry = await page.locator('script[type="module"][src]').first().getAttribute("src");
-        const asset = await page.request.get(new URL(entry!, suite.server.baseUrl).href);
-        console.info(
-          "settings proof identity",
-          JSON.stringify({
-            browser: suite.browser.version(),
-            entry,
-            sha256: createHash("sha256")
-              .update(await asset.body())
-              .digest("hex"),
-          }),
-        );
         const frame = await takeControlUiScreenshotFrame(page, main, [composer], {
           animations: "disabled",
         });
@@ -72,12 +59,16 @@ suite.define(() => {
         await expectBrowser(page.getByText("Applying chat settings", { exact: true })).toHaveCount(
           0,
         );
-        const retained =
-          (await composer.inputValue()) === prompt ||
-          (await page.locator(".chat-queue__item").getByText(prompt, { exact: true }).count()) ===
-            1;
-        expect(retained).toBe(true);
+        await expectBrowser(composer).toHaveValue(prompt);
+        await expectBrowser(page.locator(".chat-queue__item")).toHaveCount(0);
+        await expectBrowser(send).toBeEnabled();
         expect(await gateway.getRequests("chat.send")).toHaveLength(0);
+
+        await send.click();
+        const request = await gateway.waitForRequest("chat.send");
+        expect(request.params).toMatchObject({ sessionKey, message: prompt });
+        await expectBrowser(composer).toHaveValue("");
+        expect(await gateway.getRequests("chat.send")).toHaveLength(1);
       },
     );
   });

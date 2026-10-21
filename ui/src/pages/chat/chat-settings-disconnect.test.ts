@@ -30,6 +30,7 @@ import { switchChatModel } from "./chat-session.ts";
 import { getPendingChatPickerPatch } from "./chat-settings-patches.ts";
 import { listStoredChatOutboxes } from "./composer-persistence.ts";
 import { useChatSendBrowserFixture } from "./outbox-browser.test-support.ts";
+import { prepareOutboxPayload } from "./outbox-payloads.ts";
 
 useChatSendBrowserFixture();
 beforeEach(() => {
@@ -206,9 +207,15 @@ it("allows Remove during settings reconciliation without a late send", async () 
   expect(requests(ws, "chat.send")).toHaveLength(0);
 });
 
-it.each([false, true])(
-  "settles the interrupted Send handoff with attachments: %s",
-  async (withAttachment) => {
+it.each([
+  { payload: "text", newerDraft: false },
+  { payload: "text", newerDraft: true },
+  { payload: "attachment", newerDraft: false },
+  { payload: "attachment", newerDraft: true },
+] as const)(
+  "recovers interrupted $payload input with newer draft: $newerDraft",
+  async ({ payload, newerDraft }) => {
+    const withAttachment = payload === "attachment";
     const { host, ws, client, connect } = await fixture();
     if (withAttachment) {
       host.chatAttachments = [createStagedAttachment("settings-document")];
@@ -223,7 +230,7 @@ it.each([false, true])(
     );
     await admitted.promise;
     const original = host.chatQueue[0]!;
-    if (!withAttachment) {
+    if (newerDraft) {
       host.chatMessage = "Keep my newer draft";
     }
     expect(original).toMatchObject({ text: message, sendState: "waiting-model", sendAttempts: 0 });
@@ -235,13 +242,15 @@ it.each([false, true])(
     await sending;
     expect(getPendingChatPickerPatch(host, host.sessionKey)).toBeUndefined();
     expect(host.chatQueue.some((item) => item.sendState === "waiting-model")).toBe(false);
-    if (withAttachment) {
+    if (!newerDraft) {
       expect(host.chatQueue).toEqual([]);
       expect(host.chatMessage).toBe(message);
-      expect(host.chatAttachments).toHaveLength(1);
-      expect(getChatAttachmentDataUrl(host.chatAttachments[0]!)).toBe(
-        "data:application/pdf;base64,JVBERi0xLjQK",
-      );
+      expect(host.chatAttachments).toHaveLength(withAttachment ? 1 : 0);
+      if (withAttachment) {
+        expect(getChatAttachmentDataUrl(host.chatAttachments[0]!)).toBe(
+          "data:application/pdf;base64,JVBERi0xLjQK",
+        );
+      }
     } else {
       expect(host.chatMessage).toBe("Keep my newer draft");
       expect(host.chatQueue[0]).toMatchObject({
@@ -257,14 +266,28 @@ it.each([false, true])(
     client.stop();
     const replacement = await connect();
     await resumeStoredChatOutboxes(host);
-    if (!withAttachment) {
+    if (newerDraft) {
       expect(host.chatQueue[0]?.sendState).toBe("failed");
+      expect(host.chatMessage).toBe("Keep my newer draft");
+      expect(host.chatAttachments).toEqual([]);
+      if (withAttachment) {
+        const prepared = await prepareOutboxPayload(host, host.chatQueue[0]!);
+        expect(prepared.status).toBe("ready");
+        if (prepared.status !== "ready") {
+          throw new Error("The retained queued attachment could not be restored");
+        }
+        expect(getChatAttachmentDataUrl(prepared.update.attachments![0]!)).toBe(
+          "data:application/pdf;base64,JVBERi0xLjQK",
+        );
+      }
       expect(removeQueuedMessage(host, original.id, { discard: true })).toBe("removed");
     } else {
       expect(host.chatMessage).toBe(message);
-      expect(getChatAttachmentDataUrl(host.chatAttachments[0]!)).toBe(
-        "data:application/pdf;base64,JVBERi0xLjQK",
-      );
+      if (withAttachment) {
+        expect(getChatAttachmentDataUrl(host.chatAttachments[0]!)).toBe(
+          "data:application/pdf;base64,JVBERi0xLjQK",
+        );
+      }
     }
     expect(host.chatQueue).toEqual([]);
     expect(requests(replacement, "chat.send")).toHaveLength(0);
