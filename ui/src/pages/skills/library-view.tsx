@@ -11,7 +11,7 @@ import {
 import { t } from "../../lib/reactive/i18n.ts";
 import { uploadsDisabledMessage } from "../../lib/uploads.ts";
 import { libraryFileText } from "./library-file-text.ts";
-import type { SkillLibraryModel } from "./library-state.ts";
+import type { LibraryDetailOutcome, SkillLibraryModel } from "./library-state.ts";
 import { SkillLibraryToolbar } from "./library-toolbar.tsx";
 
 export function SkillLibrary(props: {
@@ -170,8 +170,12 @@ export function SkillLibraryFeedback(props: {
 
 export function SkillLibraryDialogs(props: { library: SkillLibraryModel }) {
   const current = () => props.library.state;
+  const detailRead = createMemo(() => current().detailRead);
   return (
     <>
+      <Show when={detailRead()} keyed>
+        {(receipt) => <LibraryDetailRead completion={receipt.completion} />}
+      </Show>
       <Show when={current().draft}>
         <LibraryEditor library={props.library} />
       </Show>
@@ -179,6 +183,23 @@ export function SkillLibraryDialogs(props: { library: SkillLibraryModel }) {
         <LibraryImport library={props.library} />
       </Show>
     </>
+  );
+}
+
+function LibraryDetailRead(props: { completion: Promise<LibraryDetailOutcome> }) {
+  const outcome = createMemo(() => props.completion);
+  const readError = () => {
+    const result = outcome();
+    if (result) {
+      throw result.error;
+    }
+    return null;
+  };
+  // The existing owner feedback displays errors without replacing an accepted draft.
+  return (
+    <Loading>
+      <Errored fallback={() => null}>{readError()}</Errored>
+    </Loading>
   );
 }
 
