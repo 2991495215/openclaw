@@ -1378,6 +1378,7 @@ describe("CI changed Node test plan", () => {
     );
     const selectedJobs = shards?.filter((shard) => shard.groups?.length) ?? [];
     expect(selectedJobs.length).toBeGreaterThan(0);
+    const envScratch = argvTempDirs.make("changed-wide-owner-env-");
     for (const job of selectedJobs) {
       for (const group of job.groups ?? []) {
         const ownerJob = expectDefined(
@@ -1396,13 +1397,28 @@ describe("CI changed Node test plan", () => {
         expect(group.minTotalMemoryBytes).toBe(owner.minTotalMemoryBytes);
         const { job: selectedOwnerJob } = canonicalOwner(selectedCanonical, group.shard_name);
         const serialProjection = isSerialNodeTestProjection(job.groups, selectedOwnerJob);
-        expect(job.env).toEqual(
-          serialProjection &&
-            owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined &&
-            selectedOwnerJob.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
-            ? { ...selectedOwnerJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
-            : selectedOwnerJob.env,
+        // CI gives overlapping plans two workers; a qualified serial 32-vCPU row can inherit eight.
+        // Job and group composition must keep the canonical two-worker ceiling in either shape.
+        const childEnv = buildChildEnv(
+          { kind: "group", name: group.shard_name, plan: group },
+          {
+            OPENCLAW_VITEST_MAX_WORKERS: job.planConcurrency === 1 ? "8" : "2",
+            ...job.env,
+          },
+          envScratch,
+          0,
         );
+        const ownerChildEnv = buildChildEnv(
+          { kind: "group", name: owner.shard_name, plan: owner },
+          {
+            OPENCLAW_VITEST_MAX_WORKERS: selectedOwnerJob.planConcurrency === 1 ? "8" : "2",
+            ...selectedOwnerJob.env,
+          },
+          envScratch,
+          0,
+        );
+        expect(childEnv).toEqual(ownerChildEnv);
+        expect(childEnv.OPENCLAW_VITEST_MAX_WORKERS).toBe("2");
         expect(job.runner).toBe(selectedOwnerJob.runner);
         expect(job.planConcurrency).toBe(serialProjection ? 1 : selectedOwnerJob.planConcurrency);
       }
