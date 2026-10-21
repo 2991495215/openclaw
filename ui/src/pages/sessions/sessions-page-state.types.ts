@@ -12,8 +12,8 @@ export type SessionsPageState = {
   page: number;
   pageSize: number;
   result: SessionsListResult | null;
+  roster: Promise<null> | null;
   loading: boolean;
-  refreshing: boolean;
   error: string | null;
   activeMinutes: string;
   limit: string;

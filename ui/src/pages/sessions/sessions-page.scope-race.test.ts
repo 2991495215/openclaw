@@ -224,7 +224,8 @@ describe("sessions page agent-scope retirement", () => {
       await page.updateComplete;
       if (retired) {
         expect(reconcileMutation).not.toHaveBeenCalled();
-        expect(page.error).toBe("New foreground error.");
+        expect(page.textContent).toContain("New foreground error.");
+        expect(page.textContent).not.toContain("Old placement failed.");
       } else {
         await vi.waitFor(() => expect(page.error).toBe("Old placement failed."));
         expect(reconcileMutation).toHaveBeenCalledWith("writer");

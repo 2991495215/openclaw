@@ -16,6 +16,7 @@ import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import {
   createContext,
   createGateway,
+  createManagedSessions,
   createRenderedPage,
   type TestSessionsPage,
 } from "./sessions-page.test-support.ts";
@@ -154,6 +155,46 @@ afterEach(async () => {
 });
 
 describe("sessions page managed roster", () => {
+  it("presents owner-started refreshes without replacing controls, rows, or subscriptions", async () => {
+    const initial = result("agent:main:retained");
+    initial.sessions[0]!.sessionId = "retained-generation";
+    const managed = createManagedSessions();
+    const context = createContext(createGateway().gateway, managed.sessions);
+    const page = await createRenderedPage(context, initial);
+    cleanups.push(() => page.remove());
+    const [query] = managed.subscribeList.mock.calls[0]!;
+    const input = searchInput(page);
+    const row = page.querySelector("tbody tr");
+    page.selectedSessions = new Map([[initial.sessions[0]!.key, initial.sessions[0]!]]);
+    await page.updateComplete;
+    const refresh = () => page.querySelector<HTMLButtonElement>(".sessions-toolbar__refresh")!;
+    const publish = (loading: boolean, error: string | null = null) =>
+      managed.publish(query, { result: initial, agentId: "main", loading, error });
+
+    publish(true);
+    await page.updateComplete;
+    await vi.waitFor(() => expect(refresh().disabled).toBe(true));
+    expect(searchInput(page)).toBe(input);
+    expect(page.querySelector("tbody tr")).toBe(row);
+    expect(page.selectedSessions.has(initial.sessions[0]!.key)).toBe(true);
+
+    publish(false, "Synthetic background refresh failure");
+    await vi.waitFor(() =>
+      expect(page.textContent).toContain("Synthetic background refresh failure"),
+    );
+    expect(searchInput(page)).toBe(input);
+    expect(page.querySelector("tbody tr")).toBe(row);
+
+    publish(true);
+    await page.updateComplete;
+    publish(false);
+    await vi.waitFor(() => expect(refresh().disabled).toBe(false));
+    await vi.waitFor(() => expect(page.querySelector(".sessions-error")).toBeNull());
+    expect(page.selectedSessions.has(initial.sessions[0]!.key)).toBe(true);
+    expect(managed.subscribeList).toHaveBeenCalledTimes(1);
+    expect(managed.refreshList).not.toHaveBeenCalled();
+  });
+
   it("replaces a deep link with managed search and surfaces query errors", async () => {
     const deepLink = "agent:main:initial";
     const pending = new Map<string, ReturnType<typeof createDeferred<SessionsListResult>>>();

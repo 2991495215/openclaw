@@ -31,7 +31,7 @@ export function buildMultiResult(sessions: SessionsListResult["sessions"]): Sess
 export function buildProps(result: SessionsListResult): SessionsProps {
   return {
     loading: false,
-    refreshing: false,
+    roster: null,
     refreshDisabled: false,
     agentId: "main",
     allAgentsScope: true,

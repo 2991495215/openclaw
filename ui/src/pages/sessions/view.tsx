@@ -3,10 +3,12 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
-import { createMemo, For, Repeat, Show } from "solid-js";
+import { createDeferred } from "@solidjs/signals";
+import { createMemo, Errored, For, isPending, Loading, Repeat, Show } from "solid-js";
 import { Icon } from "../../components/solid/icon.tsx";
 import { ContextNewSessionAction } from "../../components/solid/new-session-link.tsx";
 import { SettingsPage, SettingsSection } from "../../components/solid/settings-ui.tsx";
+import { formatUiError } from "../../lib/format-error.ts";
 import { presenceViewerLabel } from "../../lib/presence-users.ts";
 import { useOptionalApplication } from "../../lib/reactive/context.ts";
 import { t } from "../../lib/reactive/i18n.ts";
@@ -115,13 +117,29 @@ export function SessionsView(props: SessionsProps) {
   const rows = createMemo(() => props.result?.sessions ?? []);
   const archivedCount = createMemo(() => rows().filter((row) => row.archived === true).length);
   const transcriptSearch = createMemo(() => props.transcriptSearch);
+  const roster = createMemo(() => props.roster);
+  // Background refreshes retain the controls and accepted rows while reporting pending work.
+  const retainedRoster = createDeferred(() => props.roster, { loadingValue: null });
   return (
     <SettingsPage wide>
-      {props.error ? (
-        <div class="sessions-error" role="alert">
-          {props.error}
-        </div>
-      ) : undefined}
+      <Show when={props.error}>
+        {(message) => (
+          <div class="sessions-error" role="alert">
+            {message()}
+          </div>
+        )}
+      </Show>
+      <Errored
+        fallback={(error) => (
+          <div class="sessions-error" role="alert">
+            {formatUiError(error())}
+          </div>
+        )}
+      >
+        <Loading on={[props.roster]} fallback={null}>
+          <SessionsRosterStatus readRoster={roster} />
+        </Loading>
+      </Errored>
       <SettingsSection
         title={t("sessionsView.title")}
         description={
@@ -136,7 +154,7 @@ export function SessionsView(props: SessionsProps) {
               class="btn btn--xs btn--icon sessions-toolbar__icon sessions-toolbar__refresh"
               type="button"
               aria-label={t("common.refresh")}
-              disabled={props.refreshing || props.refreshDisabled}
+              disabled={isPending(retainedRoster) || props.refreshDisabled}
               onClick={() => props.onRefresh()}
             >
               <Icon name="refresh" />
@@ -167,6 +185,10 @@ export function SessionsView(props: SessionsProps) {
       </SettingsSection>
     </SettingsPage>
   );
+}
+
+function SessionsRosterStatus(props: { readRoster: () => null }) {
+  return <>{props.readRoster()}</>;
 }
 
 function SortHeader(

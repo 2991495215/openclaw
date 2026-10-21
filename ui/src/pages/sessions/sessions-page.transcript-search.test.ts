@@ -251,12 +251,18 @@ describe("Sessions transcript search", () => {
     const refresh = createDeferred();
     const request = emptySearch();
     const { page, managed, find, search } = await mount(request);
-    managed.refreshList.mockReturnValueOnce(refresh.promise);
+    managed.refreshList.mockImplementationOnce(async (options = {}) => {
+      const snapshot = managed.listSnapshot(options);
+      managed.publish(options, { ...snapshot, loading: true });
+      await refresh.promise;
+      managed.publish(options, { ...snapshot, loading: false });
+    });
     const unknown = page.querySelector<HTMLInputElement>('input[name="includeUnknown"]')!;
     unknown.checked = true;
     unknown.dispatchEvent(new Event("change", { bubbles: true }));
     await page.updateComplete;
-    expect(page.refreshing).toBe(true);
+    const refreshButton = page.querySelector<HTMLButtonElement>(".sessions-toolbar__refresh")!;
+    expect(refreshButton.disabled).toBe(true);
     await search("needle");
     expect(managed.refreshList).toHaveBeenCalledWith(
       expect.objectContaining({ includeUnknown: true }),
@@ -266,7 +272,7 @@ describe("Sessions transcript search", () => {
     );
     expect(find("empty")).not.toBeNull();
     refresh.resolve();
-    await vi.waitFor(() => expect(page.refreshing).toBe(false));
+    await vi.waitFor(() => expect(refreshButton.disabled).toBe(false));
   });
 
   it("keeps transcript titles independent of metadata filtering", async () => {
