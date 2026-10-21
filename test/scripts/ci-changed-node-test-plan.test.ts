@@ -1138,7 +1138,7 @@ describe("CI changed Node test plan", () => {
               "minTotalMemoryBytes",
               "pretestBuildMode",
             ]);
-            const serialProjection = isSerialNodeTestProjection(job.groups, ownerJob);
+            const serialProjection = job.groups.length === 1 && ownerJob.planConcurrency === 2;
             expect(job.planConcurrency).toBe(serialProjection ? 1 : ownerJob.planConcurrency);
             expect(job.env).toEqual(
               serialProjection && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
@@ -1368,6 +1368,16 @@ describe("CI changed Node test plan", () => {
       compactMode: "pull-request",
       includeReleaseOnlyPluginShards: false,
     });
+    const selectedCanonical = expectDefined(
+      createSelectedNodeTestShardBundles(
+        expectedTargets.filter((target) => target !== e2eTarget),
+        {
+          includeReleaseOnlyRuntimeTests: true,
+          includePrExemptRuntimeTests: true,
+        },
+      ),
+      "canonical selected test owners",
+    );
     const selectedJobs = shards?.filter((shard) => shard.groups?.length) ?? [];
     expect(selectedJobs.length).toBeGreaterThan(0);
     for (const job of selectedJobs) {
@@ -1386,14 +1396,19 @@ describe("CI changed Node test plan", () => {
         expect(group.env).toEqual(owner.env);
         expect(group.fallbackMaxWorkers).toBe(owner.fallbackMaxWorkers);
         expect(group.minTotalMemoryBytes).toBe(owner.minTotalMemoryBytes);
-        const serialProjection = isSerialNodeTestProjection(job.groups, ownerJob);
-        expect(job.env).toEqual(
-          serialProjection && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
-            ? { ...ownerJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
-            : ownerJob.env,
+        // Selection can combine parallel groups from different full-plan owners.
+        const { job: selectedOwner, group: selectedGroup } = canonicalOwner(
+          selectedCanonical,
+          group.shard_name,
         );
-        expect(job.runner).toBe(ownerJob.runner);
-        expect(job.planConcurrency).toBe(serialProjection ? 1 : ownerJob.planConcurrency);
+        const serialProjection = isSerialNodeTestProjection(job.groups, selectedOwner);
+        expect(job.env).toEqual(
+          serialProjection && selectedGroup.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
+            ? { ...selectedOwner.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
+            : selectedOwner.env,
+        );
+        expect(job.runner).toBe(selectedOwner.runner);
+        expect(job.planConcurrency).toBe(serialProjection ? 1 : selectedOwner.planConcurrency);
       }
     }
     const cheapFiles = vi
