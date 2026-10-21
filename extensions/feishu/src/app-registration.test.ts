@@ -6,7 +6,12 @@ import type { LookupFn } from "openclaw/plugin-sdk/ssrf-runtime";
 import { withFetchPreconnect } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { beginAppRegistration, pollAppRegistration, printQrCode } from "./app-registration.js";
-import { readRequestBody, stripDispatcher, writeOversizedJson } from "./http.test-support.js";
+import {
+  observeResponseBody,
+  readRequestBody,
+  stripDispatcher,
+  writeOversizedJson,
+} from "./http.test-support.js";
 
 const FEISHU_JSON_MAX_BYTES = 16 * 1024 * 1024;
 
@@ -36,6 +41,7 @@ const hermeticPublicLookup: LookupFn = async () => [{ address: "93.184.216.34", 
 async function withRegistrationServer<T>(
   handler: (req: IncomingMessage, res: ServerResponse) => void,
   run: (options: RegistrationFetchOptions) => Promise<T>,
+  onResponse?: (response: Response) => void,
 ): Promise<T> {
   const server = createServer(handler);
   server.listen(0, "127.0.0.1");
@@ -49,7 +55,9 @@ async function withRegistrationServer<T>(
     const url = new URL(input instanceof Request ? input.url : input.toString());
     if (url.hostname === "accounts.feishu.cn" || url.hostname === "accounts.larksuite.com") {
       const loopback = new URL(`${url.pathname}${url.search}`, `http://127.0.0.1:${addr.port}`);
-      return await realFetch(loopback, stripDispatcher(init));
+      const response = await realFetch(loopback, stripDispatcher(init));
+      onResponse?.(response);
+      return response;
     }
     return await realFetch(input, init);
   });
@@ -192,24 +200,24 @@ describe("Feishu app registration", () => {
   });
 
   it("rejects Feishu API responses that exceed the 16 MiB JSON body cap", async () => {
-    let streamState: ReturnType<typeof writeOversizedJson> | undefined;
+    let streamState: ReturnType<typeof observeResponseBody> | undefined;
     await withRegistrationServer(
       (_req, res) => {
-        streamState = writeOversizedJson(
-          res,
-          FEISHU_JSON_MAX_BYTES * 2,
-          '{"device_code":"dev","padding":"',
-        );
+        writeOversizedJson(res, FEISHU_JSON_MAX_BYTES * 2, '{"device_code":"dev","padding":"');
       },
       async () => {
         await expect(beginAppRegistration("feishu")).rejects.toThrow(
           /feishu\.api: JSON response exceeds \d+ bytes/,
         );
       },
+      (response) => {
+        streamState = observeResponseBody(response);
+      },
     );
 
-    expect(streamState?.canceled()).toBe(true);
-    expect(streamState?.bytesPulled()).toBeLessThan(FEISHU_JSON_MAX_BYTES * 2);
+    expect(streamState?.cancelCalls).toBe(1);
+    expect(streamState?.bytesRead).toBeGreaterThan(FEISHU_JSON_MAX_BYTES);
+    expect(streamState?.bytesRead).toBeLessThan(FEISHU_JSON_MAX_BYTES * 2);
   });
 
   it("sends bound reads through the real SSRF guard before local socket redirect", async () => {

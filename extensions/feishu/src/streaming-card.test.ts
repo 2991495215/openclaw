@@ -3,9 +3,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { LookupFn } from "openclaw/plugin-sdk/ssrf-runtime";
 import { withFetchPreconnect } from "openclaw/plugin-sdk/test-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readRequestBody, stripDispatcher, writeOversizedJson } from "./http.test-support.js";
+import { observeResponseBody, readRequestBody, writeOversizedJson } from "./http.test-support.js";
 import { FeishuStreamingSession, mergeStreamingText } from "./streaming-card.js";
-import { createStreamingSession, type StreamingFetchDeps } from "./streaming-card.test-support.js";
+import {
+  createLocalRedirectFetch,
+  createStreamingSession,
+  type StreamingFetchDeps,
+} from "./streaming-card.test-support.js";
 
 const FEISHU_JSON_MAX_BYTES = 16 * 1024 * 1024;
 type FeishuStreamingFetch = typeof fetch;
@@ -72,25 +76,14 @@ async function startLocalServer(
   });
 }
 
-function createLocalRedirectFetch(port: number): FeishuStreamingFetch {
-  const realFetch = globalThis.fetch.bind(globalThis);
-  return withFetchPreconnect(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(input instanceof Request ? input.url : input.toString());
-    if (url.hostname === "open.feishu.cn" || url.hostname === "open.larksuite.com") {
-      const loopback = new URL(`${url.pathname}${url.search}`, `http://127.0.0.1:${port}`);
-      return await realFetch(loopback, stripDispatcher(init));
-    }
-    return await realFetch(input, init);
-  });
-}
-
 async function createStreamingFetch(
   handler: (request: StreamingRequest) => void | Promise<void>,
+  onResponse?: (response: Response) => void,
 ): Promise<StreamingFetchDeps> {
   const server = await startLocalServer(handler);
   serverStops.push(server.stop);
   return {
-    fetchImpl: createLocalRedirectFetch(server.port),
+    fetchImpl: createLocalRedirectFetch(server.port, onResponse),
     lookupFn: hermeticPublicLookup,
   };
 }
@@ -440,23 +433,23 @@ describe("FeishuStreamingSession", () => {
   });
 
   it("rejects oversized streaming tenant-token JSON before buffering the full body", async () => {
-    let streamState:
-      | {
-          bytesPulled: () => number;
-          canceled: () => boolean;
+    let streamState: ReturnType<typeof observeResponseBody> | undefined;
+    const deps = await createStreamingFetch(
+      ({ url, res }) => {
+        if (url.pathname.includes("/auth/")) {
+          writeOversizedJson(
+            res,
+            FEISHU_JSON_MAX_BYTES * 2,
+            '{"code":0,"msg":"ok","tenant_access_token":"token","padding":"',
+          );
+          return;
         }
-      | undefined;
-    const deps = await createStreamingFetch(({ url, res }) => {
-      if (url.pathname.includes("/auth/")) {
-        streamState = writeOversizedJson(
-          res,
-          FEISHU_JSON_MAX_BYTES * 2,
-          '{"code":0,"msg":"ok","tenant_access_token":"token","padding":"',
-        );
-        return;
-      }
-      writeJson(res, { code: 0, msg: "ok", data: { card_id: "card_oversized_token" } });
-    });
+        writeJson(res, { code: 0, msg: "ok", data: { card_id: "card_oversized_token" } });
+      },
+      (response) => {
+        streamState = observeResponseBody(response);
+      },
+    );
 
     const session = createStreamingSession(
       {} as never,
@@ -471,10 +464,11 @@ describe("FeishuStreamingSession", () => {
     await expect(session.start("chat_id", "open_id")).rejects.toThrow(
       /feishu\.streaming-card\.token: JSON response exceeds \d+ bytes/,
     );
-    expect(streamState?.canceled()).toBe(true);
-    expect(streamState?.bytesPulled()).toBeLessThan(FEISHU_JSON_MAX_BYTES * 2);
+    expect(streamState?.cancelCalls).toBe(1);
+    expect(streamState?.bytesRead).toBeGreaterThan(FEISHU_JSON_MAX_BYTES);
+    expect(streamState?.bytesRead).toBeLessThan(FEISHU_JSON_MAX_BYTES * 2);
     console.log(
-      `[feishu streaming-card bound proof] token over-cap: bytes_pulled=${streamState?.bytesPulled()} cap=${FEISHU_JSON_MAX_BYTES} canceled=${streamState?.canceled()}`,
+      `[feishu streaming-card bound proof] token over-cap: bytes_read=${streamState?.bytesRead} cap=${FEISHU_JSON_MAX_BYTES} cancel_calls=${streamState?.cancelCalls}`,
     );
   });
 
@@ -541,28 +535,28 @@ describe("FeishuStreamingSession", () => {
   });
 
   it("rejects oversized streaming card-create JSON before buffering the full body", async () => {
-    let streamState:
-      | {
-          bytesPulled: () => number;
-          canceled: () => boolean;
+    let streamState: ReturnType<typeof observeResponseBody> | undefined;
+    const deps = await createStreamingFetch(
+      ({ url, res }) => {
+        if (url.pathname.includes("/auth/")) {
+          writeJson(res, {
+            code: 0,
+            msg: "ok",
+            tenant_access_token: "token",
+            expire: 7200,
+          });
+          return;
         }
-      | undefined;
-    const deps = await createStreamingFetch(({ url, res }) => {
-      if (url.pathname.includes("/auth/")) {
-        writeJson(res, {
-          code: 0,
-          msg: "ok",
-          tenant_access_token: "token",
-          expire: 7200,
-        });
-        return;
-      }
-      streamState = writeOversizedJson(
-        res,
-        FEISHU_JSON_MAX_BYTES * 2,
-        '{"code":0,"msg":"ok","tenant_access_token":"token","padding":"',
-      );
-    });
+        writeOversizedJson(
+          res,
+          FEISHU_JSON_MAX_BYTES * 2,
+          '{"code":0,"msg":"ok","tenant_access_token":"token","padding":"',
+        );
+      },
+      (response) => {
+        streamState = observeResponseBody(response);
+      },
+    );
 
     const session = createStreamingSession(
       {
@@ -583,10 +577,11 @@ describe("FeishuStreamingSession", () => {
     await expect(session.start("chat_id", "open_id")).rejects.toThrow(
       /feishu\.streaming-card\.create: JSON response exceeds \d+ bytes/,
     );
-    expect(streamState?.canceled()).toBe(true);
-    expect(streamState?.bytesPulled()).toBeLessThan(FEISHU_JSON_MAX_BYTES * 2);
+    expect(streamState?.cancelCalls).toBe(1);
+    expect(streamState?.bytesRead).toBeGreaterThan(FEISHU_JSON_MAX_BYTES);
+    expect(streamState?.bytesRead).toBeLessThan(FEISHU_JSON_MAX_BYTES * 2);
     console.log(
-      `[feishu streaming-card bound proof] card-create over-cap: bytes_pulled=${streamState?.bytesPulled()} cap=${FEISHU_JSON_MAX_BYTES} canceled=${streamState?.canceled()}`,
+      `[feishu streaming-card bound proof] card-create over-cap: bytes_read=${streamState?.bytesRead} cap=${FEISHU_JSON_MAX_BYTES} cancel_calls=${streamState?.cancelCalls}`,
     );
   });
 
