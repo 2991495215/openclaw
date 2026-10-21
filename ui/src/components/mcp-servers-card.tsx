@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createMemo, createStore, For, onSettled, Show } from "solid-js";
 import { shellEscapeBackslash } from "../../../src/shared/shell-quote.js";
 import { hasOperatorAdminAccess } from "../app/operator-access.ts";
 import { registerMcpEnglish } from "../i18n/locales/en-mcp.ts";
@@ -57,7 +57,7 @@ export function McpServersCard(props: McpServersCardProps) {
   const context = useApplication();
   const gateway = projectGateway(context.gateway);
   const config = projectOwner(context.runtimeConfig, (source) => source.state);
-  const [view, setView] = createSignal<{
+  const [view, setView] = createStore<{
     busy: boolean;
     message: McpServerMessage | null;
     formOpen: boolean;
@@ -73,7 +73,9 @@ export function McpServersCard(props: McpServersCardProps) {
     sessionExpiredMessage: () => t("mcpServers.signInExpired"),
   });
   void context.runtimeConfig.ensureLoaded().catch((error: unknown) => {
-    setView((state) => ({ ...state, message: { kind: "error", text: formatUiError(error) } }));
+    setView((state) => {
+      state.message = { kind: "error", text: formatUiError(error) };
+    });
   });
   onSettled(() => {
     let hello = context.gateway.snapshot.hello;
@@ -113,7 +115,9 @@ export function McpServersCard(props: McpServersCardProps) {
     ) {
       return;
     }
-    setView((state) => ({ ...state, message: null }));
+    setView((state) => {
+      state.message = null;
+    });
     login.runner.prepareSignIn("oauth", server.name);
     void login.runner.startMcpLogin(server.name);
   };
@@ -126,33 +130,40 @@ export function McpServersCard(props: McpServersCardProps) {
       return false;
     }
     mutationPending = true;
-    setView((state) => ({ ...state, busy: true, message: null }));
+    setView((state) => {
+      state.busy = true;
+      state.message = null;
+    });
     try {
       await patchMcpServers(context.runtimeConfig, options);
-      setView((state) => ({ ...state, message: { kind: "success", text: options.successText } }));
+      setView((state) => {
+        state.message = { kind: "success", text: options.successText };
+      });
       return true;
     } catch (error) {
-      setView((state) => ({ ...state, message: { kind: "error", text: formatUiError(error) } }));
+      setView((state) => {
+        state.message = { kind: "error", text: formatUiError(error) };
+      });
       return false;
     } finally {
       mutationPending = false;
-      setView((state) => ({ ...state, busy: false }));
+      setView((state) => {
+        state.busy = false;
+      });
     }
   };
   const addServer = async (form: McpServerForm) => {
     if (!MCP_SERVER_NAME_PATTERN.test(form.name)) {
-      setView((state) => ({
-        ...state,
-        message: { kind: "error", text: t("mcpServers.nameInvalid") },
-      }));
+      setView((state) => {
+        state.message = { kind: "error", text: t("mcpServers.nameInvalid") };
+      });
       return;
     }
     const target = parseMcpTarget(form.target, form.transport);
     if (!target) {
-      setView((state) => ({
-        ...state,
-        message: { kind: "error", text: t("mcpServers.targetInvalid") },
-      }));
+      setView((state) => {
+        state.message = { kind: "error", text: t("mcpServers.targetInvalid") };
+      });
       return;
     }
     if (
@@ -162,7 +173,9 @@ export function McpServersCard(props: McpServersCardProps) {
         successText: t("mcpServers.addedSuccess", { name: form.name }),
       })
     ) {
-      setView((state) => ({ ...state, formOpen: false }));
+      setView((state) => {
+        state.formOpen = false;
+      });
     }
   };
   const toggleServer = (name: string, enabled: boolean) =>
@@ -182,7 +195,7 @@ export function McpServersCard(props: McpServersCardProps) {
   const rows = createMemo(() =>
     summarizeMcpServers(resolveEditableSnapshotConfig(config.read().configSnapshot)),
   );
-  const disabled = () => view().busy || !canMutate();
+  const disabled = () => view.busy || !canMutate();
 
   return (
     <openclaw-mcp-servers-card>
@@ -201,11 +214,12 @@ export function McpServersCard(props: McpServersCardProps) {
               title={mutationBlockedReason() ?? ""}
               disabled={disabled()}
               onClick={() => {
-                setView((state) => ({
-                  ...state,
-                  formOpen: !state.formOpen,
-                  message: state.formOpen ? state.message : null,
-                }));
+                setView((state) => {
+                  if (!state.formOpen) {
+                    state.message = null;
+                  }
+                  state.formOpen = !state.formOpen;
+                });
               }}
             >
               <span aria-hidden="true">
@@ -215,18 +229,20 @@ export function McpServersCard(props: McpServersCardProps) {
             </button>
           }
         >
-          <Show when={view().formOpen}>
+          <Show when={view.formOpen}>
             <McpServersForm
-              busy={view().busy}
+              busy={view.busy}
               disabled={!canMutate()}
               blockedReason={mutationBlockedReason()}
               onSubmit={(form) => void addServer(form)}
               onCancel={() => {
-                setView((state) => ({ ...state, formOpen: false }));
+                setView((state) => {
+                  state.formOpen = false;
+                });
               }}
             />
           </Show>
-          <Show when={view().message}>
+          <Show when={view.message}>
             {(message) => (
               <div
                 class={["mcp-server-message", `mcp-server-message--${message().kind}`]}
@@ -321,7 +337,7 @@ export function McpServersCard(props: McpServersCardProps) {
                             disabled={disabled()}
                             onClick={() => void toggleServer(server().name, !server().enabled)}
                           >
-                            {view().busy
+                            {view.busy
                               ? t("mcpServers.working")
                               : server().enabled
                                 ? t("mcpServers.disable")
