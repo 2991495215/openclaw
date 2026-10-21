@@ -44,6 +44,7 @@ declare module "@solidjs/web" {
       messageActions: MessageActionDetails | null | undefined;
     }
     interface IntrinsicElements {
+      "openclaw-activity-page": HTMLAttributes<HTMLElement>;
       "openclaw-ip-location": HTMLAttributes<HTMLElement>;
       "openclaw-home-session": HTMLAttributes<HTMLElement>;
       "openclaw-session-owner-chip": HTMLAttributes<HTMLElement> & {

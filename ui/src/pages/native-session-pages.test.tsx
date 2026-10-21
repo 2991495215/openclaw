@@ -12,7 +12,7 @@ import { createNavigationPreferencesFixture } from "../test-helpers/application-
 import { mountSolid } from "../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../test-helpers/solid-application-context.tsx";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
-import { renderSolid as ActivityRoute } from "./activity/activity-page.tsx";
+import { page as activityRoute } from "./activity/route.ts";
 import { pageContext } from "./agents/agents-page.test-support.ts";
 import { AgentsPage } from "./agents/agents-page.tsx";
 
@@ -20,6 +20,7 @@ describe("native session pages", () => {
   it.each(["agents", "activity"] as const)(
     "%s retains its host and releases inherited shell layout traits on unmount",
     async (page) => {
+      const { renderSolid: ActivityRoute } = await activityRoute.component();
       const { gateway } = createGatewayStoreTestStore();
       const agents = createAgentCapability(gateway);
       const channels = createChannelCapability(gateway);
