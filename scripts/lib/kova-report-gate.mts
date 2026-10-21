@@ -19,6 +19,15 @@ const CPU_METRICS = ["cpuPercentMax"];
 const DIRECT_VIOLATIONS = new Set(["cpuPercentMax", "peakRssMb"]);
 const SOAK_VIOLATIONS = new Set(["gatewayRssGrowthMb", "rssGrowthMb"]);
 const ROLE_VIOLATION = /^resourceByRole\.([^.]+)\.(maxCpuPercent|peakRssMb)$/u;
+const LATENCY_VIOLATION = /^[a-z][A-Za-z]*Ms$/u;
+const UPPER_BOUND = /^<= (\d+(?:\.\d+)?)$/u;
+// Kova adjudicates each repeat alone. A repeat-sensitive threshold is tolerated only when a
+// strict majority of repeats meet it and no repeat exceeds it by more than these factors.
+// Contention outliers measured on unchanged release candidates reached 1.46x for warm
+// readiness and 1.10x for RSS/CPU; the 2026.10.6 warm-readiness regression reached 6.4x.
+const REPEAT_MAJORITY_MIN_REPEAT = 3;
+const REPEAT_LATENCY_OUTLIER_FACTOR = 2;
+const REPEAT_RESOURCE_OUTLIER_FACTOR = 1.25;
 
 type JsonRecord = Record<string, unknown>;
 type KovaReportGateOptions = { requireInstrumentedPerformanceContract?: boolean };
@@ -660,7 +669,12 @@ function violationMeasurement(record: ValidatedRecord, violation: JsonRecord) {
   if (violation.kind === "soak" && SOAK_VIOLATIONS.has(metric)) {
     return finite(record.measurements[metric], `measurement ${metric}`);
   }
-  const match = violation.kind === "resource" ? ROLE_VIOLATION.exec(metric) : null;
+  check(violation.kind === "resource", "role violation identity was invalid");
+  return roleViolationMeasurement(record, violation, metric);
+}
+
+function roleViolationMeasurement(record: ValidatedRecord, violation: JsonRecord, metric: string) {
+  const match = ROLE_VIOLATION.exec(metric);
   check(match !== null && violation.role === match[1], "role violation identity was invalid");
   const roleId = match[1];
   const roleMetric = match[2];
@@ -790,6 +804,135 @@ export function evaluateToleratedProfiledKovaReport(
   });
 }
 
+type RepeatThreshold = {
+  groupKey: string;
+  label: string;
+  threshold: number;
+  outlierFactor: number;
+  measure: (record: ValidatedRecord) => number;
+};
+
+function repeatThreshold(record: ValidatedRecord, violation: JsonRecord): RepeatThreshold {
+  const metric = text(violation.metric, "violation metric");
+  const bound = UPPER_BOUND.exec(text(violation.expected, "violation expectation"));
+  check(bound?.[1] !== undefined, "violation was not an upper-bound threshold");
+  text(violation.message, "violation message");
+  let measure: (entry: ValidatedRecord) => number;
+  let outlierFactor = REPEAT_RESOURCE_OUTLIER_FACTOR;
+  if (
+    violation.kind === "threshold" &&
+    (DIRECT_VIOLATIONS.has(metric) || LATENCY_VIOLATION.test(metric))
+  ) {
+    measure = (entry) => finite(entry.measurements[metric], `measurement ${metric}`);
+    if (!DIRECT_VIOLATIONS.has(metric)) {
+      outlierFactor = REPEAT_LATENCY_OUTLIER_FACTOR;
+    }
+  } else if (violation.kind === "resource" || violation.kind === "evidence") {
+    measure = (entry) => roleViolationMeasurement(entry, violation, metric);
+  } else {
+    throw new Error("violation was not a repeat-sensitive performance threshold");
+  }
+  const threshold = Number(bound[1]);
+  const actual = measure(record);
+  // Kova reports an inconclusive CPU sample as an interval whose upper bound is the sample.
+  const reported =
+    violation.kind === "evidence"
+      ? object(violation.actual, "violation interval").upper
+      : violation.actual;
+  check(reported === actual && actual > threshold, "violation evidence drift");
+  return {
+    groupKey: recordKey(record),
+    label: `${text(record.scenario, "record scenario")}/${stateId(record)} ${metric}`,
+    threshold,
+    outlierFactor,
+    measure,
+  };
+}
+
+export function evaluateToleratedRepeatNoiseKovaReport(
+  report: unknown,
+  options: KovaReportGateOptions = {},
+) {
+  return evaluate(() => {
+    const {
+      report: validated,
+      gate,
+      records,
+      cards,
+      requiredInstrumented,
+    } = validateEnvelope(report, options);
+    check(
+      gate.verdict === "DO_NOT_SHIP" || gate.verdict === "BLOCKED",
+      "gate verdict was not DO_NOT_SHIP or BLOCKED",
+    );
+    check(requiredInstrumented === 0, "gate had incomplete required instrumented evidence");
+    const repeat = count(object(validated.controls, "controls").repeat, "repeat");
+    check(repeat >= REPEAT_MAJORITY_MIN_REPEAT, "repeat count cannot form a majority");
+    check(
+      records.every((record) => record.profiling.enabled !== true),
+      "repeat tolerance requires uninstrumented records",
+    );
+    check(
+      records
+        .filter((record) => record.status === "PASS")
+        .every((record) => recordViolations(record).length === 0),
+      "PASS record had violations",
+    );
+    const failed = records.filter((record) => record.status !== "PASS");
+    const remaining = cards.filter((card) => card.severity === "blocking");
+    check(
+      failed.length > 0 && remaining.length === failed.length,
+      "failure/card counts did not match",
+    );
+    const thresholds = new Map<string, RepeatThreshold>();
+    for (const record of failed) {
+      const kind =
+        record.status === "FAIL" ? "openclaw-failure" : record.status === "BLOCKED" && "blocked";
+      check(kind, "invalid record status");
+      const index = remaining.findIndex(
+        (card) =>
+          card.kind === kind &&
+          card.status === record.status &&
+          card.scenario === record.scenario &&
+          card.state === stateId(record),
+      );
+      check(index >= 0, "blocking cards did not map one-to-one");
+      const card = remaining.splice(index, 1)[0];
+      const violations = recordViolations(record).map((value) => object(value, "violation"));
+      check(card !== undefined && violations.length > 0, "failed record had no violations");
+      exactValues(
+        card.violations,
+        violations.map((violation) => violation.message),
+        "blocking card violations",
+      );
+      for (const violation of violations) {
+        const entry = repeatThreshold(record, violation);
+        const key = `${entry.groupKey}\u0000${entry.label}`;
+        const previous = thresholds.get(key);
+        check(
+          previous === undefined || previous.threshold === entry.threshold,
+          "repeat threshold drift",
+        );
+        thresholds.set(key, entry);
+      }
+    }
+    for (const entry of thresholds.values()) {
+      const values = records
+        .filter((record) => recordKey(record) === entry.groupKey)
+        .map((record) => entry.measure(record));
+      check(values.length === repeat, `${entry.label} did not have one sample per repeat`);
+      check(
+        values.filter((value) => value <= entry.threshold).length * 2 > values.length,
+        `${entry.label} exceeded ${entry.threshold} in a majority of repeats`,
+      );
+      check(
+        values.every((value) => value <= entry.threshold * entry.outlierFactor),
+        `${entry.label} exceeded ${entry.outlierFactor}x its ${entry.threshold} threshold`,
+      );
+    }
+  });
+}
+
 export function evaluateToleratedKovaReport(report: unknown, options: KovaReportGateOptions = {}) {
   const partial = evaluateToleratedPartialKovaReport(report, options);
   if (partial.ok) {
@@ -799,7 +942,14 @@ export function evaluateToleratedKovaReport(report: unknown, options: KovaReport
   if (profiled.ok) {
     return { ok: true, classification: "profiled-resource-only" };
   }
-  return { ok: false, reason: `partial: ${partial.reason}; profiled: ${profiled.reason}` };
+  const repeatNoise = evaluateToleratedRepeatNoiseKovaReport(report, options);
+  if (repeatNoise.ok) {
+    return { ok: true, classification: "repeat-majority" };
+  }
+  return {
+    ok: false,
+    reason: `partial: ${partial.reason}; profiled: ${profiled.reason}; repeat: ${repeatNoise.reason}`,
+  };
 }
 
 function readCliInvocation() {

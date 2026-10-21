@@ -651,11 +651,11 @@ jobs:
             if [[ "$KOVA_REF" == "$KOVA_CANONICAL_CONFIG_REF" || "$KOVA_REF" == "$KOVA_LEGACY_LIST_CONFIG_REF" ]]; then
               gate_args+=(--require-instrumented-performance-contract)
             fi
-            if node --import tsx "$PERFORMANCE_HELPER_DIR/scripts/lib/kova-report-gate.mts" "${gate_args[@]}"
+            if gate_verdict="$(node --import tsx "$PERFORMANCE_HELPER_DIR/scripts/lib/kova-report-gate.mts" "${gate_args[@]}")"
             then
               effective_status=0
               {
-                echo "Kova returned a non-zero release-gate verdict, but the trusted report adapter found only filtered coverage or profiling-affected resource thresholds with no baseline regression."
+                echo "Kova returned a non-zero release-gate verdict, but the trusted report adapter found only filtered coverage, profiling-affected resource thresholds, or single-repeat performance outliers with no baseline regression (${gate_verdict})."
                 echo
               } >> "$GITHUB_STEP_SUMMARY"
             fi

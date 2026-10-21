@@ -551,3 +551,69 @@ it.each([
   const result = runGate(makeReport(), ...flags);
   expect(result).toMatchObject({ status: 1, stderr: expect.stringContaining(message) });
 });
+
+function repeatReport(peakRssMb: number[], kind = "threshold"): JsonObject {
+  const report = partialReport();
+  objectAt(report.controls).repeat = peakRssMb.length;
+  const cards: JsonObject[] = [infoCard()];
+  const records = peakRssMb.map((value) => {
+    const record = makeRecord();
+    at(record, "measurements").peakRssMb = value;
+    if (value > 900) {
+      const message = `peak RSS ${value} MB exceeded threshold 900 MB`;
+      record.status = "FAIL";
+      record.violations = [makeViolation(kind, "peakRssMb", value, message)];
+      cards.push({
+        kind: "openclaw-failure",
+        severity: "blocking",
+        status: "FAIL",
+        scenario: SCENARIO,
+        state: STATE,
+        violations: [message],
+      });
+    }
+    return record;
+  });
+  syncRecords(report, records);
+  Object.assign(objectAt(report.gate), {
+    blockingCount: cards.length - 1,
+    cards,
+    verdict: "DO_NOT_SHIP",
+  });
+  return report;
+}
+
+it("tolerates a single-repeat performance outlier at the CLI boundary", () => {
+  const result = runGate(
+    repeatReport([650, 980, 700]),
+    "--require-instrumented-performance-contract",
+  );
+
+  expect(result).toMatchObject({
+    status: 0,
+    stdout: "Tolerated Kova verdict: repeat-majority\n",
+  });
+});
+
+it.each([
+  ["a sustained regression", [950, 980, 700], "exceeded 900 in a majority of repeats"],
+  ["an outlier beyond the noise bound", [650, 1200, 700], "exceeded 1.25x its 900 threshold"],
+  ["fewer than three repeats", [650, 980], "repeat count cannot form a majority"],
+] as const)("rejects %s", (_name, samples, reason) => {
+  const result = evaluateToleratedKovaReport(
+    repeatReport([...samples]),
+    STRICT_INSTRUMENTED_PERFORMANCE_OPTIONS,
+  );
+  expect(result).toMatchObject({ ok: false, reason: expect.stringContaining(reason) });
+});
+
+it("never excuses a non-performance violation in a minority repeat", () => {
+  const result = evaluateToleratedKovaReport(
+    repeatReport([650, 980, 700], "log"),
+    STRICT_INSTRUMENTED_PERFORMANCE_OPTIONS,
+  );
+  expect(result).toMatchObject({
+    ok: false,
+    reason: expect.stringContaining("not a repeat-sensitive performance threshold"),
+  });
+});

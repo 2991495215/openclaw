@@ -1279,7 +1279,7 @@ printf '%s\\n' \
       [
         "#!/bin/sh",
         'printf "%s\\n" "$*" >> "$GATE_INVOCATIONS"',
-        '[ "$PARTIAL_POLICY" = "advisory" ]',
+        '[ "$PARTIAL_POLICY" = "advisory" ] && echo "Tolerated Kova verdict: filtered-partial"',
         "",
       ].join("\n"),
     );
@@ -1318,7 +1318,7 @@ printf '%s\\n' \
       );
       if (partialPolicy === "advisory") {
         expect(readFileSync(summary, "utf8")).toContain(
-          "trusted report adapter found only filtered coverage",
+          "single-repeat performance outliers with no baseline regression (Tolerated Kova verdict: filtered-partial).",
         );
       } else {
         expect(existsSync(summary)).toBe(false);
