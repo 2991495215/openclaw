@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect as expectBrowser } from "playwright/test";
 import { expect, it } from "vitest";
 import { createPlaybackMediaFixture } from "../../../test/fixtures/media-playback.js";
+import { waitForLayoutSettled } from "../pages/chat/chat-layout.browser.test-support.ts";
 import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import {
   createMarginImage,
@@ -82,6 +83,12 @@ suite.define(() => {
                   ),
                 )
                 .toBe(true);
+            }
+            if (testCase.id === "clawhub") {
+              const card = page.locator(".chat-thread .chat-clawhub-card");
+              await card.waitFor();
+              // The card's entrance transform can outlive its first visible frame.
+              await waitForLayoutSettled(page, ".chat-thread .chat-clawhub-card");
             }
             const desktop = await measure();
             for (const width of [390, 430]) {
