@@ -72,3 +72,40 @@ it("finishes a replacement download while a cancelled export remains unresolved"
   expect(downloads).toEqual(["current.md"]);
   expect(page.textContent).toContain("Download started");
 });
+
+it("keeps same-meeting tab navigation responsive while exporting", async () => {
+  const pending = deferred<unknown>();
+  const request = vi.fn((method: string) =>
+    method === "transcripts.export"
+      ? pending.promise
+      : Promise.resolve(
+          method === "transcripts.list" ? { sessions: [], nextCursor: null } : meetingPage,
+        ),
+  );
+  const { page, unmount } = mount(request, "?selector=meeting");
+  try {
+    await waitForSolid(() => expect(page.textContent).toContain("Reader layout discussed."));
+    button(page, "Download Markdown").click();
+    await waitForSolid(() => expect(page.textContent).toContain("Preparing download"));
+    button(page, "Transcript").click();
+    await waitForSolid(() =>
+      expect(page.querySelector("#transcript-reader-tab-text")?.getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    );
+    expect(button(page, "Download Markdown").disabled).toBe(true);
+    button(page, "Summary").click();
+    await waitForSolid(() =>
+      expect(
+        page.querySelector("#transcript-reader-tab-summary")?.getAttribute("aria-selected"),
+      ).toBe("true"),
+    );
+    expect(button(page, "Download Markdown").disabled).toBe(true);
+    expect(request.mock.calls.filter(([method]) => method === "transcripts.export")).toHaveLength(
+      1,
+    );
+  } finally {
+    unmount();
+    pending.resolve({ data: "", filename: "meeting.md", mimeType: "text/markdown" });
+  }
+});

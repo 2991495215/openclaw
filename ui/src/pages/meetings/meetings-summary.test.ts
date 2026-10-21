@@ -115,3 +115,27 @@ it.each(["selection", "client", "authorization"])("fences replaced %s", async (r
   expect(page.textContent).not.toContain("Late private notes");
   expect(page.textContent).toContain("Reader layout discussed.");
 });
+
+it("keeps same-meeting tab navigation responsive while generating a summary", async () => {
+  const pending = deferred<typeof meetingPage>();
+  summarize.mockReturnValue(pending.promise);
+  const { page, unmount } = mount(request, "?selector=meeting");
+  try {
+    await waitForText(page, "Generating meeting summary");
+    button(page, "Transcript").click();
+    await waitForSolid(() =>
+      expect(page.querySelector("#transcript-reader-tab-text")?.getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    );
+    expect(page.textContent).toContain("Keep the reader quiet and readable.");
+    button(page, "Summary").click();
+    await waitForText(page, "Generating meeting summary");
+    expect(summarize).toHaveBeenCalledTimes(1);
+    pending.resolve(meetingPage);
+    await waitForText(page, "Reader layout discussed.");
+  } finally {
+    unmount();
+    pending.resolve(meetingPage);
+  }
+});

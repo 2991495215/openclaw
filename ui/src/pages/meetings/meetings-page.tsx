@@ -80,7 +80,8 @@ function createArchiveRead(run: (signal: AbortSignal, search?: string) => Promis
 }
 
 export function MeetingsPage(props: { routeSearch?: string }) {
-  const routeSearch = () => props.routeSearch ?? "";
+  // Navigation can advance while a presentation action awaits its admitted request.
+  const routeSearch = () => latest(() => props.routeSearch ?? "");
   const context = useApplication();
   const projection = projectGateway(context.gateway);
   const gateway = createGatewayConnectionLifecycle(context.gateway.snapshot);
@@ -536,8 +537,7 @@ export function MeetingsPage(props: { routeSearch?: string }) {
   let connectionHello: unknown;
   let connectionAuth: unknown;
   createEffect(
-    // Navigation must retire pending actions before their held frame can commit.
-    () => ({ snapshot: projection.read().snapshot, search: latest(routeSearch) }),
+    () => ({ snapshot: projection.read().snapshot, search: routeSearch() }),
     ({ snapshot, search }) => {
       const connectionChanged = gateway.transition(snapshot);
       const authorizationChanged =
