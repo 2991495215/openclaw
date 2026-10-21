@@ -169,7 +169,8 @@ describe("Systems workspace", () => {
       backups,
     );
     const { page } = await mount(controller);
-    expect(page.querySelector(".systems-heading h1")?.textContent).toBe("Systems");
+    expect(page.querySelector(".systems-page-header h1")?.textContent).toBe("Systems");
+    expect(page.querySelector(".systems-heading h2")?.textContent).toBe("Select a machine");
     expect(page.querySelectorAll(".systems-backups")).toHaveLength(1);
     expect(page.querySelector(".systems-backups")?.textContent).toContain("Loading backups…");
     pending.reject(new Error("Backup history unavailable"));
@@ -459,6 +460,41 @@ describe("Systems workspace", () => {
     expect(enable.disabled).toBe(false);
   });
 
+  it("updates desktop setup when only the configuration owner publishes", async () => {
+    const { controller, context } = harness(async () => [
+      { ...host, desktopSetup: { state: "ready" } },
+    ]);
+    const { page } = await mount(controller);
+    expect(page.querySelector(".systems-state button")?.textContent).toContain(
+      "Enable desktop access in OpenClaw",
+    );
+    const request = vi.spyOn(context.gateway.snapshot.client!, "request");
+    request.mockResolvedValueOnce({
+      config: { desktop: { host: { enabled: true } } },
+      hash: "enabled",
+      valid: true,
+    });
+    await context.runtimeConfig.refresh();
+    await waitForSolid(() =>
+      expect(page.querySelector(".systems-state h2")?.textContent).toBe(
+        "Desktop access is enabled",
+      ),
+    );
+    expect(page.querySelector(".systems-state button")).toBeNull();
+
+    request.mockResolvedValueOnce({
+      config: { desktop: { host: { enabled: false } } },
+      hash: "disabled",
+      valid: true,
+    });
+    await context.runtimeConfig.refresh();
+    await waitForSolid(() =>
+      expect(page.querySelector(".systems-state button")?.textContent).toContain(
+        "Enable desktop access in OpenClaw",
+      ),
+    );
+  });
+
   it.each(["selection", "authority"])(
     "cancels pending desktop enablement when %s changes",
     async (change) => {
@@ -558,7 +594,7 @@ describe("Systems workspace", () => {
     await choose("status:offline");
     expect(names()).toEqual(["Alpha laptop", "Delta laptop", "Retained worker"]);
     expect(counts()).toEqual(["2", "1"]);
-    expect(page.querySelector(".systems-heading h1")?.textContent).toBe("Zulu laptop");
+    expect(page.querySelector(".systems-heading h2")?.textContent).toBe("Zulu laptop");
     expect(page.querySelector<HTMLSelectElement>(".systems-mobile-picker")?.value).toBe(offline.id);
 
     await choose("status:online");
@@ -582,7 +618,7 @@ describe("Systems workspace", () => {
     await waitForSolid(() => expect(controller.loading()).toBe(false));
     await sidebar.updateComplete;
     expect(names()).toEqual(["Alpha laptop"]);
-    expect(page.querySelector(".systems-heading h1")?.textContent).toBe("Zulu laptop");
+    expect(page.querySelector(".systems-heading h2")?.textContent).toBe("Zulu laptop");
     await search("");
     expect(names()).toEqual(["Alpha laptop", "Delta laptop", "Retained worker"]);
     await choose("status:all");

@@ -106,30 +106,6 @@ describe("live Doctor child output", () => {
     expect(stdout).not.toHaveBeenCalled();
   });
 
-  it("projects nested progress without trusting extra fields or replaying it at completion", () => {
-    const { stderr, stdout } = observe();
-    const output = streamUpdateFinalizationDoctorOutput();
-    const facts = {
-      operation: "sqlite-integrity",
-      phase: "post-plugin",
-      operationPhase: "checking",
-      elapsedMs: 30_000,
-      size: "6.0 GiB",
-      secret: "fixture-private",
-      service: "offline",
-    };
-    const progress = "[update progress] " + JSON.stringify(facts);
-    const encoded = JSON.stringify({ level: "info", message: progress });
-    output.onOutputChunk(Buffer.from(encoded + "\n"), "stderr");
-    output.onOutputChunk(Buffer.from('{"status":"ok"}\n'), "stdout");
-    expect(stderr).toHaveBeenCalledTimes(1);
-    expect(stderr.mock.calls.flat().join("")).not.toMatch(/fixture-private|offline/u);
-    expect(stdout).not.toHaveBeenCalled();
-    expect(output.remainingOutput(encoded + "\nWarning retained\n")).toBe("Warning retained\n");
-    output.finish();
-    expect(stderr).toHaveBeenCalledTimes(1);
-  });
-
   it("does not let a broken progress sink interrupt the child's admitted work", () => {
     const { stderr } = observe();
     stderr.mockImplementation(() => {

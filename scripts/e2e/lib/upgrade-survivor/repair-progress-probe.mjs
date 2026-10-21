@@ -22,8 +22,9 @@ export function observeRepairProgressIntegrity(onIntegrity) {
   sqlite.DatabaseSync = class extends NativeDatabase {
     prepare(sql, ...args) {
       const statement = super.prepare(sql, ...args);
-      if (/^PRAGMA\s+integrity_check\s*;?$/iu.test(sql.trim())) {
-        onIntegrity();
+      const nativeCheck = /^PRAGMA\s+(integrity_check|quick_check)\s*;?$/iu.exec(sql.trim());
+      if (nativeCheck) {
+        onIntegrity(nativeCheck[1].toLowerCase());
       }
       return statement;
     }
@@ -258,13 +259,14 @@ function installProbe() {
   // The migrated case performs native schema work before finalizer admission.
   // Its caller separately verifies the later real finalizer and terminal result.
   record({ gate: "hold-armed" });
-  observeRepairProgressIntegrity(() => {
-    record({ gate: "integrity-observed" });
+  observeRepairProgressIntegrity((nativeCheck) => {
+    record({ gate: "integrity-observed", nativeCheck });
     try {
       writeJson(path.join(directory, "held.json"), {
         pid: process.pid,
         identity,
         ancestors,
+        nativeCheck,
         at: Date.now(),
       });
     } catch (error) {

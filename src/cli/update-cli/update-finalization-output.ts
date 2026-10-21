@@ -152,42 +152,17 @@ class DoctorOutputLines {
   }
 }
 
-function readDoctorOperationProgress(raw: string, phase?: "pre-plugin" | "post-plugin") {
+function readDoctorOperationProgress(raw: string, phase: "pre-plugin" | "post-plugin") {
   const line = stripVTControlCharacters(raw).trim();
   const record = line.startsWith("{") ? safeParseJsonRecord(line) : undefined;
   const message = typeof record?.message === "string" ? record.message : line;
-  const prefix = "[update progress] ";
-  if (message.startsWith(prefix)) {
-    const progress = safeParseJsonRecord(message.slice(prefix.length));
-    if (
-      progress?.operation === "sqlite-integrity" &&
-      (progress.phase === "pre-plugin" || progress.phase === "post-plugin") &&
-      typeof progress.operationPhase === "string" &&
-      /^(starting|opening|checking|closing|result-received)$/u.test(progress.operationPhase) &&
-      typeof progress.elapsedMs === "number" &&
-      Number.isSafeInteger(progress.elapsedMs) &&
-      progress.elapsedMs >= 0
-    ) {
-      return {
-        phase: progress.phase,
-        operation: "sqlite-integrity" as const,
-        operationPhase: progress.operationPhase,
-        elapsedMs: progress.elapsedMs,
-        ...(typeof progress.size === "string" &&
-        /^\d{1,12}(?:\.\d{1,3})? (?:B|KiB|MiB|GiB)$/u.test(progress.size)
-          ? { size: progress.size }
-          : {}),
-      };
-    }
-    return undefined;
-  }
   // sqlite-integrity-worker owns these observations, including in shipped children.
   // Project only its closed fields; never forward database labels or arbitrary prose.
   const match =
     /(?:^|\] )SQLite integrity check still running: .+ \((unknown size|\d{1,12}(?:\.\d{1,3})? (?:B|KiB|MiB|GiB)), (\d{1,10})s elapsed, phase=(starting|opening|checking|closing|result-received)\)\.$/u.exec(
       message,
     );
-  return match && phase
+  return match
     ? {
         phase,
         operation: "sqlite-integrity" as const,
@@ -199,8 +174,8 @@ function readDoctorOperationProgress(raw: string, phase?: "pre-plugin" | "post-p
 }
 
 /** Display-only projection of child output, independent of the parent's ledger or service custody. */
-export function streamUpdateFinalizationDoctorOutput(phase?: "pre-plugin" | "post-plugin") {
-  const capture = phase ? outputScope.getStore()?.captureDoctor(phase) : undefined;
+export function streamUpdateFinalizationDoctorOutput(phase: "pre-plugin" | "post-plugin") {
+  const capture = outputScope.getStore()?.captureDoctor(phase);
   const signal = resolveCommandProcessSignal();
   const enabled = isLogLevelEnabled("info", getConsoleSettings().level);
   let closed = false;
@@ -231,10 +206,8 @@ export function streamUpdateFinalizationDoctorOutput(phase?: "pre-plugin" | "pos
       .filter((line) => !readDoctorOperationProgress(line, phase))
       .join("\n");
   return {
-    /** The outer worker's other diagnostics keep their existing completion-only path. */
-    remainingOutput,
     onOutputChunk: (chunk: Buffer, stream: CommandOutputStream): void => {
-      if (closed || signal?.aborted || (!phase && stream === "stdout")) {
+      if (closed || signal?.aborted) {
         return;
       }
       capture?.(chunk, stream);
@@ -253,29 +226,27 @@ export function streamUpdateFinalizationDoctorOutput(phase?: "pre-plugin" | "pos
       // Keep the existing completion-only operator detail channel. Not every useful
       // Doctor panel is a result warning, and some callers have no warning callback.
       // Redact the whole bounded capture before clipping: never expose a split secret.
-      if (phase) {
-        for (const stream of ["stdout", "stderr"] as const) {
-          const text = result?.[stream];
-          if (typeof text !== "string" || !text.trim()) {
-            continue;
+      for (const stream of ["stdout", "stderr"] as const) {
+        const text = result?.[stream];
+        if (typeof text !== "string" || !text.trim()) {
+          continue;
+        }
+        try {
+          const redacted = redactDoctorOutput(text);
+          const detail =
+            redacted === undefined
+              ? "[Doctor diagnostic output omitted: incomplete private key]"
+              : remainingOutput(redacted).trim();
+          if (detail) {
+            write("update doctor", {
+              phase,
+              stream,
+              detail: truncateUtf8Prefix(detail, 16 * 1024),
+              ...(Buffer.byteLength(detail) > 16 * 1024 ? { truncated: true } : {}),
+            });
           }
-          try {
-            const redacted = redactDoctorOutput(text);
-            const detail =
-              redacted === undefined
-                ? "[Doctor diagnostic output omitted: incomplete private key]"
-                : remainingOutput(redacted).trim();
-            if (detail) {
-              write("update doctor", {
-                phase,
-                stream,
-                detail: truncateUtf8Prefix(detail, 16 * 1024),
-                ...(Buffer.byteLength(detail) > 16 * 1024 ? { truncated: true } : {}),
-              });
-            }
-          } catch {
-            /* The result channel still owns warnings and failure facts. */
-          }
+        } catch {
+          /* The result channel still owns warnings and failure facts. */
         }
       }
     },

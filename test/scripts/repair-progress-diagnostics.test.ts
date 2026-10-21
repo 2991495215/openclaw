@@ -21,7 +21,11 @@ it("publishes bounded redacted progress evidence after failure and success", () 
     fs.writeFileSync(file, text);
   };
   const secret = "progress-fixture-private-token";
-  const evidence = { beforeSettlement: true, operation: "sqlite-integrity" };
+  const evidence = {
+    beforeSettlement: true,
+    operation: "sqlite-integrity",
+    nativeCheck: "quick_check",
+  };
   write("progress-repair.stdout", JSON.stringify({ status: "ok" }));
   write(
     "progress-repair.stderr",

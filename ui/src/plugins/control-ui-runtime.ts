@@ -6,6 +6,11 @@ import type {
 } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import { CONTROL_UI_PLUGIN_AUTH_GRANT_TTL_MS } from "../../../src/gateway/control-ui-plugin-frame-contract.js";
 import type {
+  ControlUiSettingsPlacement,
+  ControlUiChannelSettingsView,
+  ControlUiSettingsView,
+} from "../../../src/plugin-sdk/control-ui-settings.js";
+import type {
   ControlUiDisposer,
   ControlUiHost,
   ControlUiReplacement,
@@ -66,6 +71,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
   private readonly preloads = new ControlUiPluginAssetPreloads();
   private readonly selected = new Map<ControlUiSurface, { key: string; signal: AbortSignal }>();
   private readonly listeners = new Set<() => void>();
+  private publicationRevision = 0;
   private readonly loadingOwners = new Set<Omit<ControlUiPluginOwner, "host">>();
   private loadingCatalog: "pending" | Set<string> | null = null;
   private catalogStatus: "pending" | "complete" | "failed" = "pending";
@@ -74,6 +80,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
   private connectionId: string | null = null;
   private refreshGeneration = 0;
   private disposed = false;
+  private readonly settingsLifetimes = new Set<AbortController>();
   private firstConnection = true;
   private diagnostics: PluginControlUiDiagnostic[] = [];
   private grantTimer: ReturnType<typeof setInterval> | null = null;
@@ -100,8 +107,28 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
     return [...this.diagnostics, ...warnings];
   }
 
+  loadSettingsView(
+    placement: ControlUiSettingsView["placement"],
+    signal: AbortSignal,
+  ): Promise<{ view: ControlUiSettingsView; signal: AbortSignal; dispose: () => void }>;
+  loadSettingsView(
+    placement: ControlUiChannelSettingsView["placement"],
+    signal: AbortSignal,
+  ): Promise<{ view: ControlUiChannelSettingsView; signal: AbortSignal; dispose: () => void }>;
+  async loadSettingsView(placement: ControlUiSettingsPlacement, signal: AbortSignal) {
+    const { loadPackagedSettingsView } = await import("./control-ui-settings-view.ts");
+    if (this.disposed) {
+      throw new Error("The plugin UI runtime has ended.");
+    }
+    return loadPackagedSettingsView(placement, signal, this.settingsLifetimes);
+  }
+
   get hasPlugins(): boolean {
     return this.owners.size > 0 || this.loadingOwners.size > 0;
+  }
+
+  get revision(): number {
+    return this.publicationRevision;
   }
 
   get registryStatus(): "pending" | "complete" | "failed" {
@@ -164,6 +191,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
       this.preloads.sync(context.config.current, context.resourceBasePath, (id, error) =>
         this.reportError(id, error),
       );
+    // Owner publications drive asset preloads and revoke obsolete plugin activations synchronously.
     this.stops.push(
       context.config.subscribe(preload),
       context.gateway.subscribe(() => this.syncConnection()),
@@ -562,6 +590,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
   }
 
   private publish(): void {
+    this.publicationRevision += 1;
     for (const listener of this.listeners) {
       listener();
     }
@@ -608,6 +637,9 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
 
   dispose(): void {
     this.disposed = true;
+    for (const owner of this.settingsLifetimes) {
+      owner.abort();
+    }
     this.preloads.dispose();
     this.retireOwners();
     for (const stop of this.stops) {

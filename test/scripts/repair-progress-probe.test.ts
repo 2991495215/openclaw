@@ -15,7 +15,7 @@ import {
 } from "../../src/infra/sqlite-integrity.js";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
-it("observes the real full integrity statement without intercepting quick or table checks", () => {
+it("observes real full and quick integrity work without intercepting table checks", () => {
   const observed = vi.fn();
   const restore = observeRepairProgressIntegrity(observed);
   let database: DatabaseSync | undefined;
@@ -24,11 +24,13 @@ it("observes the real full integrity statement without intercepting quick or tab
     database.exec("CREATE TABLE probe(value TEXT)");
     expect(assertSqliteIntegrity(database, "progress probe")).toEqual({ integrityCheck: "ok" });
     expect(observed).toHaveBeenCalledTimes(1);
-    expect(assertSqliteIntegrity(database, "progress probe", "quick_check")).toEqual({
-      integrityCheck: "ok",
-    });
+    expect(
+      assertSqliteIntegrity(database, "progress probe", { check: "quick", tables: ["probe"] }),
+    ).toEqual({ integrityCheck: "ok" });
+    expect(observed).toHaveBeenCalledTimes(2);
+    expect(observed.mock.calls).toEqual([["integrity_check"], ["quick_check"]]);
     assertSqliteTableIntegrity(database, "progress probe", "probe");
-    expect(observed).toHaveBeenCalledTimes(1);
+    expect(observed).toHaveBeenCalledTimes(2);
   } finally {
     restore();
     database?.close();

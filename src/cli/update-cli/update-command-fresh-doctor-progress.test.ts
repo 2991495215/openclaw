@@ -14,13 +14,10 @@ import {
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { noteDiskSpace } from "../../commands/doctor-disk-space.js";
 import * as diskSpace from "../../infra/disk-space.js";
-import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import type { UpdateStepResult } from "../../infra/update-step-result.js";
 import { setLoggerOverride, resetLogger } from "../../logging/logger.js";
 import { defaultRuntime } from "../../runtime.js";
-import { createUpdateCliBaseSnapshot } from "./update-cli-config.test-support.js";
 import { runUpdateFinalizationDoctorInFreshProcess } from "./update-command-fresh-doctor.js";
-import { continueMigratedUpdateInFreshProcess } from "./update-command-migrated.js";
 
 const observed = vi.hoisted(() => ({ chunk: vi.fn() }));
 vi.mock("../../process/exec.js", async (importOriginal) => {
@@ -144,100 +141,4 @@ it("forwards held Doctor child progress before completion without replay or JSON
   expect(log.mock.calls.flat().join("\n")).not.toContain(heartbeat);
   expect(error.mock.calls.flat().join("\n")).not.toContain(heartbeat);
   expect(stdout).not.toHaveBeenCalled();
-});
-
-it("relays finalizer progress before settlement and publishes only its one terminal JSON", async ({
-  signal,
-}) => {
-  const root = dirs.make("finalizer-progress-");
-  const env = { ...process.env, OPENCLAW_STATE_DIR: path.join(root, "state") };
-  vi.stubEnv("OPENCLAW_LOG_LEVEL", "info");
-  setLoggerOverride({ level: "silent", consoleLevel: "info", file: path.join(root, "log") });
-  const entryPath = path.join(
-    root,
-    "dist",
-    runtimeProcessEntrypoints.updateMigratedFinalize.distWorkerPath,
-  );
-  await fs.mkdir(path.dirname(entryPath), { recursive: true });
-  const progress =
-    "[update progress] " +
-    JSON.stringify({
-      phase: "pre-plugin",
-      stream: "stderr",
-      operation: "sqlite-integrity",
-      operationPhase: "checking",
-      elapsedMs: 10_000,
-      size: "6.0 GiB",
-      cancellation: "available",
-    });
-  await fs.writeFile(
-    entryPath,
-    [
-      fixtureReceiptClientSource(receipts.endpoint),
-      'import { writeFile } from "node:fs/promises";',
-      'let input = ""; for await (const chunk of process.stdin) input += chunk;',
-      "const request = JSON.parse(input);",
-      'const release = awaitRelease("finalizer", "finish");',
-      "process.stderr.write(" + JSON.stringify(progress + "\n") + ");",
-      "await release;",
-      "const result = {...request.params.result, runId: request.params.opts.run.runId};",
-      "await writeFile(request.resultPath, JSON.stringify({ result, terminalRunId: result.runId, exitCode: 0 }));",
-      'process.stdout.write(JSON.stringify(result) + "\\n");',
-    ].join("\n"),
-  );
-  const ready = createDeferred();
-  let raw = "";
-  observed.chunk.mockImplementation((chunk: Buffer, stream: string) => {
-    if (stream === "stderr") {
-      raw += chunk.toString();
-      if (raw.includes(progress + "\n")) {
-        ready.resolve();
-      }
-    }
-  });
-  const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-  const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
-  const operation = continueMigratedUpdateInFreshProcess(
-    {
-      root,
-      result: { status: "ok", mode: "npm", root, durationMs: 0, steps: [] },
-      mutationStarted: false,
-      installKindChanged: false,
-      configSnapshot: createUpdateCliBaseSnapshot({}),
-      requestedChannel: null,
-      storedChannel: "stable",
-      channel: "stable",
-      downgradeRisk: false,
-      shouldRestart: false,
-      opts: { json: true, run: { runId: "fixture-run", env } },
-      controlPlaneUpdateSentinelMeta: null,
-      preUpdatePluginInstallRecords: {},
-      startedAt: Date.now(),
-      packageUpdateNodeRunner: process.execPath,
-      updateStepTimeoutMs: 30_000,
-    },
-    [],
-  );
-  try {
-    await withinTest(
-      awaitGateBeforeSettlement(ready.promise, operation, "Finalizer exited before progress"),
-      signal,
-    );
-    expect(stderr.mock.calls.flat().join("")).toContain('"operation":"sqlite-integrity"');
-    expect(stdout).not.toHaveBeenCalled();
-  } finally {
-    receipts.release("finalizer", "finish");
-    await operation;
-  }
-  expect(
-    stderr.mock.calls
-      .flat()
-      .join("")
-      .match(/"operation":"sqlite-integrity"/gu),
-  ).toHaveLength(1);
-  expect(stdout).toHaveBeenCalledTimes(1);
-  expect(JSON.parse(stdout.mock.calls.flat().join(""))).toMatchObject({
-    status: "ok",
-    runId: "fixture-run",
-  });
 });

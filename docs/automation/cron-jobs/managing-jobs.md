@@ -99,6 +99,10 @@ An explicit permission edit still requires matching owner authority. Jobs whose
 stored identity cannot prove an account need authenticated administrator recovery;
 Doctor does not infer ownership from delivery settings or the current caller.
 
+Automations created before owner attribution have no recorded owner. Chat can
+still enable, disable, reschedule or remove them, but only a Gateway owner or an
+operator can change their prompt or tools.
+
 ```bash
 # List enabled jobs
 openclaw automations list
@@ -235,7 +239,7 @@ Disable automations: `cron.enabled: false` or `OPENCLAW_SKIP_CRON=1`.
   <Accordion title="Maintenance">
     `cron.sessionRetention` (default `24h`, `false` or `"0h"` disables) prunes isolated run-session entries. Terminal run history is retained for 7 days (`lost` rows for 24 hours), with the newest 2000 rows per job and history class enforced as an additional ceiling.
 
-    Gateway retention waits for deferred agent database startup preparation before its first sweep, logging the wait as an intentional deferral. Retention continues even when scheduled execution is disabled.
+    Gateway retention skips agent databases still undergoing startup preparation while maintaining healthy agents. Completed preparation wakes retention for the newly available database. These sweeps keep the Gateway's maintenance context rather than borrowing the publisher's temporary startup admission. Retention continues even when scheduled execution is disabled.
 
     After each registry sweep, the Gateway waits until the next candidate expiry or a committed cron-session or store-topology change. Empty, unchanged registries do not need periodic reads. Protected expired sessions and failed sweeps retry every minute; run-history recovery keeps its existing minute cadence.
 

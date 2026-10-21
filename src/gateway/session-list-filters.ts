@@ -12,6 +12,7 @@ import { resolveSessionModelIdentityRef } from "../agents/session-model-ref.js";
 import { buildGroupDisplayName } from "../config/sessions/group-display.js";
 import {
   MAX_SESSION_PARTICIPANTS,
+  resolveSessionCreatorActor,
   sessionCreatorProfileId,
 } from "../config/sessions/session-entry-provenance.js";
 import { isPinnableSessionEntry } from "../config/sessions/session-pin-policy.js";
@@ -21,7 +22,7 @@ import { normalizeAgentId } from "../routing/session-key.js";
 import { formatAgentRuntimeLabel } from "../shared/agent-runtime-display.js";
 import { sessionActivityTimestamp } from "../shared/session-activity-timestamp.js";
 import { formatGoalSummary } from "../shared/session-goal-display.js";
-import { isSessionRunActive } from "../shared/session-run-state.js";
+import { isSessionRunStateActive } from "../shared/session-run-state.js";
 import { normalizeSessionSearchText } from "../shared/session-search-text.js";
 import type { SessionActivityPulse, SessionOwnerFacetIdentity } from "../shared/session-types.js";
 import type { SynchronousWork } from "../shared/synchronous-work.js";
@@ -91,7 +92,6 @@ export type SessionListFilterParams = {
   entriesSorted?: boolean;
   getTarget: SessionListTargetLookup;
   getModelFacts?: SessionListModelFactsLookup;
-  getSearchModelIdentity?: (key: string) => ReturnType<typeof resolveSessionModelIdentityRef>;
   modelCatalog?: SessionListModelCatalog | ModelCatalogEntry[];
   opts: SessionsListParams;
   now: number;
@@ -171,30 +171,6 @@ function createActivityPulse(opts: SessionsListParams): SessionActivityPulse | u
     ...(opts.activeMinutes === undefined ? {} : { started: 0 }),
     running: 0,
   };
-}
-
-/** Plugin metadata stays with its owner; workers consume this prepared identity. */
-export function resolveSessionListSearchModelIdentity(
-  params: SessionListFilterParams,
-  key: string,
-) {
-  const target = expectDefined(params.getTarget(key), "search row owner");
-  const metadataSnapshot = readPreparedGatewayModelCatalogMetadata(
-    params.modelCatalog instanceof Map ? params.modelCatalog.get(target.agentId) : undefined,
-  );
-  const context = params.getRowContext();
-  const subagentRun = context.subagentRuns.getDisplaySubagentRun(target.storeKey ?? key);
-  return resolveSessionModelIdentityRef(
-    params.cfg,
-    target.entry,
-    target.agentId,
-    subagentRun?.model,
-    {
-      allowPluginNormalization: false,
-      manifestPlugins: metadataSnapshot,
-      configuredDefaultModelByAgent: context.configuredDefaultModelByAgent,
-    },
-  );
 }
 
 export function* filterSessionEntries(
@@ -337,6 +313,9 @@ export function* filterSessionEntries(
           return true;
         }
         const agentId = target.agentId;
+        const metadataSnapshot = readPreparedGatewayModelCatalogMetadata(
+          params.modelCatalog instanceof Map ? params.modelCatalog.get(agentId) : undefined,
+        );
         const run = projectGatewaySessionRunState({
           key: storeKey,
           entry,
@@ -350,7 +329,7 @@ export function* filterSessionEntries(
           matchesSessionListSearch(
             [
               state.status,
-              isSessionRunActive(state)
+              isSessionRunStateActive(state)
                 ? "live running"
                 : state.hasActiveRun === false
                   ? "idle"
@@ -370,9 +349,18 @@ export function* filterSessionEntries(
         const source = expectDefined(params.getModelFacts, "prepared search row model facts")(key);
         // Derived model aliases are not agent-key matches.
         if (!search.startsWith("agent:")) {
-          const resolvedModel = params.getSearchModelIdentity
-            ? params.getSearchModelIdentity(key)
-            : resolveSessionListSearchModelIdentity(params, key);
+          const subagentRun = getRowContext().subagentRuns.getDisplaySubagentRun(storeKey);
+          const resolvedModel = resolveSessionModelIdentityRef(
+            cfg,
+            entry,
+            agentId,
+            subagentRun?.model,
+            {
+              allowPluginNormalization: false,
+              manifestPlugins: metadataSnapshot,
+              configuredDefaultModelByAgent: getRowContext().configuredDefaultModelByAgent,
+            },
+          );
           const models: Array<string | undefined> = [];
           for (const identity of [resolvedModel, source.selectedModel, source.rowModelIdentity]) {
             addSessionListSearchModelFields(models, identity);
@@ -504,7 +492,7 @@ export function* filterSessionEntries(
     if (effectiveOwner) {
       addSessionOwnerFacetIdentity(ownerFacet, effectiveOwner);
     }
-    if (creatorId && entry.createdActor?.id !== creatorId) {
+    if (creatorId && resolveSessionCreatorActor(entry.createdActor)?.id !== creatorId) {
       continue;
     }
     if (ownerId && effectiveOwner?.id !== ownerId) {

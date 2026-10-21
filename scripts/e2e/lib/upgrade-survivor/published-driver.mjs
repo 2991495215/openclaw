@@ -570,7 +570,14 @@ process.exitCode = await runCancelableCommand(async (signal) => {
         "stop",
         "openclaw-gateway.service",
       ]);
-      await provePublishedDriverScopedRestore({ state, env, artifacts, run, writeJson });
+      await provePublishedDriverScopedRestore({
+        packageRoot,
+        state,
+        env,
+        artifacts,
+        run,
+        writeJson,
+      });
     }
     writeJson("summary", {
       driverVersion,
