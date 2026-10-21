@@ -101,26 +101,25 @@ suite.define(() => {
         await animation.evaluate((current) => current.play());
         await page.clock.resume();
         const moving = async () => {
-          const movement = await status
-            .locator(".session-run-spinner")
-            .evaluate(async (element) => {
-              const current = element.getAnimations()[0]!;
-              const before = Number(current.currentTime);
-              const transform = getComputedStyle(element).transform;
-              await new Promise<void>((resolve) => {
-                element.addEventListener(
-                  "animationiteration",
-                  () => requestAnimationFrame(() => resolve()),
-                  { once: true },
-                );
-              });
-              return {
-                advanced: Number(current.currentTime) > before,
-                running: current.playState === "running",
-                changed: getComputedStyle(element).transform !== transform,
-              };
-            });
-          expect(movement).toEqual({ advanced: true, running: true, changed: true });
+          const before = await spinner!.evaluate((element) => ({
+            currentTime: Number(element.getAnimations()[0]!.currentTime),
+            transform: getComputedStyle(element).transform,
+          }));
+          // A full cycle can return the same transform, so sample within a bounded window.
+          await expect
+            .poll(
+              () =>
+                spinner!.evaluate((element, initial) => {
+                  const current = element.getAnimations()[0]!;
+                  return {
+                    advanced: Number(current.currentTime) > initial.currentTime,
+                    running: current.playState === "running",
+                    changed: getComputedStyle(element).transform !== initial.transform,
+                  };
+                }, before),
+              { interval: 50, timeout: 5_000 },
+            )
+            .toEqual({ advanced: true, running: true, changed: true });
         };
         await moving();
         await page.emulateMedia({ colorScheme: "light" });
