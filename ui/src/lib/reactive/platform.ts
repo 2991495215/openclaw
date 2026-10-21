@@ -2,8 +2,8 @@ import { createSignal, onSettled } from "solid-js";
 import { listen } from "./listener.ts";
 
 /** A browser capability that follows changes and releases its listener with the owner. */
-export function createMediaQuery(query: string, fallback = false) {
-  const [matches, setMatches] = createSignal(fallback);
+export function createMediaQuery(query: string) {
+  const [matches, setMatches] = createSignal(false);
   onSettled(() => {
     const media = window.matchMedia?.(query);
     if (!media) {

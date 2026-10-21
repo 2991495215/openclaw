@@ -34,19 +34,16 @@ it("tracks media changes until its owner is disposed", async () => {
   expect(values.at(-1)).toBe(false);
 });
 
-it.each([false, true])(
-  "uses the %s fallback when media queries are unavailable",
-  async (fallback) => {
-    vi.stubGlobal("matchMedia", undefined);
-    let matches!: () => boolean;
-    const dispose = createRoot((stop) => {
-      matches = createMediaQuery("(pointer: fine)", fallback);
-      return stop;
-    });
-    onTestFinished(dispose);
-    await waitForSolid(() => expect(matches()).toBe(fallback));
-  },
-);
+it("returns false when media queries are unavailable", async () => {
+  vi.stubGlobal("matchMedia", undefined);
+  let matches!: () => boolean;
+  const dispose = createRoot((stop) => {
+    matches = createMediaQuery("(pointer: fine)");
+    return stop;
+  });
+  onTestFinished(dispose);
+  await waitForSolid(() => expect(matches()).toBe(false));
+});
 
 it("tracks document visibility until its owner is disposed", async () => {
   let visibility: DocumentVisibilityState = "hidden";
