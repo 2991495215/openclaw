@@ -742,14 +742,23 @@ describe("runtime config load subscriptions", () => {
     });
     try {
       const first = ensure();
+      const read = runtimeConfig.schemaRead;
+      const joined = runtimeConfig.refreshSchema();
+      expect(runtimeConfig.schemaRead).toBe(read);
+      expect(read).not.toBeNull();
       expect(loading()).toBe(true);
       expect(observed).toContain(true);
       await first;
+      await joined;
       expect(request).toHaveBeenCalledOnce();
       expect(loaded()).toBeNull();
       expect(state.lastError).toContain("temporarily unavailable");
+      state.lastError = "A different operation failed";
+      await expect(read).resolves.toEqual({ ok: false, error: "temporarily unavailable" });
 
       await ensure();
+      expect(runtimeConfig.schemaRead).not.toBe(read);
+      await expect(runtimeConfig.schemaRead).resolves.toEqual({ ok: true, value: undefined });
       expect(request).toHaveBeenCalledTimes(2);
       expect(loaded()).not.toBeNull();
     } finally {

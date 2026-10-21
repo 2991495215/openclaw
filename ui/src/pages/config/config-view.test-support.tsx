@@ -81,6 +81,8 @@ export const baseProps = () => ({
     properties: {},
   },
   schemaLoading: false,
+  schemaRead: null,
+  onRetrySchema: vi.fn(),
   uiHints: {},
   formMode: "form" as const,
   viewState: createConfigViewState(),

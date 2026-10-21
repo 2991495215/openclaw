@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show, untrack } from "solid-js";
+import { createMemo, createSignal, Errored, For, Loading, Show, untrack } from "solid-js";
 import "../../styles/lobster-pet.css";
 import { ConfigForm } from "../../components/config-form.render.tsx";
 import { countSensitiveConfigValues } from "../../components/config-form.shared.ts";
@@ -8,6 +8,7 @@ import { Icon } from "../../components/solid/icon.tsx";
 import "../../components/tooltip.ts";
 import { SettingsSegmented, SettingsPage } from "../../components/solid/settings-ui.tsx";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
+import { formatUiError } from "../../lib/format-error.ts";
 import { isJson5Warm, warmJson5 } from "../../lib/json5-runtime.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { liveValue as createLiveValue } from "../../lib/reactive/live-value.ts";
@@ -65,6 +66,18 @@ export function Config(props: ConfigProps) {
     return props.viewState;
   };
   const schema = createMemo(() => asConfigSchema(props.schema));
+  const schemaResult = createMemo(() => props.schemaRead ?? undefined);
+  const schemaReady = createMemo(() => {
+    // A refresh must not hold the synchronous editor interlocks or replace loaded fields.
+    if (schema()) {
+      return true;
+    }
+    const result = schemaResult();
+    if (result?.ok === false) {
+      throw new Error(result.error);
+    }
+    return true;
+  });
   const includeSections = createMemo(() => props.includeSections);
   const excludeSections = createMemo(() => props.excludeSections);
   const includedSections = createMemo(() =>
@@ -218,7 +231,6 @@ export function Config(props: ConfigProps) {
       configBusy,
       formBusy,
       mutationAllowed,
-      showSchemaLoading: props.schemaLoading && !analysis.schema,
       showSectionTabs,
       showToolbar,
       showValidityWarning,
@@ -601,21 +613,46 @@ export function Config(props: ConfigProps) {
             state().include?.has("__appearance__") ? (
               <AppearanceSection {...props} />
             ) : null}
-            {state().showSchemaLoading ? (
-              <div class="config-loading">
-                <div class="config-loading__spinner" />
-                <span>{t("configView.loadingSchema")}</span>
-              </div>
-            ) : (
-              <FormEditor />
-            )}
-            {state().showSetup && !state().showSchemaLoading ? (
-              <SetupSection
-                schema={state().setupSchema!}
-                config={props}
-                disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
-              />
-            ) : null}
+            <Loading
+              on={!schema() ? props.schemaRead : undefined}
+              fallback={
+                <div class="config-loading" aria-busy="true">
+                  <div class="config-loading__spinner" />
+                  <span>{t("configView.loadingSchema")}</span>
+                </div>
+              }
+            >
+              <Errored
+                fallback={(error, reset) => (
+                  <div class="config-content-callout">
+                    <div class="callout danger" role="alert">
+                      {formatUiError(error())}{" "}
+                      <button
+                        type="button"
+                        class="btn btn--sm"
+                        onClick={() => {
+                          props.onRetrySchema();
+                          reset();
+                        }}
+                      >
+                        {t("common.retry")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              >
+                <Show when={schemaReady()}>
+                  <FormEditor />
+                  <Show when={state().showSetup}>
+                    <SetupSection
+                      schema={state().setupSchema!}
+                      config={props}
+                      disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
+                    />
+                  </Show>
+                </Show>
+              </Errored>
+            </Loading>
           </>
         ) : (
           <RawEditor />

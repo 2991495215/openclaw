@@ -635,8 +635,6 @@ export function createConfigPage(
       currentSelection.activeSection,
       currentSelection.activeSubsection,
     );
-    const activeSection = pageId === "mcp" ? "mcp" : selection.activeSection;
-    const activeSubsection = pageId === "mcp" ? null : selection.activeSubsection;
     const gatewayConfig = asConfigRecord(configObject.gateway);
     const controlUiConfig = asConfigRecord(gatewayConfig?.controlUi);
     const agentsDefaults = asConfigRecord(asConfigRecord(configObject.agents)?.defaults);
@@ -678,6 +676,8 @@ export function createConfigPage(
       openFileAllowed: runtimeConfig.canOpenFile,
       schema: configState.configSchema,
       schemaLoading: configState.configSchemaLoading,
+      schemaRead: runtimeConfig.schemaRead,
+      onRetrySchema: () => void runtimeConfig.refreshSchema(),
       uiHints: configState.configUiHints,
       formMode: presentation.formModes[pageId] ?? "form",
       rawDraftPending: configState.configFormMode === "raw" && configState.configFormDirty,
@@ -687,8 +687,8 @@ export function createConfigPage(
       ),
       showModeToggle: pageId === "advanced",
       formValue: configState.configForm,
-      activeSection,
-      activeSubsection,
+      activeSection: pageId === "mcp" ? "mcp" : selection.activeSection,
+      activeSubsection: pageId === "mcp" ? null : selection.activeSubsection,
       onRawChange: withConfigMutation((next: string) => runtimeConfig.setRaw(next)),
       onFormModeChange: (mode: View.ConfigFormMode) => {
         setPresentation((draft) => {

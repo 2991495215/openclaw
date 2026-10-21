@@ -1,7 +1,10 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { createDeferred } from "../../../../test/helpers/promise.js";
+import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { renderConfigInto, renderConfigView } from "./config-view.test-support.tsx";
 
-it("keeps the loaded form and Setup mounted but read-only while the schema refreshes", () => {
+it("keeps the loaded form and Setup mounted but read-only while the schema refreshes", async () => {
+  const refresh = createDeferred<undefined>();
   const { container, props } = renderConfigView({
     schema: {
       type: "object",
@@ -25,6 +28,7 @@ it("keeps the loaded form and Setup mounted but read-only while the schema refre
   setup.open = true;
 
   props.schemaLoading = true;
+  props.schemaRead = refresh.promise;
   renderConfigInto(props, container);
   expect(container.querySelector(".config-loading")).toBeNull();
   expect(container.querySelector(".config-content input")).toBe(field);
@@ -35,12 +39,61 @@ it("keeps the loaded form and Setup mounted but read-only while the schema refre
   expect(container.querySelector(".config-content")?.getAttribute("aria-busy")).toBe("true");
 
   props.schemaLoading = false;
+  refresh.resolve(undefined);
   renderConfigInto(props, container);
+  await waitForSolid(() => expect(container.querySelector(".config-loading")).toBeNull());
   expect(container.querySelector(".config-content input")).toBe(field);
   expect(field.disabled).toBe(false);
   expect(setup.open).toBe(true);
 
-  const initial = renderConfigView({ schema: null, schemaLoading: true });
+  const initialRead = createDeferred<undefined>();
+  const initial = renderConfigView({
+    schema: null,
+    schemaLoading: true,
+    schemaRead: initialRead.promise,
+  });
   expect(initial.container.querySelector(".config-loading")).not.toBeNull();
   expect(initial.container.querySelector(".config-content input")).toBeNull();
+  initialRead.resolve(undefined);
+  await waitForSolid(() => expect(initial.container.querySelector(".config-loading")).toBeNull());
+});
+
+it("retries a failed initial schema request", async () => {
+  const failed = createDeferred<{ ok: false; error: string }>();
+  const retried = createDeferred<undefined>();
+  const onRetrySchema = vi.fn(() => {
+    props.schemaLoading = true;
+    props.schemaRead = retried.promise;
+    renderConfigInto(props, container);
+  });
+  const { container, props } = renderConfigView({
+    schema: null,
+    schemaLoading: true,
+    schemaRead: failed.promise,
+    onRetrySchema,
+    forceShowAdvanced: true,
+  });
+  expect(container.querySelector(".config-loading")).not.toBeNull();
+  props.schemaLoading = false;
+  failed.resolve({ ok: false, error: "Schema request unavailable" });
+  renderConfigInto(props, container);
+  await waitForSolid(() =>
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "Schema request unavailable",
+    ),
+  );
+  const retry = container.querySelector<HTMLButtonElement>('[role="alert"] button')!;
+  retry.click();
+  expect(onRetrySchema).toHaveBeenCalledOnce();
+  await waitForSolid(() => expect(container.querySelector(".config-loading")).not.toBeNull());
+  props.schema = {
+    type: "object",
+    properties: { gateway: { type: "object", properties: { mode: { type: "string" } } } },
+  };
+  props.formValue = { gateway: { mode: "local" } };
+  props.schemaLoading = false;
+  retried.resolve(undefined);
+  renderConfigInto(props, container);
+  await waitForSolid(() => expect(container.querySelector(".config-content input")).not.toBeNull());
+  expect(container.querySelector('.config-content-callout [role="alert"]')).toBeNull();
 });

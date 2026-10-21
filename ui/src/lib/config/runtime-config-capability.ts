@@ -43,6 +43,7 @@ export function createRuntimeConfigCapability(
   );
   const listeners = new Set<(state: RuntimeConfigState) => void>();
   const loads = new Map<"config" | "schema", Promise<unknown>>();
+  let schemaRead: ReturnType<typeof loadConfigSchema> | null = null;
   let disposed = false;
 
   const canCallConfigMethod = (
@@ -102,6 +103,11 @@ export function createRuntimeConfigCapability(
     await (loads.get(key) ?? run(task, key));
   };
 
+  const admitSchemaRead = () => {
+    schemaRead = loadConfigSchema(state);
+    return schemaRead;
+  };
+
   const appliedRefresh = createAppliedConfigRefreshOwner({
     shouldRefresh: () =>
       !disposed &&
@@ -128,7 +134,7 @@ export function createRuntimeConfigCapability(
     );
     if (state.configSchemaVersion !== null && canLoadConfigSchema()) {
       // Config success clears lastError; load the schema afterward to preserve its failures.
-      void config.then(() => run(() => loadConfigSchema(state), "schema"));
+      void config.then(() => loadOnce("schema", admitSchemaRead));
     }
     return config;
   };
@@ -141,6 +147,7 @@ export function createRuntimeConfigCapability(
     mutate,
     resetLoads: () => {
       loads.clear();
+      schemaRead = null;
     },
     resetConfigLoad: () => {
       loads.delete("config");
@@ -168,11 +175,14 @@ export function createRuntimeConfigCapability(
   const ensureSchemaLoaded = () =>
     state.configSchema || !canLoadConfigSchema()
       ? Promise.resolve()
-      : loadOnce("schema", () => loadConfigSchema(state));
+      : loadOnce("schema", admitSchemaRead);
 
   return {
     get state() {
       return state;
+    },
+    get schemaRead() {
+      return schemaRead;
     },
     get canSet() {
       return canCallConfigMethod("config.set");
@@ -196,7 +206,7 @@ export function createRuntimeConfigCapability(
         appliedRefresh.reconcile();
       }
     },
-    refreshSchema: () => run(() => loadConfigSchema(state), "schema"),
+    refreshSchema: () => loadOnce("schema", admitSchemaRead),
     patchForm: writes.patchForm,
     removeFormValue: writes.removeFormValue,
     setRaw: writes.setRaw,
