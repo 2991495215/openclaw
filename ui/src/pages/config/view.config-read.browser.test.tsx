@@ -73,6 +73,23 @@ it("keeps a loaded editor mounted and locked during configuration refresh", asyn
   expect(container.querySelector(".config-content input")).toBe(field);
 });
 
+it("keeps the blocked editor when an initial read requires publication recovery", async () => {
+  const { container } = renderConfigView({
+    schema,
+    configLoaded: false,
+    configRecoveryError: "Inspect the configuration backup before reloading.",
+    configRead: Promise.resolve({ ok: false, error: "Configuration recovery required" }),
+    formValue: null,
+    forceShowAdvanced: true,
+  });
+  await waitForSolid(() => {
+    const field = container.querySelector<HTMLInputElement>(".config-content input");
+    expect(field).not.toBeNull();
+    expect(field?.disabled).toBe(true);
+  });
+  expect(container.querySelector('.config-content-callout [role="alert"]')).toBeNull();
+});
+
 it.each(["raw", "agents"] as const)(
   "keeps the %s Save command busy until its owner settles",
   async (surface) => {

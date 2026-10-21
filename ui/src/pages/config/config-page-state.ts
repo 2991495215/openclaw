@@ -627,8 +627,6 @@ export function createConfigPage(
     const runtimeConfig = context.runtimeConfig;
     const configState = runtimeConfig.state;
     const includeSections = configSectionKeysForPage(pageId);
-    // Advanced shows everything without a curated home elsewhere.
-    const excludeSections = pageId === "advanced" ? ADVANCED_EXCLUDED_SECTIONS : undefined;
     const currentSelection = presentation.selections[pageId] ?? defaultConfigSelection(pageId);
     const selection = normalizeConfigSelection(
       pageId,
@@ -668,6 +666,7 @@ export function createConfigPage(
       issues: configState.configIssues,
       loading: configState.configLoading,
       configLoaded: configState.configSnapshot !== null,
+      configRecoveryError: configState.configRecoveryError,
       configRead: runtimeConfig.configRead,
       onRetryConfig: () => void runtimeConfig.refresh(),
       saving: configState.configSaving,
@@ -917,7 +916,8 @@ export function createConfigPage(
       showSectionDocs: pageId !== "communications",
       showRootTab: !includeSections?.length,
       includeSections,
-      excludeSections,
+      // Advanced shows everything without a curated home elsewhere.
+      excludeSections: pageId === "advanced" ? ADVANCED_EXCLUDED_SECTIONS : undefined,
       includeVirtualSections: pageId === "appearance" || pageId === "notifications",
       settingsLayout: pageId === "advanced" ? ("accordion" as const) : undefined,
       nativeNotifications: notifications?.read(),

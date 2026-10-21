@@ -78,8 +78,8 @@ export function Config(props: ConfigProps) {
   const schema = createMemo(() => asConfigSchema(props.schema));
   const configResult = createMemo(() => props.configRead ?? undefined);
   const configReady = createMemo(() => {
-    // Background reads must not hold editor interlocks or discard a loaded draft.
-    if (!props.configLoaded) {
+    // Loaded drafts and publication recovery retain the owner's editor interlocks.
+    if (!props.configLoaded && !props.configRecoveryError) {
       const result = configResult();
       if (result?.ok === false) {
         throw new Error(result.error);

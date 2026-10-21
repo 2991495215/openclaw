@@ -73,6 +73,7 @@ export const baseProps = () => ({
   issues: [],
   loading: false,
   configLoaded: true,
+  configRecoveryError: null,
   configRead: null,
   onRetryConfig: vi.fn(),
   saving: false,
