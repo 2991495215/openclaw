@@ -1,5 +1,5 @@
 import { render, spread, type JSX } from "@solidjs/web";
-import { createSignal, onSettled } from "solid-js";
+import { createMemo, createSignal, onSettled } from "solid-js";
 import { createResizeObserver } from "../lib/reactive/observers.ts";
 import { controlsForHovercard, HovercardControlsContext } from "./portaled-hovercard-focus.ts";
 
@@ -32,8 +32,8 @@ export function createPreviewRenderer<T>(
       });
     const dispose = render(() => {
       const [current, setCurrent] = createSignal<T>(() => value, { ownedWrite: true });
-      // eslint-disable-next-line solid/reactivity -- spread tracks this getter for the foreign card's attributes.
-      spread(card, () => ({ "aria-label": label(current()) }), true);
+      const attributes = createMemo(() => ({ "aria-label": label(current()) }));
+      spread(card, attributes, true);
       createResizeObserver(() => [card], afterCommit);
       updates.set(card, (next) => {
         setCurrent(() => next);
