@@ -32,6 +32,7 @@ export function buildProps(result: SessionsListResult): SessionsProps {
   return {
     loading: false,
     roster: null,
+    refresh: null,
     refreshDisabled: false,
     agentId: "main",
     allAgentsScope: true,

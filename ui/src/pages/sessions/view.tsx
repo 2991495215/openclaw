@@ -118,8 +118,8 @@ export function SessionsView(props: SessionsProps) {
   const archivedCount = createMemo(() => rows().filter((row) => row.archived === true).length);
   const transcriptSearch = createMemo(() => props.transcriptSearch);
   const roster = createMemo(() => props.roster);
-  // Background refreshes retain the controls and accepted rows while reporting pending work.
-  const retainedRoster = createDeferred(() => props.roster, { loadingValue: null });
+  // Only page-admitted reads disable Refresh; background roster updates retain the control.
+  const pageRefresh = createDeferred(() => props.refresh, { loadingValue: null });
   return (
     <SettingsPage wide>
       <Show when={props.error}>
@@ -154,7 +154,7 @@ export function SessionsView(props: SessionsProps) {
               class="btn btn--xs btn--icon sessions-toolbar__icon sessions-toolbar__refresh"
               type="button"
               aria-label={t("common.refresh")}
-              disabled={isPending(retainedRoster) || props.refreshDisabled}
+              disabled={isPending(pageRefresh) || props.refreshDisabled}
               onClick={() => props.onRefresh()}
             >
               <Icon name="refresh" />

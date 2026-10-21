@@ -173,7 +173,7 @@ describe("sessions page managed roster", () => {
 
     publish(true);
     await page.updateComplete;
-    await vi.waitFor(() => expect(refresh().disabled).toBe(true));
+    expect(refresh().disabled).toBe(false);
     expect(searchInput(page)).toBe(input);
     expect(page.querySelector("tbody tr")).toBe(row);
     expect(page.selectedSessions.has(initial.sessions[0]!.key)).toBe(true);
@@ -193,6 +193,20 @@ describe("sessions page managed roster", () => {
     expect(page.selectedSessions.has(initial.sessions[0]!.key)).toBe(true);
     expect(managed.subscribeList).toHaveBeenCalledTimes(1);
     expect(managed.refreshList).not.toHaveBeenCalled();
+
+    const pending = createDeferred();
+    cleanups.push(() => pending.resolve());
+    managed.refreshList.mockImplementationOnce(async () => {
+      publish(true);
+      await pending.promise;
+      publish(false);
+    });
+    refresh().click();
+    await vi.waitFor(() => expect(refresh().disabled).toBe(true));
+    pending.resolve();
+    await vi.waitFor(() => expect(refresh().disabled).toBe(false));
+    expect(managed.refreshList).toHaveBeenCalledTimes(1);
+    expect(page.querySelector("tbody tr")).toBe(row);
   });
 
   it("replaces a deep link with managed search and surfaces query errors", async () => {

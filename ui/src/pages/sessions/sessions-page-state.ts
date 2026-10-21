@@ -38,7 +38,6 @@ import { resolveSessionRenamePatch, resolveSessionRenameValue } from "../../lib/
 import {
   SESSIONS_PAGE_DEFAULT_LIMIT,
   filterSessionRows,
-  scopedAgentParamsForSession,
   type SessionArchivedFilter,
   type SessionListSnapshot,
 } from "../../lib/sessions/index.ts";
@@ -60,7 +59,11 @@ import { requestSessionInvolvement } from "../../lib/sessions/session-requests.t
 import { searchVisibleSessionTranscripts } from "../../lib/sessions/transcript-search.ts";
 import { formatPreservedWorktreesNotice } from "../../lib/sessions/worktree-preservation.ts";
 import { runControlUiPluginAction } from "../../plugins/control-ui-actions.ts";
-import { ensureSessionAgentIdentities, sessionAgentIdentityById } from "./agent-scope.ts";
+import {
+  ensureSessionAgentIdentities,
+  sessionAgentId,
+  sessionAgentIdentityById,
+} from "./agent-scope.ts";
 import { createSessionsArchive } from "./archive-actions.ts";
 import { rememberSessionCustomGroup, sessionCategoryNames } from "./custom-groups.ts";
 import { resolveSessionDeleteOutcome } from "./delete-outcome.ts";
@@ -271,7 +274,7 @@ export function createSessionsPage(
     isCurrent: isRequestScopeCurrent,
     publishError: publishRequestError,
     refresh: refreshSessionList,
-    agentId: sessionAgentId,
+    agentId: (key) => sessionAgentId(key, application),
     patch: patchSession,
   });
 
@@ -372,17 +375,6 @@ export function createSessionsPage(
     deepLinkSessionKey = data.expandedSessionKey;
   }
 
-  function sessionAgentId(key: string, context = application): string | undefined {
-    const { agentId } = scopedAgentParamsForSession(
-      {
-        assistantAgentId: context.agentSelection.state.selectedId,
-        hello: context.gateway.snapshot.hello,
-      },
-      key,
-    );
-    return agentId;
-  }
-
   function sessionPathAgentId(key: string, context: ApplicationContext): string {
     return sessionAgentId(key, context) ?? resolveSessionNavigationAgentId(context);
   }
@@ -469,8 +461,11 @@ export function createSessionsPage(
         state.selectedSessions,
         state.result.sessions,
         (row) =>
-          binding.sessions.deletionState(row.key, sessionAgentId(row.key), row.sessionId) ===
-            "pending" || binding.sessions.archiveVisibility(row.key) === "pending",
+          binding.sessions.deletionState(
+            row.key,
+            sessionAgentId(row.key, application),
+            row.sessionId,
+          ) === "pending" || binding.sessions.archiveVisibility(row.key) === "pending",
       );
     }
     details.synchronize();
@@ -514,8 +509,10 @@ export function createSessionsPage(
       }
       listRequest = undefined;
       bindSessionList();
+      publish();
     });
     listRequest = pending;
+    publish();
     completion.resolve(binding.sessions.refreshList({ ...binding.query, ...options }));
     return pending;
   }
@@ -1302,6 +1299,7 @@ export function createSessionsPage(
     return {
       ...viewState,
       loading: state.loading || details.loading(),
+      refresh: listRequest ?? null,
       refreshDisabled: application.gateway.snapshot.phase !== "connected",
       error: details.error() ?? state.error,
       basePath: application.basePath,
