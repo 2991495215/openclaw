@@ -204,9 +204,7 @@ function DeviceVoiceSettings(props: {
   });
   // Keep the controls owned by availability, not each optimistic selection frame.
   const hasLocale = createMemo(() => locale() !== null);
-  const changeLocales = action(function* (change: Partial<DeviceLocaleSelection>) {
-    // Intent stays synchronous so consecutive gestures compose before Solid settles.
-    const completion = changeDeviceLocales(props.capability, change);
+  const changeLocales = action(function* (completion: ReturnType<typeof changeDeviceLocales>) {
     setLocale(deviceLocaleSelection(props.capability));
     yield completion;
     // Other edits may still hold this transition open after this write settles.
@@ -256,12 +254,14 @@ function DeviceVoiceSettings(props: {
           onChange={(value) => {
             const current = deviceLocaleSelection(props.capability);
             if (current) {
-              void changeLocales({
-                primary: value,
-                ...(current.additional.includes(value)
-                  ? { additional: current.additional.filter((id) => id !== value) }
-                  : {}),
-              });
+              void changeLocales(
+                changeDeviceLocales(props.capability, {
+                  primary: value,
+                  ...(current.additional.includes(value)
+                    ? { additional: current.additional.filter((id) => id !== value) }
+                    : {}),
+                }),
+              );
             }
           }}
         />
@@ -286,9 +286,11 @@ function DeviceVoiceSettings(props: {
                         onClick={() => {
                           const current = deviceLocaleSelection(props.capability);
                           if (current) {
-                            void changeLocales({
-                              additional: current.additional.filter((value) => value !== id()),
-                            });
+                            void changeLocales(
+                              changeDeviceLocales(props.capability, {
+                                additional: current.additional.filter((value) => value !== id()),
+                              }),
+                            );
                           }
                         }}
                       >
@@ -310,9 +312,11 @@ function DeviceVoiceSettings(props: {
                     select.value !== current.primary &&
                     !current.additional.includes(select.value)
                   ) {
-                    void changeLocales({
-                      additional: [...current.additional, select.value],
-                    });
+                    void changeLocales(
+                      changeDeviceLocales(props.capability, {
+                        additional: [...current.additional, select.value],
+                      }),
+                    );
                     select.value = "";
                   }
                 }}
