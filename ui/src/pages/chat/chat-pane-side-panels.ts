@@ -402,7 +402,7 @@ export abstract class ChatPaneSidePanels extends ChatPaneStateOwner {
     }
   }
 
-  /** The layout as this pane shows it, which a narrow pane decides for the background panels. */
+  /** The pane's presentation without changing its saved desktop layout. */
   protected presentSidebarLayout(layout: SidebarLayout): SidebarLayout {
     const mobile = this.mobileHost(layout);
     if (mobile) {
@@ -430,7 +430,7 @@ export abstract class ChatPaneSidePanels extends ChatPaneStateOwner {
         expandedSide: false,
       };
     }
-    return this.mergedChrome ? presentNarrowSidebarLayout(layout, { allPanels: true }) : layout;
+    return this.mergedChrome ? presentNarrowSidebarLayout(layout) : layout;
   }
 
   protected isSlotShown(layout: SidebarLayout, slot: SidebarSlotId): boolean {

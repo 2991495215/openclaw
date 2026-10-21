@@ -132,7 +132,7 @@ it("does not hide the main view when stored side focus has no surviving side pan
   expect(layout.expandedSide).toBeUndefined();
 });
 
-it("shows a narrow pane's open background panel in place of the main view, and nothing else", () => {
+it("focuses open background panels without changing the saved layout", () => {
   const saved = openSlot(openSlot({ columns: [] }, "terminal"), "subagents");
   const before = structuredClone(saved);
   const shown = narrow(saved);
@@ -141,7 +141,6 @@ it("shows a narrow pane's open background panel in place of the main view, and n
   expect(narrow(saved)).toBe(shown);
   expect(isSidebarSlotVisible(narrow(openSlot(saved, "processes")), "conversation")).toBe(false);
   for (const layout of [
-    openSlot(saved, "terminal"),
     setSidebarOpen(saved, false),
     setSidebarExpanded(saved, true),
     toggleExpanded(saved, activePanel(saved)!.id),
@@ -164,14 +163,14 @@ it.each([false, true])(
     for (const slot of slots) {
       const saved = openSlot(layout, slot);
       const before = structuredClone(saved);
-      const shown = narrow(saved, { allPanels: true });
+      const shown = narrow(saved);
       expectVisible(shown, slot, main);
       expect(mainPanel(shown)?.slot).toBe(main);
-      expect(narrow(saved, { allPanels: true })).toBe(shown);
+      expect(narrow(saved)).toBe(shown);
       expect(saved).toEqual(before);
       expectVisible(saved, main);
       const closed = setSidebarOpen(saved, false);
-      expect(narrow(closed, { allPanels: true })).toBe(closed);
+      expect(narrow(closed)).toBe(closed);
     }
   },
 );
@@ -180,10 +179,9 @@ it("presents Chat over a promoted page on mobile without changing the desktop sp
   const split = withConversation(openSlot({ columns: [] }, "dashboard"));
   const promoted = promotePanel(split, activePanel(split)!.id);
   expect(mainPanel(promoted)?.slot).toBe("dashboard");
-  const mobile = narrow(promoted, { allPanels: true });
+  const mobile = narrow(promoted);
   expectVisible(mobile, "conversation", "dashboard");
-  expect(narrow(promoted)).toBe(promoted);
-  expectVisible(narrow(closeSlot(promoted, "conversation"), { allPanels: true }), "dashboard");
+  expectVisible(narrow(closeSlot(promoted, "conversation")), "dashboard");
   expectVisible(promoted, "dashboard");
   expectVisible(promoted, "conversation");
 });

@@ -15,7 +15,6 @@ function mountedTargets(targets: () => ObserverTargets) {
 export function createResizeObserver(
   targets: () => ObserverTargets,
   callback: ResizeObserverCallback,
-  options?: ResizeObserverOptions,
 ) {
   createEffect(mountedTargets(targets), (current) => {
     if (current.length === 0 || typeof ResizeObserver === "undefined") {
@@ -23,7 +22,7 @@ export function createResizeObserver(
     }
     const observer = new ResizeObserver(callback);
     for (const element of current) {
-      observer.observe(element, options);
+      observer.observe(element);
     }
     return () => observer.disconnect();
   });
