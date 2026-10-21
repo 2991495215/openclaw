@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createRouter, definePage } from "@openclaw/uirouter";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   DEFAULT_BACKGROUND_PREFERENCE,
@@ -7,7 +7,9 @@ import {
 import type { UsersBackgroundResult } from "../../../../packages/gateway-protocol/src/schema/users-background.ts";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
+import type { RouteId } from "../../app-route-paths.ts";
 import type { ApplicationContext, ApplicationTheme } from "../../app/context.ts";
+import { RouterOutlet } from "../../app/router-outlet.tsx";
 import {
   rememberProfileAppearanceIdentity,
   resetProfileAppearancePrefs,
@@ -74,35 +76,41 @@ async function mount(
     refresh: () => notify("theme"),
     subscribe: subscribe("theme"),
   };
+  const backgroundModule = { renderSolid: AppearanceBackground };
+  const router = createRouter<RouteId, ApplicationContext, typeof backgroundModule>({
+    routes: [
+      definePage({
+        id: "appearance",
+        path: "/settings/appearance",
+        component: () => backgroundModule,
+      }),
+      definePage({
+        id: "usage",
+        path: "/usage",
+        component: () => ({ renderSolid: () => <p>Background destination</p> }),
+      }),
+    ],
+  });
   const context = {
     gateway: gateway.gateway,
     runtimeConfig: { state: { connected: true }, canPatch: true },
     theme,
-    router: { subscribe: subscribe("route") },
+    router,
   } as ApplicationContext;
   const provider = createSolidApplicationContextProvider(context);
   host.innerHTML = '<div class="config-content"><div class="settings-page"></div></div>';
   const container = host.querySelector<HTMLElement>(".settings-page")!;
-  let leavePage!: () => void;
   const { unmount: dispose } = mountSolid(
-    () => {
-      const [visible, setVisible] = createSignal(true);
-      leavePage = () => {
-        notify("route");
-        setVisible(false);
-      };
-      return (
-        <Show when={visible()} fallback={<p>Background destination</p>}>
-          <AppearanceBackground />
-        </Show>
-      );
-    },
+    () => <RouterOutlet router={router} retryContext={context} />,
     {
       container,
       wrapper: provider.wrapper,
     },
   );
-  flush();
+  await router.navigate("appearance", context);
+  await waitForSolid(() => {
+    expect(container.querySelector("openclaw-appearance-background")).not.toBeNull();
+  });
   const element = container.querySelector<HTMLElement>("openclaw-appearance-background")!;
   const range = element.querySelector<HTMLInputElement>('input[type="range"]')!;
   const preview = element.querySelector<SessionBackground>("[data-background-preview-canvas]")!;
@@ -115,9 +123,12 @@ async function mount(
     settings,
     theme,
     context,
-    navigate: () => notify("route"),
-    leavePage,
-    dispose,
+    navigate: () => void router.navigate("usage", context),
+    leavePage: () => router.navigate("usage", context),
+    dispose: () => {
+      dispose();
+      router.stop();
+    },
     setContext: (next: ApplicationContext) => {
       provider.setContext(next);
       flush();
@@ -290,20 +301,30 @@ it("leaves the background page while an upload is still pending", async () => {
   const request = vi.fn((method: string) =>
     method === "users.background.upload" ? pending.promise : Promise.resolve(saved),
   );
-  const { element, leavePage } = await mount({}, createTestGatewayClient(request));
+  const { element, leavePage, dispose } = await mount({}, createTestGatewayClient(request));
   chooseBackgroundFile(element.querySelector<HTMLInputElement>("[data-background-file]")!);
   await waitForSolid(() => {
     expect(request.mock.calls.some(([method]) => method === "users.background.upload")).toBe(true);
     expect(element.querySelector('[role="status"]')?.textContent).toContain("Preparing");
   });
+  let navigation: ReturnType<typeof leavePage> | undefined;
   try {
-    leavePage();
+    navigation = leavePage();
     await waitForSolid(() => {
       expect(host.textContent).toContain("Background destination");
       expect(element.isConnected).toBe(false);
     });
+    pending.resolve(saved);
+    await navigation;
+    await waitForSolid(() => {
+      expect(host.textContent).toContain("Background destination");
+      expect(host.querySelector("openclaw-appearance-background")).toBeNull();
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+    });
   } finally {
     pending.resolve(saved);
+    await navigation;
+    dispose();
   }
 });
 

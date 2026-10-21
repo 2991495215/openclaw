@@ -18,10 +18,23 @@ export function AppearanceBackground() {
     () => fileInput,
   );
   const [saving, setSaving] = createOptimistic(false, { equals: false });
+  // Clear the previous error slot before its replacement read settles.
   const readScope = createMemo(() => ({
     metadata: state.metadataRead(),
     thumbnail: state.thumbnailRead(),
   }));
+  const metadataRead = createMemo(async () => {
+    const outcome = await state.metadataRead()?.completion;
+    if (outcome) {
+      throw outcome.error;
+    }
+  });
+  const thumbnailRead = createMemo(async () => {
+    const outcome = await state.thumbnailRead()?.completion;
+    if (outcome) {
+      throw outcome.error;
+    }
+  });
   const presentMutation = action(function* (completion: Promise<string | null>) {
     setSaving(true);
     yield completion;
@@ -56,65 +69,48 @@ export function AppearanceBackground() {
         status={
           !state.viewProps().message ? (
             <Show when={readScope()} keyed>
-              {(reads) => {
-                // A replacement receipt retires its predecessor's errored computation.
-                const metadataRead = createMemo(async () => {
-                  const outcome = await reads.metadata?.completion;
-                  if (outcome) {
-                    throw outcome.error;
-                  }
-                  return undefined;
-                });
-                const thumbnailRead = createMemo(async () => {
-                  const outcome = await reads.thumbnail?.completion;
-                  if (outcome) {
-                    throw outcome.error;
-                  }
-                  return undefined;
-                });
-                return (
-                  <Errored
-                    fallback={(error) => (
-                      <p role="alert" class="settings-status settings-status--danger">
-                        {formatUiError(error())}
-                      </p>
-                    )}
-                  >
-                    <Loading fallback={undefined}>
-                      {metadataRead()}
-                      {thumbnailRead()}
-                    </Loading>
-                    <Show when={state.viewProps().mutation} keyed>
-                      {(mutation) => {
-                        const result = createMemo(() => mutation.completion);
-                        return (
-                          <Errored
-                            fallback={(error) => (
-                              <p role="alert" class="settings-status settings-status--danger">
-                                {formatUiError(error())}
+              {(_reads) => (
+                <Errored
+                  fallback={(error) => (
+                    <p role="alert" class="settings-status settings-status--danger">
+                      {formatUiError(error())}
+                    </p>
+                  )}
+                >
+                  <Loading fallback={undefined}>
+                    {metadataRead()}
+                    {thumbnailRead()}
+                  </Loading>
+                  <Show when={state.viewProps().mutation} keyed>
+                    {(mutation) => {
+                      const result = createMemo(() => mutation.completion);
+                      return (
+                        <Errored
+                          fallback={(error) => (
+                            <p role="alert" class="settings-status settings-status--danger">
+                              {formatUiError(error())}
+                            </p>
+                          )}
+                        >
+                          <Loading
+                            fallback={
+                              <p role="status" class="settings-status settings-status--muted">
+                                {t(`configView.appearance.background.${mutation.kind}`)}
                               </p>
-                            )}
+                            }
                           >
-                            <Loading
-                              fallback={
-                                <p role="status" class="settings-status settings-status--muted">
-                                  {t(`configView.appearance.background.${mutation.kind}`)}
-                                </p>
-                              }
-                            >
-                              {result() ? (
-                                <p role="status" class="settings-status settings-status--muted">
-                                  {result()}
-                                </p>
-                              ) : undefined}
-                            </Loading>
-                          </Errored>
-                        );
-                      }}
-                    </Show>
-                  </Errored>
-                );
-              }}
+                            {result() ? (
+                              <p role="status" class="settings-status settings-status--muted">
+                                {result()}
+                              </p>
+                            ) : undefined}
+                          </Loading>
+                        </Errored>
+                      );
+                    }}
+                  </Show>
+                </Errored>
+              )}
             </Show>
           ) : undefined
         }
