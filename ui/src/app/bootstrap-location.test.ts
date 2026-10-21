@@ -91,6 +91,44 @@ describe("resolveInitialApplicationLocation", () => {
     expect(ready.subscribe).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      name: "saved agent for the canonical global session",
+      sessionKey: "global",
+      selectedAgentId: "openclaw",
+      pathname: "/chat/openclaw",
+    },
+    {
+      name: "encoded agent before the saved selection",
+      sessionKey: "agent:dummy:main",
+      selectedAgentId: "openclaw",
+      pathname: "/chat/dummy",
+    },
+    {
+      name: "default agent when the saved agent was removed",
+      sessionKey: "global",
+      selectedAgentId: "removed",
+      pathname: "/chat/dummy",
+    },
+  ])("restores the $name after loading a cold roster", async (testCase) => {
+    await expect(
+      resolveLocation({
+        location: makeLocation("/chat"),
+        sessionKey: testCase.sessionKey,
+        selectedAgentId: testCase.selectedAgentId,
+        gateway: gateway({
+          hello: { snapshot: { sessionDefaults: { defaultAgentId: "dummy", mainKey: "main" } } },
+        }),
+        ensureAgentsList: async () => ({
+          defaultId: "dummy",
+          mainKey: "main",
+          scope: "global",
+          agents: [{ id: "dummy" }, { id: "openclaw" }],
+        }),
+      }),
+    ).resolves.toEqual(makeLocation(testCase.pathname));
+  });
+
   it("rewrites a released dashboard query link", async () => {
     const cold = gateway({ phase: "connecting", client: null });
     const resolved = await resolveLocation({
