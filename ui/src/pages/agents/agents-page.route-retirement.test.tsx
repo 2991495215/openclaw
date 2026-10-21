@@ -36,17 +36,17 @@ it("leaves Agents through RouterOutlet while an admitted identity save settles l
   const client = createTestGatewayClient(request);
   const currentGateway = gateway(snapshot(client));
   const agents = agentsCapability(async () => ({ agentId: "main", workspace: "", files: [] }));
-  const context = pageContext(currentGateway, agents);
-  completeContext(context);
+  const baseContext = pageContext(currentGateway, agents);
+  completeContext(baseContext);
   const invalidate = vi.fn();
-  context.agentIdentity.invalidate = invalidate;
-  context.runtimeConfig.runExternalMutation = async (task) => ({
+  baseContext.agentIdentity.invalidate = invalidate;
+  baseContext.runtimeConfig.runExternalMutation = async (task) => ({
     ok: true as const,
     value: await task(client),
     refresh: { ok: true as const },
   });
   const routeData = {
-    ...agentsRouteData(currentGateway, agentsList, "main", context.settingsAgentSelection),
+    ...agentsRouteData(currentGateway, agentsList, "main", baseContext.settingsAgentSelection),
     panel: "overview" as const,
   };
   const router = createRouter<
@@ -67,7 +67,7 @@ it("leaves Agents through RouterOutlet while an admitted identity save settles l
       }),
     ],
   });
-  context.router = router;
+  const context: ApplicationContext = { ...baseContext, router };
   const mounted = mountSolid(() => (
     <ApplicationProvider value={context}>
       <button onClick={() => void router.navigate("about", context)}>Leave Agents</button>
