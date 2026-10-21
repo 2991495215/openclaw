@@ -162,6 +162,7 @@ describe("ClawRouter cold prepared catalog", () => {
     const value = createPreparedModelCatalogWorkerInput({
       agentFacts: prepared.agentFacts[0]!,
       pluginMetadataSnapshot: prepared.pluginGeneration.pluginMetadataSnapshot,
+      preferBuiltPluginArtifacts: prepared.pluginGeneration.preferBuiltPluginArtifacts,
     });
     if (refreshedAuth) {
       // The new credential must enter through the worker's durable auth refresh,
@@ -206,6 +207,9 @@ describe("ClawRouter cold prepared catalog", () => {
         baseUrl: `${baseUrl}/v1`,
       }),
     );
+    expect(result.runtimeModels.get("clawrouter")?.map((model) => model.id)).toEqual([
+      "codex-latest",
+    ]);
     const projector = createModelCatalogDecisions({
       cfg: config,
       agentId,

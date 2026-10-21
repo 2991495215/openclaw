@@ -28,12 +28,13 @@ export function isProviderCatalogSourceAllowed(params: {
   plugin?: Pick<PluginManifestRecord, "modelCatalog"> & {
     providerEndpoints?: readonly PluginManifestProviderEndpoint[];
   };
+  source?: { kind: "runtime" } | { kind: "generated"; baseUrl: unknown };
 }): boolean {
   const configuredBaseUrl = findNormalizedProviderValue(
     params.config?.models?.providers,
     params.provider,
   )?.baseUrl;
-  if (!configuredBaseUrl || !params.plugin) {
+  if (!params.plugin) {
     return true;
   }
   const catalog = params.plugin.modelCatalog;
@@ -42,6 +43,23 @@ export function isProviderCatalogSourceAllowed(params: {
     catalog?.providers,
     alias?.provider ?? params.provider,
   );
+  const discoversConfiguredEndpoint = catalog?.configuredEndpointDiscovery?.includes(
+    normalizeProviderId(params.provider),
+  );
+  if (discoversConfiguredEndpoint && params.source?.kind === "generated") {
+    // Retained inventory belongs to its acquisition endpoint, even after config changes.
+    const expectedBaseUrl = configuredBaseUrl ?? alias?.baseUrl ?? provider?.baseUrl;
+    const actualBaseUrl = params.source.baseUrl;
+    const expected = expectedBaseUrl && normalizePluginProviderBaseUrl(expectedBaseUrl);
+    return Boolean(
+      expected &&
+      typeof actualBaseUrl === "string" &&
+      normalizePluginProviderBaseUrl(actualBaseUrl) === expected,
+    );
+  }
+  if (!configuredBaseUrl) {
+    return true;
+  }
   const baseUrls = [
     alias?.baseUrl,
     provider?.baseUrl,
@@ -56,6 +74,10 @@ export function isProviderCatalogSourceAllowed(params: {
   const normalizedBaseUrl = normalizePluginProviderBaseUrl(configuredBaseUrl);
   if (!normalizedBaseUrl) {
     return false;
+  }
+  // This opt-in applies only to live acquisition. Static rows and fallbacks remain native-scoped.
+  if (discoversConfiguredEndpoint && params.source?.kind === "runtime") {
+    return true;
   }
   const host = new URL(normalizedBaseUrl).hostname;
   return (

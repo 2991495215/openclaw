@@ -50,8 +50,12 @@ type StoreWrite = {
 const writeActual = ({ filePath, store, content }: StoreWrite) =>
   store.writeText(path.basename(filePath), content);
 
-function catalog(providers: Record<string, unknown>) {
-  return JSON.stringify({ generatedBy: PLUGIN_MODEL_CATALOG_GENERATED_BY, providers });
+function catalog(providers: Record<string, unknown>, sourceBaseUrls?: Record<string, string>) {
+  return JSON.stringify({
+    generatedBy: PLUGIN_MODEL_CATALOG_GENERATED_BY,
+    providers,
+    ...(sourceBaseUrls ? { sourceBaseUrls } : {}),
+  });
 }
 
 function catalogWrites(pluginId: string, contents: string) {
@@ -117,18 +121,33 @@ beforeEach(() => {
     );
 });
 
-it.for<[string, string, boolean]>([
+it.for<[string, string, boolean, string?]>([
   ["https://ollama.example/v1", " HTTPS://OLLAMA.EXAMPLE:443/v1///?ignored=true#fragment ", true],
   ["http://127.0.0.1:11434", "https://ollama.example/v1", false],
+  [
+    "https://router.example/private/v1",
+    "https://router.example/private",
+    true,
+    "https://router.example/private",
+  ],
+  [
+    "https://router.example/private/v1",
+    "https://old-router.example/private",
+    false,
+    "https://router.example/private",
+  ],
 ])(
   "prunes only matching endpoint %s (removed=%s, changed=%s)",
-  async ([persistedBaseUrl, removedBaseUrl, removed], { agentDir }) => {
+  async ([persistedBaseUrl, removedBaseUrl, removed, sourceBaseUrl], { agentDir }) => {
     const provider = {
       baseUrl: persistedBaseUrl,
       api: "ollama",
       models: [{ id: "cached-model", name: "Cached model" }],
     };
-    const contents = catalog({ ollama: provider, sibling: provider });
+    const contents = catalog(
+      { ollama: provider, sibling: provider },
+      sourceBaseUrl ? { ollama: sourceBaseUrl, sibling: sourceBaseUrl } : undefined,
+    );
     const otherCatalog = catalog({ other: provider });
     await replacePersistedPluginModelCatalogs({
       agentDir,
@@ -149,7 +168,10 @@ it.for<[string, string, boolean]>([
         ? [
             {
               pluginId: "ollama",
-              contents: catalog({ sibling: provider }),
+              contents: catalog(
+                { sibling: provider },
+                sourceBaseUrl ? { sibling: sourceBaseUrl } : undefined,
+              ),
             },
             { pluginId: "other", contents: otherCatalog },
           ]

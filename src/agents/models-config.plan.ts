@@ -3,7 +3,10 @@
  * this module to merge implicit provider discovery, explicit config, and
  * preserved secrets before touching models.json.
  */
-import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
+import {
+  findNormalizedProviderValue,
+  normalizeProviderId,
+} from "@openclaw/model-catalog-core/provider-id";
 import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
@@ -104,12 +107,25 @@ function splitProvidersByPluginOwner(params: {
 
 function buildPluginCatalogWrites(
   pluginProviders: Record<string, Record<string, ProviderConfig>>,
+  sourceProviders: Record<string, ProviderConfig>,
+  pluginMetadataSnapshot?: PluginMetadataSnapshot,
 ): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(pluginProviders).map(([pluginId, providers]) => [
-      encodePluginModelCatalogRelativePath(pluginId),
-      `${JSON.stringify({ generatedBy: PLUGIN_MODEL_CATALOG_GENERATED_BY, providers }, null, 2)}\n`,
-    ]),
+    Object.entries(pluginProviders).map(([pluginId, providers]) => {
+      const endpointDiscovery = pluginMetadataSnapshot?.manifestRegistry.plugins.find(
+        (plugin) => plugin.id === pluginId,
+      )?.modelCatalog?.configuredEndpointDiscovery;
+      // Transport normalization may append a path; retain the discovery source separately.
+      const sourceBaseUrls = Object.fromEntries(
+        Object.keys(providers)
+          .filter((id) => endpointDiscovery?.includes(normalizeProviderId(id)))
+          .map((id) => [id, findNormalizedProviderValue(sourceProviders, id)?.baseUrl]),
+      );
+      return [
+        encodePluginModelCatalogRelativePath(pluginId),
+        `${JSON.stringify({ generatedBy: PLUGIN_MODEL_CATALOG_GENERATED_BY, providers, ...(Object.keys(sourceBaseUrls).length ? { sourceBaseUrls } : {}) }, null, 2)}\n`,
+      ];
+    }),
   );
 }
 
@@ -316,7 +332,11 @@ export async function planOpenClawModelsJson(params: {
     explicitProviderIds,
     discoveredProviderPluginIds,
   });
-  const pluginCatalogWrites = buildPluginCatalogWrites(splitProviders.pluginProviders);
+  const pluginCatalogWrites = buildPluginCatalogWrites(
+    splitProviders.pluginProviders,
+    providers,
+    context.pluginMetadataSnapshot,
+  );
   // Root models.json is author-owned even when a plugin also owns that provider id.
   const rootProviders = resolveProvidersForMode({
     mode,

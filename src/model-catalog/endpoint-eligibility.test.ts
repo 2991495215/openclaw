@@ -77,6 +77,24 @@ describe("provider endpoint catalog eligibility", () => {
     ).toEqual(["alternate/native-model"]);
   });
 
+  it("does not extend configured-endpoint discovery to static manifest rows", () => {
+    const plugin = registry.plugins[0];
+    const configuredEndpointPlugin = {
+      ...plugin,
+      modelCatalog: {
+        ...plugin.modelCatalog,
+        discovery: { fixture: "runtime" as const },
+        configuredEndpointDiscovery: ["fixture"],
+      },
+    };
+    expect(
+      planEffectiveModelCatalogRows({
+        registry: { plugins: [configuredEndpointPlugin] },
+        config: providerConfig("https://proxy.example/v1"),
+      }).rows,
+    ).toEqual([]);
+  });
+
   it("allows model-level overrides without a provider-level veto", () => {
     const config: OpenClawConfig = {
       models: {

@@ -163,11 +163,12 @@ async function resolvePluginImplicitProviders(
         const manifest = ctx.pluginMetadataSnapshot?.manifestRegistry.plugins.find(
           (plugin) => plugin.id === pluginId,
         );
-        const includeProvider = (providerId: string) =>
+        const includeProvider = (providerId: string, runtime = false) =>
           isProviderCatalogSourceAllowed({
             provider: providerId,
             config: ctx.config,
             plugin: manifest,
+            ...(runtime ? { source: { kind: "runtime" as const } } : {}),
           });
         const scopedProviderIds =
           ctx.providerDiscoveryScope === undefined
@@ -175,7 +176,11 @@ async function resolvePluginImplicitProviders(
             : catalogCountsByPluginId.get(pluginId) === 1
               ? (ownerProviderIds ?? [])
               : (ownerProviderIds ?? []).filter((id) => matchesProviderPluginRef(provider, id));
-        const providerIds = scopedProviderIds?.filter(includeProvider);
+        const runtimeDiscovery =
+          ctx.providerDiscoveryEntriesOnly !== true && hasRuntimeProviderCatalog(provider);
+        const includeDiscoveryProvider = (providerId: string) =>
+          includeProvider(providerId, runtimeDiscovery);
+        const providerIds = scopedProviderIds?.filter(includeDiscoveryProvider);
         const catalogProviderRefs = [
           provider.id,
           ...(provider.aliases ?? []),
@@ -184,7 +189,7 @@ async function resolvePluginImplicitProviders(
         ];
         if (
           providerIds?.length === 0 ||
-          (providerIds === undefined && !catalogProviderRefs.some(includeProvider))
+          (providerIds === undefined && !catalogProviderRefs.some(includeDiscoveryProvider))
         ) {
           return undefined;
         }
@@ -254,7 +259,10 @@ async function resolvePluginImplicitProviders(
               });
               acceptedRuntimeCatalog = Boolean(result);
             }
-            if (useStaticCatalog || (!result && provider.staticCatalog)) {
+            if (
+              (useStaticCatalog || (!result && provider.staticCatalog)) &&
+              (scopedProviderIds ?? catalogProviderRefs).some((id) => includeProvider(id))
+            ) {
               if (preparedStatic) {
                 return preparedStatic;
               }
@@ -286,7 +294,7 @@ async function resolvePluginImplicitProviders(
       }
       for (const [providerId, implicitProvider] of Object.entries(normalizedResult)) {
         if (
-          !includeProvider(providerId) ||
+          !includeProvider(providerId, acceptedRuntimeCatalog) ||
           (selectedProviderIds && !selectedProviderIds.has(normalizeProviderId(providerId)))
         ) {
           continue;

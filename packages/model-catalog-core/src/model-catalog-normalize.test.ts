@@ -76,6 +76,21 @@ it("normalizes catalog ownership, aliases, suppressions, and row fields", () => 
   });
 });
 
+it("limits configured-endpoint discovery to owned live catalogs", () => {
+  expect(
+    normalize(
+      {
+        discovery: { live: "runtime", cached: "refreshable", fixed: "static", other: "runtime" },
+        configuredEndpointDiscovery: [" LIVE ", "live", "cached", "fixed", "other", "missing"],
+      },
+      ["live", "cached", "fixed", "missing"],
+    ),
+  ).toEqual({
+    discovery: { live: "runtime", cached: "refreshable", fixed: "static" },
+    configuredEndpointDiscovery: ["live", "cached"],
+  });
+});
+
 it("keeps only explicit owned models.dev mappings without creating provider rows", () => {
   const aliases = { alias: { provider: "example" } };
   expect(

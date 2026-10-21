@@ -194,6 +194,8 @@ Declare retirement only from affirmative provider evidence, never from a failed 
 
 Do not put runtime-only data in `modelCatalog`. Use `static` only when manifest rows are complete enough for provider-filtered list and picker surfaces to skip registry/runtime discovery. Use `refreshable` when manifest rows are useful listable seeds or supplements but a refresh/cache can add more rows later; refreshable rows are not authoritative by themselves. Use `runtime` when OpenClaw must load provider runtime to know the list.
 
+Use `configuredEndpointDiscovery: ["provider-id"]` only when the provider's live catalog hook queries the operator-configured deployment rather than a fixed native service. Each listed provider must be owned by the plugin and declare `runtime` or `refreshable` discovery. This does not make static manifest rows, static fallback catalogs, or capability enrichment valid on a custom endpoint. Retained generated inventory must match the current configured endpoint; changing that endpoint excludes the old inventory until discovery publishes a new catalog.
+
 After a provider gains credentials, list and picker surfaces show its declared manifest rows while account discovery is still pending, in every discovery mode. Once discovery publishes for that provider, its account result replaces them.
 
 Catalog refresh plans keep manual root declarations separate from generated provider inventory. A plugin owning the same provider ID does not turn a manual model into disposable cache data. Merge mode preserves those declarations and auth-only records; explicit replace mode retains its replacement contract. Generated catalogs still follow current ownership, endpoint eligibility, and authoritative replacement rules.

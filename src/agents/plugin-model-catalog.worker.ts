@@ -78,15 +78,21 @@ function pruneRemovedProviderCatalogEntriesInDatabase(params: {
     if (!isGeneratedPluginModelCatalog(catalog) || !isRecord(catalog.providers)) {
       continue;
     }
+    const sourceBaseUrls = isRecord(catalog.sourceBaseUrls) ? catalog.sourceBaseUrls : undefined;
     let removed = false;
     for (const [providerId, normalizedBaseUrl] of removedProviders) {
       const provider = catalog.providers[providerId];
+      const sourceBaseUrl =
+        sourceBaseUrls?.[providerId] ?? (isRecord(provider) ? provider.baseUrl : undefined);
       if (
         isRecord(provider) &&
-        typeof provider.baseUrl === "string" &&
-        normalizePluginProviderBaseUrl(provider.baseUrl) === normalizedBaseUrl
+        typeof sourceBaseUrl === "string" &&
+        normalizePluginProviderBaseUrl(sourceBaseUrl) === normalizedBaseUrl
       ) {
         delete catalog.providers[providerId];
+        if (sourceBaseUrls) {
+          delete sourceBaseUrls[providerId];
+        }
         removed = true;
       }
     }

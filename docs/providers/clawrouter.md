@@ -121,6 +121,10 @@ implicit native inventory is endpoint-scoped: explicitly author the Luna model
 row under `models.providers.clawrouter.models` with `api: "openai-responses"`;
 this still does not bypass the per-call key grant check.
 
+Chat model discovery still queries the configured deployment's `/v1/catalog`.
+The hosted-only static Decisions declaration does not restrict that live chat
+inventory or grant the same capabilities to a custom deployment.
+
 See [Decision models](/concepts/decision-models) for the shared API and selector
 semantics.
 

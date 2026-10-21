@@ -9,6 +9,7 @@ import { linkSync, readFileSync, readdirSync, renameSync, unlinkSync, type Diren
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
+import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { resolveStateDir } from "../config/state-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -707,9 +708,10 @@ export function filterGeneratedPluginModelCatalogProviders<T>(params: {
   const plugin = params.pluginMetadataSnapshot.manifestRegistry?.plugins.find(
     (candidate) => candidate.id === params.catalogPluginId,
   );
+  const sourceBaseUrls = asOptionalRecord(asOptionalRecord(params.parsedCatalog)?.sourceBaseUrls);
   const providers = Object.fromEntries(
     Object.entries(params.providers).filter(
-      ([providerId]) =>
+      ([providerId, providerConfig]) =>
         resolvePluginModelCatalogOwnerPluginId({
           providerId,
           pluginMetadataSnapshot: params.pluginMetadataSnapshot,
@@ -718,6 +720,10 @@ export function filterGeneratedPluginModelCatalogProviders<T>(params: {
           provider: providerId,
           config: params.config,
           plugin,
+          source: {
+            kind: "generated",
+            baseUrl: sourceBaseUrls?.[providerId] ?? asOptionalRecord(providerConfig)?.baseUrl,
+          },
         }),
     ),
   );

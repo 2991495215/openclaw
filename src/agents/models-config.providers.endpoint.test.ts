@@ -25,6 +25,7 @@ import {
   resolveImplicitProviders,
 } from "./models-config.providers.implicit.js";
 import {
+  filterGeneratedPluginModelCatalogProviders,
   replacePersistedPluginModelCatalogs,
   PLUGIN_MODEL_CATALOG_GENERATED_BY,
 } from "./plugin-model-catalog.js";
@@ -44,13 +45,22 @@ const provider: ProviderPlugin = {
   auth: [],
   staticCatalog: { order: "simple", run: async () => ({ provider: nativeCatalog }) },
 };
-function createMetadata(providers = ["fixture"]) {
+function createMetadata(providers = ["fixture"], configuredEndpointDiscovery = false) {
   return createPluginMetadataSnapshotFixture({
     plugins: [
       {
         id: "catalog-owner",
         providers,
         providerEndpoints: [{ endpointClass: "openai-public", hosts: ["native.example"] }],
+        ...(configuredEndpointDiscovery
+          ? {
+              modelCatalog: {
+                discovery: { fixture: "runtime" as const },
+                configuredEndpointDiscovery: ["fixture"],
+                providers: { fixture: nativeCatalog },
+              },
+            }
+          : {}),
       },
     ],
   });
@@ -174,3 +184,63 @@ it("preserves an eligible shared-hook output without aliases", async () => {
   expect(discovered?.alternate?.models.map((model) => model.id)).toEqual(["native-model"]);
   expect(discovered?.fixture).toBeUndefined();
 });
+
+it.each([
+  { optedIn: true, liveRows: true },
+  { optedIn: true, liveRows: false },
+  { optedIn: false, liveRows: true },
+])(
+  "discovers configured endpoints only through opted-in live hooks: %j",
+  async ({ optedIn, liveRows }) => {
+    const liveCatalog = {
+      ...customProvider,
+      models: [modelDefinition("deployment-model")],
+    };
+    const liveRun = vi.fn(async () => (liveRows ? { provider: liveCatalog } : null));
+    const staticRun = vi.fn(async () => ({ provider: nativeCatalog }));
+    resolveRuntimePluginDiscoveryProviders.mockResolvedValue([
+      { ...provider, catalog: { run: liveRun }, staticCatalog: { run: staticRun } },
+    ]);
+    const discovered = await resolveImplicitProviders({
+      ...discoveryParams(),
+      providerDiscoveryEntriesOnly: false,
+      config: configForProviders({ fixture: customProvider }),
+      pluginMetadataSnapshot: createMetadata(["fixture"], optedIn),
+    });
+    expect(liveRun).toHaveBeenCalledTimes(optedIn ? 1 : 0);
+    expect(staticRun).not.toHaveBeenCalled();
+    expect(discovered?.fixture?.models.map((model) => model.id) ?? []).toEqual(
+      optedIn && liveRows ? ["deployment-model"] : [],
+    );
+  },
+);
+
+it.each([
+  { baseUrl: "https://proxy.example/v1/", keep: true },
+  { baseUrl: "https://old-proxy.example/v1", keep: false },
+  { baseUrl: "https://native.example/v1", keep: false },
+  { baseUrl: undefined, keep: false },
+  {
+    baseUrl: "https://proxy.example/v1/transport",
+    sourceBaseUrl: "https://proxy.example/v1",
+    keep: true,
+  },
+  { baseUrl: "https://proxy.example/v1", sourceBaseUrl: "https://old-proxy.example", keep: false },
+])(
+  "keeps configured-endpoint cache only for its acquisition URL: %j",
+  ({ baseUrl, sourceBaseUrl, keep }) => {
+    const providers = { fixture: { ...nativeCatalog, baseUrl } };
+    expect(
+      filterGeneratedPluginModelCatalogProviders({
+        catalogPluginId: "catalog-owner",
+        config: configForProviders({ fixture: customProvider }),
+        pluginMetadataSnapshot: createMetadata(["fixture"], true),
+        providers,
+        parsedCatalog: {
+          generatedBy: PLUGIN_MODEL_CATALOG_GENERATED_BY,
+          ...(sourceBaseUrl ? { sourceBaseUrls: { fixture: sourceBaseUrl } } : {}),
+        },
+      }),
+    ).toEqual(keep ? providers : {});
+  },
+);

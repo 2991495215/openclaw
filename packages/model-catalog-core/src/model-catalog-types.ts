@@ -301,6 +301,8 @@ export type ModelCatalog = {
   aliases?: Record<string, ModelCatalogAlias>;
   suppressions?: ModelCatalogSuppression[];
   discovery?: Record<string, ModelCatalogDiscovery>;
+  /** Live catalog hooks that discover the operator-configured endpoint, not a fixed native inventory. */
+  configuredEndpointDiscovery?: string[];
   runtimeAugment?: boolean;
 };
 
