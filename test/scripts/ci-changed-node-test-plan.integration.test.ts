@@ -310,10 +310,17 @@ it.each(["node", "bun-all"])("keeps exact UI and core owners with %s timings", (
       ] as const) {
         expect(group[key], `${group.shard_name} group ${key}`).toEqual(selectedGroup[key]);
       }
-      const singletonProjection = job.groups?.length === 1 && selectedJob.planConcurrency === 2;
+      // Singleton normalization precedes packing compatible serial rows from other owners.
+      const isolatedOwnerProjection =
+        selectedJob.planConcurrency === 2 &&
+        job.groups?.filter((candidate) =>
+          selectedJob.groups.some(
+            (selectedOwner) => selectedOwner.shard_name === candidate.shard_name,
+          ),
+        ).length === 1;
       // Splitting an unpinned parallel owner must retain an exact two-worker singleton ceiling.
       const expectedJobEnv =
-        singletonProjection &&
+        isolatedOwnerProjection &&
         selectedGroup.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined &&
         selectedJob.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
           ? { ...selectedJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
@@ -330,7 +337,7 @@ it.each(["node", "bun-all"])("keeps exact UI and core owners with %s timings", (
         );
       }
       expect(job.planConcurrency, `${group.shard_name} job planConcurrency`).toBe(
-        singletonProjection ? 1 : selectedJob.planConcurrency,
+        isolatedOwnerProjection ? 1 : selectedJob.planConcurrency,
       );
     }
   }
