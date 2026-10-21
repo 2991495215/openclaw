@@ -221,7 +221,8 @@ suite.define(() => {
           `[data-session-section="pinned"] [data-session-key="${fixture.pinnedKeys[29]}"]`,
         );
         await lastPin
-          .getByRole("link", { name: "Project dashboard 30", exact: true })
+          .getByRole("link")
+          .getByText("Project dashboard 30", { exact: true })
           .waitFor({ state: "attached" });
         expect(
           await sidebar.locator('[data-session-section="pinned"] .sidebar-recent-session').count(),
