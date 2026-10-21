@@ -557,6 +557,7 @@ export function createAppearanceBackground(
       // Connection receipts retire upload and image-preview authority synchronously.
       application.gateway.subscribe(() => {
         if ((mutationScope && !owns(mutationScope)) || (metadata && !owns(metadata))) {
+          metadata = null;
           retireMutation();
         }
         retireChangedPreview();

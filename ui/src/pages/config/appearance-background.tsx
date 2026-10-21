@@ -1,4 +1,4 @@
-import { action, createMemo, createOptimistic, Errored, Loading, onSettled } from "solid-js";
+import { action, createMemo, createOptimistic, Errored, Loading, onSettled, Show } from "solid-js";
 import { SessionBackground } from "../../components/session-background.tsx";
 import { formatUiError } from "../../lib/format-error.ts";
 import { useApplication } from "../../lib/reactive/context.ts";
@@ -18,7 +18,6 @@ export function AppearanceBackground() {
     () => fileInput,
   );
   const [saving, setSaving] = createOptimistic(false, { equals: false });
-  const result = createMemo(() => state.viewProps().mutation?.completion);
   const presentMutation = action(function* (completion: Promise<string | null>) {
     setSaving(true);
     yield completion;
@@ -51,30 +50,35 @@ export function AppearanceBackground() {
         onFile={mutate}
         onRemoveImage={() => mutate()}
         status={
-          state.viewProps().mutation && !state.viewProps().message ? (
-            <Errored
-              fallback={(error) => (
-                <p role="alert" class="settings-status settings-status--danger">
-                  {formatUiError(error())}
-                </p>
-              )}
-            >
-              <Loading
-                fallback={
-                  <p role="status" class="settings-status settings-status--muted">
-                    {t(
-                      `configView.appearance.background.${state.viewProps().mutation?.kind ?? "uploading"}`,
+          !state.viewProps().message ? (
+            <Show when={state.viewProps().mutation} keyed>
+              {(mutation) => {
+                const result = createMemo(() => mutation.completion);
+                return (
+                  <Errored
+                    fallback={(error) => (
+                      <p role="alert" class="settings-status settings-status--danger">
+                        {formatUiError(error())}
+                      </p>
                     )}
-                  </p>
-                }
-              >
-                {result() ? (
-                  <p role="status" class="settings-status settings-status--muted">
-                    {result()}
-                  </p>
-                ) : undefined}
-              </Loading>
-            </Errored>
+                  >
+                    <Loading
+                      fallback={
+                        <p role="status" class="settings-status settings-status--muted">
+                          {t(`configView.appearance.background.${mutation.kind}`)}
+                        </p>
+                      }
+                    >
+                      {result() ? (
+                        <p role="status" class="settings-status settings-status--muted">
+                          {result()}
+                        </p>
+                      ) : undefined}
+                    </Loading>
+                  </Errored>
+                );
+              }}
+            </Show>
           ) : undefined
         }
         fileRef={(element) => {

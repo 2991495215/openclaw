@@ -294,7 +294,12 @@ it("presents background upload failure and retry without losing the selected con
     expect(upload.disabled).toBe(false);
   });
   chooseBackgroundFile(input);
-  await waitForSolid(() => expect(uploads).toBe(2));
+  await waitForSolid(() => {
+    expect(uploads).toBe(2);
+    expect(upload.disabled).toBe(true);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain("Preparing your image");
+    expect(element.querySelector('[role="alert"]')).toBeNull();
+  });
   second.resolve({ status: "ok", asset: null, preference: null });
   await waitForSolid(() => {
     expect(element.querySelector('[role="status"]')?.textContent).toContain(
@@ -339,4 +344,88 @@ it("retires an unresolved upload before admitting the replacement profile's uplo
   await waitForSolid(() => expect(element.querySelector('[role="alert"]')).toBeNull());
   chooseBackgroundFile(input);
   await waitForSolid(() => expect(uploads).toBe(3));
+});
+
+it("keeps the current profile's upload while its background metadata refresh is pending", async () => {
+  const firstUpload = createDeferred<UsersBackgroundResult>();
+  const replacementUpload = createDeferred<UsersBackgroundResult>();
+  const replacementMetadata = createDeferred<UsersBackgroundResult>();
+  const saved = { status: "ok", asset: null, preference: null } as const;
+  let uploads = 0;
+  let holdMetadata = false;
+  const request = vi.fn((method: string, _params?: unknown, options?: { signal?: AbortSignal }) => {
+    if (method === "users.background.get" && options?.signal && holdMetadata) {
+      return replacementMetadata.promise;
+    }
+    if (method === "users.background.upload") {
+      return uploads++ === 0 ? firstUpload.promise : replacementUpload.promise;
+    }
+    return Promise.resolve(saved);
+  });
+  const { element, gateway } = await mount({}, createTestGatewayClient(request));
+  const input = element.querySelector<HTMLInputElement>("[data-background-file]")!;
+  const upload = element.querySelector<HTMLButtonElement>("[data-background-upload]")!;
+  chooseBackgroundFile(input);
+  await waitForSolid(() => expect(uploads).toBe(1));
+  firstUpload.reject(new Error("Previous profile's upload failed"));
+  await waitForSolid(() =>
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain(
+      "Previous profile's upload failed",
+    ),
+  );
+  holdMetadata = true;
+  gateway.publish({ ...gateway.gateway.snapshot, selfUser: { id: "replacement-demo" } });
+  await waitForSolid(() => expect(element.querySelector('[role="alert"]')).toBeNull());
+  chooseBackgroundFile(input);
+  await waitForSolid(() => {
+    expect(uploads).toBe(2);
+    expect(upload.disabled).toBe(true);
+  });
+  gateway.publish({
+    ...gateway.gateway.snapshot,
+    selfUser: { id: "replacement-demo", name: "Updated display name" },
+  });
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+  flush();
+  expect(upload.disabled).toBe(true);
+  expect(element.querySelector('[role="status"]')?.textContent).toContain("Preparing your image");
+  replacementUpload.resolve(saved);
+  await waitForSolid(() => {
+    expect(element.querySelector('[role="status"]')?.textContent).toContain(
+      "Background image saved.",
+    );
+    expect(upload.disabled).toBe(false);
+  });
+  replacementMetadata.resolve(saved);
+});
+
+it("shows invalid background file feedback and clears it when a valid upload starts", async () => {
+  const completion = createDeferred<UsersBackgroundResult>();
+  const saved = { status: "ok", asset: null, preference: null } as const;
+  const request = vi.fn((method: string) =>
+    method === "users.background.upload" ? completion.promise : Promise.resolve(saved),
+  );
+  const { element } = await mount({}, createTestGatewayClient(request));
+  const input = element.querySelector<HTMLInputElement>("[data-background-file]")!;
+  const upload = element.querySelector<HTMLButtonElement>("[data-background-upload]")!;
+  const transfer = new DataTransfer();
+  transfer.items.add(new File(["invalid image"], "background.txt", { type: "text/plain" }));
+  input.files = transfer.files;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  await waitForSolid(() => {
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain(
+      "Choose a JPEG, PNG, or WebP image within the upload size limit.",
+    );
+    expect(upload.disabled).toBe(false);
+  });
+  chooseBackgroundFile(input);
+  await waitForSolid(() => {
+    expect(upload.disabled).toBe(true);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain("Preparing your image");
+    expect(element.querySelector('[role="alert"]')).toBeNull();
+  });
+  completion.resolve(saved);
+  await waitForSolid(() => expect(upload.disabled).toBe(false));
 });
