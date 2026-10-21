@@ -17,7 +17,9 @@ import {
 import { readNodePermissionRequest } from "../../../../../packages/gateway-protocol/src/node-permissions.js";
 import { toSanitizedMarkdownHtml } from "../../../components/markdown.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { registerChatComposerEnglish } from "../../../i18n/locales/en-chat-composer.ts";
 import { registerChatMessageMetadataEnglish } from "../../../i18n/locales/en-chat-message-metadata.ts";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import type { ToolCard } from "../../../lib/chat/chat-types.ts";
 import { resolveMessageDisplayMarkdown } from "../../../lib/chat/message-display.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -70,6 +72,9 @@ import { toolResultSurfaceProps } from "./chat-tool-render-model.ts";
 import { TranscriptMessageElementsContext } from "./chat-transcript-message-elements.ts";
 import { WorkspaceConflictTranscriptMessage } from "./chat-workspace-conflict.ts";
 import { ToolPreview } from "./widget-card.ts";
+
+registerEnglishCatalog(registerChatComposerEnglish);
+registerEnglishCatalog(registerChatSessionEnglish);
 
 registerEnglishCatalog(registerChatMessageMetadataEnglish);
 

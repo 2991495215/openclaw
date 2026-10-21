@@ -9,7 +9,8 @@ import {
 } from "../../../components/session-progress-card.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
-import { t } from "../../../lib/reactive/i18n.ts";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listSubagents } from "../chat-subagent-wait.ts";
 import {
   SessionAutomationMobileList,
@@ -66,6 +67,8 @@ import {
 import type { SessionAutomationInventory } from "./chat-summary-automations.tsx";
 import { sessionAutomationSchedule } from "./session-automation-schedule.ts";
 import "../../../styles/chat/details.css";
+
+registerEnglishCatalog(registerChatSessionEnglish);
 
 type ChatDetailsMobileRegionProps = {
   details: ChatDetailsProps;

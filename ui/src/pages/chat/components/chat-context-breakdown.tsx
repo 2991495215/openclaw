@@ -4,9 +4,10 @@ import type { SessionSystemPromptReport } from "../../../../../src/config/sessio
 import type { GatewaySessionRow } from "../../../api/types.ts";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatCompactTokenCount } from "../../../lib/format.ts";
 import { projectGateway } from "../../../lib/reactive/application.ts";
-import { t } from "../../../lib/reactive/i18n.ts";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import {
   areUiSessionKeysEquivalent,
   scopedSessionArtifactKey,
@@ -21,6 +22,8 @@ import {
 } from "./chat-context-breakdown-model.ts";
 import "../../../styles/chat/context-breakdown.css";
 import { createDetailsDesktopReveal } from "./chat-details-desktop-section.tsx";
+
+registerEnglishCatalog(registerChatSessionEnglish);
 
 const labelKeys = {
   messages: "contextMessages",
