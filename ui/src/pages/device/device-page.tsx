@@ -99,7 +99,7 @@ export function DevicePage() {
     const profile = pendingCookieSyncEdits.get(capability)?.targetProfile;
     if (profile && !profile.sent) {
       profile.sent = true;
-      capability.set("browser.cookieSync.targetProfile", profile.value, () => {
+      void capability.set("browser.cookieSync.targetProfile", profile.value, () => {
         settleCookieSyncEdit(capability, "targetProfile", profile);
         invalidateEdits();
       });
@@ -135,7 +135,7 @@ export function DevicePage() {
     ];
     retainCookieSyncEdits(capability).domains = values;
     invalidateEdits();
-    capability.set("browser.cookieSync.domains", values, () => {
+    void capability.set("browser.cookieSync.domains", values, () => {
       settleCookieSyncEdit(capability, "domains", values);
       invalidateEdits();
     });
@@ -155,7 +155,7 @@ export function DevicePage() {
           description={props.description}
           checked={props.checked ?? false}
           disabled={props.disabled}
-          onChange={(value) => capability?.set(props.setting, value)}
+          onChange={(value) => void capability?.set(props.setting, value)}
         />
       </Show>
     );
@@ -179,7 +179,7 @@ export function DevicePage() {
             aria-label={title()}
             ref={liveValue(() => props.value)}
             disabled={props.disabled}
-            onChange={(event) => capability?.set(props.setting, event.currentTarget.value)}
+            onChange={(event) => void capability?.set(props.setting, event.currentTarget.value)}
           >
             <For each={props.options} keyed={(option) => option.id}>
               {(option) => (
@@ -225,7 +225,7 @@ export function DevicePage() {
               return;
             }
             setGatewayHostingEdit({ pending: true });
-            capability.set("app.keepGatewayRunning", value, (error) => {
+            void capability.set("app.keepGatewayRunning", value, (error) => {
               if (!disposed) {
                 setGatewayHostingEdit({ pending: false, error });
               }

@@ -70,7 +70,7 @@ function DeviceUpdates(props: { capability?: NativeDeviceSettingsCapability | nu
           <SettingsToggleRow
             title={t("updates.device.automatic")}
             checked={updates()!.automatic}
-            onChange={(value) => props.capability!.set("updates.automatic", value)}
+            onChange={(value) => void props.capability!.set("updates.automatic", value)}
           />
           <SettingsRow
             title={t("updates.device.check")}

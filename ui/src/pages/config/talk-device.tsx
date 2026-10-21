@@ -1,4 +1,4 @@
-import { createMemo, For } from "solid-js";
+import { action, createMemo, createOptimistic, For, refresh } from "solid-js";
 import { deviceSettingsGroupLabelKey } from "../../app-navigation.ts";
 import type {
   NativeDeviceSettingsCapability,
@@ -21,9 +21,7 @@ const pendingDeviceLocales = new WeakMap<
   Partial<DeviceLocaleSelection>
 >();
 
-function deviceLocaleSelection(
-  capability: NativeDeviceSettingsCapability,
-): DeviceLocaleSelection | null {
+function deviceLocaleSelection(capability: NativeDeviceSettingsCapability) {
   const locale = capability.snapshot?.voice.locale;
   if (!locale) {
     return null;
@@ -32,6 +30,7 @@ function deviceLocaleSelection(
   const primary = pending?.primary ?? locale.primary;
   return {
     primary,
+    available: locale.available,
     additional: [...new Set(pending?.additional ?? locale.additional)].filter(
       (id) => id !== primary,
     ),
@@ -44,25 +43,29 @@ function changeDeviceLocales(
 ) {
   const desired = Object.assign(pendingDeviceLocales.get(capability) ?? {}, change);
   pendingDeviceLocales.set(capability, desired);
+  const writes: Promise<void>[] = [];
   for (const key of ["additional", "primary"] as const) {
     const value = change[key];
     if (value === undefined) {
       continue;
     }
-    capability.set(`voice.locale.${key}`, value, () => {
-      // Native settles before publishing its snapshot. Do not retire a newer edit.
-      if (desired[key] === value) {
-        delete desired[key];
-      }
-      if (
-        desired.primary === undefined &&
-        desired.additional === undefined &&
-        pendingDeviceLocales.get(capability) === desired
-      ) {
-        pendingDeviceLocales.delete(capability);
-      }
-    });
+    writes.push(
+      capability.set(`voice.locale.${key}`, value, () => {
+        // Native settles before publishing its snapshot. Do not retire a newer edit.
+        if (desired[key] === value) {
+          delete desired[key];
+        }
+        if (
+          desired.primary === undefined &&
+          desired.additional === undefined &&
+          pendingDeviceLocales.get(capability) === desired
+        ) {
+          pendingDeviceLocales.delete(capability);
+        }
+      }),
+    );
   }
+  return Promise.all(writes);
 }
 
 export type VoiceWakeEditorState =
@@ -157,13 +160,22 @@ function DeviceVoiceSettings(props: {
     }
     return options;
   });
-  const languageOptions = createMemo(() =>
-    (voice().locale?.available ?? []).map(({ id, name }) => ({ value: id, label: name })),
-  );
-  const locale = createMemo(() => {
+  const [locale, setLocale] = createOptimistic(() => {
     // Reading the published snapshot invalidates the pending-intent overlay.
     void props.snapshot;
     return deviceLocaleSelection(props.capability);
+  });
+  // Choices and selection share one optimistic frame during overlapping native edits.
+  const languageOptions = () =>
+    (locale()?.available ?? []).map(({ id, name }) => ({ value: id, label: name }));
+  const changeLocales = action(function* (change: Partial<DeviceLocaleSelection>) {
+    // Intent stays synchronous so consecutive gestures compose before Solid settles.
+    const completion = changeDeviceLocales(props.capability, change);
+    setLocale(deviceLocaleSelection(props.capability));
+    yield completion;
+    // Other edits may still hold this transition open after this write settles.
+    setLocale(deviceLocaleSelection(props.capability));
+    void refresh(locale);
   });
   return (
     <>
@@ -186,7 +198,7 @@ function DeviceVoiceSettings(props: {
                       ? t("configPage.deviceTalk.realtimeRelayHint")
                       : undefined
                 }
-                onChange={(value) => props.capability.set(`voice.${key()}`, value)}
+                onChange={(value) => void props.capability.set(`voice.${key()}`, value)}
               />
             )}
           </>
@@ -197,7 +209,7 @@ function DeviceVoiceSettings(props: {
           title={t("configPage.deviceTalk.microphone")}
           value={microphone()?.selectedId ?? ""}
           options={microphoneOptions()}
-          onChange={(value) => props.capability.set("voice.microphone", value || null)}
+          onChange={(value) => void props.capability.set("voice.microphone", value || null)}
         />
       )}
       {locale() && (
@@ -208,7 +220,7 @@ function DeviceVoiceSettings(props: {
           onChange={(value) => {
             const current = deviceLocaleSelection(props.capability);
             if (current) {
-              changeDeviceLocales(props.capability, {
+              void changeLocales({
                 primary: value,
                 ...(current.additional.includes(value)
                   ? { additional: current.additional.filter((id) => id !== value) }
@@ -238,7 +250,7 @@ function DeviceVoiceSettings(props: {
                         onClick={() => {
                           const current = deviceLocaleSelection(props.capability);
                           if (current) {
-                            changeDeviceLocales(props.capability, {
+                            void changeLocales({
                               additional: current.additional.filter((value) => value !== id()),
                             });
                           }
@@ -262,7 +274,7 @@ function DeviceVoiceSettings(props: {
                     select.value !== current.primary &&
                     !current.additional.includes(select.value)
                   ) {
-                    changeDeviceLocales(props.capability, {
+                    void changeLocales({
                       additional: [...current.additional, select.value],
                     });
                     select.value = "";
@@ -270,15 +282,14 @@ function DeviceVoiceSettings(props: {
                 }}
               >
                 <option value="">{t("configPage.deviceTalk.addLanguage")}</option>
-                <For
-                  each={languageOptions().filter(
+                {languageOptions()
+                  .filter(
                     ({ value }) =>
                       value !== locale()!.primary && !locale()!.additional.includes(value),
-                  )}
-                  keyed={(option) => option.value}
-                >
-                  {(option) => <option value={option().value}>{option().label}</option>}
-                </For>
+                  )
+                  .map((option) => (
+                    <option value={option.value}>{option.label}</option>
+                  ))}
               </select>
             </>
           }

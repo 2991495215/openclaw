@@ -696,9 +696,11 @@ describe("Talk device and voice wake settings", () => {
     expect(nativeDeviceSettings.openPanel).toHaveBeenCalledWith("microphone-test");
     snapshot.voice.wakeEnabled = true;
     publishSnapshot();
-    expect(
-      row("Voice Wake").querySelector<HTMLInputElement>(".settings-toggle__input")?.disabled,
-    ).toBe(false);
+    await waitForSolid(() =>
+      expect(
+        row("Voice Wake").querySelector<HTMLInputElement>(".settings-toggle__input")?.disabled,
+      ).toBe(false),
+    );
     row("Voice Wake").click();
     expect(nativeDeviceSettings.set).toHaveBeenCalledWith("voice.wakeEnabled", false);
     snapshot.voice.wakeEnabled = false;
@@ -713,7 +715,7 @@ describe("Talk device and voice wake settings", () => {
     ).toBe(false);
   });
 
-  it("preserves pending language additions across an older native acknowledgment and the next edit", () => {
+  it("preserves pending language additions across an older native acknowledgment and the next edit", async () => {
     const snapshot = createNativeDeviceSettingsSnapshot();
     snapshot.voice.locale.available.push(
       { id: "fr-FR", name: "French" },
@@ -721,6 +723,7 @@ describe("Talk device and voice wake settings", () => {
       { id: "it-IT", name: "Italian" },
     );
     const listeners = new Set<() => void>();
+    const completions: Array<() => void> = [];
     const nativeDeviceSettings = {
       snapshot,
       subscribe: (listener) => {
@@ -730,7 +733,9 @@ describe("Talk device and voice wake settings", () => {
           listeners.delete(notify);
         };
       },
-      set: vi.fn<NativeDeviceSettingsCapability["set"]>(),
+      set: vi.fn<NativeDeviceSettingsCapability["set"]>(
+        () => new Promise<void>((resolve) => completions.push(resolve)),
+      ),
       requestPermission: vi.fn(),
       openSystemSettings: vi.fn(),
       openPanel: vi.fn(),
@@ -739,6 +744,10 @@ describe("Talk device and voice wake settings", () => {
       refresh: vi.fn(),
       dispose: vi.fn(),
     } satisfies NativeDeviceSettingsCapability;
+    const settle = (index: number, error?: Error) => {
+      nativeDeviceSettings.set.mock.calls[index]?.[2]?.(error);
+      completions[index]?.();
+    };
     const { page } = createTalkMutationHarness({ nativeDeviceSettings });
     flush();
     const add = (id: string) => {
@@ -753,8 +762,10 @@ describe("Talk device and voice wake settings", () => {
       ["de-DE", "fr-FR"],
       expect.any(Function),
     );
+    flush();
+    expect(page.querySelector('button[aria-label="Remove French"]')).not.toBeNull();
     snapshot.voice.locale.additional = ["de-DE"];
-    nativeDeviceSettings.set.mock.calls[0]?.[2]?.();
+    settle(0);
     for (const notify of listeners) {
       notify();
     }
@@ -774,7 +785,7 @@ describe("Talk device and voice wake settings", () => {
       expect.any(Function),
     );
     snapshot.voice.locale.additional = ["de-DE", "fr-FR"];
-    nativeDeviceSettings.set.mock.calls[1]?.[2]?.();
+    settle(1);
     for (const notify of listeners) {
       notify();
     }
@@ -786,17 +797,23 @@ describe("Talk device and voice wake settings", () => {
       ["de-DE", "es-ES", "it-IT"],
       expect.any(Function),
     );
-    nativeDeviceSettings.set.mock.lastCall?.[2]?.(new Error("Native edit failed"));
+    settle(completions.length - 1, new Error("Native edit failed"));
     for (const notify of listeners) {
       notify();
     }
-    flush();
+    await waitForSolid(() =>
+      expect(
+        page.querySelector('select[aria-label="Add language…"] option[value="es-ES"]'),
+        page.querySelector('select[aria-label="Add language…"]')?.outerHTML,
+      ).not.toBeNull(),
+    );
     add("es-ES");
     expect(nativeDeviceSettings.set).toHaveBeenLastCalledWith(
       "voice.locale.additional",
       ["de-DE", "es-ES"],
       expect.any(Function),
     );
+    completions.forEach((complete) => complete());
   });
 });
 
