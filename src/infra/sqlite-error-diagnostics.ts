@@ -21,28 +21,25 @@ const STORAGE_ERRORS = [
     -2,
   ],
 ] as const;
-export type GatewayStorageFailure = (typeof STORAGE_ERRORS)[number][0] | "postgres_query_canceled";
+export type GatewayStorageFailure = (typeof STORAGE_ERRORS)[number][0];
 
 /** Classify native errors before flattening; legacy rows require exact known messages. */
 export function classifyGatewayStorageFailure(error: unknown): GatewayStorageFailure | undefined {
-  let deferred: GatewayStorageFailure | undefined;
+  let reconciliation: GatewayStorageFailure | undefined;
   for (const candidate of collectNestedErrorCandidates(error)) {
     const failure = classifyStorageFailure(candidate);
-    if (failure === "session_actor_reconciliation" || failure === "postgres_query_canceled") {
-      deferred ??= failure;
+    if (failure === "session_actor_reconciliation") {
+      reconciliation = failure;
     } else if (failure) {
       return failure;
     }
   }
-  return deferred;
+  return reconciliation;
 }
 
 function classifyStorageFailure(error: unknown): GatewayStorageFailure | undefined {
   const fields = typeof error === "string" ? { message: error } : isRecord(error) ? error : {};
   const code = fields.errorCode ?? fields.code;
-  if (code === "57014") {
-    return "postgres_query_canceled";
-  }
   if (code === "ENOSPC") {
     return "SQLITE_FULL";
   }

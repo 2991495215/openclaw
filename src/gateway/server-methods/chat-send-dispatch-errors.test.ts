@@ -19,7 +19,6 @@ import {
 import { withSessionEntriesFromStoresInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import { SessionTranscriptProjectionUnavailableError } from "../../config/sessions/session-transcript-projection-error.js";
 import { getAgentEventLifecycleGeneration, onAgentRuntimeEvent } from "../../infra/agent-events.js";
-import { decodePostgresError } from "../../infra/postgres-sync/protocol.js";
 import { SqliteWorkerError } from "../../infra/sqlite-worker-contract.js";
 import {
   GatewayDrainingError,
@@ -91,73 +90,62 @@ async function captureTerminalTarget(scope: {
 }
 
 describe("handleChatSendSetupError", () => {
-  const canceled = decodePostgresError({
-    name: "error",
-    message: "canceling statement due to user request",
-    code: "57014",
-  });
   const uncertain = new SqliteWorkerError("Agent operation and cleanup failed", "outcome-unknown");
   const diskFull = Object.assign(new Error("write failed"), { code: "ENOSPC" });
-  it.each<[Error, string, boolean?]>([
-    [canceled, "Check the conversation for any completed work before trying again"],
-    [new AggregateError([canceled, diskFull], uncertain.message), "disk is full", true],
-    [new Error(canceled.message), canceled.message],
+  it.each<[Error, string]>([
     [uncertain, "reopen the conversation"],
     [
       new AggregateError([uncertain, new Error("Cleanup failed")], uncertain.message),
       "reopen the conversation",
     ],
     [new AggregateError([uncertain, diskFull], uncertain.message), "disk is full"],
-  ])(
-    "explains storage setup failures while preserving retry classification: %s",
-    async (error, expected, expectedRetryable = false) => {
-      const respond = vi.fn();
-      const broadcast = vi.fn();
-      const dedupe = new Map();
-      const runId = "setup-outcome-unknown";
-      const activeRunAbort = registerRpcSourceForTest({
-        runId,
-        sessionId: "sess-main",
-        sessionKey: "agent:main:main",
-        agentId: "main",
+  ])("explains uncertain storage outcomes without retrying them: %s", async (error, expected) => {
+    const respond = vi.fn();
+    const broadcast = vi.fn();
+    const dedupe = new Map();
+    const runId = "setup-outcome-unknown";
+    const activeRunAbort = registerRpcSourceForTest({
+      runId,
+      sessionId: "sess-main",
+      sessionKey: "agent:main:main",
+      agentId: "main",
+    });
+    try {
+      await handleChatSendSetupError({
+        admission: {
+          activeRunAbort,
+          cleanupAdmittedRun: vi.fn(),
+          lifecycleGeneration: "test-generation",
+          restartSafeAdmission: undefined,
+        },
+        context: createDirectChatContext({ broadcast, dedupe, getRuntimeConfig: () => ({}) }),
+        error,
+        respond,
+        session: { agentId: "main", clientRunId: runId, sessionKey: "agent:main:main" },
+        terminalizeRestartSafeAdmission: vi.fn(),
       });
-      try {
-        await handleChatSendSetupError({
-          admission: {
-            activeRunAbort,
-            cleanupAdmittedRun: vi.fn(),
-            lifecycleGeneration: "test-generation",
-            restartSafeAdmission: undefined,
-          },
-          context: createDirectChatContext({ broadcast, dedupe, getRuntimeConfig: () => ({}) }),
-          error,
-          respond,
-          session: { agentId: "main", clientRunId: runId, sessionKey: "agent:main:main" },
-          terminalizeRestartSafeAdmission: vi.fn(),
-        });
-        expect(respond).toHaveBeenCalledOnce();
-        const [ok, payload, refusal] = respond.mock.calls[0]!;
-        expect(ok).toBe(false);
-        expect(refusal).toMatchObject({
-          code: "UNAVAILABLE",
-          message: expect.stringContaining(expected),
-        });
-        expect(refusal.retryable === true).toBe(expectedRetryable);
-        expect(refusal.message).not.toMatch(
-          /Agent operation|SQLite|SQLITE_|outcome-unknown|write failed/,
-        );
-        expect(payload).toMatchObject({ runId, status: "error", summary: refusal.message });
-        expect(dedupe.get(`chat:${runId}`)).toMatchObject({ ok: false, error: refusal, payload });
-        expect(broadcast).toHaveBeenCalledWith(
-          "chat",
-          expect.objectContaining({ runId, state: "error", errorMessage: refusal.message }),
-          expect.anything(),
-        );
-      } finally {
-        activeRunAbort.cleanup();
-      }
-    },
-  );
+      expect(respond).toHaveBeenCalledOnce();
+      const [ok, payload, refusal] = respond.mock.calls[0]!;
+      expect(ok).toBe(false);
+      expect(refusal).toMatchObject({
+        code: "UNAVAILABLE",
+        message: expect.stringContaining(expected),
+      });
+      expect(refusal.retryable).not.toBe(true);
+      expect(refusal.message).not.toMatch(
+        /Agent operation|SQLite|SQLITE_|outcome-unknown|write failed/,
+      );
+      expect(payload).toMatchObject({ runId, status: "error", summary: refusal.message });
+      expect(dedupe.get(`chat:${runId}`)).toMatchObject({ ok: false, error: refusal, payload });
+      expect(broadcast).toHaveBeenCalledWith(
+        "chat",
+        expect.objectContaining({ runId, state: "error", errorMessage: refusal.message }),
+        expect.anything(),
+      );
+    } finally {
+      activeRunAbort.cleanup();
+    }
+  });
 
   it.each([
     new GatewayDrainingError(),
