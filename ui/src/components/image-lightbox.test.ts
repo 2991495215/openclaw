@@ -160,7 +160,9 @@ it.each([false, true])(
     modal.imageTitle = "Renamed while loading";
     await modal.updateComplete;
     expect(modal.querySelector("video")).toBe(video);
-    expect(video.getAttribute("aria-label")).toBe("Renamed while loading");
+    expect(video.getAttribute("aria-label")).toBe(
+      gallery ? "Generated lobster" : "Renamed while loading",
+    );
     expect(button(modal, ".close").isConnected).toBe(true);
     expect(fetchImage).toHaveBeenCalledOnce();
 
