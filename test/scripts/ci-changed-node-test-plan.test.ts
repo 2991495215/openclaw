@@ -1138,7 +1138,7 @@ describe("CI changed Node test plan", () => {
               "minTotalMemoryBytes",
               "pretestBuildMode",
             ]);
-            const serialProjection = job.groups.length === 1 && ownerJob.planConcurrency === 2;
+            const serialProjection = isSerialNodeTestProjection(job.groups, ownerJob);
             expect(job.planConcurrency).toBe(serialProjection ? 1 : ownerJob.planConcurrency);
             expect(job.env).toEqual(
               serialProjection && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
@@ -1368,18 +1368,9 @@ describe("CI changed Node test plan", () => {
       compactMode: "pull-request",
       includeReleaseOnlyPluginShards: false,
     });
-    const selectedCanonical = expectDefined(
-      createSelectedNodeTestShardBundles(
-        expectedTargets.filter((target) => target !== e2eTarget),
-        {
-          includeReleaseOnlyRuntimeTests: true,
-          includePrExemptRuntimeTests: true,
-        },
-      ),
-      "canonical selected test owners",
-    );
     const selectedJobs = shards?.filter((shard) => shard.groups?.length) ?? [];
     expect(selectedJobs.length).toBeGreaterThan(0);
+    const envScratch = argvTempDirs.make("changed-wide-owner-env-");
     for (const job of selectedJobs) {
       for (const group of job.groups ?? []) {
         const ownerJob = expectDefined(
@@ -1396,19 +1387,30 @@ describe("CI changed Node test plan", () => {
         expect(group.env).toEqual(owner.env);
         expect(group.fallbackMaxWorkers).toBe(owner.fallbackMaxWorkers);
         expect(group.minTotalMemoryBytes).toBe(owner.minTotalMemoryBytes);
-        // Selection can combine parallel groups from different full-plan owners.
-        const { job: selectedOwner, group: selectedGroup } = canonicalOwner(
-          selectedCanonical,
-          group.shard_name,
+        // CI gives overlapping plans two workers; a qualified serial 32-vCPU row can inherit eight.
+        // Job and group composition must keep the canonical two-worker ceiling in either shape.
+        const childEnv = buildChildEnv(
+          { kind: "group", name: group.shard_name, plan: group },
+          {
+            OPENCLAW_VITEST_MAX_WORKERS: job.planConcurrency === 1 ? "8" : "2",
+            ...job.env,
+          },
+          envScratch,
+          0,
         );
-        const serialProjection = isSerialNodeTestProjection(job.groups, selectedOwner);
-        expect(job.env).toEqual(
-          serialProjection && selectedGroup.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
-            ? { ...selectedOwner.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
-            : selectedOwner.env,
+        const ownerChildEnv = buildChildEnv(
+          { kind: "group", name: owner.shard_name, plan: owner },
+          {
+            OPENCLAW_VITEST_MAX_WORKERS: ownerJob.planConcurrency === 1 ? "8" : "2",
+            ...ownerJob.env,
+          },
+          envScratch,
+          0,
         );
-        expect(job.runner).toBe(selectedOwner.runner);
-        expect(job.planConcurrency).toBe(serialProjection ? 1 : selectedOwner.planConcurrency);
+        expect(childEnv).toEqual(ownerChildEnv);
+        expect(childEnv.OPENCLAW_VITEST_MAX_WORKERS).toBe("2");
+        expect(job.runner).toBe(ownerJob.runner);
+        expect(job.planConcurrency).toBe(ownerJob.planConcurrency);
       }
     }
     const cheapFiles = vi

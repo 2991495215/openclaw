@@ -18,7 +18,6 @@ export const page = definePage({
   loader: (_context, { location }) => sessionActivityRouteLocation(location),
   component: () =>
     import("./activity-route.tsx").then((module) => ({
-      header: true,
       renderSolid: module.renderSolid,
     })),
 });
