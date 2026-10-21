@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Locator, Page } from "playwright";
-import { expect, it } from "vitest";
+import { afterAll, expect, inject, it } from "vitest";
 import {
   createOpenClawTestInstance,
   type OpenClawTestInstance,
@@ -35,82 +35,107 @@ async function startGateway(owner: OpenClawTestInstance, prepare?: () => Promise
 }
 
 let instance: OpenClawTestInstance | undefined;
-const suite = createControlUiE2eSuite({
-  name: "Control UI exact stagger with a real Gateway",
-  startServerBeforeBrowser: true,
-  async startServer() {
-    const owner = await createOpenClawTestInstance({
-      name: "control-ui-exact-stagger",
-      config: {
-        gateway: { controlUi: { enabled: true } },
-        agents: { defaults: { model: "openai/gpt-4.1" } },
-        cron: {
-          enabled: false,
-          failureAlert: {
-            enabled: true,
-            after: 5,
-            cooldownMs: 7301,
-            mode: "webhook",
-            to: "https://alerts.example.test/global",
-            includeSkipped: false,
-          },
-        },
-      },
-    });
-    instance = owner;
-    return startGateway(owner, () =>
-      owner.state.writeAuthProfiles({
-        version: 1,
-        profiles: {
-          "openai:cron-duration-fixture": {
-            type: "api_key",
-            provider: "openai",
-            key: "synthetic-cron-duration-inference-key",
-          },
-        },
-      }),
-    );
-  },
-});
-const captureEnabled = process.env.OPENCLAW_CAPTURE_UI_PROOF === "1";
-
-let catalogInstance: OpenClawTestInstance | undefined;
+let startup: ReturnType<typeof startGateway> | undefined;
+const enteredSuites = new Set<string>();
+const releasedSuites = new Set<string>();
 const catalogModels = (id: string) => [
   { id: "anchor", name: "Anchor" },
   { id, name: id },
 ];
-const catalogSuite = createControlUiE2eSuite({
-  name: "Automation catalog publication with a real Gateway",
-  startServerBeforeBrowser: true,
-  async startServer() {
-    const owner = await createOpenClawTestInstance({
-      name: "automation-catalog-publication",
-      env: { OPENCLAW_TEST_MINIMAL_GATEWAY: undefined, VITEST: undefined },
-      config: {
-        gateway: { controlUi: { enabled: true } },
-        plugins: { enabled: false },
-        cron: { enabled: false },
-        agents: { defaults: { model: "fixture/anchor" } },
-        models: {
-          providers: {
-            fixture: {
-              api: "openai-completions",
-              apiKey: "synthetic-catalog-key",
-              baseUrl: "http://127.0.0.1:9/v1",
-              models: catalogModels("retiring"),
-            },
+
+function sharedGateway(suiteName: "duration" | "catalog") {
+  return {
+    async startServer() {
+      enteredSuites.add(suiteName);
+      const server = await (startup ??= startSharedGateway());
+      // The file owner closes the Gateway after both browser suites have drained.
+      return { baseUrl: server.baseUrl, close: async () => {} };
+    },
+    resources: {
+      run: async () => {},
+      retainedState: () => instance?.state.root,
+      release: async () => {
+        releasedSuites.add(suiteName);
+      },
+    },
+  };
+}
+
+async function startSharedGateway() {
+  const owner = await createOpenClawTestInstance({
+    name: "control-ui-exact-stagger",
+    env: { OPENCLAW_TEST_MINIMAL_GATEWAY: undefined, VITEST: undefined },
+    config: {
+      gateway: { controlUi: { enabled: true } },
+      plugins: { enabled: false },
+      agents: { defaults: { model: "openai/gpt-4.1" } },
+      models: {
+        providers: {
+          fixture: {
+            api: "openai-completions",
+            apiKey: "synthetic-catalog-key",
+            baseUrl: "http://127.0.0.1:9/v1",
+            models: catalogModels("retiring"),
           },
         },
       },
-    });
-    catalogInstance = owner;
-    return startGateway(owner);
-  },
+      cron: {
+        enabled: false,
+        failureAlert: {
+          enabled: true,
+          after: 5,
+          cooldownMs: 7301,
+          mode: "webhook",
+          to: "https://alerts.example.test/global",
+          includeSkipped: false,
+        },
+      },
+    },
+  });
+  instance = owner;
+  return startGateway(owner, () =>
+    owner.state.writeAuthProfiles({
+      version: 1,
+      profiles: {
+        "openai:cron-duration-fixture": {
+          type: "api_key",
+          provider: "openai",
+          key: "synthetic-cron-duration-inference-key",
+        },
+      },
+    }),
+  );
+}
+
+afterAll(async () => {
+  if (!startup) {
+    return;
+  }
+  const unreleased = [...enteredSuites].filter((name) => !releasedSuites.has(name));
+  if (unreleased.length) {
+    throw new Error(
+      `Shared Gateway teardown did not safely join ${unreleased.join(", ")}; state retained at ${instance?.state.root}`,
+    );
+  }
+  await (await startup).close();
+}, inject("controlUiE2eCleanup").timeoutMs);
+
+const suite = createControlUiE2eSuite({
+  name: "Control UI exact stagger with a real Gateway",
+  startServerBeforeBrowser: true,
+  ...sharedGateway("duration"),
+});
+const captureEnabled = process.env.OPENCLAW_CAPTURE_UI_PROOF === "1";
+
+const catalogSuite = createControlUiE2eSuite({
+  name: "Automation catalog publication with a real Gateway",
+  startServerBeforeBrowser: true,
+  ...sharedGateway("catalog"),
 });
 
 catalogSuite.define(() => {
   it("keeps an open automation draft current after real catalog publication and read recovery", async () => {
-    const owner = catalogInstance;
+    const owner = instance;
     if (!owner) {
       throw new Error("Catalog Gateway fixture was not started");
     }
