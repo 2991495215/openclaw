@@ -22,7 +22,6 @@ import {
   commandReply,
   defineAuthorizedTextCommand,
   renderCommandJsonBlock,
-  requireCommandFlagEnabled,
   requireGatewayClientScope,
 } from "./command-gates.js";
 import type { CommandHandler } from "./commands-types.js";
@@ -48,18 +47,12 @@ function formatConfigSetValueLabel(params: {
 export const handleConfigCommand: CommandHandler = defineAuthorizedTextCommand(
   {
     label: "/config",
+    configKey: "config",
     match: parseConfigCommand,
     ownerOnly: (params, command) =>
       command.action !== "show" || !isInternalMessageChannel(params.command.channel),
   },
   async (params, configCommand) => {
-    const disabled = requireCommandFlagEnabled(params.cfg, {
-      label: "/config",
-      configKey: "config",
-    });
-    if (disabled) {
-      return disabled;
-    }
     if (configCommand.action === "error") {
       return commandReply(`⚠️ ${configCommand.message}`);
     }
@@ -147,15 +140,8 @@ export const handleConfigCommand: CommandHandler = defineAuthorizedTextCommand(
 );
 
 export const handleDebugCommand: CommandHandler = defineAuthorizedTextCommand(
-  { label: "/debug", match: parseDebugCommand, ownerOnly: true },
+  { label: "/debug", configKey: "debug", match: parseDebugCommand, ownerOnly: true },
   (params, debugCommand) => {
-    const disabled = requireCommandFlagEnabled(params.cfg, {
-      label: "/debug",
-      configKey: "debug",
-    });
-    if (disabled) {
-      return disabled;
-    }
     if (debugCommand.action === "error") {
       return commandReply(`⚠️ ${debugCommand.message}`);
     }

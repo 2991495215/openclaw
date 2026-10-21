@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { getAgentWorkspaceAccess } from "../../agents/workspace-access.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import { observeOwnedDirectory } from "../../infra/owned-directory-observation.js";
 import { isPathInside } from "../../infra/path-guards.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
@@ -223,9 +224,7 @@ function scanDirtySources(): Promise<void> {
         observeSource(source);
         refreshed.add(source.workspaceDir);
       }
-      while (state.plans.size > MAX_SOURCES) {
-        state.plans.delete(state.plans.keys().next().value!);
-      }
+      pruneMapToMaxSize(state.plans, MAX_SOURCES);
       // A completed bounded pass also invalidates supporting-file copies. This
       // deliberately conservative revision avoids a second recursive tree scan.
       for (const workspaceDir of refreshed) {
@@ -340,9 +339,7 @@ export async function prepareSkillSourcePlan(
   const key = JSON.stringify(input);
   let pending = state.plans.get(key);
   if (!pending) {
-    if (state.plans.size >= MAX_SOURCES) {
-      state.plans.delete(state.plans.keys().next().value!);
-    }
+    pruneMapToMaxSize(state.plans, MAX_SOURCES - 1);
     pending = pool()
       .run({ kind: "plan", input }, { timeoutMs: 120_000 })
       .then((result) => {

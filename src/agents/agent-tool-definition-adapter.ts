@@ -2,6 +2,7 @@
  * Owns hook execution, client-tool delegation, result coercion, and safe
  * logging for failed tool calls.
  */
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { logDebug, logError } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tool-metadata.js";
 import { isPlainObject } from "../utils.js";
@@ -362,9 +363,7 @@ function coerceParamsRecord(
     throw new ToolInputError("Invalid client tool arguments: expected a JSON object");
   }
 
-  const required = Array.isArray(schema?.required)
-    ? schema.required.filter((key): key is string => typeof key === "string")
-    : [];
+  const required = filterStringEntries(schema?.required);
   const missing = required.filter((key) => !Object.hasOwn(record, key));
   if (missing.length > 0) {
     throw new ToolInputError(

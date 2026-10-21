@@ -3,6 +3,7 @@ import {
   asOptionalObjectRecord as readObjectRecord,
   asOptionalRecord as readRecord,
 } from "@openclaw/normalization-core/record-coerce";
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { isMeaningfulMediaFact, readPersistedMediaFacts } from "../media/media-facts.js";
 import { isRelativeAssistantMediaReference, splitMediaOutput } from "../media/parse-output.js";
@@ -41,9 +42,7 @@ export function takeAssistantManagedMediaUrlsForDisplay(
   role: string,
 ): { changed: boolean; urls: string[] } {
   const delivery = role === "assistant" ? readRecord(entry.openclawDelivery) : undefined;
-  const urls = Array.isArray(delivery?.mediaUrls)
-    ? delivery.mediaUrls.filter((url): url is string => typeof url === "string")
-    : [];
+  const urls = filterStringEntries(delivery?.mediaUrls);
   if (!delivery || !Object.hasOwn(delivery, "mediaUrls")) {
     return { changed: false, urls };
   }

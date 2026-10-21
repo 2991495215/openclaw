@@ -67,14 +67,15 @@ const rpc = vi.hoisted(() => ({
   buildGatewayConnectionDetails: vi.fn<(...args: unknown[]) => { message: string; url: string }>(),
   buildGatewayProbeConnectionDetails:
     vi.fn<(...args: unknown[]) => { message: string; url: string }>(),
-  formatGatewayAuthErrorJson: vi.fn(),
-  formatGatewayClientRequestErrorJson: vi.fn(),
-  formatGatewayTransportErrorJson: vi.fn(),
+  formatGatewayCallErrorJson: vi.fn(),
 }));
 const TEST_GATEWAY_URL = "ws://127.0.0.1:18789";
 const TEST_GATEWAY_MESSAGE = `Gateway mode: local\nGateway target: ${TEST_GATEWAY_URL}`;
 // mock-isolation: Health scenarios use deterministic RPC responses, not the operator Gateway.
 vi.mock("../gateway/call.js", () => rpc);
+vi.mock("../gateway/call-error-json.js", () => ({
+  formatGatewayCallErrorJson: rpc.formatGatewayCallErrorJson,
+}));
 
 // mock-isolation: Exercise credential-error reporting without resolving operator credentials.
 vi.mock("../gateway/credentials.js", () => ({
@@ -103,13 +104,7 @@ describe("healthCommand", () => {
     ]) {
       details.mockReturnValue({ message: TEST_GATEWAY_MESSAGE, url: TEST_GATEWAY_URL });
     }
-    for (const formatterMock of [
-      rpc.formatGatewayAuthErrorJson,
-      rpc.formatGatewayClientRequestErrorJson,
-      rpc.formatGatewayTransportErrorJson,
-    ]) {
-      formatterMock.mockReset().mockReturnValue(null);
-    }
+    rpc.formatGatewayCallErrorJson.mockReset().mockReturnValue(null);
     rpc.isGatewayCredentialsRequiredError.mockReturnValue(false);
     isGatewaySecretRefUnavailableErrorMock.mockReturnValue(false);
     probeGatewayStatusMock.mockReset();
@@ -374,18 +369,14 @@ describe("healthCommand", () => {
           kind: "connect",
           error: "connect ECONNREFUSED 127.0.0.1:18789",
         });
-        rpc.formatGatewayAuthErrorJson.mockReturnValueOnce(payload);
-      } else {
-        rpc.formatGatewayClientRequestErrorJson.mockReturnValueOnce(payload);
       }
+      rpc.formatGatewayCallErrorJson.mockReturnValueOnce(payload);
       await runHealth({ json: true });
-      expect(rpc.formatGatewayAuthErrorJson).toHaveBeenCalledWith(error);
+      expect(rpc.formatGatewayCallErrorJson).toHaveBeenCalledWith(error);
       if (kind === "request") {
-        expect(rpc.formatGatewayClientRequestErrorJson).toHaveBeenCalledWith(error);
         expect(runtime.log).toHaveBeenCalledTimes(1);
         expect(runtime.error).not.toHaveBeenCalled();
       }
-      expect(rpc.formatGatewayTransportErrorJson).not.toHaveBeenCalled();
       expect(runtime.exit).toHaveBeenCalledWith(1);
       expect(JSON.parse(requireFirstRuntimeLog())).toEqual(payload);
     },
@@ -489,9 +480,10 @@ describe("healthCommand", () => {
       portUsage: { port: 18789, status: "free", listeners: [], hints: [] },
       staleGatewayPids: [],
     });
-    const { formatGatewayTransportErrorJson } =
-      await vi.importActual<typeof import("../gateway/call.js")>("../gateway/call.js");
-    rpc.formatGatewayTransportErrorJson.mockImplementation(formatGatewayTransportErrorJson);
+    const { formatGatewayTransportErrorJson } = await vi.importActual<
+      typeof import("../gateway/call-error-json.js")
+    >("../gateway/call-error-json.js");
+    rpc.formatGatewayCallErrorJson.mockImplementation(formatGatewayTransportErrorJson);
 
     await healthCommand({ json: true, timeoutMs: 5000, config: {} }, runtime);
 

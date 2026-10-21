@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { getReplyPayloadMetadata } from "../../auto-reply/reply-payload.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { rewritePreparedTranscriptMessageAtAnchor } from "../../config/sessions/session-message-rewrite.js";
@@ -128,11 +129,7 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
       return;
     }
     const delivery = asOptionalRecord(message.openclawDelivery);
-    const authoredMedia = new Set(
-      Array.isArray(delivery?.mediaUrls)
-        ? delivery.mediaUrls.filter((url): url is string => typeof url === "string")
-        : [],
-    );
+    const authoredMedia = new Set(filterStringEntries(delivery?.mediaUrls));
     // Only pre-hook authored references carry delivery intent; hook-added text stays prose.
     const commentaryBlocks = new Set<unknown>(
       readAssistantTextBlocksForPhase(message, "commentary"),

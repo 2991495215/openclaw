@@ -266,12 +266,11 @@ const {
   buildGatewayProbeConnectionDetails,
   callGateway,
   callGatewayCli,
-  formatGatewayAuthErrorJson,
-  formatGatewayClientRequestErrorJson,
-  formatGatewayTransportErrorJson,
   isImplicitLocalGatewayTarget,
   isGatewayTransportError,
 } = await import("./call.js");
+const { formatGatewayCallErrorJson, formatGatewayTransportErrorJson } =
+  await import("./call-error-json.js");
 
 function deviceAuth(token = "paired-device-token", scopes = ["operator.read"]): DeviceAuthEntry {
   return { token, role: "operator", scopes, updatedAtMs: 123 };
@@ -522,7 +521,7 @@ describe("callGateway url resolution", () => {
 
     const error = await callGateway({ method: "sessions.list" }).catch((caught: unknown) => caught);
     expect(error).toMatchObject({ name: "GatewayCredentialsRequiredError" });
-    expect(formatGatewayAuthErrorJson(error)).toEqual({
+    expect(formatGatewayCallErrorJson(error)).toEqual({
       ok: false,
       error: {
         type: "gateway_credentials_required",
@@ -1039,9 +1038,9 @@ describe("callGateway error details", () => {
       if (failure === "assembly") {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toBe("device private key invalid");
-        expect(formatGatewayAuthErrorJson(error)).toBeNull();
+        expect(formatGatewayCallErrorJson(error)).toBeNull();
       } else if (failure === "rate limit") {
-        expect(formatGatewayClientRequestErrorJson(error)).toEqual({
+        expect(formatGatewayCallErrorJson(error)).toEqual({
           ok: false,
           error: {
             type: "gateway_request_error",
@@ -1186,7 +1185,7 @@ describe("callGateway error details", () => {
   it("rejects malformed request errors in CLI JSON output", () => {
     for (const fields of [{ retryable: "no" }, { retryable: false, retryAfterMs: -1 }]) {
       expect(
-        formatGatewayClientRequestErrorJson(
+        formatGatewayCallErrorJson(
           Object.assign(new Error("unauthorized role: operator"), {
             name: "GatewayClientRequestError",
             gatewayCode: "INVALID_REQUEST",
@@ -1477,7 +1476,7 @@ describe("callGateway url override auth requirements", () => {
           : /OPENCLAW_GATEWAY_TOKEN or OPENCLAW_GATEWAY_PASSWORD/i,
       ),
     });
-    expect(formatGatewayAuthErrorJson(error)).toEqual({
+    expect(formatGatewayCallErrorJson(error)).toEqual({
       ok: false,
       error: {
         type: "gateway_credentials_required",
@@ -1527,7 +1526,7 @@ describe("callGateway password resolution", () => {
         name: "GatewaySecretRefUnavailableError",
         path: `gateway.auth.${authMode}`,
       });
-      expect(formatGatewayAuthErrorJson(error)).toEqual({
+      expect(formatGatewayCallErrorJson(error)).toEqual({
         ok: false,
         error: {
           type: "gateway_credentials_required",

@@ -30,9 +30,12 @@ vi.mock("./gateway-rpc.runtime.js", () => {
 
 vi.mock("../gateway/call.js", () => {
   loaded.mark("gateway-transport-runtime");
-  return {
-    formatGatewayTransportErrorJson: vi.fn(() => null),
-  };
+  return {};
+});
+
+vi.mock("../gateway/call-error-json.js", () => {
+  loaded.mark("gateway-json-presentation");
+  return { formatGatewayTransportErrorJson: vi.fn(() => null) };
 });
 
 vi.mock("./progress.js", () => {
@@ -227,6 +230,7 @@ describe("subcommand help cold imports", () => {
     expect(loaded.modules).not.toContain("gateway-run-runtime");
     expect(loaded.modules).not.toContain("gateway-call-runtime");
     expect(loaded.modules).not.toContain("gateway-transport-runtime");
+    expect(loaded.modules).not.toContain("gateway-json-presentation");
     expect(loaded.modules).not.toContain("cli-progress-runtime");
   });
 

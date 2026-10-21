@@ -39,6 +39,11 @@ describe("session observer run bookkeeping", () => {
     expect(runs.size).toBe(512);
     expect(runs.has("run-0")).toBe(false);
     expect(runs.has("run-599")).toBe(true);
+    rememberSessionObserverDisabledRun(runs, "run-88");
+    rememberSessionObserverDisabledRun(runs, "run-600");
+    expect(runs.size).toBe(512);
+    expect(runs.has("run-89")).toBe(false);
+    expect([...runs].slice(-2)).toEqual(["run-88", "run-600"]);
   });
 
   it("reads a persisted global companion through its canonical agent store key", () => {

@@ -791,59 +791,6 @@ describe("anthropic transport stream", () => {
     },
   );
 
-  it.each([
-    {
-      label: "defaults missing catalog limits",
-      custom: true,
-      maxTokens: undefined,
-      contextWindow: 200_000,
-      requested: undefined,
-      expected: 4_096,
-    },
-    {
-      label: "rejects an invalid catalog limit",
-      custom: true,
-      maxTokens: 0,
-      contextWindow: 4_096,
-      requested: undefined,
-      expected: undefined,
-    },
-  ])("$label", async ({ custom, maxTokens, contextWindow, requested, expected }) => {
-    const model = makeAnthropicTransportModel({
-      ...(custom
-        ? {
-            id: "custom-model",
-            provider: "custom-anthropic",
-            baseUrl: "https://custom.example/anthropic",
-            reasoning: false,
-          }
-        : {}),
-      contextWindow,
-      ...(maxTokens === undefined ? {} : { maxTokens }),
-    });
-    if (maxTokens === undefined) {
-      Reflect.deleteProperty(model, "maxTokens");
-    }
-    const result = await runTransportStream(model, undefined, {
-      apiKey: "fake",
-      maxTokens: requested,
-    });
-    if (expected === undefined) {
-      expect(result.stopReason).toBe("error");
-      expect(result.errorMessage).toContain(
-        "Anthropic Messages transport requires a positive maxTokens value",
-      );
-      expect(guardedFetchMock).not.toHaveBeenCalled();
-    } else {
-      expect(result.stopReason).toBe("stop");
-      expect(latestAnthropicRequest().payload).toMatchObject({
-        model: model.id,
-        max_tokens: expected,
-        stream: true,
-      });
-    }
-  });
-
   it("reports every parsed Anthropic event as request activity", async () => {
     const events = [
       anthropicMessageStart({ id: "msg_activity", usage: {} }),

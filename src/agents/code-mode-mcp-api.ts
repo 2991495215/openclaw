@@ -1,3 +1,4 @@
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { isRecord } from "../../packages/normalization-core/src/record-coerce.js";
 import type { PluginToolMcpMeta } from "../plugins/tool-metadata.js";
 
@@ -41,9 +42,7 @@ export function readMcpSchemaProperties(schema: unknown): Record<string, unknown
 
 export function readMcpRequiredKeys(schema: unknown): string[] {
   const required = isRecord(schema) ? schema.required : undefined;
-  return Array.isArray(required)
-    ? required.filter((entry): entry is string => typeof entry === "string")
-    : [];
+  return filterStringEntries(required);
 }
 
 function escapeDocComment(value: string): string {

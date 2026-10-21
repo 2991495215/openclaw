@@ -1,4 +1,5 @@
 import { parseStrictInteger } from "@openclaw/normalization-core/number-coercion";
+import { trimAndStripSurroundingQuotes } from "@openclaw/normalization-core/string-coerce";
 import { sliceUtf16Safe } from "../utils.js";
 import type { SandboxBackendHandle } from "./sandbox/backend-handle.types.js";
 import type { ReadOnlyWorkspaceSkillMount } from "./sandbox/workspace-mounts.js";
@@ -132,22 +133,11 @@ export function deriveSessionName(command: string): string | undefined {
   if (!target) {
     return verb;
   }
-  const cleaned = truncateMiddle(stripQuotes(target), 48);
-  return `${stripQuotes(verb)} ${cleaned}`;
+  const cleaned = truncateMiddle(trimAndStripSurroundingQuotes(target), 48);
+  return `${trimAndStripSurroundingQuotes(verb)} ${cleaned}`;
 }
 
 function tokenizeCommand(command: string): string[] {
   const matches = command.match(/(?:[^\s"']+|"(?:\\.|[^"\\])*"|'[^']*')+/g) ?? [];
-  return matches.map((token) => stripQuotes(token)).filter(Boolean);
-}
-
-function stripQuotes(value: string): string {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
+  return matches.map((token) => trimAndStripSurroundingQuotes(token)).filter(Boolean);
 }

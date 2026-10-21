@@ -263,7 +263,7 @@ export async function patchPluginSessionExtension(params: {
     (entry, context) => {
       params.assertCurrent?.();
       const entryRecord = entry as MutableSessionEntry;
-      const pluginExtensions = { ...entry.pluginExtensions };
+      const pluginExtensions = (entry.pluginExtensions ??= {});
       const pluginState = { ...pluginExtensions[pluginId] };
       if (params.unset === true) {
         delete pluginState[namespace];
@@ -275,12 +275,10 @@ export async function patchPluginSessionExtension(params: {
       } else {
         delete pluginExtensions[pluginId];
       }
-      if (Object.keys(pluginExtensions).length > 0) {
-        entry.pluginExtensions = pluginExtensions;
-      } else {
+      if (Object.keys(pluginExtensions).length === 0) {
         delete entry.pluginExtensions;
       }
-      const storedSlotKeys = { ...entry.pluginExtensionSlotKeys };
+      const storedSlotKeys = (entry.pluginExtensionSlotKeys ??= {});
       const pluginSlotKeys = { ...storedSlotKeys[pluginId] };
       const previousSlotKey = normalizeSessionEntrySlotKey(pluginSlotKeys[namespace]);
       if (previousSlotKey.ok && previousSlotKey.key !== slotKey) {
@@ -296,9 +294,7 @@ export async function patchPluginSessionExtension(params: {
       } else {
         delete storedSlotKeys[pluginId];
       }
-      if (Object.keys(storedSlotKeys).length > 0) {
-        entry.pluginExtensionSlotKeys = storedSlotKeys;
-      } else {
+      if (Object.keys(storedSlotKeys).length === 0) {
         delete entry.pluginExtensionSlotKeys;
       }
       if (slotKey) {

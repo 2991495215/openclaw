@@ -8,13 +8,11 @@ import { DEFAULT_RESTART_HEALTH_TIMEOUT_MS } from "../cli/daemon-cli/restart-hea
 import { withProgress } from "../cli/progress.js";
 import { createConfigReadError, isConfigReadFailure } from "../config/io.invalid-config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { formatGatewayCallErrorJson } from "../gateway/call-error-json.js";
 import {
   buildGatewayConnectionDetails,
   buildGatewayProbeConnectionDetails,
   callGateway,
-  formatGatewayAuthErrorJson,
-  formatGatewayClientRequestErrorJson,
-  formatGatewayTransportErrorJson,
   isGatewayCredentialsRequiredError,
 } from "../gateway/call.js";
 import { isGatewaySecretRefUnavailableError } from "../gateway/credentials.js";
@@ -169,10 +167,7 @@ export async function healthCommand(
       return;
     }
     if (opts.json) {
-      const payload =
-        formatGatewayAuthErrorJson(error) ??
-        formatGatewayClientRequestErrorJson(error) ??
-        formatGatewayTransportErrorJson(error);
+      const payload = formatGatewayCallErrorJson(error);
       if (payload) {
         writeRuntimeJson(runtime, payload);
         runtime.exit(1);

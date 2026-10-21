@@ -18,17 +18,8 @@ export function gatewayAction(action: Parameters<Command["action"]>[0], label?: 
         rethrowExpectedCliError(err);
       }
       if (json) {
-        const {
-          formatGatewayAuthErrorJson,
-          formatGatewayClientRequestErrorJson,
-          formatGatewayTransportErrorJson,
-        } = await import("../../gateway/call.js");
-        defaultRuntime.writeJson(
-          formatGatewayAuthErrorJson(err) ??
-            formatGatewayClientRequestErrorJson(err) ??
-            formatGatewayTransportErrorJson(err) ??
-            formatCliJsonFailure(err),
-        );
+        const { formatGatewayCallErrorJson } = await import("../../gateway/call-error-json.js");
+        defaultRuntime.writeJson(formatGatewayCallErrorJson(err) ?? formatCliJsonFailure(err));
         defaultRuntime.exit(1);
         return;
       }

@@ -4,12 +4,48 @@ import { resetSecretRedactionRegistryForTest } from "../logging/secret-redaction
 import {
   nodeHostCloudflareAccessConfigFromEnv,
   nodeHostGatewayMatchesUrl,
+  normalizeNodeHostCloudflareAccessConfig,
   resolveNodeHostCloudflareAccess,
 } from "./gateway-cloudflare-access.js";
 
 describe("node-host Cloudflare Access credentials", () => {
   afterEach(() => {
     resetSecretRedactionRegistryForTest();
+  });
+
+  it("normalizes configured credentials without resolving references", () => {
+    const ref = { source: "env", provider: "default", id: "CF_ACCESS_CLIENT_ID" } as const;
+    expect(
+      normalizeNodeHostCloudflareAccessConfig({
+        clientId: ref,
+        clientSecret: " ${CF_ACCESS_CLIENT_SECRET} ",
+      }),
+    ).toEqual({
+      clientId: ref,
+      clientSecret: { source: "env", provider: "default", id: "CF_ACCESS_CLIENT_SECRET" },
+    });
+    expect(
+      normalizeNodeHostCloudflareAccessConfig({
+        clientId: " test-id ",
+        clientSecret: " test-key ",
+      }),
+    ).toEqual({ clientId: "test-id", clientSecret: "test-key" });
+  });
+
+  it.each([
+    { field: "clientId", value: " " },
+    { field: "clientSecret", value: " " },
+    { field: "clientId", value: { source: "env", id: "CF_ACCESS_CLIENT_ID" } },
+  ])("rejects invalid $field with its config path", ({ field, value }) => {
+    expect(() =>
+      normalizeNodeHostCloudflareAccessConfig({
+        clientId: "test-id",
+        clientSecret: "test-key",
+        [field]: value,
+      }),
+    ).toThrow(
+      `invalid node-host gateway.cloudflareAccess.${field}: expected a non-empty SecretInput`,
+    );
   });
 
   it("persists conventional environment fallback as SecretRefs and resolves it", async () => {

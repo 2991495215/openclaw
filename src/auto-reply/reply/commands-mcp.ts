@@ -11,7 +11,6 @@ import {
   commandReply,
   defineAuthorizedTextCommand,
   renderCommandJsonBlock,
-  requireCommandFlagEnabled,
   requireGatewayClientScope,
 } from "./command-gates.js";
 import {
@@ -108,15 +107,8 @@ async function deliverGroupMcpShowReplyPrivately(params: HandleCommandsParams, n
 
 /** Command handler for /mcp show/set/unset operations. */
 export const handleMcpCommand: CommandHandler = defineAuthorizedTextCommand(
-  { label: "/mcp", match: parseMcpCommand, ownerOnly: true },
+  { label: "/mcp", configKey: "mcp", match: parseMcpCommand, ownerOnly: true },
   async (params, mcpCommand) => {
-    const disabled = requireCommandFlagEnabled(params.cfg, {
-      label: "/mcp",
-      configKey: "mcp",
-    });
-    if (disabled) {
-      return disabled;
-    }
     if (mcpCommand.action === "error") {
       return commandReply(`⚠️ ${mcpCommand.message}`);
     }

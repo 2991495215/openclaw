@@ -129,3 +129,15 @@ export function normalizeOptionalStringifiedId(value: unknown): string | undefin
 export function hasNonEmptyString(value: unknown): value is string {
   return normalizeOptionalString(value) !== undefined;
 }
+
+/** Trims text and strips one matching pair of surrounding single or double quotes. */
+export function trimAndStripSurroundingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}

@@ -7,11 +7,9 @@ const mocks = vi.hoisted(() => ({
   callGateway: vi.fn(),
   readNonObservingHealthConfig: vi.fn(),
   emitReachableGatewayAuthDiagnostic: vi.fn(),
-  formatGatewayAuthErrorJson: vi.fn(),
-  formatGatewayClientRequestErrorJson: vi.fn(),
-  formatGatewayTransportErrorJson: vi.fn(),
+  formatGatewayCallErrorJson: vi.fn(),
   loadHealth: vi.fn(),
-  loadCall: vi.fn(),
+  loadJsonPresentation: vi.fn(),
 }));
 
 describe("runGatewayHealthJsonRoute", () => {
@@ -28,19 +26,17 @@ describe("runGatewayHealthJsonRoute", () => {
         emitReachableGatewayAuthDiagnostic: mocks.emitReachableGatewayAuthDiagnostic,
       };
     });
-    vi.doMock("../../gateway/call.js", () => {
-      mocks.loadCall();
+    vi.doMock("../../gateway/call-error-json.js", () => {
+      mocks.loadJsonPresentation();
       return {
-        formatGatewayAuthErrorJson: mocks.formatGatewayAuthErrorJson,
-        formatGatewayClientRequestErrorJson: mocks.formatGatewayClientRequestErrorJson,
-        formatGatewayTransportErrorJson: mocks.formatGatewayTransportErrorJson,
+        formatGatewayCallErrorJson: mocks.formatGatewayCallErrorJson,
       };
     });
   });
   afterEach(() => {
     vi.doUnmock("../gateway-rpc.js");
     vi.doUnmock("../../commands/health.js");
-    vi.doUnmock("../../gateway/call.js");
+    vi.doUnmock("../../gateway/call-error-json.js");
   });
 
   it("projects a local port into the routed config", async () => {
@@ -65,7 +61,7 @@ describe("runGatewayHealthJsonRoute", () => {
       { defaultTimeoutMs: 10_000, sharedStateMode: "read-only" },
     );
     expect(runtime.writeJson).toHaveBeenCalledWith({ ok: true }, 2);
-    expect(mocks.loadCall).not.toHaveBeenCalled();
+    expect(mocks.loadJsonPresentation).not.toHaveBeenCalled();
     expect(mocks.emitReachableGatewayAuthDiagnostic).not.toHaveBeenCalled();
   });
 
@@ -73,7 +69,7 @@ describe("runGatewayHealthJsonRoute", () => {
     const runtime = createNonExitingRuntimeEnv();
     mocks.callGateway.mockRejectedValue(new Error("gateway unavailable"));
     const payload = { ok: false, error: { type: "gateway_transport_error" } };
-    mocks.formatGatewayTransportErrorJson.mockReturnValue(payload);
+    mocks.formatGatewayCallErrorJson.mockReturnValue(payload);
 
     await runGatewayHealthJsonRoute({ rpc: { json: true, timeout: "10000" } }, runtime);
 

@@ -8,11 +8,11 @@ import {
 } from "./stale-subagent-allowlist.js";
 
 describe("stale subagent allowlist doctor repair", () => {
-  it("keeps wildcard, configured OpenClaw agents, and configured ACP targets", () => {
+  it("keeps wildcard, configured OpenClaw agents, and normalized ACP targets", () => {
     const cfg = {
       acp: {
-        defaultAgent: "claude",
-        allowedAgents: ["codex"],
+        defaultAgent: " CLAUDE ",
+        allowedAgents: [" CODEX ", "*", "codex"],
       },
       agents: {
         defaults: {
@@ -24,7 +24,7 @@ describe("stale subagent allowlist doctor repair", () => {
           main: {},
           planner: {},
           "writer-agent": {
-            runtime: { type: "acp", acp: { agent: "writer" } },
+            runtime: { type: "acp", acp: { agent: " Writer " } },
           },
         },
       },

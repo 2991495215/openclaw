@@ -4,11 +4,30 @@ import {
   normalizeStringifiedEntries,
   readNonBlankString,
   readNonEmptyStringPreservingWhitespace,
+  trimAndStripSurroundingQuotes,
 } from "@openclaw/normalization-core/string-coerce";
 // Normalization Core tests cover string coerce behavior.
 import { describe, expect, it } from "vitest";
 
 describe("normalization-core/string-coerce", () => {
+  it.each([
+    ["  false ", "false"],
+    [" 0 ", "0"],
+    ["   ", ""],
+    ['"', ""],
+    ["'", ""],
+    ['""', ""],
+    ["''", ""],
+    ['  " value "  ', " value "],
+    ["  ' value '  ", " value "],
+    ["'value\"", "'value\""],
+    ['"value', '"value'],
+    ["\"'value'\"", "'value'"],
+    ['"a\\b"', "a\\b"],
+  ])("trims and strips one surrounding quote pair from %j", (input, expected) => {
+    expect(trimAndStripSurroundingQuotes(input)).toBe(expected);
+  });
+
   it.each([
     [" Ultrafast ", "ultrafast"],
     ["fast", true],

@@ -15,9 +15,7 @@ type DiscoveredBeacon = Awaited<
 >[number];
 const defaultCallGateway = async (): Promise<unknown> => ({ ok: true });
 const callGateway = vi.fn<(opts: unknown) => Promise<unknown>>(defaultCallGateway);
-const formatGatewayAuthErrorJson = vi.fn();
-const formatGatewayClientRequestErrorJson = vi.fn();
-const formatGatewayTransportErrorJson = vi.fn();
+const formatGatewayCallErrorJson = vi.fn();
 const setVerbose = vi.fn();
 const discoverGatewayBeacons = vi.fn<(opts: unknown) => Promise<DiscoveredBeacon[]>>(
   async () => [],
@@ -44,14 +42,13 @@ vi.mock(
       url: "ws://127.0.0.1:18789",
     }),
     callGateway: (opts: unknown) => callGateway(opts),
-    formatGatewayAuthErrorJson: (error: unknown) => formatGatewayAuthErrorJson(error),
-    formatGatewayClientRequestErrorJson: (error: unknown) =>
-      formatGatewayClientRequestErrorJson(error),
-    formatGatewayTransportErrorJson: (error: unknown) => formatGatewayTransportErrorJson(error),
     isGatewayCredentialsRequiredError: () => false,
     randomIdempotencyKey: () => "rk_test",
   }),
 );
+vi.mock("../gateway/call-error-json.js", () => ({
+  formatGatewayCallErrorJson: (error: unknown) => formatGatewayCallErrorJson(error),
+}));
 
 vi.mock("../globals.js", () => ({
   info: (msg: string) => msg,
@@ -141,13 +138,7 @@ describe("gateway-cli coverage", () => {
     for (const mock of Object.values(defaultRuntime)) {
       mock.mockClear();
     }
-    for (const mock of [
-      formatGatewayAuthErrorJson,
-      formatGatewayClientRequestErrorJson,
-      formatGatewayTransportErrorJson,
-    ]) {
-      mock.mockReset().mockReturnValue(null);
-    }
+    formatGatewayCallErrorJson.mockReset().mockReturnValue(null);
   });
 
   it("registers call/health commands and routes to callGateway", async () => {
@@ -276,7 +267,6 @@ describe("gateway-cli coverage", () => {
     {
       command: "health",
       reject: callGateway,
-      format: formatGatewayTransportErrorJson,
       error: new Error("gateway closed (1006)"),
       detail: { type: "gateway_transport_error", kind: "closed", message: "gateway closed (1006)" },
       suppressed: "gateway closed",
@@ -284,7 +274,6 @@ describe("gateway-cli coverage", () => {
     {
       command: "stability",
       reject: callGateway,
-      format: formatGatewayClientRequestErrorJson,
       error: Object.assign(new Error("unauthorized role: operator"), {
         name: "GatewayClientRequestError",
         gatewayCode: "INVALID_REQUEST",
@@ -300,7 +289,6 @@ describe("gateway-cli coverage", () => {
     {
       command: "discover",
       reject: discoverGatewayBeacons,
-      format: formatGatewayTransportErrorJson,
       error: new Error("gateway transport unavailable"),
       detail: {
         type: "gateway_transport_error",
@@ -311,7 +299,7 @@ describe("gateway-cli coverage", () => {
     },
   ])(
     "writes gateway $command failures as JSON",
-    async ({ command, reject, format, error, detail, suppressed }) => {
+    async ({ command, reject, error, detail, suppressed }) => {
       const payload = {
         ok: false,
         error: detail,
@@ -320,9 +308,9 @@ describe("gateway-cli coverage", () => {
           : {}),
       };
       reject.mockRejectedValueOnce(error);
-      format.mockReturnValueOnce(payload);
+      formatGatewayCallErrorJson.mockReturnValueOnce(payload);
       await expectGatewayExit([command, "--json"]);
-      expect(format).toHaveBeenCalledWith(error);
+      expect(formatGatewayCallErrorJson).toHaveBeenCalledWith(error);
       expect(defaultRuntime.writeJson).toHaveBeenCalledWith(payload);
       if (suppressed) {
         expect(runtimeErrors.join("\n")).not.toContain(suppressed);

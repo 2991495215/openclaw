@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { formatErrorMessage } from "../infra/errors.js";
 import { NODE_FS_LIST_DIR_COMMAND } from "../infra/node-commands.js";
@@ -49,9 +50,7 @@ function projectCodeModeNode(node: NodeListNode) {
     name: node.displayName?.trim() || node.nodeId,
     ...(node.platform ? { platform: node.platform } : {}),
     connected: node.connected === true,
-    commands: Array.isArray(node.commands)
-      ? node.commands.filter((command): command is string => typeof command === "string")
-      : [],
+    commands: filterStringEntries(node.commands),
   };
 }
 

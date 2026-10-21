@@ -1,4 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { tail } from "./bash-process-registry.js";
 import { formatExecApprovalContinuationSourceOutput } from "./bash-tools.exec-approval-output.js";
 import { appendExecTimeoutRetryGuidance, normalizeNotifyOutput } from "./bash-tools.exec-output.js";
@@ -56,9 +57,7 @@ function formatDiagnosticsPrivacy(manifest: Record<string, unknown>): string[] {
   if (typeof privacy.rawLogsIncluded === "boolean") {
     lines.push(`- raw logs included: ${privacy.rawLogsIncluded ? "yes" : "no"}`);
   }
-  const notes = Array.isArray(privacy.notes)
-    ? privacy.notes.filter((note): note is string => typeof note === "string")
-    : [];
+  const notes = filterStringEntries(privacy.notes);
   for (const note of notes.slice(0, 4)) {
     lines.push(`- ${note}`);
   }

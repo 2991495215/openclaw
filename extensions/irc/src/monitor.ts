@@ -187,12 +187,6 @@ export async function monitorIrcProvider(
       if (!rawBody) {
         return { kind: "completed" };
       }
-      if (turnAdoptionLifecycle?.abortSignal.aborted) {
-        return {
-          kind: "failed-retryable",
-          error: turnAdoptionLifecycle.abortSignal.reason,
-        };
-      }
 
       opts.statusSink?.({ lastInboundAt: message.timestamp });
 

@@ -64,6 +64,17 @@ function withWindowsExeAliases(names: readonly string[]): string[] {
 }
 
 export const POSIX_SHELL_WRAPPERS = new Set(withWindowsExeAliases(POSIX_SHELL_WRAPPER_NAMES));
+export const POSIX_SHELLS_WITH_PLUS_OPTIONS: ReadonlySet<string> = new Set([
+  "ash",
+  "bash",
+  "dash",
+  "ksh",
+  "mksh",
+  "osh",
+  "sh",
+  "yash",
+  "zsh",
+]);
 export const POSIX_PARSEABLE_SHELL_WRAPPERS = new Set(
   withWindowsExeAliases(POSIX_PARSEABLE_SHELL_WRAPPER_NAMES),
 );

@@ -1,4 +1,5 @@
 import { asNonArrayRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { Type } from "typebox";
 import { GatewayClientRequestError } from "../../../packages/gateway-client/src/request-error.js";
@@ -44,9 +45,7 @@ function pluginsToolResult(payload: Record<string, unknown>, refreshUnavailable 
   const persistence = isRecord(details?.persistence) ? details.persistence : undefined;
   const rawWarnings =
     payload.warnings ?? details?.warnings ?? (isRecord(runtime) ? runtime.warnings : undefined);
-  const warnings = Array.isArray(rawWarnings)
-    ? rawWarnings.filter((warning): warning is string => typeof warning === "string")
-    : [];
+  const warnings = filterStringEntries(rawWarnings);
   const compactRuntime = (value: unknown) => {
     if (!isRecord(value) || typeof value.generation !== "number") {
       return undefined;

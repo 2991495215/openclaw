@@ -1,5 +1,5 @@
 import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { readTrimmedStringAlias } from "../utils/string-readers.js";
 
 const TOOL_USE_ID_FIELDS = [
   "id",
@@ -44,13 +44,7 @@ export function resolveToolBlockArgs(block: ToolContentBlock): unknown {
 
 /** Reads the stable tool-use id across snake_case and camelCase provider field names. */
 export function resolveToolUseId(block: ToolContentBlock): string | undefined {
-  for (const field of TOOL_USE_ID_FIELDS) {
-    const id = normalizeOptionalString(block[field]);
-    if (id) {
-      return id;
-    }
-  }
-  return undefined;
+  return readTrimmedStringAlias(block, TOOL_USE_ID_FIELDS);
 }
 
 export function readToolErrorFlag(value: Record<string, unknown>): boolean | undefined {

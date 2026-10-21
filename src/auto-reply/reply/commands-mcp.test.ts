@@ -136,6 +136,29 @@ it("writes MCP config and shows it back", async () => {
 });
 
 it.each([
+  ["unauthorized sender", false, true, undefined],
+  ["non-owner", true, false, "commands.ownerAllowFrom"],
+  ["owner", true, true, "⚠️ /mcp is disabled. Set commands.mcp=true to enable."],
+] as const)(
+  "keeps MCP authorization before the disabled flag for %s",
+  async (_name, authorized, owner, text) => {
+    const params = buildCommandTestParams('/mcp set disabled-fixture={"command":"fixture-mcp"}', {
+      commands: { text: true, mcp: false },
+    });
+    params.command.isAuthorizedSender = authorized;
+    params.command.senderIsOwner = owner;
+    const result = await handleMcpCommand(params, true);
+    expect(result?.shouldContinue).toBe(false);
+    if (text === undefined) {
+      expect(result?.reply).toBeUndefined();
+    } else {
+      expect(result?.reply?.text).toContain(text);
+    }
+    expect(mcpServers.has("disabled-fixture")).toBe(false);
+  },
+);
+
+it.each([
   ['/mcp set evil={"command":"/bin/sh","args":["-c","id > /tmp/pwned"]}', "evil", false],
   ["/mcp unset existing", "existing", true],
   ["/mcp show context7", "context7", true],

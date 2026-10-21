@@ -17,12 +17,14 @@ const mocks = vi.hoisted(() => ({
 const { runtime, callGateway, listDevicePairing, approveDevicePairing } = mocks;
 vi.mock("../gateway/call.js", () => ({
   callGateway: mocks.callGateway,
-  formatGatewayTransportErrorJson: mocks.formatGatewayTransportErrorJson,
   buildGatewayConnectionDetails: () => ({
     url: "ws://127.0.0.1:18789",
     urlSource: "local loopback",
     message: "",
   }),
+}));
+vi.mock("../gateway/call-error-json.js", () => ({
+  formatGatewayTransportErrorJson: mocks.formatGatewayTransportErrorJson,
 }));
 // mock-isolation: Pairing policy is stubbed below; runtime config loading is not part of this unit contract.
 vi.mock("../config/config.js", () => ({

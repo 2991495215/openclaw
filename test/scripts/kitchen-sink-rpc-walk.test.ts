@@ -74,7 +74,7 @@ import {
   resolveWindowsSystem32Path,
   resolveWindowsTaskkillPath,
 } from "../../scripts/lib/windows-taskkill.mjs";
-import { formatGatewayClientRequestErrorJson } from "../../src/gateway/call.js";
+import { formatGatewayCallErrorJson } from "../../src/gateway/call-error-json.js";
 import { resolveRuntimeWorkerUrl } from "../../src/infra/runtime-worker-url.js";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
 import {
@@ -1532,7 +1532,7 @@ describe("kitchen-sink RPC command catalog assertions", () => {
   });
 
   it("reconstructs typed request failures from gateway CLI JSON", async () => {
-    const payload = formatGatewayClientRequestErrorJson(
+    const payload = formatGatewayCallErrorJson(
       Object.assign(new Error("unauthorized role: operator"), {
         name: "GatewayClientRequestError",
         gatewayCode: "INVALID_REQUEST",

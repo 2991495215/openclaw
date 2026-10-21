@@ -270,6 +270,20 @@ describe("handlePluginsCommand", () => {
     },
   );
 
+  it("returns the disabled flag before plugin write scope checks or mutation", async () => {
+    const params = buildPluginsCommandParams({
+      commandBodyNormalized: "/plugins enable superpowers",
+      cfg: { ...buildCfg(), commands: { text: true, plugins: false } },
+      gatewayClientScopes: [],
+    });
+    params.command.senderIsOwner = false;
+    expect(await handlePluginsCommand(params, true)).toEqual({
+      shouldContinue: false,
+      reply: { text: "⚠️ /plugins is disabled. Set commands.plugins=true to enable." },
+    });
+    expectNoMutation(true);
+  });
+
   it("lists discovered plugins", async () => {
     const listResult = await runCommand("/plugins list");
     expect(listResult?.reply?.text).toContain("Plugins");

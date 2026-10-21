@@ -3,6 +3,7 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
+import { filterStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { formatDocsLink } from "../../../packages/terminal-core/src/links.js";
 import { theme } from "../../../packages/terminal-core/src/theme.js";
 import {
@@ -49,9 +50,7 @@ function formatEventLoopBits(value: unknown): string | null {
   if (record.degraded !== true) {
     return null;
   }
-  const reasons = Array.isArray(record.reasons)
-    ? record.reasons.filter((reason): reason is string => typeof reason === "string")
-    : [];
+  const reasons = filterStringEntries(record.reasons);
   const delayMaxMs = asFiniteNumber(record.delayMaxMs);
   const utilization = asFiniteNumber(record.utilization);
   const cpuCoreRatio = asFiniteNumber(record.cpuCoreRatio);
