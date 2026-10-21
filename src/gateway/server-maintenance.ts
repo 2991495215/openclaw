@@ -564,9 +564,7 @@ export function startGatewayMaintenanceTimers(params: {
     scheduleMedia("media", () => {
       const ttlHours = params.getRuntimeConfig().attachments?.ttlHours;
       const cleanup =
-        ttlHours !== undefined
-          ? cleanOldMedia(ttlHours * 60 * 60_000, { recursive: true, pruneEmptyDirs: true })
-          : pruneOutboundMedia();
+        ttlHours !== undefined ? cleanOldMedia(ttlHours * 60 * 60_000) : pruneOutboundMedia();
       return cleanup.catch((err: unknown) => {
         params.logHealth.error(`media cleanup failed: ${formatError(err)}`);
       });

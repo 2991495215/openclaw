@@ -44,12 +44,7 @@ const OUTBOUND_STAGING_TTL_MS = 24 * 60 * 60_000;
 const PLAYBACK_TRANSCODE_MAX_CACHE_BYTES = 512 * 1024 * 1024;
 /** Playback renditions outlive transient media but are still retired after one week. */
 const PLAYBACK_TRANSCODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const DEFAULT_TTL_MS = 2 * 60 * 1000;
 const queuePlaybackCacheOperation = createAsyncLock();
-type CleanOldMediaOptions = {
-  recursive?: boolean;
-  pruneEmptyDirs?: boolean;
-};
 
 function resolveMediaSubdir(subdir: string, caller: string): string {
   if (typeof subdir !== "string") {
@@ -205,11 +200,8 @@ async function prunePlaybackTranscodeCacheToSize(): Promise<void> {
   }
 }
 
-async function pruneNonPlaybackMedia(ttlMs: number, options: CleanOldMediaOptions): Promise<void> {
-  if (options.recursive === false) {
-    await openMediaStore().pruneExpired({ ttlMs, recursive: false, maxDepth: 0 });
-    return;
-  }
+export async function cleanOldMedia(ttlMs: number): Promise<void> {
+  const context = captureOpenClawStateWorkerContext();
   const mediaDir = getMediaDir();
   await openMediaStore().pruneExpired({ ttlMs, recursive: false, maxDepth: 0 });
   const entries = await fs.readdir(mediaDir, { withFileTypes: true }).catch((error: unknown) => {
@@ -227,26 +219,25 @@ async function pruneNonPlaybackMedia(ttlMs: number, options: CleanOldMediaOption
       continue;
     }
     const scopedDir = path.join(mediaDir, entry.name);
-    const recursive = options.recursive === true;
     await openMediaStore(MEDIA_MAX_BYTES, scopedDir).pruneExpired({
       ttlMs,
-      recursive,
-      maxDepth: recursive ? undefined : 0,
-      pruneEmptyDirs: options.pruneEmptyDirs,
+      recursive: true,
+      pruneEmptyDirs: true,
     });
-    if (options.pruneEmptyDirs) {
-      await fs.rmdir(scopedDir).catch((error: unknown) => {
-        // Missing or still-populated directories need no further cleanup.
-        if (
-          !findErrorWithCode(error, "ENOENT") &&
-          !findErrorWithCode(error, "ENOTEMPTY") &&
-          !findErrorWithCode(error, "EEXIST")
-        ) {
-          throw error;
-        }
-      });
-    }
+    await fs.rmdir(scopedDir).catch((error: unknown) => {
+      // Missing or still-populated directories need no further cleanup.
+      if (
+        !findErrorWithCode(error, "ENOENT") &&
+        !findErrorWithCode(error, "ENOTEMPTY") &&
+        !findErrorWithCode(error, "EEXIST")
+      ) {
+        throw error;
+      }
+    });
   }
+  // Trust metadata must not outlive the staged file that it authorizes.
+  const { pruneGeneratedHtmlProvenance } = await import("./generated-html-provenance.js");
+  await pruneGeneratedHtmlProvenance(context);
 }
 
 /** Serializes cache publication with quota enforcement and propagates failures to the writer. */
@@ -295,14 +286,6 @@ export async function pruneOutboundMedia(): Promise<void> {
     recursive: true,
     pruneEmptyDirs: true,
   });
-  const { pruneGeneratedHtmlProvenance } = await import("./generated-html-provenance.js");
-  await pruneGeneratedHtmlProvenance(context);
-}
-
-export async function cleanOldMedia(ttlMs = DEFAULT_TTL_MS, options: CleanOldMediaOptions = {}) {
-  const context = captureOpenClawStateWorkerContext();
-  await pruneNonPlaybackMedia(ttlMs, options);
-  // Trust metadata must not outlive the staged file that it authorizes.
   const { pruneGeneratedHtmlProvenance } = await import("./generated-html-provenance.js");
   await pruneGeneratedHtmlProvenance(context);
 }

@@ -82,7 +82,7 @@ describe("cleanOldMedia managed-subtree retention", () => {
       ),
     );
 
-    await store.cleanOldMedia(1_000, { recursive: true, pruneEmptyDirs: true });
+    await store.cleanOldMedia(1_000);
 
     await expect(fs.stat(inbound.path)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.stat(historyOriginal.path)).resolves.toMatchObject({

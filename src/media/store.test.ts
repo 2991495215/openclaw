@@ -241,50 +241,36 @@ describe("media store", () => {
     expect(path.basename(saved.path)).toMatch(/^fake---[a-f0-9-]{36}\.zip$/);
   });
 
-  it.each([
-    {
-      mode: "recursive",
-      options: { recursive: true, pruneEmptyDirs: true },
-      removed: [0, 1, 2, 4],
-    },
-    { mode: "shallow", options: undefined, removed: [0, 1] },
-    { mode: "root only", options: { recursive: false }, removed: [0] },
-  ])(
-    "cleans expired media at $mode depth and preserves live siblings",
-    async ({ mode, options, removed }) => {
-      const mediaDir = await store.ensureMediaDir();
-      expect(isPathWithinBase(home, mediaDir)).toBe(true);
-      expect(path.normalize(mediaDir)).toContain(`${path.sep}.openclaw${path.sep}media`);
-      expect((await fs.stat(mediaDir)).isDirectory()).toBe(true);
-      const files = await Promise.all(
-        ["", "inbound", "cache/session/images", "cache/session/docs", "prune/session/images"].map(
-          (subdir) => store.saveMediaBuffer(Buffer.from("media"), "text/plain", subdir),
-        ),
-      );
-      const past = (Date.now() - 10_000) / 1000;
-      for (const [index, saved] of files.entries()) {
-        if (index !== 3) {
-          await fs.utimes(saved.path, past, past);
-        }
+  it("cleans expired media recursively and preserves live siblings", async () => {
+    const removed = new Set([0, 1, 2, 4]);
+    const mediaDir = await store.ensureMediaDir();
+    expect(isPathWithinBase(home, mediaDir)).toBe(true);
+    expect(path.normalize(mediaDir)).toContain(`${path.sep}.openclaw${path.sep}media`);
+    expect((await fs.stat(mediaDir)).isDirectory()).toBe(true);
+    const files = await Promise.all(
+      ["", "inbound", "cache/session/images", "cache/session/docs", "prune/session/images"].map(
+        (subdir) => store.saveMediaBuffer(Buffer.from("media"), "text/plain", subdir),
+      ),
+    );
+    const past = (Date.now() - 10_000) / 1000;
+    for (const [index, saved] of files.entries()) {
+      if (index !== 3) {
+        await fs.utimes(saved.path, past, past);
       }
-      await store.cleanOldMedia(1_000, options);
-      for (const [index, saved] of files.entries()) {
-        if (removed.includes(index)) {
-          await expectPathMissing(saved.path);
-        } else {
-          expect((await fs.stat(saved.path)).isFile()).toBe(true);
-        }
-      }
-      if (mode === "recursive") {
-        for (const subdir of ["cache/session/images", "prune/session", "prune"]) {
-          await expectPathMissing(path.join(mediaDir, subdir));
-        }
-        expect((await fs.stat(mediaDir)).isDirectory()).toBe(true);
+    }
+    await store.cleanOldMedia(1_000);
+    for (const [index, saved] of files.entries()) {
+      if (removed.has(index)) {
+        await expectPathMissing(saved.path);
       } else {
-        expect((await fs.stat(path.join(mediaDir, "inbound"))).isDirectory()).toBe(true);
+        expect((await fs.stat(saved.path)).isFile()).toBe(true);
       }
-    },
-  );
+    }
+    for (const subdir of ["cache/session/images", "prune/session", "prune"]) {
+      await expectPathMissing(path.join(mediaDir, subdir));
+    }
+    expect((await fs.stat(mediaDir)).isDirectory()).toBe(true);
+  });
 
   it.runIf(process.platform !== "win32")(
     "does not follow symlinked top-level directories during recursive cleanup",
@@ -296,7 +282,7 @@ describe("media store", () => {
       await fileFixture(outsideFile, "outside", 10_000);
       await fs.symlink(outsideDir, symlinkPath);
 
-      await store.cleanOldMedia(1_000, { recursive: true, pruneEmptyDirs: true });
+      await store.cleanOldMedia(1_000);
 
       const outsideStat = await fs.stat(outsideFile);
       const symlinkStat = await fs.lstat(symlinkPath);
@@ -426,7 +412,7 @@ describe("media store filesystem faults", () => {
           return await rmdir(...args);
         });
       }
-      const result = store.cleanOldMedia(60_000, { recursive: true, pruneEmptyDirs: true });
+      const result = store.cleanOldMedia(60_000);
       if (code === "ENOENT") {
         await expect(result).resolves.toBeUndefined();
         await expect(fs.stat(liveFile)).rejects.toMatchObject({ code: "ENOENT" });
