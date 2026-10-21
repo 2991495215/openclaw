@@ -12,7 +12,7 @@ import {
   type GatewayTransportErrorKind,
 } from "./transport-error.js";
 
-export type GatewayTransportErrorJson = {
+type GatewayTransportErrorJson = {
   ok: false;
   error: {
     type: "gateway_transport_error";
@@ -30,7 +30,7 @@ export type GatewayTransportErrorJson = {
   };
 };
 
-export type GatewayClientRequestErrorJson = {
+type GatewayClientRequestErrorJson = {
   ok: false;
   error: {
     type: "gateway_request_error";
@@ -42,7 +42,7 @@ export type GatewayClientRequestErrorJson = {
   };
 };
 
-export type GatewayAuthErrorJson = {
+type GatewayAuthErrorJson = {
   ok: false;
   error: {
     type: "gateway_credentials_required";
