@@ -12,6 +12,7 @@ import type {
 export type PluginDiscoveryIntent = "all" | "bundled" | "trending" | "official" | "featured";
 export type PluginDiscoveryState = {
   result: PluginDiscoveryResult | null;
+  readonly hasCurrentResult: boolean;
   error: string | null;
   remoteError: string | null;
   categories: readonly PluginDiscoveryCategory[];
@@ -80,6 +81,14 @@ export function createPluginDiscovery(gateway: PluginDiscoveryGateway, onChange:
   } | null = null;
   const state: PluginDiscoveryState = {
     result: null,
+    get hasCurrentResult() {
+      return (
+        state.result !== null &&
+        resultSelection?.intent === state.intent &&
+        resultSelection.category === state.category &&
+        resultSelection.query === state.query.trim()
+      );
+    },
     error: null,
     remoteError: null,
     categories: [],

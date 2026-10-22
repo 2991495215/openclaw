@@ -54,6 +54,7 @@ function baseProps(overrides: Partial<PluginCatalogResultsProps> = {}): PluginCa
   return {
     connected: true,
     result: { items: [plugin("tool")] },
+    hasCurrentResult: overrides.result !== null,
     reads: { browse: null, categories: null, more: null },
     error: null,
     remoteError: null,
@@ -171,6 +172,43 @@ describe("renderPluginCatalogResults", () => {
     }
     expect(container.querySelectorAll(".plugin-catalog-card")).toHaveLength(3);
   });
+
+  it.each(["grouped", "filtered"] as const)(
+    "publishes installation completion during a held %s catalog refresh",
+    async (mode) => {
+      const installed = plugin("installed", {
+        local: {
+          present: true,
+          installed: true,
+          enabled: true,
+          state: "enabled",
+          action: "manage",
+        },
+      });
+      const props = baseProps({
+        query: mode === "filtered" ? "installed" : "",
+        result: { items: [installed] },
+        featured: [],
+        trending: [],
+      });
+      const progress = new Map([["install:installed", { startedAt: 1, activities: [] }]]);
+      const container = await mount({ ...props, installProgress: progress });
+      const card = container.querySelector('[data-plugin-id="installed"]')!;
+      expect(card.querySelector("openclaw-plugin-install-action")).not.toBeNull();
+      const pending = Promise.withResolvers<null>();
+      const reads = { ...props.reads, browse: pending.promise };
+      update(container, { ...props, reads, installProgress: progress });
+      update(container, { ...props, reads });
+      await waitForSolid(() => {
+        expect(
+          card.querySelector('.plugin-catalog-card__status[aria-label="Enabled"]'),
+        ).not.toBeNull();
+        expect(card.querySelector("openclaw-plugin-install-action")).toBeNull();
+      });
+      expect(container.querySelector('[data-plugin-id="installed"]')).toBe(card);
+      pending.resolve(null);
+    },
+  );
 
   it("presents independent owner reads, retries failures, and retains cards during refresh and pagination", async () => {
     const categories = Array.from({ length: 2 }, () =>

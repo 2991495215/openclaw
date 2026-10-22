@@ -158,8 +158,12 @@ it. Eventual success alone misses the retained-error behavior. An outer
 the intended contract.
 
 Keep accepted content outside `Errored` when failure should add an alert instead
-of replacing that content. Catalog overview shelves are siblings of the readiness
-and error slot inside `Loading`, retaining their card nodes through a failed refresh.
+of replacing that content. Catalog cards are siblings of the readiness/error slot.
+When the owner's accepted result still answers the selected query, that slot reads
+`latest(ready)` so a held background request does not also hold live installation
+updates or park card-local popovers. New selections consume ordinary readiness and
+show the existing loading fallback. Keep selection identity in the plain owner;
+do not synchronize a second accepted-selection snapshot in the renderer.
 
 ## Mutate with an optimistic presentation
 

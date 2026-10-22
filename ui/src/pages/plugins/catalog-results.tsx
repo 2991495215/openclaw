@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo, Errored, For, Loading, onSettled, Repeat } from "solid-js";
+import { createMemo, Errored, For, latest, Loading, onSettled, Repeat } from "solid-js";
 import { comparePluginCatalogEntries } from "../../../../packages/plugin-package-contract/src/catalog-order.js";
 import {
   CatalogDiscoveryChip,
@@ -622,6 +622,15 @@ export function renderPluginCatalogResults(props: PluginCatalogResultsProps): JS
   const category = createMemo(() => props.category);
   const connected = createMemo(() => props.connected);
   const grouped = () => !query() && intent() === "all" && category() === null;
+  const readCatalog = () => {
+    // Same-selection refreshes must not hold live installation state or card controls.
+    if (props.hasCurrentResult) {
+      latest(ready);
+    } else {
+      ready();
+    }
+    return null;
+  };
   let input!: HTMLInputElement;
   onSettled(() => {
     input.dataset.autofocused = "true";
@@ -685,9 +694,13 @@ export function renderPluginCatalogResults(props: PluginCatalogResultsProps): JS
               </>
             )}
           >
-            {ready() && !grouped() ? <RawResults {...props} /> : undefined}
+            {readCatalog()}
           </Errored>
-          {grouped() ? <GroupedCatalog {...props} /> : undefined}
+          {grouped() ? (
+            <GroupedCatalog {...props} />
+          ) : props.hasCurrentResult || !recordedError() ? (
+            <RawResults {...props} />
+          ) : undefined}
         </Loading>
       </div>
     </section>
