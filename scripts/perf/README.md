@@ -794,6 +794,9 @@ async hook also arms one immediate per occupied turn; its delay and count above
 one second expose chains of individually short microtasks that starve I/O.
 These occupied-turn delays include scheduling time and are distinct from the
 maximum callback duration. Profiling and hooks apply equally to both sides.
+Prepared-row runs also enable V8 GC tracing in `gateway.log`; after the process
+exits and its log drains, `readGatewayGcTrace` can extract main-isolate promoted
+bytes for the heap profile's capture window.
 For concurrent pairs, provide the same `--start-at` and `--phase-gap-ms` to both
 sides; the latter schedules the heap phase that many milliseconds after the
 shared start and must exceed the CPU workload duration. A missed phase start

@@ -271,6 +271,7 @@ if (isMainThread) {
     gateway = spawn(
       process.execPath,
       buildGatewayBenchChildArgs(values.entry, port, [
+        ...(values["prepared-rows"] ? ["--trace-gc-nvp"] : []),
         "--import",
         "./scripts/tsx.mjs",
         ...(values.preload ? ["--import", path.resolve(values.preload)] : []),
