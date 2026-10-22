@@ -565,7 +565,7 @@ describe("CLI attempt execution", () => {
   }
 
   async function runOuterCliFallback(params: {
-    suppression?: "heartbeat" | "preserved-state";
+    suppression?: "preserved-state";
     sessionKey: string;
     sessionEntry: SessionEntry;
     sessionStore: Record<string, SessionEntry>;
@@ -595,7 +595,6 @@ describe("CLI attempt execution", () => {
       ({
         message: "outer fallback",
         modelFallbacksOverride: ["claude-cli/opus"],
-        bootstrapContextRunKind: params.suppression === "heartbeat" ? "heartbeat" : undefined,
       } satisfies RunAgentAttemptParams["opts"]);
     const lifecycleGeneration = getAgentEventLifecycleGeneration();
     const manifestMetadataSnapshot = params.configuredSelection?.metadataSnapshot;
@@ -877,11 +876,10 @@ describe("CLI attempt execution", () => {
     expect(runCliAgentMock).toHaveBeenCalledOnce();
   });
 
-  it.each(["rejected", "rejected-clear", "outer-fallback", "heartbeat", "preserved-state"])(
+  it.each(["rejected", "rejected-clear", "outer-fallback", "preserved-state"])(
     "settles a cold %s CLI binding before the next queued command starts",
     async (outcome) => {
-      const suppression =
-        outcome === "heartbeat" || outcome === "preserved-state" ? outcome : undefined;
+      const suppression = outcome === "preserved-state" ? outcome : undefined;
       const outerFallback = outcome === "outer-fallback" || suppression !== undefined;
       const accepted = outcome === "accepted" || outerFallback;
       const previousBinding = { sessionId: "previous-native-session" };
@@ -968,8 +966,7 @@ describe("CLI attempt execution", () => {
         expect(firstRunCliAgentArg(0).model).toBe("sonnet");
         expect(firstRunCliAgentArg(1).model).toBe("opus");
       }
-      const expectedBinding =
-        outcome === "heartbeat" ? previousBinding : accepted ? binding : undefined;
+      const expectedBinding = accepted ? binding : undefined;
       expect(firstRunCliAgentArg(outerFallback ? 2 : 1)).toMatchObject({
         cliSessionId: expectedBinding?.sessionId,
         cliSessionBinding: expectedBinding,
