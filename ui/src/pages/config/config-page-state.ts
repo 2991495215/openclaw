@@ -56,6 +56,7 @@ import {
 } from "../../lib/system-info.ts";
 import { observeRealtimeTalkDevices } from "../chat/talk/input.ts";
 import { switchActiveRealtimeTalkCameras } from "../chat/talk/session.ts";
+import { createConfigCommandPresentation } from "./config-command-presentation.ts";
 import { createConfigPageModels } from "./config-page-models.ts";
 import {
   configSectionKeysForPage,
@@ -158,13 +159,8 @@ export function createConfigPage(
   const customThemeImportOwner = new themeImport.CustomThemeImportOwner(invalidate);
   let configViewState: View.ConfigViewState = createConfigViewState();
   let runtimeConfigSource: ApplicationContext["runtimeConfig"] | null = null;
-  // Release command presentation before a reactive scope change can park its cleanup.
-  let commandLifetime = Promise.withResolvers<void>();
-  function retireCommands() {
-    commandLifetime.resolve();
-    commandLifetime = Promise.withResolvers<void>();
-  }
   const updates = createConfigUpdatesPresentation(context);
+  const commands = createConfigCommandPresentation(context, updates.busy);
   let mediaDeviceWatch: (() => void) | null = null;
   const mediaDevices = {
     microphone: createMediaDeviceState(),
@@ -197,11 +193,11 @@ export function createConfigPage(
 
   function mutationDisabled() {
     revision();
-    return isCuratedConfigMutationDisabled();
+    return commands.mutationDisabled();
   }
   function updateBusy() {
     revision();
-    return isUpdateBusy();
+    return updates.busy();
   }
 
   function updateRoute(nextPageId: ConfigPageId, nextRouteData: ConfigRouteData | null) {
@@ -209,7 +205,7 @@ export function createConfigPage(
       return;
     }
     routeInitialized = true;
-    retireCommands();
+    commands.retire();
     if (pageId === "appearance" && nextPageId !== "appearance") {
       customThemeImportOwner.retireImport();
       retireMediaPermissionRequests();
@@ -270,7 +266,7 @@ export function createConfigPage(
       snapshot.hello !== previousHello ||
       snapshot.phase !== previousPhase;
     if (connectionChanged) {
-      retireCommands();
+      commands.retire();
       abortRequests();
       systemInfo = null;
       systemInfoUnavailable = false;
@@ -464,7 +460,7 @@ export function createConfigPage(
 
   function synchronizeRuntimeConfig(runtimeConfig: ApplicationContext["runtimeConfig"]) {
     if (runtimeConfig !== runtimeConfigSource) {
-      retireCommands();
+      commands.retire();
       if (runtimeConfigSource) {
         customThemeImportOwner.retireImport();
       }
@@ -568,25 +564,6 @@ export function createConfigPage(
     }
   }
 
-  function isUpdateBusy(): boolean {
-    const update = context.overlays.snapshot;
-    return update.updateRunning || update.updateReconciliationPending;
-  }
-
-  function isCuratedConfigMutationDisabled(): boolean {
-    const runtimeState = context.runtimeConfig.state;
-    return (
-      !runtimeState.connected ||
-      runtimeState.configLoading ||
-      runtimeState.configSaving ||
-      runtimeState.configApplying ||
-      isUpdateBusy() ||
-      context.overlays.snapshot.updateStatusRefreshing ||
-      !context.runtimeConfig.canSet ||
-      !hasOperatorAdminAccess(context.gateway.snapshot.hello?.auth ?? null)
-    );
-  }
-
   function configProps() {
     revision();
     const configObject = readConfigObject();
@@ -615,7 +592,7 @@ export function createConfigPage(
       !configState.connected ||
       configState.configSaving ||
       configState.configApplying ||
-      isUpdateBusy() ||
+      updates.busy() ||
       context.overlays.snapshot.updateStatusRefreshing ||
       !hasOperatorAdminAccess(context.gateway.snapshot.hello?.auth ?? null);
     const withConfigMutation =
@@ -637,7 +614,7 @@ export function createConfigPage(
       onRetryConfig: () => void runtimeConfig.refresh(),
       saving: configState.configSaving,
       applying: configState.configApplying,
-      updating: isUpdateBusy() || context.overlays.snapshot.updateStatusRefreshing,
+      updating: updates.busy() || context.overlays.snapshot.updateStatusRefreshing,
       connected: configState.connected,
       mutationAllowed: runtimeConfig.canSet,
       openFileAllowed: runtimeConfig.canOpenFile,
@@ -656,7 +633,13 @@ export function createConfigPage(
       activeSubsection: pageId === "mcp" ? null : selection.activeSubsection,
       onRawChange: withConfigMutation((next: string) => runtimeConfig.setRaw(next)),
       onFormModeChange: (mode: View.ConfigFormMode) => {
-        retireCommands();
+        const currentMode =
+          configState.configFormMode === "raw" && configState.configFormDirty
+            ? "raw"
+            : (presentation.formModes[pageId] ?? "form");
+        if (mode !== currentMode) {
+          commands.retire();
+        }
         setPresentation((draft) => {
           draft.formModes[pageId] = mode;
         });
@@ -670,14 +653,14 @@ export function createConfigPage(
         runtimeConfig.removeFormValue(path),
       ),
       onSectionChange: (section: string | null) => {
-        retireCommands();
+        commands.retire();
         setPresentation((draft) => {
           draft.selections[pageId] = { activeSection: section, activeSubsection: null };
         });
         invalidate();
       },
       onSubsectionChange: (section: string | null) => {
-        retireCommands();
+        commands.retire();
         setPresentation((draft) => {
           draft.selections[pageId] = {
             ...(draft.selections[pageId] ?? defaultConfigSelection(pageId)),
@@ -687,7 +670,7 @@ export function createConfigPage(
         invalidate();
       },
       onSave: () => runtimeConfig.save(),
-      presentationRetired: () => commandLifetime.promise,
+      presentationRetired: commands.retired,
       onRawDiscard: () => runtimeConfig.discardDraft(),
       onOpenFile: () => runtimeConfig.openFile(),
       theme: settings.theme,
@@ -923,20 +906,6 @@ export function createConfigPage(
     ].map((source) => source.subscribe(refresh));
     // Server selection intent can change while the stored preferences stay equal.
     subscriptions.push(context.theme.subscribe(refresh));
-    let location = context.router.getState().location;
-    subscriptions.push(
-      context.router.subscribe(() => {
-        const next = context.router.getState().location;
-        if (
-          next.pathname !== location.pathname ||
-          next.search !== location.search ||
-          next.hash !== location.hash
-        ) {
-          location = next;
-          retireCommands();
-        }
-      }),
-    );
     connected = true;
     settings = loadSettings();
     hiddenSessionCatalogsChanged();
@@ -952,7 +921,6 @@ export function createConfigPage(
     });
     synchronize();
     return () => {
-      commandLifetime.resolve();
       subscriptions.forEach((stop) => stop());
       connected = false;
       customThemeImportOwner.retireImport();

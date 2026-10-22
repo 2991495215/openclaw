@@ -333,6 +333,53 @@ describe("ConfigPage navigation", () => {
     }
   });
 
+  it.each([false, true])(
+    "keeps Open pending when Raw is reselected (retained draft: %s)",
+    async (retainedDraft) => {
+      const context = routeContext();
+      if (retainedDraft) {
+        Object.assign(context.runtimeConfig.state, {
+          configFormMode: "raw",
+          configFormDirty: true,
+        });
+      }
+      const pending = deferred();
+      const openFile = vi.fn(() => pending.promise);
+      Object.assign(context.runtimeConfig, { openFile, canOpenFile: true });
+      const view = mountConfigPage(context);
+      const button = (label: string) =>
+        expectDefined(
+          [...view.container.querySelectorAll("button")].find(
+            (candidate) => candidate.textContent?.trim() === label,
+          ),
+          label,
+        );
+      try {
+        if (!retainedDraft) {
+          button("Raw").click();
+        }
+        await waitForSolid(() => expect(button("Raw").getAttribute("aria-pressed")).toBe("true"));
+        const open = button("Open");
+        open.click();
+        await waitForSolid(() => expect(open.disabled, "Open is pending").toBe(true));
+        button("Raw").click();
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
+        await waitForSolid(() =>
+          expect(open.disabled, "Raw reselection keeps Open pending").toBe(true),
+        );
+        open.click();
+        expect(openFile).toHaveBeenCalledOnce();
+        pending.resolve();
+        await waitForSolid(() => expect(open.disabled).toBe(false));
+      } finally {
+        pending.resolve();
+        view.dispose();
+      }
+    },
+  );
+
   it("retires command presentation synchronously when the router changes location", async () => {
     const context = completeConfigContext(routeContext());
     const router = createRouter({
