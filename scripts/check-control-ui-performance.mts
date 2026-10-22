@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 26,
   newBootJsRequests: 21,
-  // Optional catalogs and grammars: 1,406,612 B Chat and 948,943 B New Session.
+  // Optional catalogs and grammars: 1,406,654 B Chat and 948,765 B New Session.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_460_415,
-  newBootJsGzipBytes: 962_630,
+  chatBootJsGzipBytes: 1_460_299,
+  newBootJsGzipBytes: 962_609,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
