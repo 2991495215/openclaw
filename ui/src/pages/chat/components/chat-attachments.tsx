@@ -36,7 +36,7 @@ export function AttachmentReadStatus(props: { pendingReads: number }) {
 
 export type AttachmentPreviewEntry = Pick<
   ChatAttachmentRead,
-  "attachment" | "state" | "progress" | "preparation"
+  "attachment" | "state" | "progress" | "preparation" | "errorMessage"
 > & {
   read: ChatAttachmentRead;
 };
@@ -60,6 +60,7 @@ export function AttachmentPreview(
       state: read.state,
       progress: read.progress,
       preparation: read.preparation,
+      errorMessage: read.errorMessage,
     }));
   });
   const failures = createMemo(() => {
