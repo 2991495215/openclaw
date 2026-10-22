@@ -104,6 +104,7 @@ export type SidebarPanelProps = {
   githubRepositories?: MarkdownRenderOptions["githubRepositories"];
   embedded?: boolean;
   attachmentRuntime: AttachmentSidebarRuntime;
+  attachmentChat?: import("./chat-composer-types.ts").ChatComposerProps;
   attachmentDownload?: { pending: boolean; error: string | null; onDownload: () => void };
   onClick: (event: MouseEvent) => void;
   onKeydown: (event: KeyboardEvent) => void;
@@ -307,6 +308,7 @@ export function SidebarPanel(props: SidebarPanelProps) {
               <Match when={props.content?.kind === "session-diff" ? props.content : undefined}>
                 {(content) => (
                   <SessionDiffPanel
+                    attachmentChat={props.attachmentChat}
                     onScrollPortRef={props.fileView?.onScrollPortRef}
                     mobile={
                       props.presentation === undefined

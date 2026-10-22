@@ -265,7 +265,14 @@ composer. The optional comment field starts on one line, grows to five lines,
 then scrolls internally. Confirm or press Enter to save; Shift+Enter adds a line.
 Saving keeps your existing draft and does not send a message.
 
-Saving leaves a small, filled comment marker beside the selected passage. Click
+In a file’s source view or **Review** diff, select code and choose **Add to chat**
+to use the same comment editor. The comment preview shows the file path and line
+range; Review comments also identify the old or new side. Saving stages the
+selected code and your comment without changing the file, sending a message, or
+replacing your chat draft. Send the message when your feedback is ready.
+Selections crossing diff sides or omitted lines must be commented separately.
+
+Saving a chat-text comment leaves a small, filled comment marker beside the selected passage. Click
 that marker, or the pencil in the comment count's hover preview, to reopen the
 same editor beside it. **Save** or Enter saves changes; **Cancel** or Escape discards the edit; and the trash
 button deletes the comment. Hover, keyboard-focus, or click the composer's comment

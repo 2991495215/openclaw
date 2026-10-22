@@ -26,11 +26,19 @@ export type BrowserAnnotationAttachment = {
   inspectedElement: boolean;
 };
 
+export type ChatFileSelection = {
+  path: string;
+  startLine: number;
+  endLine: number;
+  side?: "old" | "new";
+};
+
 export type ChatSelectionSource = {
+  file?: ChatFileSelection;
   text: string;
   messageId?: string;
   entryId?: string;
-  /** UTF-16 offsets in the source bubble’s concatenated DOM text nodes. */
+  /** UTF-16 offsets in the source text (DOM text for chat, document text for files). */
   start: number;
   end: number;
 };

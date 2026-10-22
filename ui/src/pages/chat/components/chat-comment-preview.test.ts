@@ -41,6 +41,30 @@ describe("sent comment attachment presentation", () => {
     },
   );
 
+  it("retains file coordinates and quoted filenames through sending", () => {
+    const file = { path: 'src/odd"name.ts', startLine: 7, endLine: 9, side: "old" as const };
+    const attachment = createChatSelectionAttachment(
+      {
+        text: "return 3;",
+        comment: "Replace this.",
+        sessionKey: "agent:main:main",
+        start: 0,
+        end: 9,
+        file,
+      },
+      {},
+      0,
+    )!;
+    try {
+      const data = getChatAttachmentDataUrl(attachment)!;
+      expect(
+        parseCommentAttachment(Buffer.from(data.split(",")[1]!, "base64").toString("utf8")),
+      ).toEqual({ text: "return 3;", comment: "Replace this.", file });
+    } finally {
+      releaseChatAttachmentPayload(attachment.id);
+    }
+  });
+
   it("retains the validated boundary in previously sent files without an explicit text length", () => {
     const text = "🦞 Quoted\n\nUser comment:\nliteral heading";
     const comment = "Keep the original comment.";
