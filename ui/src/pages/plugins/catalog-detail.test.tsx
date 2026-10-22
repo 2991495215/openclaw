@@ -107,19 +107,23 @@ it("retains catalog controls while refreshing the same accepted plugin", async (
   const pending = Promise.withResolvers<void>();
   onTestFinished(() => pending.resolve());
   let refresh = () => {};
-  const result = createDiscoveryDetail(createPlugin({ installed: false }));
+  const initialResult = createDiscoveryDetail(createPlugin({ installed: false }));
   const onInstall = vi.fn();
   const view = mountSolid(() => {
+    const [result, setResult] = createSignal(initialResult);
     const [receipt, setReceipt] = createSignal({ result: Promise.resolve() });
     const value = createMemo(async () => {
       await receipt().result;
       return null;
     });
-    refresh = () => setReceipt({ result: pending.promise });
+    refresh = () => {
+      setResult({ ...initialResult });
+      setReceipt({ result: pending.promise });
+    };
     return (
       <PluginCatalogDetail
         connected
-        result={result}
+        result={result()}
         read={{ receipt, value }}
         backHref="/plugins"
         onBack={() => {}}
