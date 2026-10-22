@@ -24,7 +24,7 @@ import {
   selectedFiles,
   fallbackGroups,
   expectProtectedOwnerExpansion,
-  isSerialNodeTestProjection,
+  expectProjectedNodeTestResources,
 } from "./ci-changed-node-test-plan.test-support.js";
 
 const argvTempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -831,6 +831,7 @@ describe("CI changed Node test plan", () => {
   });
 
   it("retains leaf-config owners and their execution metadata", () => {
+    const envScratch = argvTempDirs.make("changed-config-owner-env-");
     const config = "test/vitest/vitest.commands.config.ts";
     const full = createNodeTestShardBundles({
       compactMode: "pull-request",
@@ -849,7 +850,7 @@ describe("CI changed Node test plan", () => {
         owners.flatMap((group) => group.includePatterns ?? []).toSorted(),
       );
       expect(selectedOwners.every((group) => (group.includePatterns?.length ?? 0) > 0)).toBe(true);
-      // Selected owners retain their singleton worker ceiling when serial rows share setup.
+      // Compare execution budgets independently of how selected owners share rows.
       const canonical = expectDefined(
         createSelectedNodeTestShardBundles(selectedFiles(shards), {
           includePrExemptRuntimeTests: true,
@@ -877,13 +878,7 @@ describe("CI changed Node test plan", () => {
           "selected commands job",
         );
         expect(selectedJob.runner).toBe(ownerJob.runner);
-        const serialProjection = isSerialNodeTestProjection(selectedJob.groups, ownerJob);
-        expect(selectedJob.env).toEqual(
-          serialProjection && owner.env?.OPENCLAW_VITEST_MAX_WORKERS === undefined
-            ? { ...ownerJob.env, OPENCLAW_VITEST_MAX_WORKERS: "2" }
-            : ownerJob.env,
-        );
-        expect(selectedJob.planConcurrency).toBe(serialProjection ? 1 : ownerJob.planConcurrency);
+        expectProjectedNodeTestResources(selectedJob, group, ownerJob, owner, envScratch);
         expect(selectedJob.pretestBuildMode).toBe(ownerJob.pretestBuildMode);
         expect(selectedJob.timeoutMinutes).toBe(ownerJob.timeoutMinutes);
       }

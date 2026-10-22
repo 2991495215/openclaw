@@ -119,7 +119,8 @@ suite.define(() => {
             .count(),
         ).toBe(0);
         detailsChunk.resolve();
-        await detailsDialog.locator(".chat-details-session").waitFor();
+        // The loaded desktop body remains visible when optional session metadata is empty.
+        await detailsDialog.locator(".chat-details-desktop-body").waitFor();
         expect(
           await detailsDialog.getByRole("status", { name: "Loading…", exact: true }).count(),
         ).toBe(0);
