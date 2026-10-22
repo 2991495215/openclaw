@@ -28,28 +28,18 @@ export function isAssistantMessage(msg: AgentMessage | undefined): msg is Assist
   return msg?.role === "assistant";
 }
 
-function sanitizeAssistantText(
-  text: string,
-  phase?: AssistantPhase,
-  streaming = false,
-  options?: { preserveTrailingWhitespace?: boolean },
-): string {
+function sanitizeAssistantText(text: string, phase?: AssistantPhase, streaming = false): string {
   return applyTextFilters(
     text,
     assistantVisibleTextFilters(
       phase === "final_answer" ? "final-answer-delivery" : "delivery",
       streaming,
-      options,
     ),
   );
 }
 
-export function sanitizeAssistantVisibleStreamText(
-  text: string,
-  phase?: AssistantPhase,
-  options?: { preserveTrailingWhitespace?: boolean },
-): string {
-  return sanitizeUserFacingText(sanitizeAssistantText(text, phase, true, options), {
+export function sanitizeAssistantVisibleStreamText(text: string, phase?: AssistantPhase): string {
+  return sanitizeUserFacingText(sanitizeAssistantText(text, phase, true), {
     errorContext: false,
     streaming: true,
   });

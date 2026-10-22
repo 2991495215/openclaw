@@ -38,14 +38,9 @@ export function canCleanupLegacyManagedHandoff(
 export const MANAGED_SERVICE_UPDATE_HANDOFF_TEMP_PREFIX = "openclaw-update-run-handoff-";
 const MANAGED_SERVICE_UPDATE_HANDOFF_STALE_TTL_MS = 24 * 60 * 60_000;
 
-export async function cleanupStaleManagedServiceUpdateHandoffs(params?: {
-  tmpDir?: string;
-  nowMs?: number;
-  ttlMs?: number;
-}): Promise<number> {
-  const tmpDir = params?.tmpDir ?? os.tmpdir();
-  const nowMs = params?.nowMs ?? Date.now();
-  const ttlMs = params?.ttlMs ?? MANAGED_SERVICE_UPDATE_HANDOFF_STALE_TTL_MS;
+export async function cleanupStaleManagedServiceUpdateHandoffs(): Promise<number> {
+  const tmpDir = os.tmpdir();
+  const nowMs = Date.now();
   let entries: Array<{ name: string; isDirectory: () => boolean }>;
   try {
     entries = await fs.readdir(tmpDir, { withFileTypes: true });
@@ -64,7 +59,7 @@ export async function cleanupStaleManagedServiceUpdateHandoffs(params?: {
     const dir = path.join(tmpDir, entry.name);
     try {
       const stats = await fs.stat(dir);
-      if (nowMs - stats.mtimeMs < ttlMs) {
+      if (nowMs - stats.mtimeMs < MANAGED_SERVICE_UPDATE_HANDOFF_STALE_TTL_MS) {
         continue;
       }
       await fs.rm(dir, { recursive: true, force: true });

@@ -5,9 +5,9 @@ import { stableStringify, writeStableStringify } from "./stable-stringify.js";
 const sanitizeSurrogates = (text: string) =>
   text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
 
-const serialize = (value: unknown, normalizeString?: (text: string) => string): string => {
+const serialize = (value: unknown): string => {
   const chunks: string[] = [];
-  writeStableStringify(value, (chunk) => chunks.push(chunk), normalizeString);
+  writeStableStringify(value, (chunk) => chunks.push(chunk));
   return chunks.join("");
 };
 
@@ -35,7 +35,7 @@ it("opts into string normalization without changing the lossless default", () =>
   expect(serialize(value)).toBe(
     '{"high":"left\\ud83dright","key\\ud83d":"name","low":"left\\udc00right","valid":"emoji 🙈 ok"}',
   );
-  expect(serialize(value, sanitizeSurrogates)).toBe(
+  expect(stableStringify(value, sanitizeSurrogates)).toBe(
     '{"high":"leftright","key":"name","low":"leftright","valid":"emoji 🙈 ok"}',
   );
 });
@@ -66,7 +66,7 @@ it("preserves colliding normalized keys and reads getters in deterministic order
       return "upper";
     },
   };
-  const serialized = serialize(value, (text) => {
+  const serialized = stableStringify(value, (text) => {
     observations.push(`normalize:${text}`);
     return text.toLowerCase();
   });

@@ -54,7 +54,6 @@ export async function ensureOnboardingAgent(params: {
   /** Comparison basis for the returned proposal, including any agent-creation rebase. */
   configBase: OpenClawConfig;
   agentId: string;
-  bootstrapPending: boolean;
   createdAgent: boolean;
   createdAgentIds?: string[];
   sessionMigrationWarnings?: string[];
@@ -102,7 +101,6 @@ export async function ensureOnboardingAgent(params: {
       config: params.config,
       configBase: params.baseConfig ?? params.config,
       agentId: resolveAmbientOwnerAgentId(params.config),
-      bootstrapPending: false,
       createdAgent: false,
     };
   }
@@ -121,7 +119,6 @@ export async function ensureOnboardingAgent(params: {
       }),
       configBase: effective,
       agentId: resolveAmbientOwnerAgentId(effective),
-      bootstrapPending: false,
       createdAgent: false,
     };
   }
@@ -178,7 +175,6 @@ export async function ensureOnboardingAgent(params: {
     config,
     configBase: after.config,
     agentId: createdTeam ? created.coordinatorId : created.agentId,
-    bootstrapPending: createdTeam ? false : created.bootstrapPending,
     createdAgentIds: createdTeam ? created.agents.map((agent) => agent.agentId) : [created.agentId],
     createdAgent: created.status === "created",
     ...(created.configHash ? { configHash: created.configHash } : {}),

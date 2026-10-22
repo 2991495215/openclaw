@@ -163,9 +163,9 @@ describe("plugin command runtime", () => {
       throw new Error("expected failed command diagnostic");
     }
     await expect(
-      match.dispatch.execute({ ...executionContext, isAuthorizedSender: false }),
+      match.execute({ ...executionContext, isAuthorizedSender: false }),
     ).resolves.toEqual({ text: "⚠️ This command requires authorization." });
-    const reply = await match.dispatch.execute({
+    const reply = await match.execute({
       ...executionContext,
       config: { logging: { redactPatterns: ["private-detail"] } },
     });
@@ -210,11 +210,11 @@ describe("plugin command runtime", () => {
       const match = matchPluginCommandInvocation(runtime, "/renamed-demo hi", {
         channel: "discord",
       });
-      expect(match?.dispatch.kind).toBe("plugin");
+      expect(match?.kind).toBe("plugin");
       if (!match) {
         throw new Error("expected scoped command match");
       }
-      const result = await match.dispatch.execute({
+      const result = await match.execute({
         ...executionContext,
         channel: "discord",
         commandBody: "/renamed-demo hi",

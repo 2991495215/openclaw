@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import * as num from "./number-coercion.js";
 
 const nowMs = 1_000;
@@ -6,6 +6,7 @@ const dateLimit = 8_640_000_000_000_000;
 const timerLimit = num.MAX_TIMER_TIMEOUT_MS;
 const epoch = "1970-01-01T00:00:00.000Z";
 const epochSecond = "1970-01-01T00:00:01.000Z";
+afterEach(() => vi.restoreAllMocks());
 test.each([
   ["positive integer", 1, 1, 1, 1],
   ["unsafe integer", 2 ** 53, 2 ** 53, 2 ** 53, 2 ** 53],
@@ -120,7 +121,7 @@ test.each<[() => unknown, unknown]>([
     () => num.timestampMsToIsoFileStamp(Date.parse("2026-02-23T12:34:56.000Z")),
     "2026-02-23T12-34-56.000Z",
   ],
-  [() => num.timestampMsToIsoFileStamp(9_000_000_000_000_000, 1_000), "1970-01-01T00-00-01.000Z"],
+  [() => num.timestampMsToIsoFileStamp(9_000_000_000_000_000), "1970-01-01T00-00-01.000Z"],
   // expiry helpers resolve safe absolute timestamps.
   [() => num.resolveExpiresAtMsFromDurationMs(600_000, { nowMs }), 601_000],
   [() => num.resolveExpiresAtMsFromDurationMs(600_000, { nowMs: dateLimit }), undefined],
@@ -165,5 +166,6 @@ test.each<[() => unknown, unknown]>([
   [() => num.resolveOptionalIntegerOption(-4, { min: 0 }), 0],
   [() => num.resolveOptionalIntegerOption(40, { max: 10 }), 10],
 ])("scalar coercion case %#", (read, expected) => {
+  vi.spyOn(Date, "now").mockReturnValue(nowMs);
   expect(read()).toBe(expected);
 });

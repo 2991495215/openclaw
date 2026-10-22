@@ -82,13 +82,6 @@ export type PluginCommandNativeCandidate = ReturnType<typeof projectPluginComman
   readonly prepareDispatch: (rawArgs?: string) => PluginCommandCatalogDecision;
 };
 
-type PluginCommandInvocationMatch = Readonly<{
-  dispatch: PluginCommandDispatch;
-  acceptsArgs: boolean;
-  requireAuth: boolean;
-  progressMessage?: string;
-}>;
-
 export type PluginCommandRuntime = Readonly<{
   listNativeCandidates: (provider: string) => readonly PluginCommandNativeCandidate[];
   /** @deprecated Accounts reload automatically; retained for v2026.9.1 callers until the next breaking SDK. */
@@ -238,8 +231,8 @@ export function createPluginCommandRuntime(): PluginCommandRuntime {
 export function matchPluginCommandInvocation(
   runtime: PluginCommandRuntime,
   commandBody: string,
-  options: { channel: string; provider?: string },
-): PluginCommandInvocationMatch | null {
+  options: { channel: string },
+): PluginCommandDispatch | null {
   const state = runtimeStates.get(runtime);
   if (!state) {
     return null;
@@ -248,12 +241,11 @@ export function matchPluginCommandInvocation(
     throw new Error("Plugin command runtime is bound to a retired registry generation.");
   }
   const channel = normalizeOptionalLowercaseString(options.channel) ?? "";
-  const provider = normalizeOptionalLowercaseString(options.provider) ?? channel;
   const match = matchRegisteredPluginCommand({
     commands: state.commands,
     commandBody,
     channel,
-    aliasScope: { kind: "provider", provider },
+    aliasScope: { kind: "provider", provider: channel },
   });
   if (!match) {
     const owner = parsePluginInvocation(commandBody)
@@ -271,25 +263,15 @@ export function matchPluginCommandInvocation(
     if (plugin?.status !== "error" || !plugin.enabled) {
       return null;
     }
-    return {
-      dispatch: createSelectedPluginCommandDispatch(
-        state,
-        { availability: "manifest-only", plugin },
-        channel,
-      ),
-      acceptsArgs: true,
-      requireAuth: true,
-    };
-  }
-  const metadata = projectPluginCommandNativeMetadata(match.command, provider);
-  return {
-    dispatch: createSelectedPluginCommandDispatch(
+    return createSelectedPluginCommandDispatch(
       state,
-      { availability: "loaded", command: match.command, args: match.args },
+      { availability: "manifest-only", plugin },
       channel,
-    ),
-    acceptsArgs: metadata.acceptsArgs,
-    requireAuth: metadata.requireAuth,
-    ...(metadata.progressMessage ? { progressMessage: metadata.progressMessage } : {}),
-  };
+    );
+  }
+  return createSelectedPluginCommandDispatch(
+    state,
+    { availability: "loaded", command: match.command, args: match.args },
+    channel,
+  );
 }

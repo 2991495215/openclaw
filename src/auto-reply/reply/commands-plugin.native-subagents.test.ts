@@ -693,7 +693,7 @@ describe("command-scoped native subagent boundary", () => {
           entry: expectDefined(params.sessionEntry, "command session"),
         },
         async (createSubagents) =>
-          selection.dispatch.execute({
+          selection.execute({
             ...buildPluginCommandContext(params),
             commandBody: "/review-panel",
             runtimeContext: { createSubagents },

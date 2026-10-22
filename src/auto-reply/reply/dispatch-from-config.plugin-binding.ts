@@ -69,7 +69,7 @@ export function shouldBypassPluginOwnedBindingForCommand(
   });
   if (match) {
     if (replyOptions) {
-      Object.assign(replyOptions, { [PLUGIN_COMMAND_DISPATCH]: match.dispatch });
+      Object.assign(replyOptions, { [PLUGIN_COMMAND_DISPATCH]: match });
     }
     return true;
   }

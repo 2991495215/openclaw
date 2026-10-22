@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import type { LookupAddress } from "node:dns";
+import type { LookupAddress, LookupAllOptions } from "node:dns";
 import * as dnsPromises from "node:dns/promises";
+import * as http from "node:http";
 import type { Server } from "node:http";
 import { createServer } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,12 +14,20 @@ import {
   type OAuthLoopbackCallbackServer,
 } from "./oauth-loopback-callback.js";
 
+vi.mock("node:dns/promises", { spy: true });
+vi.mock("node:http", { spy: true });
+
+const lookupMock = vi.mocked<
+  (hostname: string, options: LookupAllOptions) => Promise<LookupAddress[]>
+>(dnsPromises.lookup);
 const openCallbacks: OAuthLoopbackCallbackServer[] = [];
 const portClaims: TestPortClaim[] = [];
 
 afterEach(async () => {
   await Promise.all(openCallbacks.splice(0).map((callback) => callback.close()));
   await Promise.all(portClaims.splice(0).map((claim) => claim.release()));
+  lookupMock.mockReset();
+  vi.mocked(http.createServer).mockReset();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -279,6 +288,11 @@ describe("OAuth loopback callback server", () => {
 
   it("observes aborts that arrive while localhost resolution is pending", async () => {
     const lookup = createDeferred<LookupAddress[]>();
+    const lookupStarted = createDeferred();
+    lookupMock.mockImplementationOnce(() => {
+      lookupStarted.resolve();
+      return lookup.promise;
+    });
     const controller = new AbortController();
     const port = await getClaimedPort();
     const startPromise = startOAuthLoopbackCallbackServer({
@@ -286,8 +300,8 @@ describe("OAuth loopback callback server", () => {
       expectedState: "state-1234567890",
       timeoutMs: 5_000,
       signal: controller.signal,
-      lookup: () => lookup.promise,
     });
+    await lookupStarted.promise;
     controller.abort();
     await expect(startPromise).rejects.toThrow("cancelled");
     lookup.resolve([{ address: "127.0.0.1", family: 4 }]);
@@ -346,13 +360,12 @@ describe("OAuth loopback callback server", () => {
         },
         closeAllConnections: () => undefined,
       };
+      vi.mocked(http.createServer).mockReturnValueOnce(fakeServer as unknown as Server);
       const callback = await startOAuthLoopbackCallbackServer({
         redirectUrl: "http://127.0.0.1/oauth/callback",
         bindOnlyHostname,
         expectedState: "state-1234567890",
         timeoutMs: 5_000,
-        createServer: (() =>
-          fakeServer as unknown as Server) as typeof import("node:http").createServer,
       });
       expect(observedPort).toBe(80);
       expect(observedHostname).toBe(bindOnlyHostname ?? "127.0.0.1");
@@ -370,11 +383,11 @@ describe("OAuth loopback callback server", () => {
       options: {
         redirectUrl: "http://localhost:8989/oauth/callback",
         bindHostname: "127.0.0.1",
-        lookup: async () => [{ address: "203.0.113.1", family: 4 }],
       },
       error: "exclusively to loopback",
     },
   ])("rejects unsafe loopback configuration: $error", async ({ options, error }) => {
+    lookupMock.mockResolvedValueOnce([{ address: "203.0.113.1", family: 4 }]);
     await expect(
       startOAuthLoopbackCallbackServer({
         ...options,

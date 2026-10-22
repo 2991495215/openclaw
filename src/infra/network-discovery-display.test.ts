@@ -27,16 +27,11 @@ describe("network display discovery", () => {
     expect(pickBestEffortPrimaryLanIPv4()).toBeUndefined();
   });
 
-  it("reports a warning when tailnet inspection throws", () => {
+  it("returns no tailnet address when interface discovery throws", () => {
     mockInterfaceDiscoveryFailure();
 
-    expect(
-      inspectBestEffortPrimaryTailnetIPv4({
-        warningPrefix: "Status could not inspect tailnet addresses",
-      }),
-    ).toEqual({
+    expect(inspectBestEffortPrimaryTailnetIPv4()).toEqual({
       tailnetIPv4: undefined,
-      warning: `Status could not inspect tailnet addresses: ${discoveryErrorMessage}.`,
     });
   });
 
@@ -46,8 +41,6 @@ describe("network display discovery", () => {
     await expect(
       resolveBestEffortGatewayBindHostForDisplay({
         bindMode: "tailnet",
-        warningPrefix:
-          "Status is using fallback network details because interface discovery failed",
       }),
     ).resolves.toEqual({
       bindHost: "127.0.0.1",

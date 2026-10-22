@@ -13,7 +13,6 @@ type ConfigIssueLineInput = {
 
 type ConfigIssueFormatOptions = {
   normalizeRoot?: boolean;
-  sourceFile?: string;
 };
 
 /** Return the public config issue shape with a normalized path and non-empty allowed values. */
@@ -45,12 +44,8 @@ export function normalizeConfigIssues(
   return issues.map((issue) => normalizeConfigIssue(issue));
 }
 
-function resolveIssueLocationPrefix(
-  issue: ConfigIssueLineInput,
-  opts?: ConfigIssueFormatOptions,
-): string {
-  const sourceFile =
-    normalizeOptionalString(issue.sourceFile) ?? normalizeOptionalString(opts?.sourceFile);
+function resolveIssueLocationPrefix(issue: ConfigIssueLineInput): string {
+  const sourceFile = normalizeOptionalString(issue.sourceFile);
   if (!sourceFile || typeof issue.line !== "number" || issue.line <= 0) {
     return "";
   }
@@ -67,7 +62,7 @@ export function formatConfigIssueLine(
   opts?: ConfigIssueFormatOptions,
 ): string {
   const prefix = marker ? `${marker} ` : "";
-  const locationPrefix = resolveIssueLocationPrefix(issue, opts);
+  const locationPrefix = resolveIssueLocationPrefix(issue);
   const issuePath = issue.pathSegments?.length
     ? formatConcreteConfigPath(issue.pathSegments)
     : issue.path;

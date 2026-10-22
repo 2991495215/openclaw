@@ -425,12 +425,7 @@ describe("stripDowngradedToolCallText", () => {
       input: "Use `[Historical context: example]`  \n",
       expected: "Use `[Historical context: example]`  \n",
     },
-  ])("preserves requested stream boundaries around $input", ({ input, expected }) => {
-    expect(
-      sanitizeAssistantVisibleStreamText(input, "final_answer", {
-        preserveTrailingWhitespace: true,
-      }),
-    ).toBe(expected);
+  ])("trims final stream snapshots around $input", ({ input, expected }) => {
     expect(sanitizeAssistantVisibleStreamText(input, "final_answer")).toBe(expected.trimEnd());
   });
 });

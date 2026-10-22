@@ -167,11 +167,8 @@ export function resolveTimestampMsToIsoString(
 }
 
 /** Formats Date-valid timestamps for filenames by replacing colon separators. */
-export function timestampMsToIsoFileStamp(
-  value: unknown,
-  fallbackValue: unknown = Date.now(),
-): string {
-  return resolveTimestampMsToIsoString(value, fallbackValue).replaceAll(":", "-");
+export function timestampMsToIsoFileStamp(value: unknown): string {
+  return resolveTimestampMsToIsoString(value).replaceAll(":", "-");
 }
 
 /** Clamps finite millisecond values into the Node-safe timer range. */

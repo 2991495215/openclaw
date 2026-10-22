@@ -42,7 +42,7 @@ export const handlePluginCommand: CommandHandler = async (params, allowTextComma
       ? planned
       : matchPluginCommandInvocation(createPluginCommandRuntime(), command.commandBodyNormalized, {
           channel: command.channel,
-        })?.dispatch;
+        });
   if (!dispatch) {
     return null;
   }

@@ -74,7 +74,6 @@ it("preserves an explicit imported candidate roster", async () => {
     config,
     configBase: config,
     agentId: "main",
-    bootstrapPending: false,
     createdAgent: false,
   });
   expect(mocks.readConfigFileSnapshot).not.toHaveBeenCalled();

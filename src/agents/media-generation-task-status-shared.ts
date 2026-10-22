@@ -182,13 +182,12 @@ export function createMediaGenerationTaskStatusOwner(params: {
     async findActiveTaskForSession(
       this: void,
       sessionKey?: string,
-      request?: { prompt?: string; agentId?: string },
+      request?: { agentId?: string },
     ): Promise<MediaGenerationOperation | undefined> {
       return (
         await listActiveMediaGenerationTasksForSession({
           ...taskIdentity,
           sessionKey,
-          taskLabel: request?.prompt,
           agentId: request?.agentId,
         })
       )[0];

@@ -260,7 +260,6 @@ describe("runSetupWizard default-agent ownership", () => {
         configHash: "created-revision",
         agentId: "main",
         createdAgent: true,
-        bootstrapPending: false,
       });
       mocks.readAuthority.mockResolvedValue({
         snapshot: {

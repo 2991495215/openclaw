@@ -18,12 +18,8 @@ export function stableStringify(
 }
 
 /** Writes the same deterministic text without retaining completed container strings. */
-export function writeStableStringify(
-  value: unknown,
-  write: StableStringWriter,
-  normalizeString: StableStringNormalizer = preserveString,
-): void {
-  write(stringifyStableValue(value, new WeakSet(), normalizeString, write));
+export function writeStableStringify(value: unknown, write: StableStringWriter): void {
+  write(stringifyStableValue(value, new WeakSet(), preserveString, write));
 }
 
 function stringifyStableValue(
