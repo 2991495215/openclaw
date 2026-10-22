@@ -30,6 +30,7 @@ import {
   ChatSessionSharingModeIcon,
   projectChatSessionSharingRoster,
   chatSessionMembershipLabel,
+  ChatSessionPublicQr,
 } from "./chat-session-sharing-shared.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
@@ -502,6 +503,9 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
                   <div class="chat-pane__sharing-status--error" role="alert">
                     {copyError()}
                   </div>
+                </Show>
+                <Show when={result()?.publicShare && props.state?.publicUrl}>
+                  {(url) => <ChatSessionPublicQr url={url()} class="chat-pane__sharing-qr" />}
                 </Show>
               </div>
             </div>

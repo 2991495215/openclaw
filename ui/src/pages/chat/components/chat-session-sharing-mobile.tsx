@@ -17,6 +17,7 @@ import { registerSessionPeopleEnglish } from "../../../i18n/locales/en-session-p
 import "../../../styles/settings.css";
 import "../../../styles/chat/sharing-mobile.css";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
+import { ChatSessionPublicQr } from "./chat-session-sharing-shared.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 
@@ -164,6 +165,9 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
                     <span class="chat-sharing-mobile__url">{link().url}</span>
                     <Icon name="copy" />
                   </button>
+                </Show>
+                <Show when={link().enabled && link().url}>
+                  {(url) => <ChatSessionPublicQr url={url()} class="chat-sharing-mobile__qr" />}
                 </Show>
               </SharingDisclosure>
             </div>
