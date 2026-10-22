@@ -12,12 +12,17 @@ scratch="$(mktemp -d "$RUNNER_TEMP/saved-gateway.XXXXXX")"
 mkdir -p "$output"
 backend_pid=""
 proxy_pid=""
+case_state=""
 cleanup() {
   for pid in "$proxy_pid" "$backend_pid"; do
     if [[ -n $pid ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   done
 }
-trap cleanup EXIT
+cleanup_all() {
+  cleanup
+  if [[ -n $case_state ]]; then rm -rf -- "$case_state"; fi
+}
+trap cleanup_all EXIT
 {
   printf 'Proof revision: %s\nMain: %s\nCandidate: %s\n' "$(git -C "$proof_repo" rev-parse HEAD)" "$MAIN_SHA" "$CANDIDATE_SHA"
   sw_vers
@@ -128,9 +133,27 @@ JS
   for native in false true; do
     for entry in menu settings; do
       case_dir="$output/$stage/$native-$entry"
-      case_state="$scratch/$stage-$native-$entry"
+      # Native IPC resolves HOME independently of OPENCLAW_STATE_DIR.
+      # A nested runner HOME previously exceeded Darwin's 104-byte sun_path.
+      case_state="$(mktemp -d /tmp/ocp.XXXXXX)"
       mkdir -p "$case_dir" "$case_state/home/Library/Preferences" "$case_state/home/Library/Keychains" "$case_state/state"
       app_home="$case_state/home"
+      chmod 700 "$case_state" "$app_home" "$case_state/state"
+      python3 - "$app_home" "$case_state/state" "$case_dir/socket-paths.json" <<'PYTHON'
+import json, pathlib, sys
+home, state = [pathlib.Path(value).resolve() for value in sys.argv[1:3]]
+support = home/'Library/Application Support'
+paths = {
+    'macControl': home/'.openclaw-gatewayproof/mac-control.sock',
+    'executionApprovals': state/'exec-approvals.sock',
+    'cuaDriver': support/'OpenClaw/cua/0123456789abcdef/cua.sock',
+    **{name: support/name/'bridge.sock' for name in ['OpenClaw', 'clawdbot', 'clawdis', 'moltbot']},
+}
+rows = {name: {'path': str(path), 'bytes': len(str(path).encode())} for name, path in paths.items()}
+pathlib.Path(sys.argv[3]).write_text(json.dumps(rows, indent=2))
+if any(row['bytes'] >= 104 for row in rows.values()):
+    raise SystemExit('Synthetic HOME cannot support the native Unix socket paths')
+PYTHON
       keychain="$app_home/Library/Keychains/proof.keychain-db"
       HOME="$app_home" CFFIXED_USER_HOME="$app_home" security create-keychain -p '' "$keychain"
       HOME="$app_home" CFFIXED_USER_HOME="$app_home" security unlock-keychain -p '' "$keychain"
@@ -160,14 +183,75 @@ JS
       export TEST_RUNNER_OPENCLAW_PROOF_NATIVE="$native"
       export TEST_RUNNER_OPENCLAW_PROOF_ENTRY="$entry"
       status=0
+      case_started="$(date '+%Y-%m-%d %H:%M:%S')"
+      printf '%s\n' "$case_started" > "$case_dir/startup-start.txt"
       xcodebuild "${xcode_args[@]}" test-without-building \
         -only-testing:SavedGatewayProofUITests/SavedGatewayOpeningUITests/testSavedGatewayOpening \
         -resultBundlePath "$case_dir/result.xcresult" > "$case_dir/xctest.log" 2>&1 || status=$?
       printf '%s\n' "$status" > "$case_dir/xctest.exit"
+      case_finished="$(date '+%Y-%m-%d %H:%M:%S')"
+      /usr/bin/log show --style json --start "$case_started" --end "$case_finished" --info \
+        --predicate 'subsystem == "ai.openclaw" AND (category == "credentials" OR category == "mac-control")' \
+        > "$case_state/startup.raw.json" 2> "$case_state/log-show.stderr" || true
+      if [[ $status -ne 0 ]] && ! pgrep -f "$app/Contents/MacOS/OpenClaw" >/dev/null; then
+        python3 - "$runtime" "$app_home" "$case_state/state" "$case_state/doctor.raw.json" <<'PYTHON'
+import json, os, pathlib, signal, subprocess, sys
+runtime, home, state, output = map(pathlib.Path, sys.argv[1:])
+package = runtime/'lib/node_modules/openclaw'
+environment = dict(os.environ, HOME=str(home), CFFIXED_USER_HOME=str(home),
+    OPENCLAW_PROFILE='gatewayproof', OPENCLAW_STATE_DIR=str(state),
+    OPENCLAW_CONFIG_PATH=str(state/'openclaw.json'), PATH=str(runtime/'bin'),
+    OPENCLAW_SQLITE_LIBRARY=str(runtime/'lib/libsqlite3.dylib'))
+command = [str(runtime/'bin/bun'), str(package/'openclaw.mjs'), '--profile', 'gatewayproof',
+           'doctor', '--client-credentials', '--fix', '--non-interactive']
+process = subprocess.Popen(command, cwd=package, env=environment, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE, text=True, start_new_session=True)
+try:
+    stdout, stderr = process.communicate(timeout=300)
+    report = dict(attempted=True, exitCode=process.returncode, timedOut=False,
+                  stdout=stdout, stderr=stderr)
+except subprocess.TimeoutExpired:
+    os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+    report = dict(attempted=True, exitCode=process.returncode, timedOut=True)
+output.write_text(json.dumps(report))
+PYTHON
+      fi
+      (
+        cd "$checkout"
+        node --import ./scripts/tsx.mjs --input-type=module - "$case_state/startup.raw.json" "$case_dir/startup.json" "$case_state/doctor.raw.json" <<'JS'
+import fs from 'node:fs';
+import { redactSensitiveText } from './src/logging/redact.ts';
+const [input, output, doctorPath] = process.argv.slice(2);
+let records;
+let available = true;
+try { records = JSON.parse(fs.readFileSync(input, 'utf8')); }
+catch { records = []; available = false; }
+const doctor = fs.existsSync(doctorPath) ? JSON.parse(fs.readFileSync(doctorPath, 'utf8')) : {attempted:false};
+for (const key of ['stdout','stderr']) {
+  if (typeof doctor[key] === 'string') doctor[key] = redactSensitiveText(doctor[key], {mode:'tools'});
+}
+const selected = records.filter(row => row.subsystem === 'ai.openclaw' &&
+  ['credentials', 'mac-control'].includes(row.category));
+fs.writeFileSync(output, JSON.stringify({ records: selected.map(row => ({
+  timestamp: row.timestamp, category: row.category,
+  message: redactSensitiveText(String(row.eventMessage ?? ''), {mode:'tools'}),
+})), available, doctor }, null, 2));
+JS
+      )
       kill -0 "$backend_pid" "$proxy_pid"
       curl --fail --silent http://127.0.0.1:19879/state > "$case_dir/network-final.json"
       cleanup; backend_pid=""; proxy_pid=""
       xcrun xcresulttool export attachments --path "$case_dir/result.xcresult" --output-path "$case_dir/attachments"
+      if [[ $status -ne 0 && ! -f "$output/$stage/app.zip" ]]; then
+        codesign --verify --deep --strict "$app"
+        ditto -c -k --sequesterRsrc --keepParent "$app" "$output/$stage/app.zip"
+        shasum -a 256 "$output/$stage/app.zip" > "$output/$stage/app.zip.sha256"
+      fi
       python3 - "$case_dir" <<'PY'
 import json, pathlib, shutil, sys
 root = pathlib.Path(sys.argv[1]); directory = root/'attachments'
@@ -182,6 +266,8 @@ PY
         exit 1
       fi
       HOME="$app_home" CFFIXED_USER_HOME="$app_home" security delete-keychain "$keychain"
+      rm -rf -- "$case_state"
+      case_state=""
       if [[ $stage == candidate && $status -ne 0 ]]; then exit "$status"; fi
     done
   done
