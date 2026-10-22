@@ -64,6 +64,14 @@ and the agent's
 The lifecycle owner closes its read scope and drains accepted writes before
 retiring the store.
 
+Startup client credential preparation uses the existing credential worker and
+its native custody admission. The admission's receipt postimage also decides
+whether legacy metadata needs upgrading, without a second receipt read. An app
+that owns the credentials remains authoritative through its existing IPC route.
+Required migrations still finish under maintenance ownership before startup
+continues; native schema, integrity, file-permission, and source-binding checks
+remain with credential admission.
+
 On Node 26.8 and later, the synchronous query owner explicitly disposes private
 statements after execution or iterator completion, and cached statements on
 eviction or invalidation. Large string bindings otherwise remain native allocations
@@ -2727,6 +2735,13 @@ SQLite fingerprints without constructing a scratch database or transferring
 contracts between processes. Version facts stay within their unchanged
 snapshot. Each request rereads stored facts. Schemas, stored bytes, and update
 behavior are unchanged.
+
+PostgreSQL startup starts its isolated agent-schema reader while shared-state
+inspection runs, then transfers that reader to the first agent-inspection slot.
+Only process loading overlaps: database inspection still follows shared-state
+discovery and retains its fresh read, admission boundary, and full request timeout.
+Cancellation and early returns close an unused reader; SQLite keeps its existing
+clean-close fast path without starting a child.
 
 `pnpm db:postgres:gen` also generates the SQLite catalogs for declared shared-state
 and agent schema fragments, including supported historical migration definitions.

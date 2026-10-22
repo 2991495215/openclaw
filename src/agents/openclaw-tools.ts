@@ -63,7 +63,6 @@ import {
   createGetGoalTool,
   createUpdateGoalTool,
 } from "./tools/goal-tools.js";
-import { resolveHeartbeatResponseTool } from "./tools/heartbeat-response-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
 import { callAgentToolGatewayRequest } from "./tools/in-process-gateway.js";
@@ -152,11 +151,7 @@ export async function createOpenClawToolsWithPreparation(
 }
 
 /** @deprecated Use createOpenClawToolsAsync for runtime construction. */
-export function createOpenClawTools(
-  options?: OpenClawToolsOptions,
-  preparedDelegateTools?: AnyAgentTool[],
-  preparedWebSearchConfigured?: boolean,
-): AnyAgentTool[] {
+export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentTool[] {
   const captured = { ...options };
   const { sessionAgentId } = resolveSessionAgentIds({
     sessionKey: captured.runSessionKey ?? captured.agentSessionKey,
@@ -169,8 +164,8 @@ export function createOpenClawTools(
   );
   const steps = createOpenClawToolsSteps(
     captured,
-    preparedDelegateTools,
-    preparedWebSearchConfigured,
+    undefined,
+    undefined,
     undefined,
     undefined,
     !isEmbeddedMode() && hasMultipleSessionSharingIdentitiesNative(),
@@ -376,7 +371,6 @@ function* createOpenClawToolsSteps(
           workspaceDir,
         },
       })[0] ?? null);
-  const heartbeatTool = resolveHeartbeatResponseTool(options);
   options?.recordToolPrepStage?.("openclaw-tools:message-tool");
   const nodesToolBase = createNodesTool({
     ...options,
@@ -532,16 +526,15 @@ function* createOpenClawToolsSteps(
           presenters: widgetPresentation.presenters,
           presenterContext: widgetPresentation.context,
         }),
-    heartbeatTool,
     createDecisionTool(sessionAgentId, options),
     createTtsTool({ ...options, agentId: sessionAgentId }),
     options?.githubPublicationAvailable !== undefined ? createGitHubIdentityStatusTool() : null,
     options?.githubPublicationAvailable === true ||
     (options?.githubPublicationAvailable === false && githubActionsAvailable)
       ? createGitHubPublishTool({
+          ...options,
           publicationAvailable: options.githubPublicationAvailable,
           actionsAvailable: githubActionsAvailable,
-          sandbox: options.sandbox,
         })
       : null,
     transcriptsTool,

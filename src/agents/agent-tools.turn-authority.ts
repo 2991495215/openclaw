@@ -18,8 +18,6 @@ export function resolveTurnToolSurface(params: {
   /** The session surface, when per-turn policy narrows it; defaults to `turnTools`. */
   sessionTools?: AnyAgentTool[];
   ownerOnlyDenied: ReadonlySet<string>;
-  /** A tool exported to descendants but never offered on this turn. */
-  withheld?: AnyAgentTool;
 }) {
   const turnAuthorizedNames = new Set(
     params.turnTools
@@ -29,9 +27,7 @@ export function resolveTurnToolSurface(params: {
       .map((tool) => tool.name),
   );
   const turnAuthorized = (tool: { name: string }) => turnAuthorizedNames.has(tool.name);
-  const offered = (params.sessionTools ?? params.turnTools).filter(
-    (tool) => tool !== params.withheld,
-  );
+  const offered = params.sessionTools ?? params.turnTools;
   const tools = offered.map((tool) => {
     if (turnAuthorized(tool) || !isAgentToolExecutionAvailable(tool)) {
       return tool;
@@ -49,7 +45,7 @@ export function resolveTurnToolSurface(params: {
   return {
     tools,
     turnAuthorized,
-    /** Policy-approved tools for descendant snapshots, including a withheld tool. */
+    /** Policy-approved tools for descendant snapshots. */
     exportedTools: params.turnTools.filter(turnAuthorized),
     /** Tools this turn may call. */
     callableTools: offered.filter(turnAuthorized),
