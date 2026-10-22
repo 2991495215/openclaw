@@ -12,6 +12,7 @@ import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { createContext } from "../skill-workshop/skill-workshop-page.test-support.ts";
 import { clawCreatorFlow } from "./creator-flow.ts";
 import { ClawCreatorReview } from "./creator-review.tsx";
+import "../../components/modal-dialog.tsx";
 
 const reviewed: ClawsDraftsReviewResult = {
   revision: "a".repeat(64),
@@ -66,6 +67,7 @@ it("shows a held review without discarding the edited name or accepted package",
   await waitForSolid(() =>
     expect(page.getByLabelText<HTMLInputElement>("Name").value).toBe("Release Brief"),
   );
+  expect(page.getByLabelText("Name").closest("dialog[open]")).not.toBeNull();
   const pending = createDeferred<ClawsDraftsReviewResult>();
   request.mockImplementationOnce(() => pending.promise);
   fireEvent.input(page.getByLabelText("Name"), { target: { value: "Engineering Brief" } });
