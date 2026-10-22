@@ -1607,6 +1607,8 @@ export const en: TranslationMap & {
     copyCommitFailed: "Could not copy commit hash",
     gateway: "Gateway",
     gatewayVersion: "Connected Gateway version",
+    gatewayCommit: "Gateway commit",
+    gatewayBuilt: "Gateway built",
     gatewayVersionHint:
       "Reported by the active Gateway connection; separate from this Control UI build.",
   },

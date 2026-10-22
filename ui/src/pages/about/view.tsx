@@ -30,6 +30,8 @@ export type AboutCommitCopyState = "idle" | "copying" | "copied" | "error";
 type AboutProps = {
   buildInfo: ControlUiBuildInfo;
   gatewayVersion: string | null;
+  gatewayCommit?: string | null;
+  gatewayBuiltAt?: string | null;
   copyState: AboutCommitCopyState;
   onCopyCommit: () => void;
   clawdWaving: boolean;
@@ -146,6 +148,13 @@ export function AboutView(props: AboutProps) {
       "",
     ),
   );
+  const gatewayBuildDate = createMemo(() =>
+    formatDateTimeMs(
+      Date.parse(props.gatewayBuiltAt ?? ""),
+      { dateStyle: "medium", timeStyle: "long", timeZone: "UTC" },
+      "",
+    ),
+  );
   return (
     <SettingsPage>
       <section class="about-hero">
@@ -252,6 +261,34 @@ export function AboutView(props: AboutProps) {
                 </code>
               ) : (
                 t("aboutPage.unavailable")
+              )}
+            </span>
+          }
+        />
+        <SettingsRow
+          title={t("aboutPage.gatewayCommit")}
+          control={
+            <span class="settings-row__value">
+              {props.gatewayCommit ? (
+                <code dir="ltr" title={props.gatewayCommit}>
+                  {props.gatewayCommit.slice(0, SHORT_COMMIT_LENGTH)}
+                </code>
+              ) : (
+                <Unavailable />
+              )}
+            </span>
+          }
+        />
+        <SettingsRow
+          title={t("aboutPage.gatewayBuilt")}
+          control={
+            <span class="settings-row__value">
+              {gatewayBuildDate() && props.gatewayBuiltAt ? (
+                <time dir="auto" datetime={props.gatewayBuiltAt} title={props.gatewayBuiltAt}>
+                  {gatewayBuildDate()}
+                </time>
+              ) : (
+                <Unavailable />
               )}
             </span>
           }
