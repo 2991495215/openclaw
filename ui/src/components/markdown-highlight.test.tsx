@@ -115,6 +115,7 @@ it("preserves readable code and node state across lazy highlighting", async () =
   await waitForSolid(() =>
     expect(view.container.querySelectorAll(".hljs-keyword")).toHaveLength(27),
   );
+  await waitForSolid(() => expect(wrappers[2]!.querySelector(".hljs-attr")).not.toBeNull());
   for (const wrapper of wrappers) {
     expect(wrapper.isConnected).toBe(true);
     expect(wrapper.matches(".is-expanded.is-wrapped")).toBe(true);
