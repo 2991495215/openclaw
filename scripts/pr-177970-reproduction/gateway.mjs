@@ -39,6 +39,15 @@ function release() {
   record("released");
 }
 
+// These observed native bootstrap calls have no rows in this synthetic profile.
+const emptyNativeReplies = {
+  "sessions.groups.list": { groups: [] },
+  "exec.approval.list": [],
+  "node.pair.list": { pending: [], paired: [] },
+  "question.list": { questions: [] },
+  "last-heartbeat": null,
+};
+
 function startGateway(port, saved) {
   const server = createServer((req, res) => {
     if (req.method === "GET" && new URL(req.url, "http://127.0.0.1").pathname === "/") {
@@ -76,6 +85,13 @@ function startGateway(port, saved) {
     upstream.on("message", (bytes) => {
       const message = JSON.parse(bytes.toString());
       const method = message.id ? methods.get(message.id) : undefined;
+      if (message.type === "res" && message.ok && method === "health") {
+        message.payload.sessions = {
+          ...message.payload.sessions,
+          path: "/synthetic/sessions",
+          recent: [],
+        };
+      }
       if (message.type === "res" && message.ok && method === "models.list") {
         message.payload = {
           models: [{ id: "synthetic-model", provider: "fixture", name: "Synthetic model" }],
@@ -96,6 +112,17 @@ function startGateway(port, saved) {
       if (message.type === "req") {
         methods.set(message.id, message.method);
         record("request", { id, saved, method: message.method });
+        if (Object.hasOwn(emptyNativeReplies, message.method)) {
+          client.send(
+            JSON.stringify({
+              type: "res",
+              id: message.id,
+              ok: true,
+              payload: emptyNativeReplies[message.method],
+            }),
+          );
+          return;
+        }
         if (saved && armed && message.method === "health") {
           held.set(`${id}:${message.id}`, { id, upstream, bytes });
           record("health-held", { id });

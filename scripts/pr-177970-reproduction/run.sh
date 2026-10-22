@@ -70,13 +70,12 @@ import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
 paths = list((root/'main').glob('*/case-result.json'))
 results = [json.loads(p.read_text()) for p in paths]
-clean = len(paths) == 4 and all(
-    (p.parent/'xctest.exit').read_text().strip() == '0' and
+clean = [result for p, result in zip(paths, results)
+    if (p.parent/'xctest.exit').read_text().strip() == '0' and
     json.loads((p.parent/'network-final.json').read_text()).get('backendFailures') == 0 and
-    result['openingFinished'].get('backendFailures') == 0
-    for p, result in zip(paths, results))
-if not clean or not any(result['bugReproduced'] for result in results):
-    status = 'not_reproduced' if clean and all(result['windowReady'] for result in results) else 'inconclusive'
+    result['openingFinished'].get('backendFailures') == 0]
+if not any(result['bugReproduced'] for result in clean):
+    status = 'not_reproduced' if len(clean) == 4 and all(result['windowReady'] for result in clean) else 'inconclusive'
     (root/'verdict.json').write_text(json.dumps({'status':status,'flows':results}, indent=2))
     raise SystemExit(42)
 PY
@@ -132,6 +131,7 @@ PY
   # The same trusted protocol fixture is used for both product revisions.
   git -C "$proof_repo" show "$MAIN_SHA:scripts/test-ios-shell-gateway.mjs" > "$fixture/backend.mjs"
   cp "$helpers/gateway.mjs" "$fixture/"
+  git -C "$proof_repo" show "$MAIN_SHA:scripts/pr-lib/darwin-process-identity.py" > "$fixture/darwin-process-identity.py"
   node - "$proof_repo/package.json" "$fixture/package.json" <<'JS'
 const fs = require('node:fs');
 const pkg = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -265,18 +265,21 @@ import json, pathlib, shutil, sys
 root = pathlib.Path(sys.argv[1]); directory = root/'attachments'
 manifest = json.loads((directory/'manifest.json').read_text())
 matches = [item for test in manifest for item in test['attachments'] if item['suggestedHumanReadableName'].startswith('case-result')]
-if len(matches) != 1:
-    raise SystemExit('No complete native-flow result; inspect XCTest/fixture diagnostics')
-shutil.copyfile(directory/matches[0]['exportedFileName'], root/'case-result.json')
+if len(matches) == 1:
+    shutil.copyfile(directory/matches[0]['exportedFileName'], root/'case-result.json')
+else:
+    (root/'case-incomplete.json').write_text(json.dumps({
+        'status':'inconclusive', 'reason':'No unique complete native-flow result',
+        'resultCount':len(matches)}))
 PY
       if pgrep -f "$app/Contents/MacOS/OpenClaw" > "$case_dir/unexpected-processes.txt"; then
         echo 'The app did not terminate; refusing to contaminate the next case.' >&2
         exit 1
       fi
+      python3 -I -S -B "$helpers/process-absence.py" "$fixture/darwin-process-identity.py" "$app" > "$case_dir/process-absence.json"
       HOME="$app_home" CFFIXED_USER_HOME="$app_home" security delete-keychain "$keychain"
       rm -rf -- "$case_state"
       case_state=""
-      if [[ $stage == candidate && $status -ne 0 ]]; then exit "$status"; fi
     done
   done
   git -C "$checkout" diff --exit-code
@@ -286,18 +289,36 @@ done
 python3 - "$output" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
-results = {stage:[json.loads(p.read_text()) for p in (root/stage).glob('*/case-result.json')]
-           for stage in ['main','candidate']}
-for stage in results:
-    for path in (root/stage).glob('*/case-result.json'):
-        if ((path.parent/'xctest.exit').read_text().strip() != '0' or
-            json.loads((path.parent/'network-final.json').read_text()).get('backendFailures') != 0):
-            raise SystemExit('Failed or backend-contaminated native-flow evidence')
-if any(len(rows) != 4 for rows in results.values()):
-    raise SystemExit('Incomplete native-flow evidence')
-if not any(row['bugReproduced'] for row in results['main']):
-    raise SystemExit('No baseline reproduction')
-if any(row['bugReproduced'] or not row['windowReady'] for row in results['candidate']):
-    raise SystemExit('Candidate did not repair the observed flow')
-(root/'verdict.json').write_text(json.dumps({'status':'reproduced_and_candidate_verified','flows':results}, indent=2))
+results = {}
+clean = {}
+incomplete = []
+for stage in ['main','candidate']:
+    results[stage] = {}
+    clean[stage] = {}
+    for case in ['false-menu','false-settings','true-menu','true-settings']:
+        directory = root/stage/case
+        path = directory/'case-result.json'
+        if not path.exists():
+            incomplete.append(f'{stage}/{case}')
+            continue
+        result = json.loads(path.read_text())
+        results[stage][case] = result
+        if ((directory/'xctest.exit').read_text().strip() == '0' and
+            json.loads((directory/'network-final.json').read_text()).get('backendFailures') == 0 and
+            result['openingFinished'].get('backendFailures') == 0):
+            clean[stage][case] = result
+        else:
+            incomplete.append(f'{stage}/{case}')
+reproduced = [case for case, row in clean['main'].items() if row['bugReproduced']]
+verified = [case for case in reproduced if case in clean['candidate'] and
+            clean['candidate'][case]['windowReady'] and not clean['candidate'][case]['bugReproduced']]
+full = (not incomplete and len(verified) == len(reproduced) and bool(reproduced) and
+        all(row['windowReady'] and not row['bugReproduced'] for row in clean['candidate'].values()))
+status = ('reproduced_and_candidate_verified' if full else
+          'reproduced_and_candidate_verified_partial' if verified else 'inconclusive')
+(root/'verdict.json').write_text(json.dumps({
+    'status':status, 'reproducedCases':reproduced, 'verifiedCases':verified,
+    'incompleteCases':incomplete, 'flows':results}, indent=2))
+if not full:
+    raise SystemExit('Incomplete comparison; see per-case verdict and diagnostics')
 PY
