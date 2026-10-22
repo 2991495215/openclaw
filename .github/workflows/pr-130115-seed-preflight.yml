@@ -1,0 +1,159 @@
+name: Mac catalog seed preflight
+
+on:
+  push:
+    branches: [brzezowski/repro-130115-seed-preflight]
+    paths:
+      - .github/workflows/pr-130115-seed-preflight.yml
+      - scripts/pr-130115-reproduction/seed-codex.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-130115-seed-preflight
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: github.repository == 'openclaw/openclaw'
+    runs-on: macos-26
+    timeout-minutes: 10
+    env:
+      MAIN_SHA: d535d274183d19e2e838c7a7fc96063df676b368
+      CODEX_VERSION: 0.162.1
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/pr-130115-reproduction/seed-codex.mjs
+            .github/workflows/pr-130115-seed-preflight.yml
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: Prepare only the pinned official Codex binary and synthetic home
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $RUNNER_OS == macOS && $RUNNER_ENVIRONMENT == github-hosted ]]
+          [[ $(git rev-parse HEAD) == "$GITHUB_SHA" ]]
+          output="$RUNNER_TEMP/pr-130115-seed-proof"
+          scratch="$(mktemp -d "$RUNNER_TEMP/cs.XXXXXX")"
+          mkdir "$output" "$scratch/bin" "$scratch/h" "$scratch/h/.codex" "$scratch/tmp"
+          printf 'SEED_OUTPUT=%s\nSEED_SCRATCH=%s\n' "$output" "$scratch" >> "$GITHUB_ENV"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --max-time 60 "https://raw.githubusercontent.com/openclaw/openclaw/$MAIN_SHA/extensions/codex/src/app-server/version.ts" \
+            -o "$output/product-codex-version.ts"
+          printf '%s  %s\n' 5e456450f2f5d22f70158ab360fb80c8ebcc55fe6aaf19f5e5a53650deb999c9 \
+            "$output/product-codex-version.ts" | shasum -a 256 --check > "$output/product-pin-verification.txt"
+          node --input-type=module - "$output/product-codex-version.ts" <<'JS'
+          import fs from 'node:fs';
+          const source = fs.readFileSync(process.argv[2], 'utf8');
+          const version = source.match(/export const CODEX_APP_SERVER_VERSION = "([^"]+)";/)?.[1];
+          if (version !== process.env.CODEX_VERSION) throw new Error('The main pin does not declare the reviewed Codex version');
+          JS
+          case "$(uname -m)" in
+            arm64)
+              triple=aarch64-apple-darwin
+              digest=b293a0fcdd871900a44c0a4f40a1aa401b31e02854f790ebdb8bd5d1177fd1fe
+              ;;
+            x86_64)
+              triple=x86_64-apple-darwin
+              digest=d68e39d8f62639f33f7d00656554cb9c3ef7809e664a3827e62ab3ace3c21b21
+              ;;
+            *) echo 'Unsupported native architecture' >&2; exit 1 ;;
+          esac
+          asset="codex-$triple.tar.gz"
+          url="https://github.com/openai/codex/releases/download/rust-v$CODEX_VERSION/$asset"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --max-time 120 "$url" -o "$scratch/$asset"
+          printf '%s  %s\n' "$digest" "$scratch/$asset" | shasum -a 256 --check > "$output/archive-verification.txt"
+          [[ $(tar -tzf "$scratch/$asset") == "codex-$triple" ]]
+          tar -xzf "$scratch/$asset" -C "$scratch/bin"
+          executable="$scratch/bin/codex-$triple"
+          [[ -x $executable ]]
+          printf 'SEED_EXECUTABLE=%s\n' "$executable" >> "$GITHUB_ENV"
+          node --input-type=module - "$scratch" "$output" "$executable" "$url" "$digest" <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { createHash } from 'node:crypto';
+          const [scratch, output, executable, url, digest] = process.argv.slice(2);
+          fs.writeFileSync(path.join(scratch, 'seed-input.json'), JSON.stringify({
+            executable, expectedVersion: process.env.CODEX_VERSION, home: path.join(scratch, 'h'), output,
+            stores: [{label: 'mac', root: path.join(scratch, 'h/.codex')}],
+          }));
+          const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+          fs.writeFileSync(path.join(output, 'provenance.json'), JSON.stringify({
+            productMain: process.env.MAIN_SHA, proofHead: process.env.GITHUB_SHA, codexVersion: process.env.CODEX_VERSION,
+            officialAssetURL: url, officialAssetSHA256: digest, executableSHA256: hash(executable),
+            productVersionFileSHA256: hash(path.join(output, 'product-codex-version.ts')),
+            seedScriptSHA256: hash('scripts/pr-130115-reproduction/seed-codex.mjs'),
+            scope: 'seed-only; no OpenClaw app, Gateway, UI or candidate',
+          }, null, 2));
+          JS
+          sw_vers > "$output/macos.txt"
+          uname -m >> "$output/macos.txt"
+      - name: Prove persistent visible seed through the real confined Codex runtime
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          node_path="$(command -v node)"
+          /usr/bin/env -i \
+            PATH="$(dirname "$node_path"):/usr/bin:/bin:/usr/sbin:/sbin" \
+            HOME="$SEED_SCRATCH/h" CFFIXED_USER_HOME="$SEED_SCRATCH/h" TMPDIR="$SEED_SCRATCH/tmp" \
+            GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted RUNNER_TEMP="$RUNNER_TEMP" \
+            "$node_path" scripts/pr-130115-reproduction/seed-codex.mjs "$SEED_SCRATCH/seed-input.json" \
+            > "$SEED_OUTPUT/preflight.log" 2>&1
+          node --input-type=module - "$SEED_OUTPUT/seed.json" <<'JS'
+          import fs from 'node:fs';
+          const seed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (seed.seedVersion !== 2 || seed.status !== 'visible_messages_read_by_fresh_codex_process' ||
+              seed.turnsStarted !== 3 || seed.syntheticModelResponses !== 3 || seed.fixtures.length !== 3 ||
+              seed.externalModelRequestsPermitted !== false || seed.networkCanaries.deniedHits !== 0 ||
+              !seed.networkCanaries.deniedExit || seed.networkCanaries.allowedResponse !== 'loopback-ready' ||
+              seed.processes.length !== 2 || seed.processes[0].phase !== 'create' || seed.processes[1].phase !== 'fresh-readback' ||
+              seed.processes[0].pid === seed.processes[1].pid || seed.processes.some(p => p.code !== 0 || p.signal) ||
+              seed.fixtures.some(f => !['legacy', 'paginated'].includes(f.readback.historyMode))) {
+            throw new Error('Seed preflight evidence is incomplete');
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            'Seed preflight passed: three real turns, three synthetic loopback replies, and persisted visible messages read by a new Codex process.\n' +
+            'Codex network policy allowed only the recorded loopback port; both canaries passed.\n' +
+            'This is not reproduction of PR #130115. No OpenClaw app, Gateway, UI or candidate ran.\n');
+          JS
+      - name: Record and stop any remaining task-owned Codex process
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z ${SEED_EXECUTABLE:-} || -z ${SEED_OUTPUT:-} ]]; then exit 0; fi
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { execFileSync } from 'node:child_process';
+          const executable = process.env.SEED_EXECUTABLE;
+          const rows = execFileSync('/bin/ps', ['-axo', 'pid=,command='], {encoding:'utf8'}).split('\n');
+          const remaining = rows.flatMap(line => {
+            const match = line.trim().match(/^(\d+)\s+(.*)$/);
+            return match && match[2].startsWith(executable + ' app-server ') ? [{pid:Number(match[1]), command:match[2]}] : [];
+          });
+          fs.writeFileSync(path.join(process.env.SEED_OUTPUT, 'remaining-processes.json'), JSON.stringify(remaining, null, 2));
+          for (const entry of remaining) {
+            try { process.kill(-entry.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+          }
+          if (remaining.length) throw new Error('A seed process remained alive; recorded and stopped, so the preflight is incomplete');
+          JS
+      - name: Upload only synthetic seed evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-130115-seed-preflight
+          path: ${{ runner.temp }}/pr-130115-seed-proof
+          if-no-files-found: warn
+          retention-days: 7
