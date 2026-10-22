@@ -366,10 +366,10 @@ suite.define(() => {
           const failed = await catalogRefresh(() =>
             settings.getByRole("button", { name: "Refresh", exact: true }).click(),
           );
-          const retry = settings
-            .locator(".model-providers__catalog-progress")
-            .getByRole("button", { name: "Retry", exact: true });
-          await retry.waitFor({ state: "visible" });
+          const ollama = settings.locator('[data-provider-id="ollama"]');
+          // Provider rows own discovery failures; the header Refresh retries them.
+          await expect.poll(() => ollama.textContent()).toContain("Models unavailable");
+          await expect.poll(() => refreshButton.isEnabled()).toBe(true);
           expect(await settings.textContent()).not.toContain("Open Models to try again.");
           expect(acquisitions()).toBe(initialAcquisitions + 3);
           await open();
@@ -383,14 +383,14 @@ suite.define(() => {
           });
           expect(await pickerValue(primary)).toBe("fixture/anchor");
           stages.push({ stage: "failed-refresh", acquisitions: acquisitions() });
-          await retry.scrollIntoViewIfNeeded();
+          await refreshButton.scrollIntoViewIfNeeded();
           await capture("settings-refresh-failed.png");
 
           providerMode = "ready";
           providerModel = "recovered-fixture:latest";
           acquisitionDiagnostics.trigger("retry");
-          await catalogRefresh(() => retry.click());
-          await retry.waitFor({ state: "hidden" });
+          await catalogRefresh(() => refreshButton.click());
+          await expect.poll(() => ollama.textContent()).toContain("Ready");
           await open();
           await primary
             .locator('[role="option"][data-value="ollama/recovered-fixture:latest"]')
