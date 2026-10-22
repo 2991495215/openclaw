@@ -16,7 +16,11 @@ import { isUserModelAuthProfileId } from "../state/user-model-account-id.js";
 import type { PersonalCatalogSelection } from "../state/user-model-accounts.js";
 import { captureUserProfileModelAccountLinksAuthority } from "../state/user-profile-events.js";
 import { isDefaultAgentRuntimeId } from "./agent-runtime-id.js";
-import { resolveAgentDir, resolveAgentWorkspaceDir } from "./agent-scope.js";
+import {
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+  resolveNativeModelPrimary,
+} from "./agent-scope.js";
 import { resolveExternalCliAuthScopeFromConfig } from "./auth-profiles/external-cli-scope.js";
 import { materializePreparedPersonalAuthProfile } from "./auth-profiles/personal-profiles.js";
 import { listCliRuntimeModelBackendBindings } from "./cli-backends.js";
@@ -38,6 +42,8 @@ import {
 } from "./model-catalog-view.js";
 import { loadManifestModelCatalog } from "./model-catalog.js";
 import type { ModelCatalogEntry } from "./model-catalog.types.js";
+import { splitTrailingAuthProfile } from "./model-ref-profile.js";
+import { resolveDefaultModelForAgent } from "./model-selection-config.js";
 import { dedupeModelCatalogEntries } from "./model-selection-shared.js";
 import {
   openAIModelCatalogRoutePolicy,
@@ -111,6 +117,20 @@ export function createModelCatalogDecisions(params: ModelCatalogDecisionParams) 
   // through the whole projection so per-model normalization cannot rediscover it.
   const metadataSnapshot = params.metadataSnapshot;
   const workspaceDir = params.workspaceDir ?? resolveAgentWorkspaceDir(params.cfg, params.agentId);
+  const configuredProfileId = splitTrailingAuthProfile(
+    resolveNativeModelPrimary(params.cfg, params.agentId) ?? "",
+  ).profile;
+  const primary = resolveDefaultModelForAgent({
+    cfg: params.cfg,
+    agentId: params.agentId,
+    manifestPlugins: metadataSnapshot,
+  });
+  const primaryKey = resolveModelCatalogIdentityKey({
+    provider: primary.provider,
+    id: primary.model,
+  });
+  const configuredPinForEntry = (entry: Pick<ModelCatalogEntry, "provider" | "id">) =>
+    resolveModelCatalogIdentityKey(entry) === primaryKey ? configuredProfileId : undefined;
   // Runtime choices are read after preparation; CLI backends belong to the owner's registry.
   const cliRuntimeBindings = params.pluginRegistry
     ? withPluginRuntimeRegistryScope(params.pluginRegistry, () =>
@@ -226,7 +246,8 @@ export function createModelCatalogDecisions(params: ModelCatalogDecisionParams) 
   // A selected profile is host-owned auth, not evidence from the shared native
   // login; the harness evaluator already applies this rule to session pins.
   const evaluateNative: typeof nativeEvaluator = (entry, host, runtimeId) =>
-    preferredProfilesByProvider.has(normalizeProviderId(entry.provider))
+    preferredProfilesByProvider.has(normalizeProviderId(entry.provider)) ||
+    configuredPinForEntry(entry)
       ? host
       : nativeEvaluator(entry, host, runtimeId);
   // Store revisions do not advance when a token or failure window expires.
@@ -334,7 +355,9 @@ export function createModelCatalogDecisions(params: ModelCatalogDecisionParams) 
       (sameProvider ? preferredProfileIdForCatalog : undefined) ?? defaultProfileId;
     // New sessions capture personal defaults with the same strength as explicit account pins.
     const pinnedProfileId =
-      (sameProvider ? pinnedProfileIdForCatalog : undefined) ?? defaultProfileId;
+      (sameProvider ? pinnedProfileIdForCatalog : undefined) ??
+      defaultProfileId ??
+      configuredPinForEntry(entry);
     const requestedRuntimeId =
       runtimeId ?? (sameProvider && profileProvider ? runtimeOverride : undefined);
     const resolved = {
