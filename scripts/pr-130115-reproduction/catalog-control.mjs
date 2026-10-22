@@ -32,6 +32,7 @@ let nextPhase = 0;
 let active = false;
 let firstNodeId;
 let restarted = false;
+const refreshedPhases = new Set();
 let stopping = false;
 const activeCommands = new Map();
 const gatewayStates = new Map();
@@ -138,10 +139,10 @@ async function rpc(target, method, params, directory, name, requestTimeoutMs = 4
   return JSON.parse(stdout);
 }
 
-async function observe(phase) {
+async function observe(phase, afterUIRefresh = false) {
   const target = phase === "remote" ? spec.remote : spec.local;
   const mode = phase === "remote" ? "remote" : "local";
-  const directory = path.join(spec.output, phase);
+  const directory = path.join(spec.output, afterUIRefresh ? `${phase}-after-ui-refresh` : phase);
   await mkdir(directory); // Repeated requests cannot replace previous evidence.
   const routeDeadline = Date.now() + 30000;
   const routeObservations = [];
@@ -320,13 +321,17 @@ const server = createServer(async (req, res) => {
     finally { active = false; }
     return;
   }
-  const phase = pathname.replace(/^\/snapshot\//, "");
+  const afterUIRefresh = pathname.startsWith("/after-ui-refresh/");
+  const phase = pathname.replace(/^\/(?:snapshot|after-ui-refresh)\//, "");
   if (req.method !== "POST" || !phases.includes(phase)) { res.writeHead(404); res.end("{}"); return; }
-  if (active || phases[nextPhase] !== phase || (nextPhase === 4 && !restarted)) { res.writeHead(409); res.end('{"error":"unexpected observation order"}'); return; }
+  const expected = afterUIRefresh ? phases[nextPhase - 1] === phase && !refreshedPhases.has(phase)
+    : phases[nextPhase] === phase && (nextPhase !== 4 || restarted);
+  if (active || !expected) { res.writeHead(409); res.end('{"error":"unexpected observation order"}'); return; }
   active = true;
+  if (afterUIRefresh) refreshedPhases.add(phase);
   try {
-    const result = await observe(phase);
-    nextPhase++;
+    const result = await observe(phase, afterUIRefresh);
+    if (!afterUIRefresh) nextPhase++;
     res.end(JSON.stringify(result));
   } catch (error) {
     res.writeHead(500); res.end(JSON.stringify({ phase, error: String(error), proofVerdict: "not_assessed" }));

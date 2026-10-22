@@ -281,7 +281,56 @@ final class CatalogModeUITests: XCTestCase {
 
     @MainActor
     private func observe(_ phase: String, app: XCUIApplication) async throws -> [String: Any] {
-        try await self.control("/snapshot/" + phase, label: phase, app: app)
+        let initial = try await self.control("/snapshot/" + phase, label: phase, app: app)
+        // The initial snapshot has already proved the real node and worker are ready.
+        let windows = app.windows.containing(.button, identifier: "chat-new-thread")
+        guard windows.count == 1 else { throw self.failure("Catalog refresh needs one native chat window") }
+        let sidebars = windows.firstMatch.outlines.containing(.button, identifier: "chat-new-thread")
+        guard sidebars.count == 1 else { throw self.failure("Catalog refresh needs one native sidebar") }
+        let sidebar = sidebars.firstMatch
+        guard let retry = try self.pendingCatalogRetry(in: sidebar) else { return initial }
+        self.capture(app, name: "\(phase)-before-explicit-refresh")
+        try await self.reveal(retry, in: sidebar, app: app)
+        try await self.click(retry, app: app)
+        let pending = sidebar.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ OR value CONTAINS %@", "[catalog_pending]", "[catalog_pending]"))
+        let settled = await XCTWaiter.fulfillment(of: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: pending.firstMatch)], timeout: 60)
+        self.capture(app, name: "\(phase)-after-explicit-refresh")
+        guard settled == .completed else {
+            throw self.failure("Catalog remained pending after one explicit native refresh")
+        }
+        var refreshed = try await self.control("/after-ui-refresh/" + phase, label: "\(phase)-after-ui-refresh", app: app)
+        refreshed["initialObservation"] = initial
+        let action: [String: Any] = ["clicks": 1, "initialLoadSucceeded": false]
+        refreshed["explicitUIRefresh"] = action
+        return refreshed
+    }
+
+    @MainActor
+    private func pendingCatalogRetry(in sidebar: XCUIElement) throws -> XCUIElement? {
+        let rows = sidebar.children(matching: .outlineRow).allElementsBoundByIndex
+        let titles = ["Claude Code", "Codex"]
+        var headings: [Int] = []
+        for title in titles {
+            let matches = rows.indices.filter { rows[$0].buttons[title].exists }
+            guard matches.count == 1 else { throw self.failure("Catalog heading is missing or ambiguous: \(title)") }
+            headings.append(matches[0])
+        }
+        // Both section buttons call the same scheduleRefresh owner; choose one pending section.
+        for start in headings.sorted() {
+            let end = headings.filter { $0 > start }.min() ?? rows.count
+            let section = rows[(start + 1)..<end]
+            let pending = section.contains { row in
+                row.staticTexts.matching(NSPredicate(
+                    format: "label CONTAINS %@ OR value CONTAINS %@", "[catalog_pending]", "[catalog_pending]")).count > 0
+            }
+            if !pending { continue }
+            let buttons = section.flatMap { $0.buttons.matching(NSPredicate(format: "label == %@", "Retry")).allElementsBoundByIndex }
+            guard buttons.count == 1 else { throw self.failure("Pending catalog Retry is missing or ambiguous") }
+            return buttons[0]
+        }
+        return nil
     }
 
     @MainActor
@@ -291,7 +340,8 @@ final class CatalogModeUITests: XCTestCase {
         request.httpMethod = "POST"
         // A failed snapshot can add two list and two read diagnostics (2 * (95s + 60s)).
         // Reserve that work plus 10s transport margin beyond the original 240s.
-        let diagnosticBudget: TimeInterval = path.hasPrefix("/snapshot/") ? 2 * (95 + 60) + 10 : 0
+        let includesSnapshot = path.hasPrefix("/snapshot/") || path.hasPrefix("/after-ui-refresh/")
+        let diagnosticBudget: TimeInterval = includesSnapshot ? 2 * (95 + 60) + 10 : 0
         request.timeoutInterval = 240 + diagnosticBudget
         let (data, response) = try await URLSession.shared.data(for: request)
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
