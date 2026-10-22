@@ -4535,6 +4535,7 @@ process.on("exit", () => {
       git(origin, ["add", "-A"]);
       git(origin, ["commit", "-qm", "old content"]);
       const restoredCommit = git(origin, ["rev-parse", "HEAD"]);
+      const restoredBlob = git(origin, ["rev-parse", `${restoredCommit}:restored/old.txt`]);
       git(origin, ["tag", "retained-root"]);
       rmSync(path.join(origin, "restored"), { recursive: true });
       git(origin, ["add", "-A"]);
@@ -4931,32 +4932,11 @@ require('node:module').syncBuiltinESMExports();`,
         expect(git(legacy.receiver, ["rev-parse", "HEAD^"])).toBe(base);
         expect(git(legacy.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
         expect(existsSync(path.join(legacy.receiver, ".git/objects/info/alternates"))).toBe(false);
-        for (const condition of [
-          "missing ref",
-          "missing base",
-          "borrowed objects",
-          "partial clone",
-        ] as const) {
+        for (const condition of ["missing ref", "missing base", "borrowed objects"] as const) {
           const fallback = receive(`prepared-${condition.replace(" ", "-")}`, sent, {
             prepareReceiver: (receiver) => {
               if (condition === "missing ref") {
                 git(receiver, ["update-ref", "-d", "refs/remotes/origin/main"]);
-                return;
-              }
-              if (condition === "partial clone") {
-                git(receiver, [
-                  "-c",
-                  "user.name=Transport Fixture",
-                  "-c",
-                  "user.email=transport@example.invalid",
-                  "commit",
-                  "--allow-empty",
-                  "-qm",
-                  "newer partial source",
-                ]);
-                git(receiver, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
-                git(receiver, ["config", "extensions.partialclone", "origin"]);
-                git(receiver, ["config", "remote.origin.promisor", "true"]);
                 return;
               }
               rmSync(receiver, { recursive: true });
@@ -4977,6 +4957,69 @@ require('node:module').syncBuiltinESMExports();`,
             false,
           );
         }
+
+        // Native hydration keeps blob-filtered ancestry. A base switch and the
+        // following reuse must preserve that ancestry without hydrating missing blobs.
+        const partialHistory = receive("native-partial-history", sent, {
+          prepareReceiver: (receiver) => {
+            rmSync(receiver, { recursive: true });
+            git(root, [
+              "clone",
+              "-q",
+              "--filter=blob:none",
+              "--no-checkout",
+              `file://${origin}`,
+              receiver,
+            ]);
+            git(receiver, [
+              "-c",
+              "user.name=Transport Fixture",
+              "-c",
+              "user.email=transport@example.invalid",
+              "commit",
+              "--allow-empty",
+              "-qm",
+              "newer partial source",
+            ]);
+            git(receiver, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+          },
+        });
+        expect(partialHistory.result.status, failureDetail(partialHistory.result)).toBe(0);
+        expect(git(partialHistory.receiver, ["rev-parse", "origin/main"])).toBe(base);
+        expect(git(partialHistory.receiver, ["rev-parse", "--is-shallow-repository"])).toBe(
+          "false",
+        );
+        expect(git(partialHistory.receiver, ["config", "--get", "remote.origin.promisor"])).toBe(
+          "true",
+        );
+        expect(
+          git(partialHistory.receiver, ["config", "--get", "remote.origin.partialclonefilter"]),
+        ).toBe("blob:none");
+        expect(
+          readdirSync(path.join(partialHistory.receiver, ".git/objects/pack")).some((file) =>
+            file.endsWith(".promisor"),
+          ),
+        ).toBe(true);
+        const missingBlob = runCommand("git", ["cat-file", "-e", restoredBlob], {
+          cwd: partialHistory.receiver,
+          env: { ...env, GIT_NO_LAZY_FETCH: "1" },
+          timeout: 10_000,
+        });
+        expect(missingBlob.error, failureDetail(missingBlob)).toBeUndefined();
+        expect(missingBlob.status, failureDetail(missingBlob)).toBe(1);
+        const partialReused = receive("native-partial-history", sent, {
+          source: path.join(root, "unavailable-origin"),
+        });
+        expect(partialReused.result.status, failureDetail(partialReused.result)).toBe(0);
+        expect(git(partialReused.receiver, ["rev-parse", "origin/main"])).toBe(base);
+        expect(git(partialReused.receiver, ["config", "--get", "remote.origin.promisor"])).toBe(
+          "true",
+        );
+        expect(
+          readdirSync(path.join(partialReused.receiver, ".git/objects/pack")).some((file) =>
+            file.endsWith(".promisor"),
+          ),
+        ).toBe(true);
         return;
       }
       if (installsDependencies) {

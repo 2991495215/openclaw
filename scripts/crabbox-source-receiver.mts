@@ -115,22 +115,43 @@ try {
     git(["merge-base", "--is-ancestor", expected.baseSha, "refs/remotes/origin/main"], {
       env: preparedEnv, statusOnly: true,
     }) === 0;
+  const preparedPromisorConfig = Boolean(preparedBase) &&
+    git(["config", "--get-regexp", "^remote\\.origin\\.(promisor|partialclonefilter)$"], {
+      env: preparedEnv, statusOnly: true,
+    }) === 0 ? git(["config", "--get-regexp",
+      "^remote\\.origin\\.(promisor|partialclonefilter)$"], { env: preparedEnv }).trim().split("\n") : [];
+  const preparedPromisor = preparedPromisorConfig.includes("remote.origin.promisor true") &&
+    preparedPromisorConfig.includes("remote.origin.partialclonefilter blob:none");
+  const preparedUsesPromisor = Boolean(preparedBase) &&
+    git(["config", "--get-regexp", "^(extensions\\.partialclone|remote\\..*\\.promisor)$"], {
+      env: preparedEnv, statusOnly: true,
+    }) === 0;
   const preparedBorrowsObjects = Boolean(preparedBase) &&
     (stat(path.join(preparedGit, "objects", "info", "alternates")) ||
-      git(["config", "--get-regexp", "^(extensions\\.partialclone|remote\\..*\\.promisor)$"], {
-        env: preparedEnv, statusOnly: true,
-      }) === 0);
+      preparedUsesPromisor && !preparedPromisor);
   const reuseHistory = reusePreparedBase && !preparedBorrowsObjects &&
     git(["rev-parse", "--is-shallow-repository"], { env: preparedEnv }).trim() === "false";
-  // Pack only the prepared base's reachable history into the new owner. Reusing the
-  // prepared object database directly would also expose dangling prior payload objects.
+  // Pack only locally available history reachable from the prepared base into the new
+  // owner. Promisor metadata keeps intentionally missing blobs lazy; direct object-store
+  // reuse would also expose dangling prior payload objects.
   if (reuseHistory) {
     git(["init", "-q"]);
     git(["remote", "add", "origin", "https://github.com/openclaw/openclaw.git"]);
-    git(["pack-objects", "--revs", "--use-bitmap-index",
+    if (preparedPromisor) {
+      git(["config", "remote.origin.promisor", "true"]);
+      git(["config", "remote.origin.partialclonefilter", "blob:none"]);
+    }
+    const historyPack = git(["pack-objects", "--revs",
+      ...(preparedPromisor ? ["--missing=allow-promisor"] : []),
+      "--use-bitmap-index",
       path.join(gitDir, "objects", "pack", "pack")], {
-      env: preparedEnv, input: expected.baseSha + "\n", phase: "history-pack",
-    });
+      env: { ...preparedEnv, ...(preparedPromisor ? { GIT_NO_LAZY_FETCH: "1" } : {}) },
+      input: expected.baseSha + "\n", phase: "history-pack",
+    }).trim();
+    if (!/^[a-f0-9]{40}$/u.test(historyPack)) fail("invalid history pack identity");
+    if (preparedPromisor) fs.writeFileSync(
+      path.join(gitDir, "objects", "pack", "pack-" + historyPack + ".promisor"), "",
+      { flag: "wx", mode: 0o600 });
     git(["update-ref", "refs/remotes/origin/main", expected.baseSha]);
   } else {
     git(["init", "-q"]);
