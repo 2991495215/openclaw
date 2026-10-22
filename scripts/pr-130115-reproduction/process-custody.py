@@ -53,8 +53,8 @@ class Kernel:
         self.lib.proc_pidinfo.restype = ctypes.c_int
         self.lib.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
         self.lib.proc_pidpath.restype = ctypes.c_int
-        self.lib.proc_listallpids.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        self.lib.proc_listallpids.restype = ctypes.c_int
+        self.lib.proc_listpids.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_int]
+        self.lib.proc_listpids.restype = ctypes.c_int
 
     def birth(self, pid):
         info = self.Info()
@@ -88,16 +88,26 @@ class Kernel:
         after["executable"] = str(Path(os.fsdecode(buffer.value)).resolve(strict=True))
         return after
 
-    def pids(self):
-        # A full buffer is inconclusive, never a complete census.
-        count = self.lib.proc_listallpids(None, 0)
-        if count <= 0:
-            raise RuntimeError("Kernel process census unavailable")
-        pids = (ctypes.c_int * (count + 512))()
-        used = self.lib.proc_listallpids(pids, ctypes.sizeof(pids))
-        if used <= 0 or used >= len(pids):
-            raise RuntimeError("Kernel process census was truncated")
-        return [pid for pid in pids[:used] if pid > 1]
+    def pids(self, uid):
+        if type(uid) is not int or not 0 <= uid <= 0xFFFFFFFF:
+            raise ValueError("Invalid custody UID")
+        # PROC_UID_ONLY filters in the kernel before per-process permission checks.
+        # Unlike proc_listallpids, proc_listpids returns bytes, not a PID count.
+        width = ctypes.sizeof(ctypes.c_int)
+        ctypes.set_errno(0)
+        size = self.lib.proc_listpids(4, uid, None, 0)
+        error = ctypes.get_errno()
+        if size <= 0 or size % width or error:
+            raise RuntimeError(f"Kernel UID census size unavailable: bytes={size}, errno={error}")
+        pids = (ctypes.c_int * (size // width + 512))()
+        capacity = ctypes.sizeof(pids)
+        ctypes.set_errno(0)
+        used = self.lib.proc_listpids(4, uid, pids, capacity)
+        error = ctypes.get_errno()
+        # A full/partial buffer or failed query never establishes a complete census.
+        if used <= 0 or used % width or used >= capacity or error:
+            raise RuntimeError(f"Kernel UID census incomplete: bytes={used}, capacity={capacity}, errno={error}")
+        return [pid for pid in pids[:used // width] if pid > 1]
 
 
 def initialize(file, source, roots):
@@ -118,14 +128,14 @@ def initialize(file, source, roots):
 def census(state):
     kernel = Kernel(state["source"])
     rows, issues = {}, []
-    for pid in kernel.pids():
+    for pid in kernel.pids(state["owner"]["uid"]):
         try:
-            birth = kernel.birth(pid)
-            if birth is None or birth["uid"] != state["owner"]["uid"]:
-                continue
             row = kernel.read(pid)
-            if row is not None:
-                rows[pid] = row
+            if row is None:
+                continue
+            if row["uid"] != state["owner"]["uid"]:
+                raise RuntimeError(f"PID {pid} changed UID after kernel enumeration")
+            rows[pid] = row
         except (OSError, RuntimeError) as error:
             # A denied/partial inspection cannot establish that the process is foreign or gone.
             issues.append({"pid": pid, "error": str(error)})
