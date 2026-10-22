@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315967,
-  "reason": "Measured cd982fce7e5 startup at 315967 B: +37 B vs c4fd27d76ca (shared UI chunk +13 B with self-profile scopes; hash-only chunks +24 B), no new eager modules; correct the below-measurement baseline from #180890.",
+  "startupJsGzipBytes": 312857,
+  "reason": "Defer settings, activity, terminal, and preference English catalogs to their existing lazy owners; retain shared default/browser hints. Measured startup 312857 B versus base315977 B with 7 requests unchanged.",
   "updatedAt": "2026-10-22"
 }

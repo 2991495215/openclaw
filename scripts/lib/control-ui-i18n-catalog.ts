@@ -48,6 +48,7 @@ import { registerPersonalInstructionsEnglish } from "../../ui/src/i18n/locales/e
 import { registerPluginConsentEnglish } from "../../ui/src/i18n/locales/en-plugin-consent.ts";
 import { registerPluginManagementEnglish } from "../../ui/src/i18n/locales/en-plugin-management.ts";
 import { registerPortalsEnglish } from "../../ui/src/i18n/locales/en-portals.ts";
+import { registerPreferencesEnglish } from "../../ui/src/i18n/locales/en-preferences.ts";
 import { registerProcessesEnglish } from "../../ui/src/i18n/locales/en-processes.ts";
 import { registerProfileEnglish } from "../../ui/src/i18n/locales/en-profile.ts";
 import { registerSecretsStoreEnglish } from "../../ui/src/i18n/locales/en-secrets-store.ts";
@@ -61,6 +62,7 @@ import { registerSkillLibraryEnglish } from "../../ui/src/i18n/locales/en-skill-
 import { registerSkillWorkshopEnglish } from "../../ui/src/i18n/locales/en-skill-workshop.ts";
 import { registerSkillsBrowserEnglish } from "../../ui/src/i18n/locales/en-skills-browser.ts";
 import { registerSystemsEnglish } from "../../ui/src/i18n/locales/en-systems.ts";
+import { registerTerminalEnglish } from "../../ui/src/i18n/locales/en-terminal.ts";
 import { registerToolDiagnosticsEnglish } from "../../ui/src/i18n/locales/en-tool-diagnostics.ts";
 import { registerTranscriptsEnglish } from "../../ui/src/i18n/locales/en-transcripts.ts";
 import { registerUpdateActionsEnglish } from "../../ui/src/i18n/locales/en-update-actions.ts";
@@ -81,6 +83,8 @@ const localesDir = path.resolve(
 const sourceFiles = [
   "en.ts",
   "en-agents.ts",
+  "en-terminal.ts",
+  "en-preferences.ts",
   "en-agent-creation.ts",
   "en-activity.ts",
   "en-agents-home.ts",
@@ -200,6 +204,12 @@ export function loadControlUiSourceCatalog(): TranslationMap {
     // Preserve partial-fragment key order while keeping shared labels eager.
     {
       ...en,
+      configForm: registerSettingsEnglish.catalog.configForm,
+      configView: registerSettingsEnglish.catalog.configView,
+      quickSettings: registerPreferencesEnglish.catalog.quickSettings,
+      activityFeed: registerActivityEnglish.catalog.activityFeed,
+      terminal: registerTerminalEnglish.catalog.terminal,
+      updates: { ...en.updates, run: registerUpdateActionsEnglish.catalog.updates.run },
       agentChip,
       secretsStore: registerSecretsStoreEnglish.catalog.secretsStore,
       custodian: {
@@ -259,6 +269,7 @@ export function loadControlUiSourceCatalog(): TranslationMap {
     registerDreamingEnglish.catalog,
     registerFilePreviewEnglish.catalog,
     registerProcessesEnglish.catalog,
+    registerPreferencesEnglish.catalog,
     registerLabsEnglish.catalog,
     registerLoginEnglish.catalog,
     registerLinkReaderEnglish.catalog,
@@ -282,6 +293,7 @@ export function loadControlUiSourceCatalog(): TranslationMap {
     registerSkillWorkshopEnglish.catalog,
     registerSkillsBrowserEnglish.catalog,
     registerSystemsEnglish.catalog,
+    registerTerminalEnglish.catalog,
     registerUpdateActionsEnglish.catalog,
     registerTranscriptsEnglish.catalog,
     registerUsageEnglish.catalog,
