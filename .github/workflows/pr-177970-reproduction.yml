@@ -1,0 +1,64 @@
+name: Saved Gateway native reproduction
+
+on:
+  push:
+    branches: [brzezowski/repro-177970-native]
+    paths:
+      - .github/workflows/pr-177970-reproduction.yml
+      - scripts/pr-177970-reproduction/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saved-gateway-reproduction-177970
+  cancel-in-progress: false
+
+jobs:
+  reproduce:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      MAIN_SHA: 74ca496bf40e1e702e824aa597620b9e1798efab
+      CANDIDATE_SHA: fbb30e598cdad1e284058798bc6c6b5eaf80f2e5
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Select the same supported Xcode for both revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for app in /Applications/Xcode_26.4.1.app /Applications/Xcode_26.4.app; do
+            if [[ -d "$app" ]]; then
+              echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo "Required Xcode 26.4.x is unavailable; no product proof was run."
+          exit 1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24.22.1
+      - name: Prepare the external XCTest runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          scripts/install-xcodegen.sh "$RUNNER_TEMP/saved-gateway-tools/bin"
+          echo "$RUNNER_TEMP/saved-gateway-tools/bin" >> "$GITHUB_PATH"
+      - name: Reproduce through the real native menu and windows
+        shell: bash
+        run: |
+          /bin/bash scripts/pr-177970-reproduction/run.sh \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/saved-gateway-reproduction"
+      - name: Upload synthetic native evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: saved-gateway-reproduction-177970
+          path: ${{ runner.temp }}/saved-gateway-reproduction
+          if-no-files-found: warn
+          retention-days: 7

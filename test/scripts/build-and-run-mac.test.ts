@@ -157,6 +157,7 @@ describe("scripts/build-and-run-mac.sh", () => {
 
 // Platform contract: macOS tooling must not select Homebrew Bash through PATH.
 const nativeScripts = [
+  "scripts/pr-177970-reproduction/run.sh",
   "scripts/lib/plistbuddy.sh",
   "scripts/e2e/parallels-linux-smoke.sh",
   "scripts/e2e/parallels-windows-smoke.sh",
