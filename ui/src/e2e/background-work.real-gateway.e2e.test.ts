@@ -96,20 +96,23 @@ function payloadOf(rpc: BackgroundWorkRpc): unknown {
 
 async function capture(page: Page, name: string, focus: Locator) {
   await focus.waitFor({ state: "visible" });
-  expect(
-    await focus.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return (
-        rect.width > 0 &&
-        rect.height > 0 &&
-        rect.left >= 0 &&
-        rect.top >= 0 &&
-        rect.right <= innerWidth + 1 &&
-        rect.bottom <= innerHeight + 1
-      );
-    }),
-    name + " interaction must fit the viewport",
-  ).toBe(true);
+  await expect
+    .poll(
+      () =>
+        focus.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.left >= 0 &&
+            rect.top >= 0 &&
+            rect.right <= innerWidth + 1 &&
+            rect.bottom <= innerHeight + 1
+          );
+        }),
+      { message: name + " interaction must fit the viewport" },
+    )
+    .toBe(true);
   const visibleText = (await page.locator("body").textContent()) ?? "";
   // oxlint-disable-next-line unicorn/prefer-dom-node-text-content -- innerText separately proves rendered visible text.
   const renderedText = await page.locator("body").innerText();
