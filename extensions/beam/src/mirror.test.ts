@@ -28,7 +28,6 @@ import { BEAM_MAX_ITEMS, parseBeamUpload } from "./types.js";
 
 let fixture: ReturnType<typeof beamMirrorTestFixture>;
 beforeEach(() => {
-  vi.spyOn(Date, "now").mockReturnValue(beamTestNow);
   fixture = beamMirrorTestFixture();
 });
 
@@ -366,7 +365,7 @@ describe("createBeamMirrorRunner", () => {
   });
 
   it("keeps one catalog and upload path active across missed scheduler periods", async () => {
-    vi.useFakeTimers({ now: beamTestNow });
+    vi.useFakeTimers();
     const list = beamTestBarrier();
     const read = vi.fn();
     const { sent } = fixture;
@@ -391,7 +390,7 @@ describe("createBeamMirrorRunner", () => {
   });
 
   it("waits for guarded response cleanup after lifecycle abort without warning", async () => {
-    vi.useFakeTimers({ now: beamTestNow });
+    vi.useFakeTimers();
     const fetchStarted = createDeferred<void>();
     const cleanup = beamTestBarrier();
     const cancel = vi.fn();
@@ -448,7 +447,7 @@ describe("createBeamMirrorRunner", () => {
   });
 
   it("aborts a stalled loopback transport on stop", async () => {
-    vi.useFakeTimers({ now: beamTestNow });
+    vi.useFakeTimers();
     const requestStarted = createDeferred<void>();
     const requestClosed = createDeferred<void>();
     await withServer(
@@ -523,11 +522,13 @@ describe("createBeamMirrorRunner", () => {
     const { sent } = fixture;
     const recency = beamTestNow - 60_000;
     let clock = beamTestNow;
-    vi.spyOn(Date, "now").mockImplementation(() => clock);
-    const runner = fixture.runner({
-      hostCursor: "older-sessions",
-      sessions: [{ threadId: "t1", name: "Fix flow", recencyAt: recency }],
-    });
+    const runner = fixture.runner(
+      {
+        hostCursor: "older-sessions",
+        sessions: [{ threadId: "t1", name: "Fix flow", recencyAt: recency }],
+      },
+      { now: () => clock },
+    );
     await runner.tick();
     expect(sent).toHaveLength(1);
     expect(sent[0]?.payload.completed).toBe(false);
@@ -561,7 +562,7 @@ describe("createBeamMirrorService", () => {
   it.each(["list", "read"] as const)(
     "stops before a paused %s settles without resuming work",
     async (stage) => {
-      vi.useFakeTimers({ now: beamTestNow });
+      vi.useFakeTimers();
       const context = beamTestServiceContext(),
         pause = beamTestBarrier();
       const list = stage === "list" ? pause.run : vi.fn();

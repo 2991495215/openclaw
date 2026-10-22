@@ -213,8 +213,10 @@ type TrackedMirrorSession = {
 export function createBeamMirrorRunner(params: {
   runtime: { config: Pick<PluginRuntime["config"], "current"> };
   logger: { warn: (message: string) => void; info: (message: string) => void };
+  now?: () => number;
   signal: AbortSignal;
 }) {
+  const now = params.now ?? Date.now;
   const tracked = new Map<string, TrackedMirrorSession>();
   const { signal } = params;
   let lastWarnAt = 0;
@@ -236,7 +238,7 @@ export function createBeamMirrorRunner(params: {
     fingerprint: string,
   ) => {
     tracked.delete(key);
-    tracked.set(key, { candidate, fingerprint, expiresAt: Date.now() + BEAM_RETENTION_MS });
+    tracked.set(key, { candidate, fingerprint, expiresAt: now() + BEAM_RETENTION_MS });
     if (tracked.size <= MIRROR_RETRY_CAP) {
       return;
     }
@@ -248,8 +250,8 @@ export function createBeamMirrorRunner(params: {
   };
 
   const warnThrottled = (message: string) => {
-    if (Date.now() - lastWarnAt >= MIRROR_WARN_INTERVAL_MS) {
-      lastWarnAt = Date.now();
+    if (now() - lastWarnAt >= MIRROR_WARN_INTERVAL_MS) {
+      lastWarnAt = now();
       params.logger.warn(message);
     }
   };
@@ -345,7 +347,7 @@ export function createBeamMirrorRunner(params: {
       beamId: beamMirrorId(candidate.catalogId, candidate.hostId, candidate.threadId),
       source: candidate.catalogId,
       title: truncateUtf16Safe(candidate.title, 160),
-      updatedAt: new Date(candidate.recencyAt || Date.now()).toISOString(),
+      updatedAt: new Date(candidate.recencyAt || now()).toISOString(),
       completed,
       ...(sourceModel ? { sourceModel } : {}),
       ...(reduced.truncated || transcript.nextCursor ? { truncated: true } : {}),
@@ -387,7 +389,7 @@ export function createBeamMirrorRunner(params: {
         );
         return;
       }
-      const activeSinceMs = Date.now() - mirror.activeWindowMinutes * 60_000;
+      const activeSinceMs = now() - mirror.activeWindowMinutes * 60_000;
       const catalogs = listActiveSessionCatalogs().filter(
         (catalog) =>
           // Never mirror the local beam receiver back out: a two-gateway pair
@@ -468,7 +470,7 @@ export function createBeamMirrorRunner(params: {
       }
       // Sessions that left the active window get one final completed upload so
       // remote rows flip from live to completed instead of lingering until TTL.
-      const tickNow = Date.now();
+      const tickNow = now();
       const terminalEntries: Array<[string, TrackedMirrorSession]> = [];
       for (const [key, entry] of tracked) {
         signal.throwIfAborted();

@@ -183,6 +183,7 @@ export function createBeamTestRunner({
   return createBeamMirrorRunner({
     runtime: createBeamTestRuntime(beamTestMirrorConfig(endpoint ? { endpoint } : {})),
     logger: beamTestLogger,
+    now: () => beamTestNow,
     signal: new AbortController().signal,
     ...options,
   });

@@ -1,5 +1,5 @@
 import { withServer } from "openclaw/plugin-sdk/test-env";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   beamTestNow,
   beamTestSessions as sessions,
@@ -20,7 +20,6 @@ let activeSessions: BeamTestSession[];
 beforeEach(() => {
   fixture = beamMirrorTestFixture();
   clock = beamTestNow;
-  vi.spyOn(Date, "now").mockImplementation(() => clock);
   activeSessions = sessions(["t1"], beamTestNow - 60_000);
 });
 
@@ -32,6 +31,7 @@ function createRetryRunner(statusFor = (payload: BeamUpload) => (payload.complet
     },
     {
       endpoint: "http://127.0.0.1:19351/api/v1/beam/sessions",
+      now: () => clock,
     },
     { status: statusFor },
   );
