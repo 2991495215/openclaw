@@ -15,18 +15,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare-main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          repository: openclaw/openclaw
+          run-id: 39824266784
+          name: saved-gateway-reproduction-177970
+          path: recovered
+      - name: Verify the preserved main bundle
+        shell: bash
+        run: |
+          echo 'b75dbf19b1b19f8e0a5529cbc51563f6194cc29ae12d52450c32e83675704530  recovered/main/app.zip' | sha256sum --check
+          test "$(head -n 1 recovered/main/source.txt)" = 74ca496bf40e1e702e824aa597620b9e1798efab
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: verified-main-bundle
+          path: recovered/main/app.zip
+          compression-level: 0
+          retention-days: 1
   reproduce:
+    needs: prepare-main
     runs-on: macos-26
+    permissions:
+      contents: read
     timeout-minutes: 60
     env:
       MAIN_SHA: 74ca496bf40e1e702e824aa597620b9e1798efab
       CANDIDATE_SHA: fbb30e598cdad1e284058798bc6c6b5eaf80f2e5
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      REUSED_MAIN_ARCHIVE: ${{ runner.temp }}/verified-main/app.zip
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           fetch-depth: 1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: verified-main-bundle
+          path: ${{ runner.temp }}/verified-main
       - name: Select the same supported Xcode for both revisions
         shell: bash
         run: |

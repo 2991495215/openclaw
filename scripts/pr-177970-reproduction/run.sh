@@ -97,14 +97,22 @@ PY
     git diff --cached --exit-code
     test "$(git write-tree)" = "$expected_tree"
     test -z "$(git ls-files --others --exclude-standard -- apps/macos/Sources apps/shared)"
-    # Startup runs the matching credential Doctor before enabling the app UI.
-    # Use the maintained package owner so that runtime and native bytes agree.
-    BUILD_CONFIG=debug BUILD_ARCHS="$(uname -m)" \
-      BUNDLE_ID=ai.openclaw.mac.saved-gateway-proof.debug \
-      SIGN_IDENTITY=- ALLOW_ADHOC_SIGNING=1 \
-      OPENCLAW_SKIP_MLX_TTS=1 SKIP_PNPM_INSTALL=1 \
-      OPENCLAW_PACKAGE_APP_ROOT="$checkout/dist/OpenClawSavedGatewayProof.app" \
-      /bin/bash scripts/package-mac-app.sh
+    if [[ $stage == main ]]; then
+      printf '%s  %s\n' b75dbf19b1b19f8e0a5529cbc51563f6194cc29ae12d52450c32e83675704530 "$REUSED_MAIN_ARCHIVE" | shasum -a 256 -c
+      mkdir -p "$checkout/dist"
+      ditto -x -k "$REUSED_MAIN_ARCHIVE" "$checkout/dist"
+      printf '%s  %s\n' 2778d903d14b37b7ace7a5711e22ac3f2c281b6fc4501dcbe78fbf5c7ae57ab4 "$checkout/dist/OpenClawSavedGatewayProof.app/Contents/MacOS/OpenClaw" | shasum -a 256 -c
+      echo 'Reused verified main bundle from run39824266784; no main rebuild.'
+    else
+      # Startup runs the matching credential Doctor before enabling the app UI.
+      # Use the maintained package owner so that runtime and native bytes agree.
+      BUILD_CONFIG=debug BUILD_ARCHS="$(uname -m)" \
+        BUNDLE_ID=ai.openclaw.mac.saved-gateway-proof.debug \
+        SIGN_IDENTITY=- ALLOW_ADHOC_SIGNING=1 \
+        OPENCLAW_SKIP_MLX_TTS=1 SKIP_PNPM_INSTALL=1 \
+        OPENCLAW_PACKAGE_APP_ROOT="$checkout/dist/OpenClawSavedGatewayProof.app" \
+        /bin/bash scripts/package-mac-app.sh
+    fi
   ) > "$output/$stage/build.log" 2>&1
   app="$checkout/dist/OpenClawSavedGatewayProof.app"
   runtime="$app/Contents/Resources/runtime"
