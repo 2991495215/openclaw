@@ -178,7 +178,7 @@ final class CatalogModeUITests: XCTestCase {
         self.capture(app, name: "\(phase)-catalog-list")
         var reads: [VisibleRead] = []
         for (index, fixture) in fixtures.enumerated() {
-            let rows = sidebar.staticTexts.matching(NSPredicate(format: "label == %@", fixture.title))
+            let rows = self.catalogRows(in: sidebar, title: fixture.title)
             try await self.reveal(rows.firstMatch, in: sidebar, app: app)
             let count = rows.count
             let expected = occurrences.filter {
@@ -192,7 +192,7 @@ final class CatalogModeUITests: XCTestCase {
                 // Move away first: an old transcript must not make a failed source click appear successful.
                 let control = fixtures[(index + 1) % fixtures.count]
                 guard control.sentinel != fixture.sentinel else { throw self.failure("Control text is not distinct") }
-                let controlRow = sidebar.staticTexts.matching(NSPredicate(format: "label == %@", control.title)).firstMatch
+                let controlRow = self.catalogRows(in: sidebar, title: control.title).firstMatch
                 try await self.reveal(controlRow, in: sidebar, app: app)
                 try await self.openCatalogRow(controlRow, fixture: control, window: window, app: app)
                 let stale = self.transcriptElement(window, sentinel: fixture.sentinel)
@@ -292,19 +292,57 @@ final class CatalogModeUITests: XCTestCase {
         self.capture(app, name: "\(phase)-before-explicit-refresh")
         try await self.reveal(retry, in: sidebar, app: app)
         try await self.click(retry, app: app)
+        let readinessDeadline = Date().addingTimeInterval(150)
+        var refreshed = try await self.control("/after-ui-refresh/" + phase, label: "\(phase)-after-ui-refresh", app: app)
+        let raw = try XCTUnwrap(refreshed["observation"] as? [String: Any])
+        guard raw["status"] as? String == "observation_collected" else {
+            try self.captureCatalogAttributes(sidebar, name: "\(phase)-incomplete-rpc-row-attributes")
+            throw self.failure("Post-refresh catalog RPC evidence is incomplete")
+        }
+        let occurrences = try XCTUnwrap(raw["occurrences"] as? [[String: Any]])
+        var expectedByTitle: [String: Int] = [:]
+        for occurrence in occurrences {
+            guard let title = occurrence["name"] as? String, !title.isEmpty else {
+                throw self.failure("Observed catalog occurrence has no title for UI matching")
+            }
+            expectedByTitle[title, default: 0] += 1
+        }
+        guard !expectedByTitle.isEmpty else { throw self.failure("Observed catalog has no occurrences") }
+        let expectations = expectedByTitle.map { title, count in
+            XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == %d", count),
+                                      object: self.catalogRows(in: sidebar, title: title))
+        }
+        // Native refresh runs every 120s. Observe one cycle plus margin, without another click.
+        // Cached rows can remain labelled catalog_pending even after they become readable.
+        let settled = await XCTWaiter.fulfillment(of: expectations, timeout: max(0, readinessDeadline.timeIntervalSinceNow))
+        self.capture(app, name: "\(phase)-after-explicit-refresh")
+        try self.captureCatalogAttributes(sidebar, name: "\(phase)-row-attributes")
+        guard settled == .completed else {
+            throw self.failure("UI did not expose every observed catalog occurrence after one explicit refresh")
+        }
         let pending = sidebar.staticTexts.matching(NSPredicate(
             format: "label CONTAINS %@ OR value CONTAINS %@", "[catalog_pending]", "[catalog_pending]"))
-        let settled = await XCTWaiter.fulfillment(of: [XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == false"), object: pending.firstMatch)], timeout: 60)
-        self.capture(app, name: "\(phase)-after-explicit-refresh")
-        guard settled == .completed else {
-            throw self.failure("Catalog remained pending after one explicit native refresh")
-        }
-        var refreshed = try await self.control("/after-ui-refresh/" + phase, label: "\(phase)-after-ui-refresh", app: app)
         refreshed["initialObservation"] = initial
-        let action: [String: Any] = ["clicks": 1, "initialLoadSucceeded": false]
+        let action: [String: Any] = ["clicks": 1, "initialLoadSucceeded": false,
+                                     "pendingIndicatorVisible": pending.count > 0]
         refreshed["explicitUIRefresh"] = action
         return refreshed
+    }
+
+    @MainActor
+    private func catalogRows(in sidebar: XCUIElement, title: String) -> XCUIElementQuery {
+        sidebar.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", title, title))
+    }
+
+    @MainActor
+    private func captureCatalogAttributes(_ sidebar: XCUIElement, name: String) throws {
+        let rows = sidebar.staticTexts.allElementsBoundByIndex.map { element in
+            ["identifier": element.identifier, "label": element.label, "value": element.value as? String ?? ""]
+        }
+        let attachment = XCTAttachment(data: try JSONEncoder().encode(rows), uniformTypeIdentifier: "public.json")
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        self.add(attachment)
     }
 
     @MainActor
