@@ -40,6 +40,19 @@ canonical repository and PR; a caller cannot select an arbitrary revision or
 replace it with an environment variable. Malformed, foreign, or changed bindings
 fail closed. Developer-wrapper opt-in does not change landing authority.
 
+Security Review publisher sources have a separate owner: the protected-main tip
+captured by merge admission. For inherited-failure admin admission, the publisher
+must be a successful Security Review run on that main history, and its workflow
+and every declared checkout source must match that tip's Git blobs. The verified
+workflow supplies the checkout inventory; the bound wrapper's older files do not.
+Initial admission reads those owner blobs from GitHub at the captured main SHA,
+so it does not require a newly observed main to be materialized locally yet. The
+final local-only source check still follows main materialization.
+An older run remains eligible only while all publisher sources still match main.
+Foreign, malformed, or outdated sources refuse admission. This does not refresh
+or replace the retained workflow binding, select caller-provided source code, or
+waive exact-head security enforcement and current review authority.
+
 Workflow selection crosses supervision through a private held descriptor. This
 is separate from the descriptor that owns temporary wrapper cleanup. Reentry
 must verify the complete source inventory and manifest against the selected
@@ -66,6 +79,25 @@ anchor and refuses cold acquisition before any fetch.
 Only verified native merge completion retires the exact workflow binding.
 Failures and pending completion preserve it. Repeating completion reconciles
 the merge outcome without repeating publication, comments, or cleanup.
+
+## Reconcile a completed CI review
+
+If CI completed but its combined `openclaw/ci-gate` commit status remains pending,
+maintainers can replay Security Review for that exact CI run:
+
+```bash
+gh workflow run security-review.yml --ref main -f completed_ci_run_id=<run-id>
+```
+
+The replay validates the completed run's repository and workflow, then selects
+only current PRs whose head, source repository, and branch still match. It runs
+the ordinary security review and CI checks; it does not rerun CI or waive a gate.
+The dispatch must use the default branch. A stale run cannot approve a newer PR head.
+
+Completion reviews retain the observed run ID and attempt. Missing or older
+observations retry within the existing recovery budget; exhaustion fails the
+scheduled pass so its scan window remains eligible. A newer active run or attempt
+keeps the status pending until that run completes.
 
 ## Recover a retained dependency projection
 
