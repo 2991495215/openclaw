@@ -2,7 +2,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, assert, expect, it, vi } from "vitest";
-import { createDeferred, withTestTimeout } from "../../../test/helpers/promise.js";
+import {
+  awaitGateBeforeSettlement,
+  createDeferred,
+  withinTest,
+  withTestTimeout,
+} from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { runNodeWorkerWorkspaceTransfer } from "../../node-host/node-worker-transfer-client.js";
 import { runCommandWithTimeout, type SpawnResult } from "../../process/exec.js";
@@ -23,7 +28,7 @@ import { requireWorkspaceResultGit } from "./workspace-result-git.js";
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(() => vi.restoreAllMocks());
 
-it.each([
+it.for([
   "completed",
   "receiving",
   "receiving-failure",
@@ -31,7 +36,7 @@ it.each([
   "checkpoint-cleanup-failure",
 ] as const)(
   "preserves prepared checkpoint cleanup custody and successful retries after %s",
-  async (boundary) => {
+  async (boundary, { signal }) => {
     const receivingUpload = boundary.startsWith("receiving");
     const cleanupFailure = boundary.endsWith("cleanup-failure");
     const root = tempDirs.make("node-publication-disposal-");
@@ -266,10 +271,13 @@ it.each([
       await actions.validateRestoredWorkspace();
       first = reconcile();
       if (cleanupFailure) {
-        await withTestTimeout(
-          checkpointDiscardStarted.promise,
-          5_000,
-          "checkpoint discard did not start",
+        await withinTest(
+          awaitGateBeforeSettlement(
+            checkpointDiscardStarted.promise,
+            first,
+            "checkpoint discard did not start",
+          ),
+          signal,
         );
         await setImmediate();
         expect
