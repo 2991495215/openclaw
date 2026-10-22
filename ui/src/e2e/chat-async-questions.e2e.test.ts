@@ -24,6 +24,7 @@ const suite = createChatFlowE2eSuite();
 const title = "Which audience should the summary address?";
 const questionMessage = {
   role: "assistant",
+  __openclaw: { id: "audience-prompt", seq: 1 },
   content: `${title}\n\n1. Engineers\n2. Everyone`,
   timestamp: 1_789_000_000_000,
   openclawAsyncDelivery: {
