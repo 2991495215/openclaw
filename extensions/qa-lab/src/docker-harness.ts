@@ -212,13 +212,6 @@ kill the container by detaching a replacement child.
 
   return {
     outputDir: params.outputDir,
-    imageName,
-    files: [
-      ...files.map(([name]) => path.join(params.outputDir, name)),
-      ...["IDENTITY.md", "QA_KICKOFF_TASK.md", "QA_SCENARIO_PLAN.md", "QA_SCENARIOS.yaml"].map(
-        (name) => path.join(params.outputDir, "state", "seed-workspace", name),
-      ),
-    ],
   };
 }
 
