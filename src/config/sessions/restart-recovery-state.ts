@@ -484,6 +484,16 @@ export function hasRestartRecoveryTerminalRun(
   );
 }
 
+/** Recovery custody survives process loss independently of the last run's outcome. */
+export function hasMainSessionRecoveryClaim(entry: SessionEntry | undefined): boolean {
+  return Boolean(
+    entry?.mainRestartRecovery ||
+    entry?.restartRecoveryRuns?.some((run) => !hasRestartRecoveryTerminalRun(entry, run.runId)) ||
+    entry?.restartRecoveryDeliveryRunId ||
+    entry?.pendingFinalDelivery,
+  );
+}
+
 /** Matches durable source ownership regardless of the surrounding run status. */
 export function hasRestartRecoverySourceClaim(
   entry: SessionEntry | null | undefined,
