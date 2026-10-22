@@ -70,6 +70,7 @@ it("keeps identity inputs editable through an admitted save and clears its error
 
 it("switches identity editors while the previous agent save is pending", async () => {
   const pending = createDeferred();
+  const retiredBeforePresentation = createDeferred();
   const request = vi.fn(() => pending.promise);
   const client = { request } as unknown as GatewayBrowserClient;
   const currentGateway = gateway(snapshot(client));
@@ -151,8 +152,20 @@ it("switches identity editors while the previous agent save is pending", async (
     await waitForSolid(() => {
       expect(input().value).toBe("Main draft");
     });
+
+    request.mockImplementationOnce(() => retiredBeforePresentation.promise);
+    input().value = "Main next draft";
+    input().dispatchEvent(new Event("input", { bubbles: true }));
+    input().dispatchEvent(new Event("blur"));
+    selection.set("research");
+    await waitForSolid(() => {
+      expect(input().value).toBe("Research");
+      expect(mounted.container.querySelector('.agent-identity-editor [role="status"]')).toBeNull();
+    });
+    retiredBeforePresentation.resolve();
   } finally {
     pending.resolve();
+    retiredBeforePresentation.resolve();
     mounted.unmount();
     page.dispose();
     selection.dispose();
