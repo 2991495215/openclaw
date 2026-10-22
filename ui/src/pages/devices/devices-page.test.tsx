@@ -49,11 +49,11 @@ describe("DevicesPage gateway lifecycle", () => {
     const page = mountPage(fixture, {
       nodes: [{ nodeId: "preloaded", displayName: "Preloaded Mac" }],
     });
-    expect(page.container.textContent).toContain("Preloaded Mac");
+    await waitForSolid(() => expect(page.container.textContent).toContain("Preloaded Mac"));
     fixture.emitEvent("presence", {
       presence: [{ host: "Stale presence", instanceId: "stale", ts: 1_000 }],
     });
-    expect(page.container.textContent).toContain("Stale presence");
+    await waitForSolid(() => expect(page.container.textContent).toContain("Stale presence"));
     page.replaceGateway(gatewayFixture(gatewaySnapshot(null, false)));
     expect(page.container.textContent).not.toContain("Preloaded Mac");
     expect(page.container.textContent).not.toContain("Stale presence");
@@ -73,6 +73,9 @@ describe("DevicesPage gateway lifecycle", () => {
       },
       execApprovalsForm: { version: 1, defaults: { security: "deny" } },
     });
+    await waitForSolid(() =>
+      expect(page.container.querySelector('select[aria-label="Mode"]')).not.toBeNull(),
+    );
     const policy = page.container.querySelector<HTMLSelectElement>('select[aria-label="Mode"]')!;
     expect(policy).not.toBeNull();
     policy.value = "allowlist";
@@ -127,13 +130,22 @@ describe("DevicesPage gateway lifecycle", () => {
         devicesList: { paired: [], pending: [] },
         lastError: "Earlier operator action failed",
       });
+      const row = [...page.container.querySelectorAll(".device-entry")].find((entry) =>
+        entry.textContent?.includes("Office Mac"),
+      );
+      expect(row).toBeDefined();
       fixture.emitEvent(event, { nodeId: "node-1" });
       expect(request).toHaveBeenCalledWith("node.list", {});
       expect(page.container.textContent).toContain("Office Mac");
+      expect(row?.isConnected).toBe(true);
       expect(page.container.textContent).toContain("Earlier operator action failed");
       nodes.resolve({ nodes: [{ nodeId: "node-1", displayName: "Current Mac", connected: true }] });
       await vi.waitFor(() => expect(page.container.textContent).toContain("Current Mac"));
+      const refreshedRow = [...page.container.querySelectorAll(".device-entry")].find((entry) =>
+        entry.textContent?.includes("Current Mac"),
+      );
       page.refreshPresentation();
+      expect(refreshedRow?.isConnected).toBe(true);
       expect(page.container.textContent).toContain("Current Mac");
       expect(page.container.textContent).not.toContain("Office Mac");
     },
@@ -332,6 +344,9 @@ describe("DevicesPage gateway lifecycle", () => {
       const fixture = gatewayFixture(gatewaySnapshot(client));
       const page = mountPage(fixture);
       await vi.waitFor(() => expect(listCalls).toBe(1));
+      await waitForSolid(() =>
+        expect(page.container.querySelector(".settings-loading-skeleton")).not.toBeNull(),
+      );
       fixture.emitEvent(kind === "device" ? "device.pair.changed" : "node.hostStats", {});
       stale.resolve(
         kind === "device"
@@ -339,6 +354,7 @@ describe("DevicesPage gateway lifecycle", () => {
           : { nodes: [{ nodeId: "node-1", displayName: "Kitchen Mac" }] },
       );
       await vi.waitFor(() => expect(listCalls).toBe(2));
+      expect(page.container.querySelector(".settings-loading-skeleton")).not.toBeNull();
       refreshed.resolve(
         kind === "device"
           ? {
@@ -350,9 +366,34 @@ describe("DevicesPage gateway lifecycle", () => {
           : { nodes: [{ nodeId: "node-1", displayName: "Studio Mac" }] },
       );
       await vi.waitFor(() => expect(page.container.textContent).toContain("Studio Mac"));
+      expect(page.container.querySelector(".settings-loading-skeleton")).toBeNull();
       expect(request.mock.calls.filter(([method]) => method === methodName)).toHaveLength(2);
     },
   );
+
+  it("shows a skeleton for an event refresh of an already-loaded empty inventory", async () => {
+    const completion = createDeferred<unknown>();
+    let holdPairing = false;
+    const { client } = clientFor(
+      vi.fn(async (method: string) =>
+        holdPairing && method === "device.pair.list" ? completion.promise : responseFor(method),
+      ),
+    );
+    const fixture = gatewayFixture(gatewaySnapshot(client));
+    const page = mountPage(fixture, { devicesList: { paired: [], pending: [] } });
+    await waitForSolid(() =>
+      expect(page.container.querySelector(".settings-loading-skeleton")).toBeNull(),
+    );
+    holdPairing = true;
+    fixture.emitEvent("device.pair.requested", {});
+    await waitForSolid(() =>
+      expect(page.container.querySelectorAll(".settings-loading-skeleton")).toHaveLength(1),
+    );
+    completion.resolve({ paired: [], pending: [] });
+    await waitForSolid(() =>
+      expect(page.container.querySelector(".settings-loading-skeleton")).toBeNull(),
+    );
+  });
 
   it("keeps initial and event-driven pairing and exec-approval loads gated by scopes", async () => {
     const { client, request } = clientFor();
@@ -482,20 +523,25 @@ describe("DevicesPage gateway lifecycle", () => {
         page = mountPage(fixture);
       }
       await vi.waitFor(() => expect(listCalls).toBe(2));
+      second.resolve({ nodes: [{ nodeId: "new", displayName: "New Mac" }] });
+      await vi.waitFor(() => expect(page.container.textContent).toContain("New Mac"));
       first.resolve({ nodes: [{ nodeId: "old", displayName: "Old Mac" }] });
       await first.promise;
       await Promise.resolve();
       flush();
       expect(page.container.textContent).not.toContain("Old Mac");
-      second.resolve({ nodes: [{ nodeId: "new", displayName: "New Mac" }] });
-      await vi.waitFor(() => expect(page.container.textContent).toContain("New Mac"));
+      expect(page.container.textContent).toContain("New Mac");
     },
   );
 
   it.each(["removal", "alias"])(
     "retains a pending %s dialog through reconnect and cancels it on fresh pairing denial",
     async (kind) => {
-      const request = vi.fn(async (method: string) => responseFor(method));
+      const request = vi.fn(async (method: string) =>
+        method === "node.list"
+          ? { nodes: [{ nodeId: "node-1", displayName: "Office Mac" }] }
+          : responseFor(method),
+      );
       const page = mountPaired(request);
       await selectEntryAction(page.container, kind === "alias" ? "editAlias" : "remove");
       await waitForRenderedModalDialog(document.body);
@@ -510,10 +556,10 @@ describe("DevicesPage gateway lifecycle", () => {
       request.mockClear();
       page.fixture.emitSnapshot(gatewaySnapshot(page.client, false));
       expect(document.body.querySelector("openclaw-modal-dialog")).not.toBeNull();
-      expect(dialogButton(label).disabled).toBe(true);
+      await waitForSolid(() => expect(dialogButton(label).disabled).toBe(true));
       expect(request).not.toHaveBeenCalled();
       page.fixture.emitSnapshot(gatewaySnapshot(page.client));
-      expect(dialogButton(label).disabled).toBe(false);
+      await waitForSolid(() => expect(dialogButton(label).disabled).toBe(false));
       if (kind === "alias") {
         expect(document.body.querySelector<HTMLInputElement>('input[name="value"]')?.value).toBe(
           "Draft device alias",
@@ -524,7 +570,7 @@ describe("DevicesPage gateway lifecycle", () => {
       expect(page.container.textContent).not.toContain("MacBook Pro");
       expect(page.container.textContent).toContain("Office Mac");
       page.fixture.emitSnapshot(gatewaySnapshot(page.client, true, [], []));
-      expect(page.container.querySelector(".device-entry")).toBeNull();
+      await waitForSolid(() => expect(page.container.querySelector(".device-entry")).toBeNull());
       expect(request.mock.calls.map(([method]) => method)).not.toContain("device.pair.remove");
       expect(request.mock.calls.map(([method]) => method)).not.toContain("device.pair.rename");
     },
@@ -590,7 +636,9 @@ describe("DevicesPage gateway lifecycle", () => {
         );
       }
       if (transition === "connection resets") {
-        expect(dialogButton(t("devices.inventory.revoke")).disabled).toBe(true);
+        await waitForSolid(() =>
+          expect(dialogButton(t("devices.inventory.revoke")).disabled).toBe(true),
+        );
         dialogButton(t("devices.inventory.revoke")).click();
         expect(document.body.querySelector("openclaw-modal-dialog")).not.toBeNull();
         dialogButton(t("common.cancel")).click();

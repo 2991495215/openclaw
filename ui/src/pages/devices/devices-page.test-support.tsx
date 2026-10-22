@@ -230,6 +230,7 @@ export async function selectEntryAction(
   action: string,
   name = "MacBook Pro",
 ) {
+  await waitForSolid(() => expect(container.textContent).toContain(name));
   const row = [...container.querySelectorAll(".device-entry")].find(
     (entry) => entry.querySelector(".settings-row__title")?.textContent === name,
   );
