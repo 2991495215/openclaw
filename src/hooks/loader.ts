@@ -54,8 +54,6 @@ export async function prepareInternalHooks(
   cfg: OpenClawConfig,
   workspaceDir: string,
   opts?: {
-    managedHooksDir?: string;
-    bundledHooksDir?: string;
     failureMode?: "atomic" | "best-effort";
     selection?: InternalHookSelection;
   },
@@ -70,8 +68,6 @@ export async function prepareInternalHooks(
   const discovery = selection.configured
     ? prepareWorkspaceHookEntries(workspaceDir, {
         config: cfg,
-        managedHooksDir: opts?.managedHooksDir,
-        bundledHooksDir: opts?.bundledHooksDir,
         ...(opts?.failureMode !== "best-effort"
           ? {
               requireValidHook: shouldLoadHook,
