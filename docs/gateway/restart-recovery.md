@@ -15,18 +15,6 @@ resume them. Recovery is always on. Exhausted infrastructure retries, or a
 missing durable message-action authority claim, may tombstone one session
 until you inspect or replace it.
 
-Every Gateway process shutdown preserves eligible unfinished turns, including a
-plain `SIGTERM`, a systemd or launchd service stop/restart, and
-`openclaw gateway stop`. A Gateway stopped today resumes that work when it starts
-tomorrow, without a new user message. Shutdown uses the same interruption and
-recovery marking as a managed restart, with the existing drain deadlines.
-Explicit session Stop/cancel remains terminal. The crash-loop breaker, recovery
-retry budgets, current-authority checks, and archived/reset exclusions still apply.
-In-flight cron occurrences keep their existing restart treatment. Main-session
-recovery does not replay a started cron occurrence, including when the conversation
-retains an earlier operator source. Cron records the interruption; a fresh
-authenticated turn or a future scheduled occurrence can continue the work.
-
 Inter-session steering updates remain context for the executing turn. When that
 turn retains a human Control UI or channel source claim, recovery uses the claim
 rather than treating the latest steering message as a new delegated request.
@@ -784,14 +772,8 @@ Recovery reads the interrupted turn's source before starting another run, even
 when a final reply is already pending. If the transcript cannot be read, the
 saved reply and any admitted completion claim remain available for a later
 attempt. Delegated requests and unverified internal inputs cannot resume
-automatically without surviving authority. When no pending final, harness
-completion, or independent recovery run remains owed, the interrupted input is
-retired atomically with one local transcript notice. Its source/run IDs remain
-terminal; no delivery success or sender authority is invented. The conversation
-keeps its identity and context and admits a fresh authenticated turn. Remaining
-custody retains the existing recovery block, and exhausted automatic attempts
-still require explicit recovery. Missing or invalid provenance does not establish
-a human sender for an internal claim. Legacy channel and Control UI
+automatically without surviving authority. Missing or invalid provenance does not
+establish a human sender for an internal claim. Legacy channel and Control UI
 turns retain their existing recovery checks. Child-completion follow-ups still use
 their existing recovery and delivery ownership checks. If their agent database is
 still undergoing startup inspection or preparation, a child result changes while
