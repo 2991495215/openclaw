@@ -400,12 +400,18 @@ export const streamOpenAICodexResponses: StreamFunction<
               retriedWebSocketRejection = true;
               continue;
             }
-            if (aborted || (isCodexNonTransportError(error) && !connectionLimitBeforeStart)) {
-              throw error;
+            // After output starts, the runner must continue the transcript instead of replaying.
+            const transportError = isWebSocketConnectionLimitReachedError(error)
+              ? Object.assign(new Error(error.message, { cause: error }), {
+                  code: WEBSOCKET_TRANSPORT_ERROR_CODE,
+                })
+              : error;
+            if (aborted || isCodexNonTransportError(transportError)) {
+              throw transportError;
             }
             appendAssistantMessageDiagnostic(
               output,
-              createAssistantMessageDiagnostic("provider_transport_failure", error, {
+              createAssistantMessageDiagnostic("provider_transport_failure", transportError, {
                 configuredTransport: transport,
                 fallbackTransport: transport === "auto" && !websocketStarted ? "sse" : undefined,
                 eventsEmitted: websocketStarted,
@@ -420,7 +426,7 @@ export const streamOpenAICodexResponses: StreamFunction<
               websocketSseFallbackSessions.add(options.sessionId);
             }
             if (websocketStarted || transport !== "auto") {
-              throw error;
+              throw transportError;
             }
             break;
           }
@@ -823,7 +829,7 @@ function isCodexNonTransportError(error: unknown): boolean {
   );
 }
 
-function isWebSocketConnectionLimitReachedError(error: unknown): boolean {
+function isWebSocketConnectionLimitReachedError(error: unknown): error is CodexApiError {
   return error instanceof CodexApiError && error.code === WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE;
 }
 
