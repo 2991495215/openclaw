@@ -35,6 +35,7 @@ import {
   SECTION_CATEGORIES,
   type SectionCategory,
 } from "./view-navigation.tsx";
+import { ConfigReadBoundary, ConfigReadError, ConfigReadLoading } from "./view-readiness.tsx";
 import {
   asConfigSchema,
   configValueExistsAtPath,
@@ -78,17 +79,6 @@ export function Config(props: ConfigProps) {
     return props.viewState;
   };
   const schema = createMemo(() => asConfigSchema(props.schema));
-  const configResult = createMemo(() => props.configRead ?? undefined);
-  const configReady = () => {
-    // Loaded drafts and publication recovery retain the owner's editor interlocks.
-    if (!props.configLoaded && !props.configRecoveryError) {
-      const result = configResult();
-      if (result?.ok === false) {
-        throw new Error(result.error);
-      }
-    }
-    return true;
-  };
   const includeSections = createMemo(() => props.includeSections);
   const excludeSections = createMemo(() => props.excludeSections);
   const includedSections = createMemo(() =>
@@ -268,18 +258,6 @@ export function Config(props: ConfigProps) {
   };
   const schemaReady = createMemo(readSchema);
   const readSchemaReady = () => (hasSchema() ? latest(schemaReady) : schemaReady());
-  function SchemaError(errorProps: { message: string; onRetry: () => void }) {
-    return (
-      <div class="config-content-callout">
-        <div class="callout danger" role="alert">
-          {errorProps.message}{" "}
-          <button type="button" class="btn btn--sm" onClick={() => errorProps.onRetry()}>
-            {t("common.retry")}
-          </button>
-        </div>
-      </div>
-    );
-  }
   function RawEditor() {
     const [pending, setPending] = createOptimistic<"save" | "discard" | "open" | null>(null);
     const presentCommand = action(function* (
@@ -641,109 +619,79 @@ export function Config(props: ConfigProps) {
         }
         aria-label={state().showSectionTabs ? undefined : t("common.settingsSections")}
       >
-        <Loading
-          on={!props.configLoaded ? props.configRead : undefined}
-          fallback={
-            <div class="config-loading" aria-busy="true">
-              <div class="config-loading__spinner" />
-              <span>{t("common.loading")}</span>
-            </div>
-          }
-        >
-          <Errored
-            fallback={(error, reset) => (
-              <div class="config-content-callout">
-                <div class="callout danger" role="alert">
-                  {formatUiError(error())}{" "}
-                  <button
-                    type="button"
-                    class="btn btn--sm"
-                    onClick={() => {
-                      props.onRetryConfig();
+        <ConfigReadBoundary config={props}>
+          {props.activeSection === "__appearance__" ? (
+            state().includeVirtualSections ? (
+              <AppearanceSection {...props} />
+            ) : null
+          ) : props.activeSection === "__notifications__" ? (
+            state().includeVirtualSections ? (
+              <NotificationsSection {...props} />
+            ) : null
+          ) : state().formMode === "form" ? (
+            <>
+              {state().unsupportedActivePaths.length > 0 &&
+              state().showModeToggle &&
+              state().rawAvailable ? (
+                <div class="config-content-callout">
+                  <div class="callout info">
+                    <UnsupportedPathSummary paths={state().unsupportedActivePaths} />{" "}
+                    <button
+                      type="button"
+                      class="btn btn--sm"
+                      onClick={() => props.onFormModeChange("raw")}
+                    >
+                      {t("configView.openRawEditor")}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {state().includeVirtualSections &&
+              props.activeSection === null &&
+              state().include?.has("__appearance__") ? (
+                <AppearanceSection {...props} />
+              ) : null}
+              <Errored
+                fallback={(error, reset) => (
+                  <ConfigReadError
+                    message={formatUiError(error())}
+                    onRetry={() => {
+                      props.onRetrySchema?.();
                       reset();
                     }}
-                  >
-                    {t("common.retry")}
-                  </button>
-                </div>
-              </div>
-            )}
-          >
-            {!configReady() ? null : props.activeSection === "__appearance__" ? (
-              state().includeVirtualSections ? (
-                <AppearanceSection {...props} />
-              ) : null
-            ) : props.activeSection === "__notifications__" ? (
-              state().includeVirtualSections ? (
-                <NotificationsSection {...props} />
-              ) : null
-            ) : state().formMode === "form" ? (
-              <>
-                {state().unsupportedActivePaths.length > 0 &&
-                state().showModeToggle &&
-                state().rawAvailable ? (
-                  <div class="config-content-callout">
-                    <div class="callout info">
-                      <UnsupportedPathSummary paths={state().unsupportedActivePaths} />{" "}
-                      <button
-                        type="button"
-                        class="btn btn--sm"
-                        onClick={() => props.onFormModeChange("raw")}
-                      >
-                        {t("configView.openRawEditor")}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {state().includeVirtualSections &&
-                props.activeSection === null &&
-                state().include?.has("__appearance__") ? (
-                  <AppearanceSection {...props} />
-                ) : null}
-                <Errored
-                  fallback={(error, reset) => (
-                    <SchemaError
-                      message={formatUiError(error())}
-                      onRetry={() => {
-                        props.onRetrySchema?.();
-                        reset();
-                      }}
-                    />
-                  )}
+                  />
+                )}
+              >
+                <Loading
+                  on={hasSchema() ? undefined : schemaRead()}
+                  fallback={<ConfigReadLoading message={t("configView.loadingSchema")} />}
                 >
-                  <Loading
-                    on={hasSchema() ? undefined : schemaRead()}
-                    fallback={
-                      <div class="config-loading" aria-busy="true">
-                        <div class="config-loading__spinner" />
-                        <span>{t("configView.loadingSchema")}</span>
-                      </div>
-                    }
-                  >
-                    <Show when={readSchemaReady()}>
-                      {(message) => (
-                        <SchemaError message={message()} onRetry={() => props.onRetrySchema?.()} />
-                      )}
-                    </Show>
-                    <span class="sr-only" role="status">
-                      {isPending(schemaReady) ? t("configView.loadingSchema") : ""}
-                    </span>
-                    <FormEditor />
-                    {state().showSetup ? (
-                      <SetupSection
-                        schema={state().setupSchema!}
-                        config={props}
-                        disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
+                  <Show when={readSchemaReady()}>
+                    {(message) => (
+                      <ConfigReadError
+                        message={message()}
+                        onRetry={() => props.onRetrySchema?.()}
                       />
-                    ) : null}
-                  </Loading>
-                </Errored>
-              </>
-            ) : (
-              <RawEditor />
-            )}
-          </Errored>
-        </Loading>
+                    )}
+                  </Show>
+                  <span class="sr-only" role="status">
+                    {isPending(schemaReady) ? t("configView.loadingSchema") : ""}
+                  </span>
+                  <FormEditor />
+                  {state().showSetup ? (
+                    <SetupSection
+                      schema={state().setupSchema!}
+                      config={props}
+                      disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
+                    />
+                  ) : null}
+                </Loading>
+              </Errored>
+            </>
+          ) : (
+            <RawEditor />
+          )}
+        </ConfigReadBoundary>
         {props.issues.length > 0 ? (
           <div class="config-content-callout">
             <div class="callout danger">
