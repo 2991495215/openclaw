@@ -21,15 +21,15 @@ const QrCode = lazy(() => import("../../../components/solid/qr-code.tsx"), { exp
 /** Scannable twin of the copy action: encodes exactly the public URL it is given. */
 export function ChatSessionPublicQr(props: { url: string; class: string }) {
   return (
-    <div class={props.class}>
-      {/* A failed chunk load drops the code; the copy action beside it still works. */}
-      <Errored fallback={null}>
-        <Loading>
+    // A failed chunk load drops the code and its caption; the copy action beside it still works.
+    <Errored fallback={null}>
+      <Loading>
+        <div class={props.class}>
           <QrCode value={props.url} label={t("chat.sessionSharing.publicLinkQr")} />
-        </Loading>
-      </Errored>
-      <span>{t("chat.sessionSharing.scanPublicLink")}</span>
-    </div>
+          <span>{t("chat.sessionSharing.scanPublicLink")}</span>
+        </div>
+      </Loading>
+    </Errored>
   );
 }
 
