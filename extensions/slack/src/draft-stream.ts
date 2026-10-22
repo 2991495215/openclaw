@@ -50,6 +50,7 @@ export function createSlackDraftStream(params: {
   maxChars?: number;
   throttleMs?: number;
   resolveThreadTs?: () => string | undefined;
+  replyParentDeleted?: AbortSignal;
   metadata?: MessageMetadata;
   warn?: (message: string) => void;
 }) {
@@ -85,7 +86,7 @@ export function createSlackDraftStream(params: {
   const sendOrEditStreamMessage = async (pending: SlackDraftStreamUpdate) => {
     const update = normalizeUpdate(pending);
     const trimmed = update.text.trimEnd();
-    if (!trimmed) {
+    if (!trimmed || params.replyParentDeleted?.aborted) {
       return;
     }
     if (!streamMessage && update.allowNewMessage === false) {
@@ -141,6 +142,7 @@ export function createSlackDraftStream(params: {
             threadTs,
             identity: params.identity,
             eventScope: params.eventScope,
+            ...(params.replyParentDeleted ? { replyParentDeleted: params.replyParentDeleted } : {}),
             ...(visibleUpdate.textIsSlackMrkdwn ? { textIsSlackMrkdwn: true } : {}),
             ...(params.metadata ? { metadata: params.metadata } : {}),
             ...(visibleUpdate.blocks ? { blocks: visibleUpdate.blocks } : {}),
@@ -242,7 +244,11 @@ export function createSlackDraftStream(params: {
     editFinal: () => Promise<void>,
   ): Promise<boolean> => {
     const currentMessage = streamMessage;
-    if (!currentMessage || currentMessage.messageId !== messageId) {
+    if (
+      !currentMessage ||
+      currentMessage.messageId !== messageId ||
+      params.replyParentDeleted?.aborted
+    ) {
       return false;
     }
     await editFinal();
