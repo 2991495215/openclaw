@@ -55,10 +55,14 @@ export function mountTalkPage(context: ApplicationContext, initialConfig: Record
   const [config, setConfig] = createSignal(initialConfig);
   document.body.append(page);
   const provider = createSolidApplicationContextProvider(context);
-  const view = mountSolid(() => <TalkSettingsPage configObject={config()} />, {
-    container: page,
-    wrapper: provider.wrapper,
-  });
+  const retired = new Promise<void>(() => {});
+  const view = mountSolid(
+    () => <TalkSettingsPage configObject={config()} presentationRetired={() => retired} />,
+    {
+      container: page,
+      wrapper: provider.wrapper,
+    },
+  );
   const remove = page.remove.bind(page);
   Object.defineProperties(page, {
     context: { value: context },

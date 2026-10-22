@@ -17,9 +17,16 @@ it("retains a rejected native language edit and retries it visibly", async () =>
   vi.stubGlobal("__OPENCLAW_NATIVE_DEVICE_SETTINGS__", snapshot);
   const capability = createNativeDeviceSettingsCapability()!;
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const retired = new Promise<void>(() => {});
   const view = mountSolid(() => {
     const device = projectNativeDeviceSettings(capability);
-    return <DeviceTalk capability={capability} snapshot={device.read()} />;
+    return (
+      <DeviceTalk
+        capability={capability}
+        snapshot={device.read()}
+        presentationRetired={() => retired}
+      />
+    );
   });
   const page = view.container;
   const failed = Promise.withResolvers<unknown>();
