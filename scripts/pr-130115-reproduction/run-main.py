@@ -19,6 +19,7 @@ import time
 import urllib.request
 
 MAIN = "d535d274183d19e2e838c7a7fc96063df676b368"
+http_only = os.environ.get("CATALOG_HTTP_PREFLIGHT_ONLY") == "1"
 if not (sys.platform == "darwin" and os.environ.get("GITHUB_ACTIONS") == "true" and
         os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and os.environ.get("MAIN_SHA") == MAIN):
     raise SystemExit("This runner is restricted to the reviewed main-only disposable macOS campaign")
@@ -236,7 +237,8 @@ try:
              "process-custody.py", "catalog-observer.mjs", "gateway-proof-call.mjs", "prepare-case.mjs", "seed-codex.mjs", "seed-claude-files.mjs", "build-catalog-app.sh")
     write_json(output / "provenance.json", {"productMain": MAIN, "proofHead": proof_head,
                "helperSHA256": {name: file_hash(helpers / name) for name in names},
-               "scope": "main only; actual native app and Gateways; no candidate or merge"})
+               "scope": ("main only; HTTP diagnostic with real Gateways; no app, UI, candidate or merge" if http_only
+                         else "main only; actual native app and Gateways; no candidate or merge")})
     run(["git", "-C", repo, "fetch", "--no-tags", "--depth=1", "origin", MAIN], output / "source-fetch.log")
     source = scratch / "main"
     run(["git", "-C", repo, "worktree", "add", "--detach", source, MAIN], output / "source-checkout.log")
@@ -294,28 +296,29 @@ try:
     (bundle_output / "scratch-root.txt").write_text(str(scratch) + "\n")
     write_json(bundle_output / "home-roots.json", {key: str(value) for key, value in homes.items()})
     cases = [("shared", "h1", "a", "a"), ("distinct", "h2", "a", "c"), ("isolated-home", "h3", "implicit", "implicit")]
-    for label, home, _, _ in cases:
-        run(["xcrun", "swift", helpers / "native-path-preflight.swift"], output / f"paths-{label}.json",
-            env=native_environment(homes[home], scratch / f"case-{label}" / "app/state"))
-    project = scratch / "ui"
-    project.mkdir()
-    for name in ("project.yml", "CatalogModeUITests.swift", "NativeProofLaunchSupport.swift"):
-        shutil.copy2(helpers / name, project / name)
-    run(["xcodegen", "generate", "--spec", project / "project.yml", "--project", project], output / "project.log")
-    xcode = ["/usr/bin/xcodebuild", "-project", project / "CatalogModeProof.xcodeproj", "-scheme", "CatalogModeProof",
-             "-destination", "platform=macOS", "-derivedDataPath", scratch / "derived", "-parallel-testing-enabled", "NO"]
-    run(xcode + ["build-for-testing"], output / "test-runner-build.log")
-    preflight = scratch / "DesktopPreflight.app"
-    (preflight / "Contents/MacOS").mkdir(parents=True)
-    run(["swiftc", "-parse-as-library", helpers / "DesktopPreflightApp.swift", "-o", preflight / "Contents/MacOS/DesktopPreflight"], output / "desktop-build.log")
-    with (preflight / "Contents/Info.plist").open("wb") as stream:
-        plistlib.dump({"CFBundleIdentifier": "ai.openclaw.proof.catalog-preflight", "CFBundleExecutable": "DesktopPreflight",
-                      "CFBundleName": "DesktopPreflight", "CFBundleVersion": "1", "CFBundleShortVersionString": "1",
-                      "CFBundlePackageType": "APPL", "NSPrincipalClass": "NSApplication"}, stream)
-    run(["codesign", "--force", "--deep", "--sign", "-", preflight], output / "desktop-sign.log")
-    ui_env = {**base_env, "TEST_RUNNER_OPENCLAW_PREFLIGHT_APP": str(preflight)}
-    run(xcode + ["test-without-building", "-only-testing:CatalogModeProofUITests/CatalogModeUITests/testDesktopPreflight",
-                 "-resultBundlePath", output / "desktop.xcresult"], output / "desktop.log", env=ui_env)
+    if not http_only:
+        for label, home, _, _ in cases:
+            run(["xcrun", "swift", helpers / "native-path-preflight.swift"], output / f"paths-{label}.json",
+                env=native_environment(homes[home], scratch / f"case-{label}" / "app/state"))
+        project = scratch / "ui"
+        project.mkdir()
+        for name in ("project.yml", "CatalogModeUITests.swift", "NativeProofLaunchSupport.swift"):
+            shutil.copy2(helpers / name, project / name)
+        run(["xcodegen", "generate", "--spec", project / "project.yml", "--project", project], output / "project.log")
+        xcode = ["/usr/bin/xcodebuild", "-project", project / "CatalogModeProof.xcodeproj", "-scheme", "CatalogModeProof",
+                 "-destination", "platform=macOS", "-derivedDataPath", scratch / "derived", "-parallel-testing-enabled", "NO"]
+        run(xcode + ["build-for-testing"], output / "test-runner-build.log")
+        preflight = scratch / "DesktopPreflight.app"
+        (preflight / "Contents/MacOS").mkdir(parents=True)
+        run(["swiftc", "-parse-as-library", helpers / "DesktopPreflightApp.swift", "-o", preflight / "Contents/MacOS/DesktopPreflight"], output / "desktop-build.log")
+        with (preflight / "Contents/Info.plist").open("wb") as stream:
+            plistlib.dump({"CFBundleIdentifier": "ai.openclaw.proof.catalog-preflight", "CFBundleExecutable": "DesktopPreflight",
+                          "CFBundleName": "DesktopPreflight", "CFBundleVersion": "1", "CFBundleShortVersionString": "1",
+                          "CFBundlePackageType": "APPL", "NSPrincipalClass": "NSApplication"}, stream)
+        run(["codesign", "--force", "--deep", "--sign", "-", preflight], output / "desktop-sign.log")
+        ui_env = {**base_env, "TEST_RUNNER_OPENCLAW_PREFLIGHT_APP": str(preflight)}
+        run(xcode + ["test-without-building", "-only-testing:CatalogModeProofUITests/CatalogModeUITests/testDesktopPreflight",
+                     "-resultBundlePath", output / "desktop.xcresult"], output / "desktop.log", env=ui_env)
     app = scratch / "installed/OpenClawCatalogProof.app"
     run(["/bin/bash", helpers / "build-catalog-app.sh", source, MAIN, output / "build", seed_output / "seed.json", app], output / "package-wrapper.log")
     write_json(bundle_output / "main-bundle-reference.json", {"runId": 39833929614, "artifactId": 12452308201,
@@ -366,10 +369,12 @@ try:
             if imported["scopes"] != rpc_scopes or imported["adapterSHA256"] != file_hash(helpers / rpc_adapter.name):
                 raise RuntimeError("SDK caller differs from the reviewed helper or pinned native scopes")
             drain(phase="sdk-import-complete")
-        keychain, security_env = prepare_keychain(app_home, current_case)
-        for key, kind, value in (("openclaw.onboardingSeen", "-bool", "true"), ("openclaw.onboardingVersion", "-int", "8")):
-            run(["defaults", "write", "ai.openclaw.mac.catalog-proof.debug", key, kind, value], current_case / f"defaults-{key}.log", env=security_env)
+        if not http_only:
+            keychain, security_env = prepare_keychain(app_home, current_case)
+            for key, kind, value in (("openclaw.onboardingSeen", "-bool", "true"), ("openclaw.onboardingVersion", "-int", "8")):
+                run(["defaults", "write", "ai.openclaw.mac.catalog-proof.debug", key, kind, value], current_case / f"defaults-{key}.log", env=security_env)
         control_values["processCustody"] = str(custody_file)
+        control_values["httpPreflightOnly"] = http_only
         control_values["pythonExecutable"] = sys.executable
         write_json(control_spec, control_values)
         with (current_case / "controller.log").open("wb") as log:
@@ -386,8 +391,19 @@ try:
                 time.sleep(1)
         else:
             raise RuntimeError("Controller did not bind its isolated loopback port")
-        with loopback.open(launch["controlURL"] + "/ready", timeout=180) as response:
+        # Each original 90s readiness loop can finish a final 60s RPC; retain
+        # those limits. HTTP-only adds four 20s reads plus 20s dispatch margin.
+        with loopback.open(launch["controlURL"] + "/ready", timeout=400 if http_only else 180) as response:
             (current_case / "gateway-ready.json").write_bytes(response.read())
+        if http_only:
+            http_receipt = json.loads((current_case / "http-documents.json").read_text())
+            if http_receipt["status"] != "http_observation_collected":
+                raise RuntimeError("HTTP diagnostic did not finish; retained observations are incomplete")
+            drain(phase="http-preflight-complete")
+            write_json(output / "main-results.json", {"main": MAIN, "mode": "http-preflight-only",
+                       "httpObservation": http_receipt["status"], "appExecuted": False, "uiExecuted": False,
+                       "candidateExecuted": False, "mergeAllowed": False, "proofVerdict": "not_assessed"})
+            break
         ui_env = {**base_env, "TEST_RUNNER_OPENCLAW_CATALOG_PLAN": launch["uiPlan"],
                   "TEST_RUNNER_OPENCLAW_CATALOG_CONTROL": launch["controlURL"]}
         status = run(["python3", helpers / "capture-native-launch.py", launch_file, current_case, "--", *xcode,

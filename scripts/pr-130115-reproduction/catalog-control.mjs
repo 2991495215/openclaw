@@ -1,7 +1,7 @@
 // XCTest changes connection settings. The controller observes real routes and pairs only its already-observed Mac.
 import { execFile, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { createServer } from "node:http";
+import { createHash, randomUUID } from "node:crypto";
+import { createServer, get } from "node:http";
 import { mkdir, open, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -37,6 +37,7 @@ let stopping = false;
 const activeCommands = new Map();
 const gatewayStates = new Map();
 const lifecycle = [];
+const httpDiagnosticAbort = new AbortController();
 if (!Array.isArray(spec.gateways) || spec.gateways.length !== 2 ||
     !["gateway-local", "gateway-remote"].every(label => spec.gateways.some(g => g.label === label))) {
   throw new Error("Expected exactly the two task-owned foreground Gateways");
@@ -137,6 +138,78 @@ async function rpc(target, method, params, directory, name, requestTimeoutMs = 4
   await writeFile(path.join(directory, `${name}.stderr`), stderr);
   if (error) throw new Error(`${method} failed; raw evidence retained`, { cause: error });
   return JSON.parse(stdout);
+}
+
+async function observeHttpDocuments() {
+  // WebChatRoute(main, main) constructs /chat/main. The HTTP entry owner builds
+  // the private handoff below; neither request carries the native WS credential.
+  const origin = new URL(spec.local.gatewayUrl);
+  origin.protocol = "http:";
+  if (origin.pathname !== "/") throw new Error("HTTP diagnostic requires the fixture's root Gateway URL");
+  const entry = `/__openclaw__/session-entry?${new URLSearchParams({ path: "/chat/main" })}`;
+  const routes = [["native-initial-document", "/chat/main"], ["app-shell", "/"],
+    ["private-entry-shell", entry], ["private-entry-auth-probe", `${entry}&probe=1`]];
+  const receipt = { scope: "Separate unauthenticated HTTP reads; not WebKit or conversation access proof",
+    timeoutPerRequestMs: 20000, maximumBodyBytes: 1024 * 1024, redirectsFollowed: false,
+    authorizationSent: false, cookiesSent: false, responses: [], status: "collecting" };
+  const destination = path.join(spec.output, "http-documents.json");
+  await writeFile(destination, JSON.stringify(receipt, null, 2), { flag: "wx" });
+  for (const [label, pathname] of routes) {
+    if (stopping) throw new Error("Controller stopped during HTTP diagnostic");
+    const record = { label, url: new URL(pathname, origin).href, startedAt: new Date().toISOString(),
+      statusCode: null, contentType: null,
+      bytesReceived: 0, bytesCaptured: 0, bodyComplete: false, truncated: false };
+    const chunks = [];
+    await new Promise(resolve => {
+      let settled = false;
+      const finish = errorCode => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (errorCode) record.errorCode = errorCode;
+      };
+      // node:http has no cookie jar, proxy lookup, automatic redirect, or decoding.
+      const request = get(record.url, { agent: false, signal: httpDiagnosticAbort.signal,
+        maxHeaderSize: 16384, headers: { Accept: "text/html", "Accept-Encoding": "identity" } }, response => {
+        record.statusCode = response.statusCode;
+        record.contentType = response.headers["content-type"] ?? null;
+        response.on("data", chunk => {
+          if (settled) return;
+          record.bytesReceived += chunk.length;
+          const captured = chunk.subarray(0, receipt.maximumBodyBytes - record.bytesCaptured);
+          chunks.push(captured);
+          record.bytesCaptured += captured.length;
+          if (record.bytesReceived > receipt.maximumBodyBytes) {
+            record.truncated = true;
+            finish("body_limit");
+            request.destroy();
+          }
+        });
+        response.on("end", () => { if (!settled) { record.bodyComplete = true; finish(); } });
+        response.on("error", () => finish("response_error"));
+      });
+      const timer = setTimeout(() => { finish("request_timeout"); request.destroy(); }, receipt.timeoutPerRequestMs);
+      request.on("error", () => finish(stopping ? "controller_stopped" : "request_error"));
+      request.on("close", () => { if (!settled) finish("request_closed"); resolve(); });
+    });
+    record.truncated ||= !record.bodyComplete;
+    const bytes = Buffer.concat(chunks);
+    const body = bytes.toString("utf8");
+    record.bodySHA256 = createHash("sha256").update(bytes).digest("hex");
+    record.hashScope = record.bodyComplete ? "complete-body" : "captured-prefix";
+    record.markers = { appElement: body.includes("<openclaw-app"),
+      publicSession: body.includes("data-public-session"), publicEntryPending: body.includes("data-entry-pending"),
+      plainNotFound: /^not found\s*$/i.test(body), plainUnauthorized: /^unauthorized\s*$/i.test(body) };
+    record.finishedAt = new Date().toISOString();
+    receipt.responses.push(record);
+    await writeFile(destination, JSON.stringify(receipt, null, 2));
+  }
+  receipt.status = receipt.responses.every(row => row.bodyComplete && !row.errorCode && !row.truncated)
+    ? "http_observation_collected" : "incomplete_http_observation";
+  receipt.unauthenticatedProbeProtected = [401, 403].includes(receipt.responses.at(-1)?.statusCode);
+  await writeFile(destination, JSON.stringify(receipt, null, 2));
+  if (receipt.status !== "http_observation_collected") throw new Error("HTTP diagnostic incomplete; receipt retained");
+  if (!receipt.unauthenticatedProbeProtected) throw new Error("Private entry probe did not reject unauthenticated access; receipt retained");
 }
 
 async function observe(phase, afterUIRefresh = false) {
@@ -296,6 +369,7 @@ const startup = (async () => {
     await waitForGateway(label);
   }
   await saveLifecycle();
+  if (spec.httpPreflightOnly === true) await observeHttpDocuments();
 })();
 startup.catch(() => {});
 const server = createServer(async (req, res) => {
@@ -341,6 +415,7 @@ server.listen(spec.controlPort, "127.0.0.1");
 async function shutdown() {
   if (stopping) return;
   stopping = true;
+  httpDiagnosticAbort.abort();
   server.close();
   for (const pid of activeCommands.keys()) {
     try { process.kill(-pid, "SIGTERM"); } catch (error) { if (error.code !== "ESRCH") throw error; }

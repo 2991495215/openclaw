@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 60
     env:
       MAIN_SHA: d535d274183d19e2e838c7a7fc96063df676b368
+      CATALOG_HTTP_PREFLIGHT_ONLY: "1"
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       # Do not publish until owner 177970 provides and reviews the shared helper.
       LAUNCH_SUPPORT_SHA256: 177112c2a6652f5bd815910cff199f04b7b236dbde0c7bcf70899e1c9d397338
@@ -64,13 +65,14 @@ jobs:
         with:
           node-version: 24.22.1
       - name: Prepare the maintained external XCTest tooling
+        if: env.CATALOG_HTTP_PREFLIGHT_ONLY != '1'
         shell: bash
         run: |
           set -euo pipefail
           corepack enable
           scripts/install-xcodegen.sh "$RUNNER_TEMP/catalog-tools/bin"
           echo "$RUNNER_TEMP/catalog-tools/bin" >> "$GITHUB_PATH"
-      - name: Observe main through the real app, worker and Gateways
+      - name: Run the selected main-only proof stage
         env:
           REUSED_MAIN_BUNDLE: ${{ runner.temp }}/pr-130115-reused-main
         shell: bash
