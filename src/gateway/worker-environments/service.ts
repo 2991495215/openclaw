@@ -36,7 +36,7 @@ import { createWorkerProviderLifecycle } from "./provider-lifecycle.js";
 import type { WorkerEnvironmentAbandonment } from "./provider-lifecycle.types.js";
 import { createWorkerReconcileCancellation } from "./provider-provisioning-cancellation.js";
 import type { WorkerEnvironmentServiceContract } from "./service-contract.js";
-import { requireWorkerProfile } from "./service-validation.js";
+import { readWorkerProfileSelection, requireWorkerProfile } from "./service-validation.js";
 import type {
   WorkerEnvironmentCreateRequest,
   WorkerEnvironmentServiceOptions,
@@ -654,9 +654,11 @@ export function createWorkerEnvironmentService(options: WorkerEnvironmentService
       if (!provider?.runSetupCommand) {
         return undefined;
       }
+      const { machineClass, os } = readWorkerProfileSelection(record.profileSnapshot);
+      const profile = requireWorkerProfile(record.profileSnapshot.settings);
       const result = await trackOperation(
         provider.runSetupCommand(
-          { leaseId, profile: requireWorkerProfile(record.profileSnapshot.settings) },
+          { leaseId, profile, machineClass, os },
           { ...command, signal, assertCurrent },
         ),
       );
