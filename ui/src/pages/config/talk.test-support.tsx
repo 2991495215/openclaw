@@ -1,11 +1,18 @@
+import { createRouter } from "@openclaw/uirouter";
 import { createSignal } from "solid-js";
-import { expect } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
+import type { SolidRouteProps } from "../../app-route-types.tsx";
 import type { ApplicationContext } from "../../app/context.ts";
+import type { NativeDeviceSettingsCapability } from "../../app/native-device-settings.ts";
+import { mountRouterOutlet } from "../../app/router-outlet.test-support.tsx";
 import type { SelectPicker } from "../../components/select-picker.ts";
 import { t } from "../../i18n/index.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../../test-helpers/solid-application-context.tsx";
 import { flush } from "../../test-helpers/solid-settle.ts";
+import { completeConfigContext } from "./config-page.test-support.ts";
+import type { ConfigPageId, ConfigPageRouteData } from "./config-page.tsx";
+import { pages } from "./route.ts";
 import { TalkSettingsPage } from "./talk-page.tsx";
 
 export type TalkPageElement = HTMLElement & {
@@ -14,6 +21,36 @@ export type TalkPageElement = HTMLElement & {
   changeModel: (model: string | null) => void;
   changeProvider: (providerId: string | null) => void;
 };
+
+export function nativeVoice(snapshot: NonNullable<NativeDeviceSettingsCapability["snapshot"]>) {
+  const listeners = new Set<() => void>();
+  const settings = {
+    snapshot,
+    initialSnapshot: Promise.resolve(snapshot),
+    set: vi.fn<NativeDeviceSettingsCapability["set"]>(),
+    subscribe: (listener: Parameters<NativeDeviceSettingsCapability["subscribe"]>[0]) => {
+      const notify = () => listener(snapshot);
+      listeners.add(notify);
+      return () => {
+        listeners.delete(notify);
+      };
+    },
+    requestPermission: vi.fn(),
+    openSystemSettings: vi.fn(),
+    openPanel: vi.fn(),
+    checkForUpdates: vi.fn(),
+    setupChromeExtension: vi.fn(),
+    refresh: vi.fn(),
+    dispose: vi.fn(),
+  } satisfies NativeDeviceSettingsCapability;
+  return {
+    settings,
+    publish: () => {
+      listeners.forEach((notify) => notify());
+      flush();
+    },
+  };
+}
 
 export function readVoiceOptions(page: HTMLElement): string[] {
   return [...page.querySelectorAll("select option")].map(
@@ -58,10 +95,7 @@ export function mountTalkPage(context: ApplicationContext, initialConfig: Record
   const retired = new Promise<void>(() => {});
   const view = mountSolid(
     () => <TalkSettingsPage configObject={config()} presentationRetired={() => retired} />,
-    {
-      container: page,
-      wrapper: provider.wrapper,
-    },
+    { container: page, wrapper: provider.wrapper },
   );
   const remove = page.remove.bind(page);
   Object.defineProperties(page, {
@@ -74,4 +108,37 @@ export function mountTalkPage(context: ApplicationContext, initialConfig: Record
   };
   flush();
   return page;
+}
+
+export async function mountTalkSettingsRoutes(initialContext: ApplicationContext) {
+  const context = completeConfigContext(initialContext);
+  type SettingsRoute = Extract<(typeof pages)[number], { id: ConfigPageId }>;
+  const routes = pages.filter(
+    (route): route is SettingsRoute => route.id === "talk" || route.id === "notifications",
+  );
+  const productionModule = await routes[0]!.component();
+  const Provider = createSolidApplicationContextProvider(context).wrapper;
+  const ProductionRender = productionModule.renderSolid;
+  const module = {
+    ...productionModule,
+    renderSolid: (props: SolidRouteProps<ConfigPageRouteData>) => (
+      <Provider>
+        <ProductionRender {...props} />
+      </Provider>
+    ),
+  };
+  const router = createRouter<ConfigPageId, ApplicationContext, typeof module, ConfigPageRouteData>(
+    { routes: routes.map((route) => Object.assign({}, route, { component: () => module })) },
+  );
+  Object.assign(context, { router });
+  const outlet = mountRouterOutlet({ router, retryContext: context });
+  onTestFinished(() => {
+    outlet.dispose();
+    router.stop();
+  });
+  await router.navigate("talk", context);
+  return {
+    container: outlet,
+    navigate: (pageId: "talk" | "notifications") => router.navigate(pageId, context),
+  };
 }
