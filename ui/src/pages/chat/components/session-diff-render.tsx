@@ -1,11 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import { For, Show } from "solid-js";
-import type {
-  SessionDiffFile,
-  SessionsDiffResult,
-} from "../../../../../packages/gateway-protocol/src/index.js";
-import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
+import type { SessionDiffFile } from "../../../../../packages/gateway-protocol/src/index.js";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import type { ParsedFilePatch } from "../../../lib/chat/session-diff.ts";
 import type { DiffLine } from "../../../lib/chat/tool-call-diff.ts";
@@ -96,7 +91,6 @@ function SessionSplitDiff(props: {
 export function SessionDiffFileBody(props: {
   file: SessionDiffFile;
   parsed: ParsedFilePatch | null;
-  unavailableReason: SessionsDiffResult["unavailableReason"];
   split: boolean;
   presentation: DiffPresentation;
   renderSkip: (line: DiffLine) => JSX.Element;
@@ -105,19 +99,7 @@ export function SessionDiffFileBody(props: {
     <Show
       when={props.file.binary !== true && props.parsed}
       fallback={
-        <Show
-          when={props.file.binary === true}
-          fallback={
-            <PanelFeedback
-              label={props.file.path}
-              message={t(
-                props.unavailableReason === "workspace_stopped"
-                  ? "chat.sessionDiff.workspaceStoppedFile"
-                  : "chat.sessionDiff.previewUnavailable",
-              )}
-            />
-          }
-        >
+        <Show when={props.file.binary === true}>
           <div class="session-diff__note">{t("chat.sessionDiff.binaryFile")}</div>
         </Show>
       }
@@ -135,16 +117,6 @@ export function SessionDiffFileBody(props: {
       >
         <SessionSplitDiff presentation={props.presentation} renderSkip={props.renderSkip} />
       </Show>
-      {props.parsed?.truncated && (
-        <span
-          class="panel-feedback__hint"
-          role="img"
-          title={t("chat.sessionDiff.truncatedFile")}
-          aria-label={t("chat.sessionDiff.truncatedFile")}
-        >
-          <Icon name="info" />
-        </span>
-      )}
     </Show>
   );
 }

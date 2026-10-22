@@ -2,14 +2,22 @@
 import { dynamic } from "@solidjs/web";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.ts";
+import * as toast from "../../../lib/toast.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
+import {
+  composerFixture,
+  people,
+  resetMentionComposerFixture,
+} from "../chat-composer-mentions.test-support.ts";
 import type { ChatMobileHost } from "../chat-mobile-host.ts";
+import { createChatMobilePeopleMentions } from "../chat-mobile-people-mentions.ts";
 import { offlineDeviceSession } from "../chat-pane.test-support.ts";
 import { mountChatPaneHeader } from "./chat-pane-header.test-support.ts";
 import type { ChatPaneHeaderProps } from "./chat-pane-header.types.ts";
 
 const containers: HTMLElement[] = [];
+afterEach(resetMentionComposerFixture);
 
 afterEach(() => {
   containers.splice(0).forEach((container) => container.remove());
@@ -47,16 +55,28 @@ it("clears the device name while replacing its request and ignores retired resul
   expect(name()).toBeUndefined();
 });
 
-it("retains the People page and lookup across native host replacement and desktop parking", async () => {
-  const release = vi.fn();
+it("retains the People page and pauses its lookup across native host replacement and desktop parking", async () => {
+  const composer = composerFixture("chat", "Keep this draft");
+  vi.spyOn(toast, "showToast").mockReturnValue(true);
+  const nativeMentions = createChatMobilePeopleMentions(composer.mentionAccess);
+  const release = Object.assign(vi.fn(), { setPresented: vi.fn() });
   const mentions = {
-    status: "idle" as const,
-    error: undefined,
-    truncated: false,
-    read: () => null,
-    activate: vi.fn(() => release),
-    request: async () => {},
-    insert: () => false,
+    ...nativeMentions,
+    activate: vi.fn((presented = true) => {
+      const activation = nativeMentions.activate(presented);
+      return Object.assign(
+        () => {
+          release();
+          activation();
+        },
+        {
+          setPresented: (next: boolean) => {
+            release.setPresented(next);
+            activation.setPresented(next);
+          },
+        },
+      );
+    }),
   };
   const mobileHost: ChatMobileHost = {
     scopeKey: "people-retention",
@@ -98,7 +118,16 @@ it("retains the People page and lookup across native host replacement and deskto
         { key: "ada", sender: { name: "Ada" }, label: "Ada", firstName: "Ada", viewing: true },
       ],
       viewers: [],
-      participants: [],
+      participants: [
+        {
+          key: "alex",
+          sender: { name: "Alex" },
+          label: "Alex",
+          firstName: "Alex",
+          viewing: false,
+          mention: people.users[0],
+        },
+      ],
       unlistedParticipantCount: 0,
       participantsComplete: false,
     },
@@ -117,12 +146,32 @@ it("retains the People page and lookup across native host replacement and deskto
       return <Page />;
     });
   const firstPage = mountPage();
+  await vi.dynamicImportSettled();
+  await vi.advanceTimersByTimeAsync(0);
   await waitForSolid(() =>
     expect(firstPage.queryByRole("group", { name: "People" })).not.toBeNull(),
   );
   const retainedPage = firstPage.container.querySelector("#pane-1-mobile-people");
   expect(retainedPage).not.toBeNull();
   expect(mentions.activate).toHaveBeenCalledOnce();
+  composer.setUnsupported();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(nativeMentions.status).toBe("unavailable");
+  composer.setUnsupported(false);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(nativeMentions.status).toBe("ready");
+  expect(composer.request).toHaveBeenCalledTimes(2);
+  expect(mentions.activate).toHaveBeenCalledOnce();
+  expect(firstPage.container.querySelector("#pane-1-mobile-people")).toBe(retainedPage);
+  composer.container.querySelector<HTMLTextAreaElement>("textarea")!.readOnly = true;
+  firstPage.getByRole("button", { name: "Mention Alex" }).click();
+  mounted.update({ mobilePeopleMentions: { ...mentions, status: nativeMentions.status } });
+  expect(nativeMentions.status).toBe("insert-rejected");
+  expect(mobileHost.open).toBe(true);
+  expect(mobileHost.close).not.toHaveBeenCalled();
+  expect(composer.value()).toEqual({ draft: "Keep this draft", mentions: [] });
+  expect(firstPage.queryByRole("alert")).toBeNull();
+  expect(firstPage.queryByRole("button", { name: "Retry" })).toBeNull();
   mounted.update({
     title: "Updated title",
     mobilePeopleMentions: { ...mentions, status: "loading" },
@@ -131,7 +180,15 @@ it("retains the People page and lookup across native host replacement and deskto
     mergedChrome: false,
     detailsControl: { ...detailsControl, mobileHost: undefined },
   });
+  await waitForSolid(() => expect(release.setPresented).toHaveBeenLastCalledWith(false));
   mounted.update({ mergedChrome: true, detailsControl });
+  await waitForSolid(() => expect(release.setPresented).toHaveBeenLastCalledWith(true));
+  mobileHost.suspended = true;
+  refreshHost();
+  await waitForSolid(() => expect(release.setPresented).toHaveBeenLastCalledWith(false));
+  mobileHost.suspended = false;
+  refreshHost();
+  await waitForSolid(() => expect(release.setPresented).toHaveBeenLastCalledWith(true));
   expect(mounted.container.querySelector(".chat-mobile-people-grid")).toBe(trigger);
   expect(mentions.activate).toHaveBeenCalledOnce();
   expect(release).not.toHaveBeenCalled();
@@ -148,7 +205,8 @@ it("retains the People page and lookup across native host replacement and deskto
   mounted.update({ mergedChrome: true, detailsControl });
   const returnedPage = mountPage();
   expect(returnedPage.container.querySelector("#pane-1-mobile-people")).toBe(retainedPage);
-  expect(returnedPage.getByRole("alert").textContent).toContain("Retained lookup needs retry");
+  expect(returnedPage.queryByRole("alert")).toBeNull();
+  expect(returnedPage.queryByRole("button", { name: "Retry" })).toBeNull();
   expect(mentions.activate).toHaveBeenCalledTimes(2);
   mounted.unmount();
   expect(release).toHaveBeenCalledTimes(2);

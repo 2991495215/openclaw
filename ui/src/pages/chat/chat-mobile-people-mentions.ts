@@ -1,8 +1,21 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
+import { t } from "../../i18n/index.ts";
+import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
+import { isRetryableGatewayReadError } from "../../lib/gateway-errors.ts";
+import { createGatewayRetryOwner } from "../../lib/gateway-retry.ts";
+import { listen } from "../../lib/reactive/listener.ts";
+import { showToast } from "../../lib/toast.ts";
 import { projectChatFields } from "./chat-field-projection.ts";
 import type {
   HumanMentionAccess,
   HumanMentionRead,
 } from "./components/chat-composer-mention-menu.tsx";
+
+registerChatSessionEnglish();
+
+export type ChatMobilePeopleActivation = (() => void) & {
+  setPresented: (presented: boolean) => void;
+};
 
 export type ChatMobilePeopleMentions = {
   readonly status: "idle" | "loading" | "ready" | "unavailable" | "error" | "insert-rejected";
@@ -10,7 +23,7 @@ export type ChatMobilePeopleMentions = {
   readonly truncated: boolean;
   read: () => HumanMentionRead | null;
   /** Activate only on entry to People; release on leaving that page. */
-  activate: () => () => void;
+  activate: (presented?: boolean) => ChatMobilePeopleActivation;
   /** An explicit search/retry, never a render-time request. */
   request: (query?: string) => Promise<void>;
   /** Caller closes the page only on true. The native composer owns deferred focus. */
@@ -29,14 +42,35 @@ export function createChatMobilePeopleMentions(
     status: ChatMobilePeopleMentions["status"];
     error?: string;
     request?: object;
+    presented: boolean;
+    scope?: object;
+    retry: ReturnType<typeof createGatewayRetryOwner>;
+    stopVisibility?: () => void;
+    stopDirectory?: () => void;
   };
   const state = projectChatFields<{ active: Activation | undefined }>({ active: undefined });
+  const ownsScope = (page: Activation) =>
+    page.access === access() && page.scope === page.access?.scope;
   const read = () =>
     state.active && state.active.access === access() ? (state.active.receipt ?? null) : null;
-  const request = async (query = "") => {
+  const canRequest = (page: Activation) =>
+    page.presented && globalThis.document?.visibilityState !== "hidden";
+  const syncPresentation = (page: Activation) => {
+    if (!canRequest(page)) {
+      page.retry.pause();
+    } else if (!page.retry.resume() && page.status === "idle") {
+      void request();
+    }
+  };
+  const request = async (query = "", automatic = false) => {
     const page = state.active;
-    if (!page) {
+    if (!page || !canRequest(page)) {
       return;
+    }
+    if (automatic) {
+      page.retry.cancel();
+    } else {
+      page.retry.reset();
     }
     page.access = access();
     const pending = {};
@@ -44,21 +78,46 @@ export function createChatMobilePeopleMentions(
     page.receipt = page.access?.read(query);
     page.status = "loading";
     page.error = undefined;
+    const current = () => {
+      if (state.active !== page || page.request !== pending) {
+        return false;
+      }
+      if (ownsScope(page)) {
+        return true;
+      }
+      page.receipt = null;
+      page.status = "unavailable";
+      return false;
+    };
 
     try {
-      const result = await page.access?.request(query);
-      if (state.active !== page || page.request !== pending) {
+      const response = page.access?.request(query);
+      page.scope = page.access?.scope;
+      const result = await response;
+      if (!current()) {
         return;
       }
+      page.retry.reset();
       page.receipt = result;
       page.status = page.access === access() && result ? "ready" : "unavailable";
     } catch (error) {
-      if (state.active !== page || page.request !== pending) {
+      if (!current()) {
         return;
       }
       page.receipt = page.access?.read(query);
       page.status = "error";
       page.error = error instanceof Error ? error.message : String(error);
+      if (isRetryableGatewayReadError(error, "users.mentionable")) {
+        page.retry.schedule(
+          () => {
+            if (current()) {
+              void request(query, true);
+            }
+          },
+          error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
+        );
+        syncPresentation(page);
+      }
     }
   };
   return {
@@ -78,28 +137,65 @@ export function createChatMobilePeopleMentions(
       return read()?.result.truncated ?? false;
     },
     read,
-    activate: () => {
+    activate: (presented = true) => {
+      state.active?.retry.reset();
+      state.active?.stopVisibility?.();
+      state.active?.stopDirectory?.();
       const page = projectChatFields<Activation>({
         access: access(),
         receipt: undefined,
         status: "idle",
         error: undefined,
         request: undefined,
+        presented,
+        scope: undefined,
+        retry: createGatewayRetryOwner(),
+        stopVisibility: undefined,
+        stopDirectory: undefined,
       });
       state.active = page;
-      void request();
-      return () => {
-        if (state.active !== page) {
+      if (globalThis.document) {
+        page.stopVisibility = listen(document, "visibilitychange", () => syncPresentation(page));
+      }
+      syncPresentation(page);
+      page.stopDirectory = page.access?.onDirectoryChange(() => {
+        if (state.active !== page || page.access !== access() || ownsScope(page)) {
           return;
         }
-        state.active = undefined;
-      };
+        page.retry.reset();
+        page.request = undefined;
+        page.receipt = undefined;
+        page.error = undefined;
+        page.scope = page.access?.scope;
+        page.status = page.scope ? "idle" : "unavailable";
+        syncPresentation(page);
+      });
+      return Object.assign(
+        () => {
+          if (state.active !== page) {
+            return;
+          }
+          page.retry.reset();
+          page.stopVisibility?.();
+          page.stopDirectory?.();
+          state.active = undefined;
+        },
+        {
+          setPresented: (nextPresented: boolean) => {
+            if (state.active === page) {
+              page.presented = nextPresented;
+              syncPresentation(page);
+            }
+          },
+        },
+      );
     },
     request,
     insert: (profileId) => {
       const inserted = read()?.insert(profileId) ?? false;
       if (!inserted && state.active) {
         state.active.status = "insert-rejected";
+        showToast({ message: t("chat.sessionHeader.mentionRejected"), severity: "error" });
       }
       return inserted;
     },

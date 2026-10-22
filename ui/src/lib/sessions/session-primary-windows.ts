@@ -32,6 +32,7 @@ export function createSessionPrimaryWindows(
         retiredAgents.add(normalizeAgentId(entry.scope.agentId));
       }
       if (entry.listeners.size === 0 && !entry.pending) {
+        entry.readRetry?.reset();
         entry.coordinator.dispose();
         managedLists.delete(entry.key);
       }
@@ -59,6 +60,7 @@ export function createSessionPrimaryWindows(
         return;
       }
       // Keep invalidation dormant until observed again, without runnable queued work.
+      entry.readRetry?.reset();
       entry.coordinator.setActive(false, entry.queued !== null);
       entry.queued = null;
       const release = () => {
@@ -67,6 +69,7 @@ export function createSessionPrimaryWindows(
           entry.listeners.size === 0 &&
           managedLists.get(entry.key) === entry
         ) {
+          entry.readRetry?.reset();
           entry.coordinator.dispose();
           managedLists.delete(entry.key);
         }

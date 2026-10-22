@@ -1,7 +1,6 @@
 import { createMemo, For } from "solid-js";
 import { pathForRoute } from "../../../app-route-paths.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerCronEnglish } from "../../../i18n/locales/en-cron.ts";
 import { shouldHandleNavigationClick } from "../../../lib/navigation-click.ts";
@@ -24,21 +23,6 @@ export function SessionAutomationMobileList(props: SessionAutomationMobileListPr
   const inventory = () => props.inventory;
   return (
     <div class="session-automation-mobile" aria-busy={inventory().loading() ? "true" : "false"}>
-      <PanelFeedback
-        label={t("chat.sessionDetails.automations")}
-        message={
-          !inventory().connected()
-            ? t("chat.sessionDetails.automationOffline")
-            : !inventory().available()
-              ? t("chat.sessionDetails.automationUnavailable")
-              : inventory().error()
-                ? t("chat.sessionDetails.automationError")
-                : undefined
-        }
-        onRetry={() => void inventory().refresh()}
-        retrying={inventory().loading()}
-        retryDisabled={!inventory().connected()}
-      />
       <div class="session-automation-mobile__group">
         <For each={inventory().jobs()} keyed={(job) => job.id}>
           {(job) => {

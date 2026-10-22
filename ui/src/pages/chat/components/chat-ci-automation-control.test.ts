@@ -1,4 +1,8 @@
 /* @vitest-environment jsdom */
+import {
+  GatewayProtocolRequestError,
+  GatewayProtocolRequestTimeoutError,
+} from "@openclaw/gateway-client/browser";
 import { beforeEach, describe, expect, it, onTestFinished, vi, type MockInstance } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { GatewayBrowserClient } from "../../../api/gateway.ts";
@@ -88,8 +92,16 @@ class Fixture {
     await this.element.updateComplete;
   }
   async open(settled = true) {
-    this.root.open = true;
-    this.root.dispatchEvent(new Event("toggle"));
+    if (!this.root.open) {
+      const toggled = new Promise<void>((resolve) => {
+        this.root.addEventListener("toggle", () => resolve(), { once: true });
+      });
+      this.root.open = true;
+      if (vi.isFakeTimers()) {
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      await toggled;
+    }
     await this.element.updateComplete;
     if (settled) {
       await this.settle();
@@ -122,6 +134,170 @@ describe("CI automation popup scope", () => {
     h = new Fixture();
     await h.paint("first");
   });
+  it("recovers failed inventory reads with backoff and stops polling after success", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => void vi.useRealTimers());
+    let unavailable = true;
+    h.request.mockImplementation(async (method) => {
+      if (method === "cron.status") {
+        return cronStatus;
+      }
+      if (unavailable) {
+        if (h.calls("cron.list").length === 1) {
+          throw new GatewayProtocolRequestError({
+            code: "UNAVAILABLE",
+            message: "Temporary inventory failure",
+            retryable: true,
+            details: { method: "cron.list" },
+          });
+        }
+        throw new GatewayProtocolRequestTimeoutError({
+          method: "cron.list",
+          timeoutMs: 30_000,
+          requestSent: true,
+        });
+      }
+      return inventory(h.jobs);
+    });
+    await h.open();
+    expect(h.calls("cron.list")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(h.calls("cron.list")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.calls("cron.list")).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(h.calls("cron.list")).toHaveLength(2);
+    unavailable = false;
+    h.jobs = [job("first")];
+    await vi.advanceTimersByTimeAsync(1);
+    await h.settle();
+    expect(h.calls("cron.list")).toHaveLength(3);
+    expect(h.checkbox().checked).toBe(true);
+    expect(h.checkbox().closest("fieldset")?.disabled).toBe(false);
+    expect(h.root.textContent).not.toContain("Temporary inventory failure");
+    expect(notify).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(h.calls("cron.list")).toHaveLength(3);
+  });
+
+  it.each(["hidden", "closed"] as const)(
+    "preserves the server retry deadline across %s, reopening, and owner events",
+    async (boundary) => {
+      vi.useFakeTimers();
+      onTestFinished(() => void vi.useRealTimers());
+      h.request.mockRejectedValueOnce(
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          message: "Inventory busy",
+          retryable: true,
+          retryAfterMs: 90_000,
+          details: { method: "cron.list" },
+        }),
+      );
+      await h.open();
+      expect(h.calls("cron.list")).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(10_000);
+      if (boundary === "hidden") {
+        h.element.presented = false;
+      } else {
+        h.root.open = false;
+      }
+      await h.settle();
+      await vi.advanceTimersByTimeAsync(10_000);
+      if (boundary === "hidden") {
+        h.element.presented = true;
+      } else {
+        await h.open();
+      }
+      await h.settle();
+      expect(h.calls("cron.list")).toHaveLength(1);
+      h.harness.emit({}, "cron");
+      await h.settle();
+      expect(h.calls("cron.list")).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(69_999);
+      expect(h.calls("cron.list")).toHaveLength(1);
+      h.jobs = [job("first")];
+      await vi.advanceTimersByTimeAsync(1);
+      await h.settle();
+      expect(h.calls("cron.list")).toHaveLength(2);
+      expect(h.checkbox().checked).toBe(true);
+      expect(h.calls("cron.add")).toHaveLength(0);
+      expect(h.calls("cron.update")).toHaveLength(0);
+    },
+  );
+
+  it.each(["hidden", "document hidden", "connection", "session"] as const)(
+    "retires scheduled inventory recovery at %s and resumes on return",
+    async (boundary) => {
+      vi.useFakeTimers();
+      onTestFinished(() => void vi.useRealTimers());
+      h.request.mockRejectedValueOnce(
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          message: "Temporary inventory failure",
+          retryable: true,
+          details: { method: "cron.list" },
+        }),
+      );
+      await h.open();
+      expect(h.calls("cron.list")).toHaveLength(1);
+      const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+      if (boundary === "hidden") {
+        h.element.presented = false;
+      } else if (boundary === "document hidden") {
+        visibility.mockReturnValue("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+      } else if (boundary === "connection") {
+        h.snapshot({ phase: "offline" });
+      } else {
+        await h.paint("replacement");
+      }
+      await h.settle();
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(h.calls("cron.list")).toHaveLength(1);
+      h.jobs = [job(boundary === "session" ? "replacement" : "first")];
+      if (boundary === "hidden") {
+        h.element.presented = true;
+      } else if (boundary === "document hidden") {
+        visibility.mockReturnValue("visible");
+        document.dispatchEvent(new Event("visibilitychange"));
+      } else if (boundary === "connection") {
+        h.snapshot({ phase: "connected" });
+      } else {
+        await h.open();
+      }
+      await vi.advanceTimersByTimeAsync(0);
+      await h.settle();
+      expect(h.calls("cron.list")).toHaveLength(2);
+      expect(h.checkbox().checked).toBe(true);
+    },
+  );
+
+  it("retires denied inventory without timer retries and waits for fresh owner events", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => void vi.useRealTimers());
+    h.jobs = [job("first")];
+    await h.open();
+    expect(h.checkbox().checked).toBe(true);
+    h.request.mockRejectedValueOnce(
+      new GatewayProtocolRequestError({
+        code: "FORBIDDEN",
+        message: "Access revoked",
+      }),
+    );
+    h.harness.emit({}, "cron");
+    await h.settle();
+    expect(h.calls("cron.list")).toHaveLength(2);
+    expect(h.checkbox().checked).toBe(false);
+    expect(h.checkbox().closest("fieldset")?.disabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(h.calls("cron.list")).toHaveLength(2);
+    h.harness.emit({}, "config.changed");
+    await h.settle();
+    expect(h.calls("cron.list")).toHaveLength(3);
+    expect(h.checkbox().checked).toBe(true);
+  });
+
   it("keeps concurrent intents across stale inventory and out-of-order acknowledgements", async () => {
     const staleRead = createDeferred<ReturnType<typeof inventory>>();
     const fixWrite = createDeferred<CronJob>();

@@ -21,7 +21,11 @@ import {
   projectDetailsOutputs,
   type DetailsOutputsBinding,
 } from "./chat-details-outputs-binding.ts";
-import { loadChatBranches, retireChatBranchRequests } from "./chat-history-branches.ts";
+import {
+  loadChatBranches,
+  pauseChatBranchRequests,
+  syncChatBranchRetryPresentation,
+} from "./chat-history-branches.ts";
 import {
   chatHistoryRequests,
   getAcceptedChatHistorySession,
@@ -570,6 +574,7 @@ export abstract class ChatPaneRetainedPresentation extends ChatPaneBoard {
       return;
     }
     if (presented) {
+      this.syncSharingReadRetryPresentation();
       this.consumeSessionHandoff(this.sessionKey);
       this.activateComposerPresentation();
       this.syncActiveBindings();
@@ -591,9 +596,11 @@ export abstract class ChatPaneRetainedPresentation extends ChatPaneBoard {
           // authoritative start time and activity after a foreground return.
           void loadChatHistory(state, { deferBranches: true });
         }
+        const recoveringBranches = syncChatBranchRetryPresentation(state);
         if (
-          !areUiSessionKeysEquivalent(state.chatBranchesSessionKey, state.sessionKey) ||
-          state.chatBranchesConnectionEpoch !== state.connectionEpoch
+          !recoveringBranches &&
+          (!areUiSessionKeysEquivalent(state.chatBranchesSessionKey, state.sessionKey) ||
+            state.chatBranchesConnectionEpoch !== state.connectionEpoch)
         ) {
           void loadChatBranches(state);
         }
@@ -603,7 +610,7 @@ export abstract class ChatPaneRetainedPresentation extends ChatPaneBoard {
       return;
     }
     if (this.state) {
-      retireChatBranchRequests(this.state);
+      pauseChatBranchRequests(this.state);
       // Unwatch can cancel an admitted refresh before sync; a later presentation
       // must not inherit a receipt for work its watch no longer owns.
       retirePullRequestRefreshes(this.state);

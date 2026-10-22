@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createRoot, flush } from "@solidjs/signals";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import { GatewayRequestError } from "../../api/gateway.ts";
 import type { SessionBranch } from "../../api/types.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { projectChatFields } from "./chat-field-projection.ts";
@@ -8,6 +9,8 @@ import {
   displayedChatSessionBranches,
   invalidateChatBranches,
   loadChatBranches,
+  pauseChatBranchRequests,
+  syncChatBranchRetryPresentation,
   retireChatBranchRequests,
 } from "./chat-history-branches.ts";
 import { loadChatHistory } from "./chat-history.ts";
@@ -141,14 +144,23 @@ describe("chat branch freshness", () => {
     expect(state.chatBranches).toBe(emptyBranches);
   });
 
-  it("keeps unchanged and failed branch reads idle, then publishes recovered branch changes", async () => {
+  it("retains branch results and recovers a transient failure without new session traffic", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => void vi.useRealTimers());
     const original = branch("original-reply", true);
     const { state } = createSessionEventState([original]);
     const published = observeBranchMenu(state);
     const listBranches = vi
       .mocked(state.sessions.listBranches)
       .mockResolvedValueOnce([{ ...original }])
-      .mockRejectedValueOnce(new Error("Branch read failed"));
+      .mockRejectedValueOnce(
+        new GatewayRequestError({
+          code: "UNAVAILABLE",
+          message: "Branch read failed",
+          retryable: true,
+          retryAfterMs: 600_000,
+        }),
+      );
     await loadChatBranches(state);
     flush();
     expect(published).toEqual([[original]]);
@@ -161,11 +173,38 @@ describe("chat branch freshness", () => {
 
     const recovered = { ...original, headline: "Recovered reply", messageCount: 3 };
     listBranches.mockResolvedValueOnce([recovered]);
-    await loadChatBranches(state);
+    pauseChatBranchRequests(state);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(listBranches).toHaveBeenCalledTimes(2);
+    expect(syncChatBranchRetryPresentation(state)).toBe(true);
+    await vi.advanceTimersByTimeAsync(299_999);
+    expect(listBranches).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
     flush();
     expect(state.chatBranches).toEqual([recovered]);
     expect(state.chatBranchesConnectionEpoch).toBe(1);
     expect(published).toEqual([[original], [recovered]]);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(listBranches).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["retired", "forbidden"])("does not retry a %s branch read", async (reason) => {
+    vi.useFakeTimers();
+    onTestFinished(() => void vi.useRealTimers());
+    const { state } = createSessionEventState();
+    const listBranches = vi.mocked(state.sessions.listBranches).mockRejectedValueOnce(
+      new GatewayRequestError({
+        code: reason === "forbidden" ? "FORBIDDEN" : "UNAVAILABLE",
+        message: "Unavailable",
+        retryable: reason !== "forbidden",
+      }),
+    );
+    await loadChatBranches(state);
+    if (reason === "retired") {
+      retireChatBranchRequests(state);
+    }
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(listBranches).toHaveBeenCalledOnce();
   });
 
   it.each([

@@ -320,6 +320,7 @@ export function SidebarPanel(props: SidebarPanelProps) {
                     onResult={content().onResult ?? null}
                     owner={content().owner}
                     loader={content().load}
+                    canRead={content().canRead}
                     loadFileText={content().loadFileText ?? null}
                     execNode={props.fileView?.execNode ?? null}
                     openFile={content().openFile ?? null}

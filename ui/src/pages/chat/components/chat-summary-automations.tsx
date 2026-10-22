@@ -4,7 +4,6 @@ import { pathForRoute } from "../../../app-route-paths.ts";
 import { gatewayPresentationScope } from "../../../app/gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { loadCompactCronJobsPage, retireCronJobsRequest } from "../../../lib/cron/jobs.ts";
 import { createInitialCronState } from "../../../lib/cron/state.ts";
@@ -346,39 +345,6 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
     }
   }
 
-  async function retry(button: Element | null) {
-    const key = props.sessionKey;
-    const source = props.gateway;
-    const focused =
-      button instanceof HTMLButtonElement && host.ownerDocument.activeElement === button;
-    await inventory.refresh();
-    if (
-      props.sessionKey !== key ||
-      props.gateway !== source ||
-      inventory.error() ||
-      !props.presented ||
-      !host.isConnected
-    ) {
-      return;
-    }
-    // Only move focus when the successful retry removed the focused control.
-    if (focused) {
-      onSettled(() => {
-        const target = jobLinks.get(inventory.jobs()[0]?.id ?? "");
-        if (
-          props.sessionKey === key &&
-          props.gateway === source &&
-          props.presented &&
-          host.isConnected &&
-          target?.isConnected &&
-          host.ownerDocument.activeElement === host.ownerDocument.body
-        ) {
-          target.focus();
-        }
-      });
-    }
-  }
-
   function jobState(job: CronCompactJob) {
     if (job.autoDisabled) {
       return t("chat.sessionDetails.automationAttention");
@@ -485,17 +451,7 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
   return (
     <openclaw-chat-summary-automations ref={(element) => (host = element)}>
       {initialInventory ? null : inventory.lifecycle}
-      <PanelFeedback
-        label={t("chat.sessionDetails.automations")}
-        message={
-          inventory.readDenied() && inventory.connected()
-            ? t("chat.sessionDetails.automationError")
-            : undefined
-        }
-        onRetry={() => void retry(host.ownerDocument.activeElement)}
-        retrying={inventory.loading()}
-        presented={props.presented}
-      />
+
       <Show when={inventory.readable()}>
         <Show when={inventory.jobs().length > 0}>
           <Show

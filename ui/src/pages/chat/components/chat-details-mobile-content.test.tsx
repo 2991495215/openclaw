@@ -1,11 +1,16 @@
 /* @vitest-environment jsdom */
 import { createSignal, flush } from "solid-js";
-import { expect, it, vi } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import "../chat-details-mobile-host-content.tsx";
+import { GatewayRequestError } from "../../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../../api/types.ts";
-import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
+import {
+  composerFixture,
+  resetMentionComposerFixture,
+} from "../chat-composer-mentions.test-support.ts";
 import type { ChatMobileHost, MobileHostDestination } from "../chat-mobile-host.ts";
+import { createChatMobilePeopleMentions } from "../chat-mobile-people-mentions.ts";
 import {
   ChatDetailsMobileContent,
   type ChatDetailsMobilePage,
@@ -71,13 +76,11 @@ it("shows a real worker without legacy fields and lets the environment owner dec
   const content = rootContent();
   content.environment = { onRequestUncommitted: request, onOpenMachine: openMachine };
   const view = mountSolid(() => (
-    <PanelFeedbackScope presented={presented()}>
-      <ChatDetailsMobileContent
-        details={value()}
-        presented={presented()}
-        page={{ kind: "root", content }}
-      />
-    </PanelFeedbackScope>
+    <ChatDetailsMobileContent
+      details={value()}
+      presented={presented()}
+      page={{ kind: "root", content }}
+    />
   ));
   view.getByRole("button", { name: "worker:device" }).click();
   expect(openMachine).toHaveBeenCalledOnce();
@@ -120,9 +123,7 @@ it("retains Outputs demand across publications and returns navigation origins wi
   const content = rootContent();
   const [page, setPage] = createSignal<ChatDetailsMobilePage>({ kind: "root", content });
   const view = mountSolid(() => (
-    <PanelFeedbackScope presented={presented()}>
-      <ChatDetailsMobileContent details={value()} presented={presented()} page={page()} />
-    </PanelFeedbackScope>
+    <ChatDetailsMobileContent details={value()} presented={presented()} page={page()} />
   ));
   expect(retain).toHaveBeenCalledOnce();
   const people = view.getByRole("button", { name: "People" });
@@ -222,9 +223,9 @@ async function mountMobileHost(value: ChatDetailsProps) {
 
 it("replaces the People activation owner while retaining the mobile host content", async () => {
   const { view, element, show } = await mountMobileHost(details());
-  const release = vi.fn();
+  const release = Object.assign(vi.fn(), { setPresented: vi.fn() });
   const activate = vi.fn(() => release);
-  const releaseReplacement = vi.fn();
+  const releaseReplacement = Object.assign(vi.fn(), { setPresented: vi.fn() });
   const activateReplacement = vi.fn(() => releaseReplacement);
   const mentions = {
     status: "idle" as const,
@@ -271,6 +272,69 @@ it("replaces the People activation owner while retaining the mobile host content
   expect(release).toHaveBeenCalledOnce();
   expect(releaseReplacement).toHaveBeenCalledOnce();
 });
+
+it.each([
+  { mode: "park", hiddenMs: 60_000 },
+  { mode: "suspend", hiddenMs: 60_000 },
+  { mode: "park", hiddenMs: 5_000 },
+])(
+  "pauses People recovery while $mode for $hiddenMs ms without resetting its deadline",
+  async ({ mode, hiddenMs }) => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const receipt = { result: { users: [], truncated: false }, insert: () => false };
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new GatewayRequestError({
+          code: "UNAVAILABLE",
+          message: "Directory unavailable",
+          retryable: true,
+        }),
+      )
+      .mockResolvedValue(receipt);
+    const access = { scope: {}, onDirectoryChange: () => () => {}, read: () => null, request };
+    const mentions = createChatMobilePeopleMentions(() => access);
+    const { view, element, show } = await mountMobileHost(details());
+    try {
+      element.bindings = { ...element.bindings!, peopleMentions: mentions };
+      await show({
+        area: "details",
+        page: { key: "people", title: "People", details: { kind: "people" } },
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(request).toHaveBeenCalledOnce();
+      if (mode === "park") {
+        element.presented = false;
+      } else {
+        element.host = { ...element.host!, suspended: true };
+      }
+      await element.updateComplete;
+      await vi.advanceTimersByTimeAsync(hiddenMs);
+      expect(request).toHaveBeenCalledOnce();
+      if (mode === "park") {
+        element.presented = true;
+      } else {
+        element.host = { ...element.host!, suspended: false };
+      }
+      await element.updateComplete;
+      const remaining = Math.max(0, 20_000 - hiddenMs);
+      if (remaining) {
+        await vi.advanceTimersByTimeAsync(remaining - 1);
+        expect(request).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(1);
+      } else {
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(mentions.status).toBe("ready");
+    } finally {
+      view.unmount();
+    }
+  },
+);
 
 it("routes current mobile PRs to Checks and rejects hidden or superseded navigation", async () => {
   const request = pullRequest({
@@ -396,6 +460,40 @@ it("dismisses only the current mobile branch after explicit activation", async (
     expect(view.container.querySelector('[data-details-destination="publication"]')).not.toBeNull();
     expect(view.container.querySelector('[data-details-page="publication"]')).not.toBeNull();
     expect(view.container.querySelector(".chat-pr-mobile__hide")).toBeNull();
+  } finally {
+    view.unmount();
+  }
+});
+
+it("re-admits the retained Details People directory after reconnect only when revealed", async () => {
+  onTestFinished(resetMentionComposerFixture);
+  const composer = composerFixture("chat");
+  composer.setUnsupported();
+  await vi.advanceTimersByTimeAsync(0);
+  const mentions = createChatMobilePeopleMentions(composer.mentionAccess);
+  const { view, element, show } = await mountMobileHost(details());
+  try {
+    element.bindings = { ...element.bindings!, peopleMentions: mentions };
+    await show({
+      area: "details",
+      page: { key: "people", title: "People", details: { kind: "people" } },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mentions.status).toBe("unavailable");
+    expect(composer.request).not.toHaveBeenCalled();
+    element.presented = false;
+    await element.updateComplete;
+    composer.setUnsupported(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(composer.request).not.toHaveBeenCalled();
+    element.presented = true;
+    await element.updateComplete;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(composer.request).toHaveBeenCalledOnce();
+    expect(mentions.status).toBe("ready");
+    composer.refresh();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(composer.request).toHaveBeenCalledOnce();
   } finally {
     view.unmount();
   }

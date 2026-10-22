@@ -1,7 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import { createMemo, For, onSettled, refresh, Show, useContext } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -85,11 +84,13 @@ function TranscriptAttachmentsContent(props: WorkspaceTranscriptAttachmentsProps
       }
       role="list"
       aria-label={t("chat.workspaceFiles.attachments")}
+      aria-description={notice()}
+      title={notice()}
     >
       <Show when={source()} keyed>
         {(current) => <ExpiryLifetime source={current} />}
       </Show>
-      <Show when={props.presentation === "mobile" && (entries().length || notice())}>
+      <Show when={props.presentation === "mobile" && entries().length}>
         <div class="chat-workspace-mobile__group-heading">
           {t("chat.workspaceFiles.attachments")}
         </div>
@@ -103,14 +104,6 @@ function TranscriptAttachmentsContent(props: WorkspaceTranscriptAttachmentsProps
           />
         )}
       </For>
-      <PanelFeedback label={t("chat.workspaceFiles.attachments")} message={source().error} />
-      <Show when={notice()}>
-        {(message) => (
-          <span class="panel-feedback__hint" role="img" title={message()} aria-label={message()}>
-            <Icon name="info" />
-          </span>
-        )}
-      </Show>
     </div>
   );
 }

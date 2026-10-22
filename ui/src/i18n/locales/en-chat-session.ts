@@ -94,9 +94,6 @@ const enChatSession = {
       },
     },
     sessionDetails: {
-      feedbackTitle: "Details status",
-      feedbackUnavailable: "{source} unavailable",
-      feedbackMultiple: "Some details are unavailable",
       menu: "Session details",
       title: "Details",
       close: "Close details",

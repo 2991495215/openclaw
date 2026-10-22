@@ -1,3 +1,4 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { buildControlUiSessionPath } from "@openclaw/session-url-contract";
 import type { SessionPublicShareSetResult } from "../../../../packages/gateway-protocol/src/index.js";
 import type { SessionsCompanionResetResult } from "../../../../packages/gateway-protocol/src/schema/sessions.js";
@@ -12,7 +13,9 @@ import { t } from "../../i18n/index.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import { copyToClipboard } from "../../lib/clipboard.ts";
 import { formatUiError } from "../../lib/format-error.ts";
+import { isRetryableGatewayReadError } from "../../lib/gateway-errors.ts";
 import { isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
+import { createGatewayRetryOwner } from "../../lib/gateway-retry.ts";
 import { readSessionMethodAccess } from "../../lib/session-method-access.ts";
 import {
   areUiSessionKeysEquivalent,
@@ -37,6 +40,31 @@ const SESSION_MEMBERS_LIST_METHOD = "session.members.listEvidence";
 
 export abstract class ChatPaneSharingActions extends ChatPaneSidePanels {
   private readonly sessionSharingPropsMemo = new ChatPaneHeaderMemo<PreparedChatSessionSharing>();
+  private readonly sharingReadRetry = createGatewayRetryOwner();
+  private sharingReadRetryTarget?: string;
+  private resumeSharingRead?: { current: () => boolean; run: () => void };
+
+  protected override retireHeaderSessionMutations(): void {
+    super.retireHeaderSessionMutations();
+    if (this.resumeSharingRead?.current()) {
+      this.sharingReadRetry.pause();
+    } else {
+      this.sharingReadRetry.reset();
+      this.sharingReadRetryTarget = undefined;
+      this.resumeSharingRead = undefined;
+    }
+  }
+
+  protected syncSharingReadRetryPresentation(): void {
+    if (!this.resumeSharingRead?.current()) {
+      this.sharingReadRetry.reset();
+      this.resumeSharingRead = undefined;
+    } else if (this.presented && document.visibilityState !== "hidden") {
+      this.sharingReadRetry.resume();
+    } else {
+      this.sharingReadRetry.pause();
+    }
+  }
 
   /** Shared presentation facts; loading and mutations remain with this pane's native owner. */
   protected prepareSessionSharing(
@@ -209,6 +237,15 @@ export abstract class ChatPaneSharingActions extends ChatPaneSidePanels {
     if (current?.loading && !force) {
       return;
     }
+    const retryTarget = `${scope.generation}\0${cacheKey}\0${currentRow.sessionId}`;
+    if (areUiSessionKeysEquivalent(this.state?.sessionKey, currentRow.key)) {
+      if (this.sharingReadRetryTarget !== retryTarget) {
+        this.sharingReadRetry.reset();
+        this.sharingReadRetryTarget = retryTarget;
+      }
+      this.sharingReadRetry.cancel();
+      this.resumeSharingRead = undefined;
+    }
     // Sharing data (membership + paired identities) is connection-scoped. A
     // gateway/account change bumps the generation and clears this cache, so a
     // request that resolves after the switch must be dropped rather than
@@ -219,6 +256,8 @@ export abstract class ChatPaneSharingActions extends ChatPaneSidePanels {
     const ownsLoadingState = () => this.collaboration.sharingStates.get(cacheKey) === loadingState;
     this.setSessionSharingState(cacheKey, loadingState);
     let next: ChatSessionSharingState;
+    let retryable = false;
+    let retryAfterMs = 0;
     try {
       const result = await scope.client.request<SessionSharingResult>(SESSION_MEMBERS_LIST_METHOD, {
         sessionKey: currentRow.key,
@@ -232,6 +271,8 @@ export abstract class ChatPaneSharingActions extends ChatPaneSidePanels {
         ...(result.publicShare ? { publicUrl: this.sessionPublicUrl(scope, currentRow) } : {}),
       };
     } catch (error) {
+      retryable = isRetryableGatewayReadError(error, SESSION_MEMBERS_LIST_METHOD);
+      retryAfterMs = error instanceof GatewayProtocolRequestError ? (error.retryAfterMs ?? 0) : 0;
       next = { ...current, loading: false, error: formatUiError(error) };
     }
     if (!this.ownsSessionSharing(scope, currentRow) || !ownsLoadingState()) {
@@ -243,6 +284,36 @@ export abstract class ChatPaneSharingActions extends ChatPaneSidePanels {
       return;
     }
     this.setSessionSharingState(cacheKey, next);
+    if (
+      this.sharingReadRetryTarget !== retryTarget ||
+      !areUiSessionKeysEquivalent(this.state?.sessionKey, currentRow.key)
+    ) {
+      return;
+    }
+    if (retryable) {
+      const retryIsCurrent = () =>
+        this.isConnectionScopeCurrent(scope) &&
+        this.currentSessionSharingRow(scope, currentRow) !== null &&
+        readSessionMethodAccess(scope.context.gateway.snapshot, {
+          method: SESSION_MEMBERS_LIST_METHOD,
+          requiredScope: "operator.read",
+        }).allowed &&
+        areUiSessionKeysEquivalent(this.state?.sessionKey, currentRow.key) &&
+        this.collaboration.sharingStates.get(cacheKey) === next;
+      this.resumeSharingRead = {
+        current: retryIsCurrent,
+        run: () => {
+          if (retryIsCurrent() && this.presented && document.visibilityState !== "hidden") {
+            void this.loadSessionSharing(currentRow);
+          }
+        },
+      };
+      this.sharingReadRetry.schedule(this.resumeSharingRead.run, retryAfterMs);
+      this.syncSharingReadRetryPresentation();
+    } else {
+      this.sharingReadRetry.reset();
+      this.resumeSharingRead = undefined;
+    }
   }
 
   protected failSharing(

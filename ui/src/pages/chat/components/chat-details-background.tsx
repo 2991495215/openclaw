@@ -2,7 +2,6 @@ import type { JSX } from "@solidjs/web";
 import { For, Show, createMemo, createSignal } from "solid-js";
 import type { SessionProcessSummary } from "../../../../../packages/gateway-protocol/src/schema/session-processes.js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import {
@@ -328,8 +327,6 @@ function DetailsProcesses(
   const visibleProcesses = createMemo(() =>
     processesExpanded() ? processRows() : processRows().slice(0, PREVIEW_ROWS),
   );
-  const processError = () =>
-    processRows().length === 0 ? props.processes()?.snapshot.error : null;
   const openProcesses = () => {
     if (props.presented) {
       props.details.onOpenProcesses?.();
@@ -337,13 +334,6 @@ function DetailsProcesses(
   };
   return (
     <>
-      <PanelFeedback
-        label={t("chat.sessionDetails.processes")}
-        message={processError()}
-        onRetry={() => void props.processes()?.refresh()}
-        retrying={props.processes()?.snapshot.loading}
-        presented={props.presented}
-      />
       <Show when={processRows().length > 0}>
         <BackgroundGroup
           kind="processes"

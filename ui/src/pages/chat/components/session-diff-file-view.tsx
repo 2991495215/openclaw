@@ -189,11 +189,17 @@ export function createSessionDiffFileView(bindings: SessionDiffViewBindings) {
     };
     const statusLabel = () => FILE_STATUS_LABELS[file().status] ?? FILE_STATUS_LABELS.modified;
     const body = () => (
-      <div class="session-diff__file-body" style={{ "contain-intrinsic-size": intrinsicSize() }}>
+      <div
+        class="session-diff__file-body"
+        style={{ "contain-intrinsic-size": intrinsicSize() }}
+        aria-description={
+          source().parsed?.truncated ? t("chat.sessionDiff.truncatedFile") : undefined
+        }
+        title={source().parsed?.truncated ? t("chat.sessionDiff.truncatedFile") : undefined}
+      >
         <SessionDiffFileBody
           file={file()}
           parsed={source().parsed}
-          unavailableReason={fileProps.result.unavailableReason}
           split={effectiveSplit()}
           presentation={presentation}
           renderSkip={(line) => <Gap view={fileProps.view} line={line} />}

@@ -1,7 +1,6 @@
 import { createMemo, createSignal, createStore, onSettled, Show } from "solid-js";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { nativeGatewaysCapability } from "../../../app/native-gateways.runtime.ts";
-import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import "../../../styles/chat/session-diff-mobile.css";
 import "../../../styles/session-panel-rail.css";
@@ -19,7 +18,7 @@ import {
 import { parseSessionDiffPatch } from "../../../lib/chat/session-diff.ts";
 import type { DiffLine } from "../../../lib/chat/tool-call-diff.ts";
 import { openEditor } from "../../../lib/editor-links.ts";
-import { formatUiError } from "../../../lib/format-error.ts";
+import { createGatewayRetryOwner } from "../../../lib/gateway-retry.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { useVisiblePoll } from "../../../lib/reactive/visible-poll.ts";
 import type { DiffPresentation } from "./chat-diff-render.solid.tsx";
@@ -39,6 +38,7 @@ import {
   type SessionDiffMode,
 } from "./session-diff-preferences.ts";
 import type { SessionDiffViewBindings } from "./session-diff-presentation.ts";
+import { SessionDiffReadRecovery } from "./session-diff-read-recovery.tsx";
 import { createSessionDiffResultViews } from "./session-diff-result-view.tsx";
 import { SessionDiffSyncMobile } from "./session-diff-sync-mobile.tsx";
 import type { DiffValue, FileSource, FileView } from "./session-diff-types.ts";
@@ -172,6 +172,7 @@ export function SessionDiffPanel(props: SessionDiffProps) {
 
   function RequestLifetime(requestProps: { request: ReturnType<typeof request> }) {
     const [computing, setComputing] = createSignal(false);
+    const retry = createGatewayRetryOwner();
     let load: ((refresh?: boolean) => Promise<void>) | undefined;
     useVisiblePoll(500, () => void load?.(), {
       enabled: () => computing() && props.active !== false,
@@ -186,12 +187,19 @@ export function SessionDiffPanel(props: SessionDiffProps) {
         return undefined;
       }
       let active = true;
-      setPending(true);
+      let inFlight = false;
       load = async (refresh = false) => {
+        if (inFlight || props.canRead?.() === false) {
+          return;
+        }
         if (props.active === false || document.visibilityState === "hidden") {
           setComputing(true);
           return;
         }
+        inFlight = true;
+        retry.cancel();
+        setFailure(null);
+        setPending(true);
         setComputing(false);
         let result: SessionsDiffResult | undefined;
         try {
@@ -205,6 +213,7 @@ export function SessionDiffPanel(props: SessionDiffProps) {
             setComputing(true);
             return;
           }
+          retry.reset();
           const previous = value();
           const reusable =
             previous?.owner === owner &&
@@ -252,6 +261,7 @@ export function SessionDiffPanel(props: SessionDiffProps) {
             setFailure({ error });
           }
         } finally {
+          inFlight = false;
           if (active && !result?.computing) {
             setPending(false);
           }
@@ -262,8 +272,17 @@ export function SessionDiffPanel(props: SessionDiffProps) {
         active = false;
       };
     });
-    return null;
+    return (
+      <SessionDiffReadRecovery
+        error={failure()?.error}
+        active={props.active !== false}
+        canRead={props.canRead}
+        retry={retry}
+        onRetry={() => void load?.()}
+      />
+    );
   }
+
   function loadDiff() {
     setReload({ target: requestTarget() });
   }
@@ -654,54 +673,40 @@ export function SessionDiffPanel(props: SessionDiffProps) {
           }
         }}
       >
-        <PanelFeedbackScope presented={props.active !== false}>
-          <Show when={!desktop()}>
-            <NativeGapLifetime />
-          </Show>
-          <Show when={request()} keyed>
-            {(current) => <RequestLifetime request={current} />}
-          </Show>
-          <Show when={mobile()}>
-            <MobileRail />
-          </Show>
+        <Show when={!desktop()}>
+          <NativeGapLifetime />
+        </Show>
+        <Show when={request()} keyed>
+          {(current) => <RequestLifetime request={current} />}
+        </Show>
+        <Show when={mobile()}>
+          <MobileRail />
+        </Show>
+        <Show when={!failure()}>
           <Show
-            when={failure()}
+            when={loading() && (value()?.owner !== props.owner || value()?.scope !== scope())}
             fallback={
-              <Show
-                when={loading() && (value()?.owner !== props.owner || value()?.scope !== scope())}
-                fallback={
-                  <Show when={value()}>
-                    {(current) => (
-                      <Show when={mobile()} fallback={<ResultBody value={current()} />}>
-                        <MobileResultBody value={current()} />
-                      </Show>
-                    )}
+              <Show when={value()}>
+                {(current) => (
+                  <Show when={mobile()} fallback={<ResultBody value={current()} />}>
+                    <MobileResultBody value={current()} />
                   </Show>
-                }
-              >
-                <PanelLoadingSkeleton variant="review" label={t("chat.sessionDiff.loading")} />
+                )}
               </Show>
             }
           >
-            {(failed) => (
-              <PanelFeedback
-                label={t("chat.sessionDiff.allChanges")}
-                message={formatUiError(failed().error)}
-                onRetry={props.loader ? () => loadDiff() : undefined}
-                retrying={loading()}
-              />
-            )}
+            <PanelLoadingSkeleton variant="review" label={t("chat.sessionDiff.loading")} />
           </Show>
-          <Show when={menu()} keyed>
-            {(current) => (
-              <SessionDiffMenu
-                menu={current}
-                onAction={handleMenuAction}
-                onClose={() => setMenu(null)}
-              />
-            )}
-          </Show>
-        </PanelFeedbackScope>
+        </Show>
+        <Show when={menu()} keyed>
+          {(current) => (
+            <SessionDiffMenu
+              menu={current}
+              onAction={handleMenuAction}
+              onClose={() => setMenu(null)}
+            />
+          )}
+        </Show>
       </div>
     </openclaw-session-diff>
   );

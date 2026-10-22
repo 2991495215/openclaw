@@ -206,7 +206,7 @@ suite.define(() => {
     await pollText(menu.locator(".chat-pr-menu__repository")).toContain("openclaw/openclaw");
     await pollText(menu.locator(".chat-pr-menu__repository")).toContain("#103469");
     await pollText(menu.locator(".chat-pr__additions")).toBe("+4");
-    await pollCount(page.locator(".chat-details .panel-feedback")).toBe(1);
+    await pollCount(page.locator(".chat-details .panel-feedback")).toBe(0);
     await menu.getByRole("menuitem", { name: "Checks: Passed 65", exact: true }).click();
     await pollText(menu.locator(".chat-pr__checks-row--passed")).toContain("65");
     await pollText(menu.locator(".chat-pr__checks-row--skipped")).toContain("31");
@@ -431,10 +431,10 @@ suite.define(() => {
       await pollText(row.locator(".chat-pr__deletions")).toBe("−205");
       if (mobile) {
         await openDetailsPullRequests(page);
-        await pollCount(page.locator(".chat-details .panel-feedback")).toBe(1);
+        await pollCount(page.locator(".chat-details .panel-feedback")).toBe(0);
         await openChatPublication(page);
       } else {
-        await pollCount(page.locator(".chat-details .panel-feedback")).toBe(1);
+        await pollCount(page.locator(".chat-details .panel-feedback")).toBe(0);
       }
       const create = row.getByRole("button", { name: "Publish PR", exact: true });
       await pollText(create).toContain("Publish PR");

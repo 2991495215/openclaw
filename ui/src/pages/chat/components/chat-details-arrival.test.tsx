@@ -96,11 +96,7 @@ it("keeps unknown and empty desktop Outputs and Progress quiet during slow reads
   expect(view.group("outputs")).toBeNull();
   view.update({ outputs: { ...view.initial.outputs!, artifactsError: "Cannot load files" } });
   expect(view.group("outputs")).toBeNull();
-  view.container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
-  flush();
-  expect(view.container.querySelector(".panel-feedback__messages")?.textContent).toContain(
-    "Cannot load files",
-  );
+  expect(view.container.textContent).not.toContain("Cannot load files");
   view.update({
     outputs: { ...view.initial.outputs!, dashboard: { title: "Build report", onOpen() {} } },
     progressCard: {

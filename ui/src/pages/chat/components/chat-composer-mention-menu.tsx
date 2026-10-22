@@ -1,6 +1,7 @@
 import { ConnectErrorDetailCodes } from "@openclaw/gateway-client/browser";
 import type { UsersMentionableParams, UsersMentionableResult } from "@openclaw/gateway-protocol";
 import { createStore, For, Repeat, Show } from "solid-js";
+import { createChangeListeners } from "../../../../../src/shared/listeners.js";
 import {
   GatewayRequestError,
   resolveGatewayErrorDetailCode,
@@ -42,8 +43,12 @@ export type HumanMentionRead = {
 };
 
 export type HumanMentionAccess = {
+  /** Identity of the existing directory lifetime; reads never create a new scope. */
+  readonly scope: object | undefined;
+  /** Native directory admission changes, excluding a rejected lookup. */
+  onDirectoryChange: (listener: () => void) => () => void;
   read: (query?: string) => HumanMentionRead | null;
-  /** Explicit interaction only. Rejects on lookup failure; null for a retired scope. */
+  /** Admitted interaction/recovery only, never a render-time lookup. Null for a retired scope. */
   request: (query?: string) => Promise<HumanMentionRead | null>;
 };
 
@@ -122,6 +127,7 @@ export function createHumanMentionMenu(onOpenChange?: (nextOpen: boolean) => voi
   const selectedAvatarUrls: ReadonlyMap<string, string> = selectedAvatars;
   const results = new Map<string, MentionResultSnapshot>();
   const requests = new Map<string, Promise<UsersMentionableResult>>();
+  const directoryListeners = createChangeListeners();
 
   function matchesDirectory(next: HumanMentionDirectory | undefined) {
     return (
@@ -144,6 +150,14 @@ export function createHumanMentionMenu(onOpenChange?: (nextOpen: boolean) => voi
     // Each lifetime owns a fresh descriptor, even if a caller reuses A after A → B → A.
     // Old requests must never become current again or retire a replacement query.
     directory = next ? { ...next } : undefined;
+    // Notify after the composer installs its current context, outside its effect.
+    // A superseded admission must not wake the replacement directory's readers.
+    const source = directory;
+    queueMicrotask(() => {
+      if (directory === source) {
+        directoryListeners.publish();
+      }
+    });
   }
 
   function cancelSearch() {
@@ -162,6 +176,7 @@ export function createHumanMentionMenu(onOpenChange?: (nextOpen: boolean) => voi
   }
 
   function dispose() {
+    directoryListeners.clear();
     cancelSearch();
     directory = undefined;
     results.clear();
@@ -498,6 +513,10 @@ export function createHumanMentionMenu(onOpenChange?: (nextOpen: boolean) => voi
       };
     };
     return {
+      get scope() {
+        return resolveHost(false) ? directory : undefined;
+      },
+      onDirectoryChange: directoryListeners.subscribe,
       read,
       request: async (query = "") => {
         if (!resolveHost(true) || !directory) {

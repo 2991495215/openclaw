@@ -697,6 +697,7 @@ export function createSessionRosterRefresh(host: SessionRosterRefreshHost) {
       eventRefreshCoordinator.reset();
       for (const entry of managedLists.values()) {
         entry.coordinator.reset();
+        entry.readRetry?.reset();
         entry.startupRetryAttempt = 0;
         entry.pending = entry.queued = null;
         if (entry.listeners.size === 0) {
@@ -728,6 +729,7 @@ export function createSessionRosterRefresh(host: SessionRosterRefreshHost) {
       lifecycleListeners.forEach((release) => release());
       for (const entry of managedLists.values()) {
         entry.coordinator.dispose();
+        entry.readRetry?.reset();
         entry.listeners.clear();
       }
       managedLists.clear();

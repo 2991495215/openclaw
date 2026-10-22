@@ -9,7 +9,6 @@ import { formatGitHubItemReference } from "../../../components/github-link-targe
 import { SessionGitDiff } from "../../../components/session-git-diff.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { createMenuControls, Menu, type MenuHandle } from "../../../components/solid/menu.tsx";
-import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import "../../../components/tooltip.ts";
@@ -30,7 +29,6 @@ import { PullRequestActions } from "./chat-pull-request-actions.tsx";
 import { ChatPullRequestChecks } from "./chat-pull-request-checks.tsx";
 import {
   ChecksRows,
-  StatusWarning,
   STATE_LABEL_KEYS,
   type ChatPullRequestsProps,
 } from "./chat-pull-request-shared.tsx";
@@ -351,44 +349,41 @@ export function ChatPullRequestsContent(props: ChatPullRequestsProps) {
   const recovery = () =>
     retained() && (!published() || props.publication?.error) ? props.publication : undefined;
   return (
-    <PanelFeedbackScope>
-      <StatusWarning status={props.status} />
-      <Show when={hasChatPullRequests(props)}>
-        <div class="chat-prs" aria-live="polite">
-          <Show
-            when={workRow()}
-            fallback={
-              <>
-                <For each={visible()} keyed={chatPullRequestId}>
-                  {(pullRequest) => (
-                    <PullRequestRow
-                      pullRequest={pullRequest()}
-                      owner={props}
-                      published={Boolean(published())}
-                    />
-                  )}
-                </For>
-                <Show when={recovery()}>
-                  {(publication) => (
-                    <PublicationRecovery publication={publication()} presented={props.presented} />
-                  )}
-                </Show>
-              </>
-            }
-          >
-            <WorkRow
-              compact={props.compact}
-              branch={branch()}
-              status={props.status}
-              onOpenSessionDiff={props.onOpenSessionDiff}
-              publication={props.publication}
-              onDismissBranch={props.onDismissBranch}
-              presented={props.presented}
-            />
-          </Show>
-        </div>
-      </Show>
-    </PanelFeedbackScope>
+    <Show when={hasChatPullRequests(props)}>
+      <div class="chat-prs" aria-live="polite">
+        <Show
+          when={workRow()}
+          fallback={
+            <>
+              <For each={visible()} keyed={chatPullRequestId}>
+                {(pullRequest) => (
+                  <PullRequestRow
+                    pullRequest={pullRequest()}
+                    owner={props}
+                    published={Boolean(published())}
+                  />
+                )}
+              </For>
+              <Show when={recovery()}>
+                {(publication) => (
+                  <PublicationRecovery publication={publication()} presented={props.presented} />
+                )}
+              </Show>
+            </>
+          }
+        >
+          <WorkRow
+            compact={props.compact}
+            branch={branch()}
+            status={props.status}
+            onOpenSessionDiff={props.onOpenSessionDiff}
+            publication={props.publication}
+            onDismissBranch={props.onDismissBranch}
+            presented={props.presented}
+          />
+        </Show>
+      </div>
+    </Show>
   );
 }
 

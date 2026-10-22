@@ -1,10 +1,13 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { parseAgentSessionKeyParts } from "@openclaw/session-url-contract";
 import { createMemo, createStore } from "solid-js";
 import type { CronStatus } from "../../../api/types.ts";
 import type { MenuControls } from "../../../components/solid/menu.tsx";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { createGatewayConnectionLifecycle } from "../../../lib/gateway-connection-lifecycle.ts";
+import { isRetryableGatewayReadError } from "../../../lib/gateway-errors.ts";
 import { canCallGatewayMethod } from "../../../lib/gateway-methods.ts";
+import { createGatewayRetryOwner } from "../../../lib/gateway-retry.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { projectOwner } from "../../../lib/reactive/projection.ts";
 import type {
@@ -48,6 +51,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
     schedulerEnabled: undefined,
     error: null,
   });
+  const retry = createGatewayRetryOwner();
   const connection = createGatewayConnectionLifecycle({ client: null, phase: "stopped" });
   const gatewayProjection = createMemo(() => {
     const source = props.gateway;
@@ -78,6 +82,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       version += 1;
       connection.dispose();
       readController?.abort();
+      retry.reset();
     };
   });
 
@@ -199,6 +204,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
   }
 
   function reset(): void {
+    retry.reset();
     version += 1;
     cancelRead();
     inventoryVersion = -1;
@@ -221,9 +227,13 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
 
   function handleVisibility(): void {
     if (!disclosure.visible()) {
+      retry.pause();
       cancelRead();
+      return;
     }
-    invalidate();
+    if (!retry.resume()) {
+      invalidate();
+    }
   }
 
   function capture() {
@@ -246,7 +256,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
   }
 
   async function load(): Promise<void> {
-    if (!disclosure.visible() || readController || writes.size) {
+    if (!disclosure.visible() || readController || writes.size || retry.resume()) {
       return;
     }
     refreshPending = false;
@@ -255,6 +265,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       queueRefresh();
       return;
     }
+    retry.cancel();
     const controller = new AbortController();
     readController = controller;
     setState((draft) => {
@@ -268,6 +279,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
         owner.client.request<CronStatus>("cron.status", {}, { signal: controller.signal }),
       ]);
       if (current()) {
+        retry.reset();
         inventoryVersion = version;
         setState((draft) => {
           draft.jobs = jobs;
@@ -283,6 +295,24 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
           draft.loaded = false;
           draft.error = formatUiError(error, t("chat.pullRequests.automationLoadFailed"));
         });
+        if (error instanceof GatewayProtocolRequestError && error.gatewayCode === "FORBIDDEN") {
+          retry.reset();
+          setState((draft) => {
+            draft.jobs = {};
+          });
+        } else if (
+          isRetryableGatewayReadError(error, "cron.list") ||
+          isRetryableGatewayReadError(error, "cron.status")
+        ) {
+          retry.schedule(
+            () => {
+              if (owner.current() && disclosure.visible()) {
+                invalidate();
+              }
+            },
+            error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
+          );
+        }
       }
     } finally {
       if (current()) {
@@ -371,22 +401,17 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
         autoMerge: state.pending.autoMerge ?? state.jobs.autoMerge?.enabled === true,
         autoArchive: state.pending.autoArchive ?? state.jobs.autoArchive?.enabled === true,
       },
-      jobs: state.jobs,
       pending: state.pending,
-      schedulerEnabled: state.schedulerEnabled,
       loading: state.loading,
       saving: Object.keys(state.pending).length > 0,
-      error: state.error,
       disabled: Boolean(unavailable) || !state.loaded,
-      disabledReason: unavailable,
-      retryDisabled: !automationTarget(props) || !canRead(snapshot),
+      disabledReason:
+        unavailable ??
+        state.error ??
+        (state.schedulerEnabled === false
+          ? t("chat.pullRequests.automationSchedulerDisabled")
+          : undefined),
       onChange: (option, enabled) => void setEnabled(option, enabled),
-      onRetry: () => {
-        setState((draft) => {
-          draft.error = null;
-        });
-        invalidate();
-      },
     };
   });
   return view;
@@ -399,7 +424,6 @@ function ChatCiAutomationContent(props: Props, host: SolidBridgeElement<Props>) 
   return (
     <ChatCiAutomationView
       {...read()}
-      presented={props.presented}
       menuPresentation={props.menuPresentation}
       controls={props.controls}
     />

@@ -1,3 +1,4 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { createDeferredCore } from "../../../../src/shared/deferred.js";
 import type { SessionsListResult } from "../../api/types.ts";
 import { formatUiError } from "../format-error.ts";
@@ -6,6 +7,8 @@ import {
   isAwaitingGatewayFailure,
   resolveGatewayReadRetryDelayMs,
 } from "../gateway-availability.ts";
+import { isRetryableGatewayReadError } from "../gateway-errors.ts";
+import { createGatewayRetryOwner } from "../gateway-retry.ts";
 import { createSessionEventRefreshCoordinator } from "./event-refresh-coordinator.ts";
 import { appendSessionResults } from "./reconcile.ts";
 import type {
@@ -157,6 +160,7 @@ export function createSessionManagedListRefresh(
         if (!next.append) {
           entry.coordinator.absorb();
         }
+        entry.readRetry?.cancel();
         const requestParams = {
           ...entry.query,
           limit: next.append ? entry.query.limit : entry.retainedLimit,
@@ -257,6 +261,7 @@ export function createSessionManagedListRefresh(
           entry.receivedKeys = receivedKeys;
           entry.connectionEpoch = scope.epoch;
           entry.startupRetryAttempt = 0;
+          entry.readRetry?.reset();
           const snapshot: SessionListSnapshot = {
             readSucceeded: true,
             pagination,
@@ -290,11 +295,32 @@ export function createSessionManagedListRefresh(
           const awaitingGateway = isAwaitingGatewayFailure(error, host.snapshot());
           const startupPending = isAgentDatabaseInspectionPendingError(error);
           if (startupPending) {
+            entry.readRetry?.reset();
             entry.coordinator.scheduleRetry(
               resolveGatewayReadRetryDelayMs(error, entry.startupRetryAttempt++),
             );
           } else {
             entry.startupRetryAttempt = 0;
+            const transientChildRead =
+              entry.query.spawnedBy &&
+              entry.listeners.size > 0 &&
+              !awaitingGateway &&
+              isRetryableGatewayReadError(error, "sessions.list");
+            if (transientChildRead) {
+              // Child panels share one quiet retry lease with their managed query.
+              // The existing coordinator still owns visibility and read admission.
+              const retry = (entry.readRetry ??= createGatewayRetryOwner());
+              retry.schedule(
+                () => {
+                  if (isCurrent() && entry.listeners.size > 0) {
+                    entry.coordinator.scheduleRetry(0);
+                  }
+                },
+                error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
+              );
+            } else {
+              entry.readRetry?.reset();
+            }
           }
           publishManagedList(
             entry,

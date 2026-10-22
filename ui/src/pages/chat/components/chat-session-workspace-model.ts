@@ -8,6 +8,7 @@ import {
   resolveAgentIdFromSessionKey,
 } from "../../../lib/sessions/session-key.ts";
 import type {
+  SessionWorkspaceArtifacts,
   SessionWorkspaceHost,
   SessionWorkspaceState,
 } from "./chat-session-workspace-types.ts";
@@ -27,18 +28,26 @@ export function resolvePaneAgent(state: SessionScopeHostWithKey): string {
   );
 }
 
+export function createWorkspaceArtifacts(): SessionWorkspaceArtifacts {
+  return { items: [], resolved: false, loaded: false, loading: false, error: null };
+}
+
+export function createWorkspaceTree() {
+  return {
+    expandedPaths: [""],
+    searchOpen: false,
+    sessionExpanded: true,
+    treeVisible: true,
+    treeScroll: 0,
+    sessionScroll: 0,
+  };
+}
+
 export function createSessionWorkspaceState(state: SessionWorkspaceHost): SessionWorkspaceState {
   return {
-    tree: {
-      expandedPaths: [""],
-      searchOpen: false,
-      sessionExpanded: true,
-      treeVisible: true,
-      treeScroll: 0,
-      sessionScroll: 0,
-    },
+    tree: createWorkspaceTree(),
     directories: Object.create(null),
-    artifacts: { items: [], resolved: false, loaded: false, loading: false, error: null },
+    artifacts: createWorkspaceArtifacts(),
     previews: [],
     activePreviewId: null,
     activeId: null,

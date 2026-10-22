@@ -2,7 +2,6 @@ import type { JSX } from "@solidjs/web";
 import { For, Show, onSettled } from "solid-js";
 import type { ArtifactSummary } from "../../../../../packages/gateway-protocol/src/schema/artifacts.js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { t } from "../../../lib/reactive/i18n.ts";
 import "./chat-outputs.css";
 
@@ -23,8 +22,6 @@ type ChatOutputsData = {
 
 type ChatOutputsProps = ChatOutputsData & {
   onOpenArtifact: (artifactId: ArtifactSummary["id"]) => void;
-  onRetryArtifacts?: () => void;
-  onRetryDashboard?: () => void;
   /** Use the original filename when the native owner has it; never infer an extension. */
   getArtifactName?: (artifact: ArtifactSummary) => string;
   /** Native icon owner supplies the document/table geometry for this artifact. */
@@ -46,7 +43,7 @@ export function getChatOutputsCount(data: ChatOutputsData): number | null {
   return data.artifacts.length + (data.dashboard === null ? 0 : 1);
 }
 
-/** Read failures live in the panel footer; only actual outputs create a section. */
+/** Only actual outputs create a section. */
 export function hasChatDesktopOutputs(data: ChatOutputsData): boolean {
   return Boolean(data.artifacts?.length || data.dashboard);
 }
@@ -111,24 +108,6 @@ function DashboardRow(props: { dashboard: ChatOutputsDashboard; mobile?: boolean
   );
 }
 
-export function ChatOutputsFeedback(props: ChatOutputsProps) {
-  return (
-    <>
-      <PanelFeedback
-        label={t("outputs.files")}
-        message={props.artifactsError}
-        onRetry={props.onRetryArtifacts}
-        retrying={props.artifactsLoading}
-      />
-      <PanelFeedback
-        label={t("outputs.dashboard")}
-        message={props.dashboardError}
-        onRetry={props.onRetryDashboard}
-      />
-    </>
-  );
-}
-
 /** Content of the desktop Details controlled Outputs disclosure, not a second section owner. */
 export function ChatOutputsDesktop(props: ChatOutputsDesktopProps) {
   const visibleArtifacts = () => (props.artifacts ?? []).slice(0, props.dashboard ? 3 : 4);
@@ -181,7 +160,6 @@ export function ChatOutputsMobile(props: ChatOutputsProps) {
           </div>
         </section>
       </Show>
-      <ChatOutputsFeedback {...props} />
     </div>
   );
 }

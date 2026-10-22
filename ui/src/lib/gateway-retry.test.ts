@@ -7,6 +7,61 @@ afterEach(() => {
 });
 
 describe("gateway retry owner", () => {
+  it("honors the server minimum without accelerating the normal backoff", () => {
+    vi.useFakeTimers();
+    const owner = createGatewayRetryOwner();
+    const retry = vi.fn();
+    owner.schedule(retry, 600_000);
+    vi.advanceTimersByTime(599_999);
+    expect(retry).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(retry).toHaveBeenCalledOnce();
+    owner.schedule(retry);
+    vi.advanceTimersByTime(59_999);
+    expect(retry).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(1);
+    expect(retry).toHaveBeenCalledTimes(2);
+    owner.schedule(retry, Number.MAX_SAFE_INTEGER);
+    vi.advanceTimersByTime(600_000);
+    expect(retry).toHaveBeenCalledTimes(2);
+    owner.cancel();
+  });
+
+  it("resumes the same deadline once without advancing backoff, and retires cancelled work", () => {
+    vi.useFakeTimers();
+    const owner = createGatewayRetryOwner();
+    const retry = vi.fn();
+    owner.schedule(retry, 90_000);
+    vi.advanceTimersByTime(10_000);
+    owner.pause();
+    expect(owner.hasPending()).toBe(true);
+    vi.advanceTimersByTime(20_000);
+    expect(owner.resume()).toBe(true);
+    expect(owner.resume()).toBe(true);
+    vi.advanceTimersByTime(59_999);
+    expect(retry).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(retry).toHaveBeenCalledOnce();
+    expect(owner.hasPending()).toBe(false);
+    expect(owner.resume()).toBe(false);
+    owner.schedule(retry);
+    vi.advanceTimersByTime(59_999);
+    expect(retry).toHaveBeenCalledOnce();
+    owner.pause();
+    vi.advanceTimersByTime(10_000);
+    expect(retry).toHaveBeenCalledOnce();
+    owner.resume();
+    vi.advanceTimersByTime(0);
+    expect(retry).toHaveBeenCalledTimes(2);
+    owner.schedule(retry);
+    owner.pause();
+    owner.cancel();
+    expect(owner.hasPending()).toBe(false);
+    expect(owner.resume()).toBe(false);
+    vi.advanceTimersByTime(300_000);
+    expect(retry).toHaveBeenCalledTimes(2);
+  });
+
   it("backs off from 30 seconds and caps retries at five minutes", () => {
     vi.useFakeTimers();
     const owner = createGatewayRetryOwner();

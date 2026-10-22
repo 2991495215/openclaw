@@ -44,7 +44,6 @@ export type ChatPageHost = ChatHost &
     handleOpenSidebar: (content: SidebarSelection | null) => SidebarOpenResult;
     reviewQueuedMessageEdit?: () => void;
     captureComposerRecoveryReload?: () => () => Promise<boolean>;
-    chatMetadataIsPresented?: () => boolean;
     assistantName: string;
     assistantAvatar: string | null;
     assistantAvatarStatus: "none" | "local" | "remote" | "data" | null;

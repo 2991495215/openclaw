@@ -34,6 +34,7 @@ import {
 } from "../../lib/sessions/session-key.ts";
 import { isTerminalAvailable } from "../../lib/terminal-availability.ts";
 import { invalidateChatAvatarCache } from "./chat-avatar.ts";
+import { retireChatBranchRequests } from "./chat-history-branches.ts";
 import { commitCurrentChatHistorySnapshot } from "./chat-history-snapshot.ts";
 import {
   getChatHistoryLoadState,
@@ -43,6 +44,7 @@ import { syncSelectedSessionMessageSubscription } from "./chat-history-subscript
 import { applyChatAgentsList, resumePendingChatHistoryLoad } from "./chat-history.ts";
 import { ChatPaneLifecycle } from "./chat-pane-lifecycle.ts";
 import { resolvePlacementComposer } from "./chat-pane-placement.ts";
+import type { ChatPaneSessionListReceipt } from "./chat-pane-shared.ts";
 import { applySelectedSessionProjection, dismissChatError } from "./chat-pane-state.ts";
 import { markQueuedChatSendsWaitingForReconnect } from "./chat-queue-reconnect.ts";
 import { stopChatRealtimeTalk } from "./chat-realtime.ts";
@@ -124,11 +126,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
     revisions: [],
   };
   // Capability identity matters because a replacement restarts its canonical revision at zero.
-  private canonicalSessionList?: {
-    sessions: ApplicationContext["sessions"];
-    revision: number;
-    outboxState?: string;
-  };
+  private canonicalSessionList?: ChatPaneSessionListReceipt;
 
   protected placementComposerPresentation(
     row: GatewaySessionRow | undefined,
@@ -491,6 +489,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       retireChatMetadataRequests(state, { keepPresentation: !metadataOwnerChanged });
     }
     if (sourceChanged) {
+      retireChatBranchRequests(state);
       this.resetSessionReadAcknowledgements();
       this.headerPresentation.continueInTerminalDialog = null;
       cancelChatScroll(state);

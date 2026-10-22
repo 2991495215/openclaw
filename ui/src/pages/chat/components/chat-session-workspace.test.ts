@@ -172,11 +172,17 @@ describe("session workspace state", () => {
     expect(workspaceProps(state).filter).toBe("all");
   });
 
-  it("loads files and artifacts together while showing the Files skeleton until both settle", async () => {
+  it("waits for initial Files and artifacts, then retains Files during artifact recovery", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => void vi.useRealTimers());
     const list = createDeferred<SessionWorkspaceListResult>();
     const listFiles = vi.fn(() => list.promise);
     const artifacts = createDeferred<{ artifacts: [] }>();
-    const request = vi.fn(() => artifacts.promise);
+    const recovered = createDeferred<{ artifacts: [] }>();
+    const request = vi
+      .fn()
+      .mockReturnValueOnce(artifacts.promise)
+      .mockReturnValue(recovered.promise);
     const state = createLoadingHost(
       { listFiles },
       {
@@ -193,9 +199,7 @@ describe("session workspace state", () => {
       sessionKey: state.sessionKey,
       agentId: "main",
     });
-    const skeleton = mount.querySelector("openclaw-panel-loading-skeleton");
-    expect(skeleton?.getAttribute("data-panel-skeleton")).toBe("files");
-    expect(mount.textContent).not.toContain("Loading session workspace");
+    expect(mount.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
 
     list.resolve({
       sessionKey: state.sessionKey,
@@ -203,13 +207,23 @@ describe("session workspace state", () => {
       files: [{ kind: "modified", name: "slow.ts", path: "src/slow.ts", missing: false }],
     });
     await Promise.resolve();
-    expect(workspaceProps(state)).toMatchObject({ loading: true, list: null });
-    artifacts.resolve({ artifacts: [] });
-    await vi.waitFor(() => expect(workspaceProps(state).loading).toBe(false));
     updateRail();
-
+    expect(mount.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
+    artifacts.reject(
+      new GatewayRequestError({ code: "UNAVAILABLE", message: "Busy", retryable: true }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    updateRail();
     expect(mount.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
     expect(mount.querySelector('button[aria-label="src/slow.ts"]')).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(request).toHaveBeenCalledTimes(2);
+    updateRail();
+    expect(mount.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
+    expect(mount.querySelector('button[aria-label="src/slow.ts"]')).not.toBeNull();
+    recovered.resolve({ artifacts: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(workspaceProps(state).error).toBeNull();
   });
 
   it("rotates Files and Review ownership across a same-client reconnect", async () => {

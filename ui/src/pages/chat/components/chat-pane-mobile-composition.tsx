@@ -31,6 +31,7 @@ import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { isSessionTitlePending } from "../../../lib/session-display.ts";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import type { MobileHostDestination } from "../chat-mobile-host.ts";
+import type { ChatMobilePeopleActivation } from "../chat-mobile-people-mentions.ts";
 import { companionClearAction } from "../chat-pane-embedded-view.tsx";
 import { usePanePresentation } from "../chat-pane-presentation.ts";
 import { chatPaneLayoutModel, ChatPaneLayoutHeaderActions } from "./chat-header-panel-actions.tsx";
@@ -213,33 +214,15 @@ export function ChatPaneMobileComposition(props: {
         return labels.people;
       },
       render: retainPage(() => (
-        <div id={peopleId()}>
-          <Show when={props.header.mobilePeopleMentions?.status === "loading"}>
-            <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
-          </Show>
-          <Show
-            when={
-              props.header.mobilePeopleMentions?.status === "error" ||
-              props.header.mobilePeopleMentions?.status === "unavailable" ||
-              props.header.mobilePeopleMentions?.status === "insert-rejected"
-            }
-          >
-            <p role="alert">
-              {props.header.mobilePeopleMentions?.status === "insert-rejected"
-                ? t("chat.sessionHeader.mentionRejected")
-                : (props.header.mobilePeopleMentions?.error ?? t("chat.mentions.unavailable"))}
-              <button
-                type="button"
-                class="btn btn--ghost"
-                onClick={() => void props.header.mobilePeopleMentions?.request()}
-              >
-                {t("common.retry")}
-              </button>
-            </p>
-          </Show>
-          <Show when={props.header.mobilePeopleMentions?.truncated}>
-            <p role="status">{t("chat.sessionHeader.mentionsTruncated")}</p>
-          </Show>
+        <div
+          id={peopleId()}
+          aria-busy={props.header.mobilePeopleMentions?.status === "loading" ? "true" : "false"}
+          aria-description={
+            props.header.mobilePeopleMentions?.truncated
+              ? t("chat.sessionHeader.mentionsTruncated")
+              : undefined
+          }
+        >
           <Show when={props.header.mobilePeople}>
             {(data) => (
               <ChatMobilePeopleBody
@@ -270,6 +253,10 @@ export function ChatPaneMobileComposition(props: {
     const current = host();
     return current ? current.open && current.destination === people : (previous ?? false);
   });
+  const peoplePresented = () =>
+    peopleActive() &&
+    presented() &&
+    Boolean(host()?.open && !host()?.suspended && host()?.destination === people);
   const sharingPage: MobileHostDestination = {
     area: "details",
     backTo: people,
@@ -645,8 +632,22 @@ export function ChatPaneMobileComposition(props: {
       </Show>
       <Show when={peopleActive() ? props.header.mobilePeopleMentions?.activate : undefined} keyed>
         {(activate) => {
-          onSettled(activate);
-          return undefined;
+          let activation: ChatMobilePeopleActivation | undefined;
+          onSettled(() => {
+            activation = activate(peoplePresented());
+            return () => activation?.();
+          });
+          return (
+            <Show when={peoplePresented()}>
+              {(_visible) => {
+                onSettled(() => {
+                  activation?.setPresented(true);
+                  return () => activation?.setPresented(false);
+                });
+                return undefined;
+              }}
+            </Show>
+          );
         }}
       </Show>
       <Show when={cancelledMove()} keyed>

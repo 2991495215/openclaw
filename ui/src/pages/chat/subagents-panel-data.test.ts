@@ -18,7 +18,10 @@ import {
 import type { ChatHistoryResult } from "./chat-history-snapshot.ts";
 import { SubagentsPanelData } from "./subagents-panel-data.ts";
 
-vi.mock("../../lib/toast.ts", () => ({ showToast: vi.fn() }));
+vi.mock("../../lib/toast.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/toast.ts")>()),
+  showToast: vi.fn(),
+}));
 beforeEach(() => vi.mocked(showToast).mockClear());
 
 const parentKey = "agent:main:parent";

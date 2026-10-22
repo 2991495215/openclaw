@@ -205,22 +205,10 @@ export class SwarmRosterHydrator {
   }
 
   private refreshChildren(): void {
-    const generation = this.generation;
-    // The list keeps one more read queued behind a read already in flight.
-    void this.children?.refresh().catch(() => {
-      if (generation === this.generation) {
-        this.retry("children");
-      }
-    });
+    // The managed query owns first-page recovery; pagination below retains its own retry.
+    void this.children?.refresh().catch(() => {});
   }
 
-  /**
-   * A launch reaches the parent row at once, but the child query only re-reads
-   * on its paced schedule. Read it now, and keep the wait generic until that
-   * read answers, so it cannot count children it has not seen. Each named
-   * child is asked for once: one the list never returns, such as an archived
-   * child, must not hide the count again or keep the list re-reading.
-   */
   private refreshNewChildren(): void {
     if (!this.childrenRead) {
       // The first read is still loading every child.
@@ -363,7 +351,7 @@ export class SwarmRosterHydrator {
     const params = this.params;
     const result = snapshot.result;
     if (snapshot.error && !snapshot.loading) {
-      this.retry("children");
+      this.recovered("children");
       return;
     }
     if (!params || snapshot.loading || !result || result === this.childResult) {
@@ -469,7 +457,7 @@ export class SwarmRosterHydrator {
         this.publish();
       })
       .catch(() => {
-        if (isCurrent()) {
+        if (isCurrent() && childReadVersion === this.childReadVersion) {
           this.retry("children");
         }
       });

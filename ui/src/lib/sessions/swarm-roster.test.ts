@@ -558,7 +558,11 @@ describe("SwarmRosterHydrator", () => {
         return firstPage.promise;
       }
       if (firstPageReads === 3) {
-        throw new Error("Child list temporarily unavailable");
+        throw new GatewayRequestError({
+          code: "UNAVAILABLE",
+          message: "Child list temporarily unavailable",
+          retryable: true,
+        });
       }
       return result(children, 0, children.length);
     });
@@ -591,6 +595,8 @@ describe("SwarmRosterHydrator", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(hydrator.pendingChildRead).toBe(true);
     await vi.advanceTimersByTimeAsync(1_000);
+    expect(firstPageReads).toBe(3);
+    await vi.advanceTimersByTimeAsync(29_001);
     expect(firstPageReads).toBe(4);
     expect(hydrator.hydrated).toBe(true);
     expect(hydrator.rows.map((child) => child.key)).toContain(row(2).key);

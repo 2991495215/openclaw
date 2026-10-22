@@ -211,8 +211,8 @@ export function composerFixture(
       ownerKey = "sender-two";
       renderCurrent();
     },
-    setUnsupported: () => {
-      unsupported = true;
+    setUnsupported: (value = true) => {
+      unsupported = value;
       renderCurrent();
     },
   };

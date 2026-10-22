@@ -1,5 +1,6 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it, onTestFinished, vi } from "vitest";
+import { GatewayRequestError } from "../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import {
@@ -10,6 +11,7 @@ import {
 import type { SessionListOptions, SessionListSnapshot } from "./session-capability.ts";
 import { sessionRow } from "./session-fixtures.test-support.ts";
 import { canApplySessionListSnapshot } from "./session-list-query.ts";
+import { advance, rosterFixture } from "./session-roster-refresh.test-support.ts";
 
 const row = (key: string, extra: Partial<GatewaySessionRow> = {}) =>
   sessionRow(`agent:main:${key}`, { sessionId: `${key}-session`, ...extra });
@@ -157,3 +159,93 @@ it.each([
     expect(sessions.listSnapshot(query).result?.sessions).toEqual([ordinary]);
   }
 });
+
+it("recovers one shared child query without events or healthy polling", async () => {
+  vi.useFakeTimers();
+  const result = sessionsResult([{ key: "agent:main:child", kind: "direct" }]);
+  const request = vi
+    .fn()
+    .mockRejectedValueOnce(
+      new GatewayRequestError({
+        code: "UNAVAILABLE",
+        message: "Worker unavailable",
+        retryable: true,
+        retryAfterMs: 45_000,
+      }),
+    )
+    .mockRejectedValueOnce(
+      new GatewayRequestError({
+        code: "UNAVAILABLE",
+        message: "Worker unavailable",
+        retryable: true,
+      }),
+    )
+    .mockResolvedValue(result);
+  const { sessions, watch } = rosterFixture(request);
+  const query = { spawnedBy: "agent:main:parent" };
+  const first = sessions.observeList(query, vi.fn());
+  const second = sessions.observeList(query, vi.fn());
+  watch(() => first.dispose());
+  watch(() => second.dispose());
+  await sessions.refreshList(query);
+  await advance(44_999);
+  expect(request).toHaveBeenCalledOnce();
+  await advance(2);
+  expect(request).toHaveBeenCalledTimes(2);
+  await advance(60_001);
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(sessions.listSnapshot(query)).toMatchObject({ result, error: null });
+  await advance(600_000);
+  expect(request).toHaveBeenCalledTimes(3);
+});
+
+it("cancels child recovery when its last listener leaves", async () => {
+  vi.useFakeTimers();
+  const request = vi.fn().mockRejectedValue(
+    new GatewayRequestError({
+      code: "UNAVAILABLE",
+      message: "Worker unavailable",
+      retryable: true,
+    }),
+  );
+  const { sessions, watch } = rosterFixture(request);
+  const query = { spawnedBy: "agent:main:parent" };
+  const first = sessions.observeList(query, vi.fn());
+  const second = sessions.observeList(query, vi.fn());
+  watch(() => first.dispose());
+  watch(() => second.dispose());
+  await sessions.refreshList(query);
+  first.dispose();
+  await advance(30_001);
+  expect(request).toHaveBeenCalledTimes(2);
+  second.dispose();
+  await advance(600_000);
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+it.each(["denied child", "unknown child", "unrelated query"])(
+  "does not retry a %s",
+  async (kind) => {
+    vi.useFakeTimers();
+    const query =
+      kind !== "unrelated query"
+        ? { spawnedBy: "agent:main:parent" }
+        : { archivedFilter: "all" as const };
+    const failure =
+      kind === "denied child"
+        ? new GatewayRequestError({ code: "FORBIDDEN", message: "Access denied" })
+        : kind === "unknown child"
+          ? new Error("Unexpected response")
+          : new GatewayRequestError({
+              code: "UNAVAILABLE",
+              message: "Worker unavailable",
+              retryable: true,
+            });
+    const request = vi.fn().mockRejectedValue(failure);
+    const { sessions, watch } = rosterFixture(request);
+    watch(query);
+    await sessions.refreshList(query);
+    await advance(600_000);
+    expect(request).toHaveBeenCalledOnce();
+  },
+);

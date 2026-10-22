@@ -105,7 +105,14 @@ function projectMobileWorkspace(workspace: MobileWorkspaceProjection): {
     }
   }
   let status: SessionWorkspaceMobileStatus;
-  if (workspace.error) {
+  if (
+    groups.length ||
+    (!path &&
+      workspace.filter === "all" &&
+      hasTranscriptAttachments(workspace.transcriptAttachments, query))
+  ) {
+    status = { kind: "ready", refreshing: workspace.loading };
+  } else if (workspace.error) {
     status = { kind: "error", message: workspace.error, onRetry: workspace.onRetry };
   } else if (workspace.connected === false && !list) {
     status = {
@@ -115,13 +122,6 @@ function projectMobileWorkspace(workspace: MobileWorkspaceProjection): {
     };
   } else if (!list || (!browser && listed && (workspace.loading || query))) {
     status = { kind: "loading" };
-  } else if (
-    groups.length ||
-    (!path &&
-      workspace.filter === "all" &&
-      hasTranscriptAttachments(workspace.transcriptAttachments, query))
-  ) {
-    status = { kind: "ready", refreshing: workspace.loading };
   } else if (workspace.loading) {
     status = { kind: "loading" };
   } else if (!browser && (path || workspace.filter === "all")) {
@@ -157,14 +157,18 @@ export function MobileWorkspaceContents(props: {
   const error = createMemo(() => props.workspace.error);
   const connected = createMemo(() => props.workspace.connected);
   const cachedBrowser = createMemo(() => props.workspace.directories?.[path()]?.browser);
-  const expanded = {
-    changed: createMemo(() => props.workspace.mobileNavigation?.expandedGroups.changed ?? true),
-    read: createMemo(() => props.workspace.mobileNavigation?.expandedGroups.read ?? false),
-    artifacts: createMemo(
-      () => props.workspace.mobileNavigation?.expandedGroups.artifacts ?? false,
-    ),
-    workspace: createMemo(() => props.workspace.mobileNavigation?.expandedGroups.workspace ?? true),
-  };
+  const changedExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.changed ?? true,
+  );
+  const readExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.read ?? false,
+  );
+  const artifactsExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.artifacts ?? false,
+  );
+  const workspaceExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.workspace ?? true,
+  );
   const onRetry = () => props.workspace.onRetry?.();
   const model = createMemo(() =>
     projectMobileWorkspace({
@@ -181,10 +185,10 @@ export function MobileWorkspaceContents(props: {
       onRetry,
       mobileNavigation: {
         expandedGroups: {
-          changed: expanded.changed(),
-          read: expanded.read(),
-          artifacts: expanded.artifacts(),
-          workspace: expanded.workspace(),
+          changed: changedExpanded(),
+          read: readExpanded(),
+          artifacts: artifactsExpanded(),
+          workspace: workspaceExpanded(),
         },
         scrollTop: 0,
       },

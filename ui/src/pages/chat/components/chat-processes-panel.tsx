@@ -2,7 +2,6 @@ import { For, Show, createMemo, createSignal, createStore, onSettled } from "sol
 import type { SessionProcessSummary } from "../../../../../packages/gateway-protocol/src/schema/session-processes.js";
 import { ElapsedTime } from "../../../components/elapsed-time.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { useScrollState } from "../../../components/solid/scroll-state.ts";
 import { elementRef } from "../../../lib/reactive/element-ref.ts";
@@ -47,10 +46,7 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
       },
     );
     const data = () => panel().snapshot;
-    // Full Processes keeps its failed-read empty/loading states; compact Details retains rows.
-    const rows = () => (data().readError ? [] : data().rows);
-    const visibleError = () =>
-      data().readError ? (data().loading ? null : data().readError) : data().error;
+    const rows = () => data().rows;
     // Only local return targets/offsets reset on denied access; output remains with the data owner.
     const emptyNavigation = (): {
       listTop: number;
@@ -65,7 +61,7 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
       openers: new Map<string, HTMLButtonElement>(),
       outputPositions: new Map<string, { left: number; top: number }>(),
     });
-    const denied = createMemo(() => Boolean(visibleError() && !rows().length));
+    const denied = createMemo(() => data().errorKind === "access");
     const [navigation, setNavigation] = createStore<ReturnType<typeof emptyNavigation>>((draft) => {
       if (denied()) {
         Object.assign(draft, emptyNavigation());
@@ -122,18 +118,6 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
           )}
         </button>
       );
-    const feedbackMessage = () => {
-      if (visibleError()) {
-        return visibleError();
-      }
-      if (!data().loading && !data().hasResult) {
-        return t("chat.processesPanel.disconnected");
-      }
-      if (selected() && !selectedRow() && !data().loading) {
-        return t(data().truncated ? "chat.processesPanel.omitted" : "chat.processesPanel.expired");
-      }
-      return null;
-    };
     const RowName = (nameProps: { name: string }) => {
       const nameScrollState = useScrollState(true, false);
       return (
@@ -396,13 +380,7 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
       );
     };
     return (
-      <PanelFeedbackScope>
-        <PanelFeedback
-          label={t("chat.sessionDetails.processes")}
-          message={props.presented ? feedbackMessage() : null}
-          onRetry={visibleError() ? () => void panel().refresh() : undefined}
-          retrying={data().loading}
-        />
+      <>
         <div class="chat-processes__panel" data-mobile={props.mobile ? "true" : "false"}>
           <div
             class="chat-processes__list"
@@ -462,7 +440,7 @@ export const ChatProcessesPanel = defineSolidBridge<ChatProcessesPanelProps>(
             <Detail />
           </Show>
         </div>
-      </PanelFeedbackScope>
+      </>
     );
   },
   {

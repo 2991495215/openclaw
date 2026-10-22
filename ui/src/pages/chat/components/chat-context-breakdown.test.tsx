@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
-import { createSignal } from "solid-js";
-import { expect, it } from "vitest";
+import {
+  GatewayProtocolRequestError,
+  GatewayProtocolRequestTimeoutError,
+} from "@openclaw/gateway-client/browser";
+import { Show, createSignal } from "solid-js";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import type { SessionSystemPromptReport } from "../../../../../src/config/sessions/session-system-prompt-report.js";
 import { createDeferredCore } from "../../../../../src/shared/deferred.js";
 import type { GatewaySessionRow } from "../../../api/types.ts";
-import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
+import * as toast from "../../../lib/toast.ts";
 import { createApplicationGateway } from "../../../test-helpers/application-context-fixtures.ts";
 import {
   createGatewayRequestMock,
@@ -85,9 +89,7 @@ it("retires a pending report on session replacement and rejects a report from an
     sessionId: "first",
   });
   const view = mountSolid(() => (
-    <PanelFeedbackScope>
-      <ChatContextBreakdown gateway={gateway} session={session()} used={50000} limit={100000} />
-    </PanelFeedbackScope>
+    <ChatContextBreakdown gateway={gateway} session={session()} used={50000} limit={100000} />
   ));
   await expect.poll(() => request.mock.calls.length).toBe(1);
   setSession({ key: "agent:main:second", kind: "direct", sessionId: "current" });
@@ -141,3 +143,186 @@ it("groups duplicate filenames by producer origin and keeps deferred schemas out
     ["client", null],
   ]);
 });
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+async function advance(ms = 0) {
+  await vi.advanceTimersByTimeAsync(ms);
+  flush();
+}
+
+function mountRecoveringContext(request: ReturnType<typeof createGatewayRequestMock>) {
+  const { gateway, publish } = createApplicationGateway();
+  const client = createTestGatewayClient(request);
+  publish({ ...gateway.snapshot, phase: "connected", client });
+  const [presented, setPresented] = createSignal(true);
+  const [used, setUsed] = createSignal(50000);
+  const view = mountSolid(() => (
+    <Show when={presented()}>
+      <ChatContextBreakdown
+        gateway={gateway}
+        session={{ key: "agent:main:task", kind: "direct", sessionId: "task" }}
+        used={used()}
+        limit={100000}
+      />
+    </Show>
+  ));
+  onTestFinished(view.unmount);
+  return { ...view, gateway, publish, setPresented, setUsed };
+}
+
+it("bounds failed reads, coalesces in-flight recovery, and stops reading once healthy", async () => {
+  vi.useFakeTimers();
+  const pending = createDeferredCore<ReturnType<typeof usage>>();
+  const request = createGatewayRequestMock().mockRejectedValue(
+    new GatewayProtocolRequestError({ code: "UNAVAILABLE", retryable: true }),
+  );
+  const view = mountRecoveringContext(request);
+  await advance();
+  expect(request).toHaveBeenCalledTimes(1);
+  await advance(29999);
+  expect(request).toHaveBeenCalledTimes(1);
+  await advance(1);
+  expect(request).toHaveBeenCalledTimes(2);
+  await advance(59999);
+  expect(request).toHaveBeenCalledTimes(2);
+  await advance(1);
+  expect(request).toHaveBeenCalledTimes(3);
+  await advance(210000);
+  expect(request).toHaveBeenCalledTimes(4); // Initial request plus three retries in five minutes.
+  await advance(300000);
+  expect(request).toHaveBeenCalledTimes(5); // Four retries in ten minutes.
+  request.mockReturnValueOnce(pending.promise);
+  await advance(150000);
+  expect(request).toHaveBeenCalledTimes(6);
+  await advance(600000);
+  expect(request).toHaveBeenCalledTimes(6);
+  pending.resolve(usage("task"));
+  await advance();
+  expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+  await advance(600000);
+  expect(request).toHaveBeenCalledTimes(6);
+  const visibility = vi.spyOn(document, "visibilityState", "get");
+  for (const state of ["hidden", "visible"] as const) {
+    visibility.mockReturnValue(state);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await advance();
+  }
+  expect(request).toHaveBeenCalledTimes(6);
+  view.getByRole("button", { name: "Refresh" }).click();
+  await advance();
+  expect(request).toHaveBeenCalledTimes(7);
+  request.mockResolvedValue(usage("task"));
+  await advance(29999);
+  expect(request).toHaveBeenCalledTimes(7);
+  await advance(1);
+  expect(request).toHaveBeenCalledTimes(8);
+  expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it.each(["refresh", "usage update"])(
+  "retains the report after a failed %s and retires denied scopes",
+  async (trigger) => {
+    const notify = vi.spyOn(toast, "showToast").mockReturnValue(true);
+    vi.useFakeTimers();
+    const request = createGatewayRequestMock()
+      .mockResolvedValueOnce(usage("task"))
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestError({ code: "UNAVAILABLE", retryable: true }),
+      )
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestError({ code: "FORBIDDEN", message: "Denied" }),
+      )
+      .mockRejectedValue(new GatewayProtocolRequestError({ code: "UNAVAILABLE", retryable: true }));
+    const view = mountRecoveringContext(request);
+    await advance();
+    expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+    if (trigger === "refresh") {
+      view.getByRole("button", { name: "Refresh" }).click();
+    } else {
+      view.setUsed(60000);
+    }
+    await advance();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+    expect(notify).toHaveBeenCalledTimes(trigger === "refresh" ? 1 : 0);
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await advance(600000);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await advance();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(view.container.querySelector(".chat-context__bar")).toBeNull();
+    expect(view.container.textContent).not.toMatch(/Denied|Couldn't load|Retry/);
+    expect(notify).toHaveBeenCalledTimes(trigger === "refresh" ? 1 : 0);
+    await advance(600000);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+    const connected = view.gateway.snapshot;
+    view.publish({ ...connected, phase: "offline", client: null });
+    flush();
+    view.publish(connected);
+    await advance();
+    expect(request).toHaveBeenCalledTimes(4);
+    view.setPresented(false);
+    flush();
+    await advance(600000);
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(vi.getTimerCount()).toBe(0);
+    view.setPresented(true);
+    await advance();
+    expect(request).toHaveBeenCalledTimes(5);
+    view.unmount();
+    await advance(600000);
+    expect(request).toHaveBeenCalledTimes(5);
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);
+
+it.each([30_000, 600_000])(
+  "preserves the %i ms retry deadline across visibility changes",
+  async (delay) => {
+    vi.useFakeTimers();
+    const request = createGatewayRequestMock()
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          retryable: true,
+          retryAfterMs: delay,
+        }),
+      )
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestTimeoutError({
+          method: "sessions.usage",
+          timeoutMs: 30_000,
+          requestSent: true,
+        }),
+      )
+      .mockResolvedValue(usage("task"));
+    const view = mountRecoveringContext(request);
+    await advance();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await advance(delay / 2);
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await advance(delay / 2 - 1);
+    expect(request).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    await advance(59_999);
+    expect(request).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);

@@ -8,7 +8,6 @@ import {
   progressCardPresentation,
 } from "../../../components/session-progress-card.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listSubagents } from "../chat-subagent-wait.ts";
@@ -222,36 +221,6 @@ function MobileRoot(
   };
   return (
     <>
-      <PanelFeedback
-        label={t("sessionProgressCard.composerTitle")}
-        message={
-          props.details.progressCardError === "access-denied"
-            ? t("sessionProgressCard.widgetAccessDenied")
-            : undefined
-        }
-      />
-      <PanelFeedback
-        label={t("chat.sessionDetails.automations")}
-        message={
-          props.content.automations?.inventory.readDenied() &&
-          props.content.automations.inventory.connected()
-            ? t("chat.sessionDetails.automationError")
-            : undefined
-        }
-        onRetry={() => void props.content.automations?.inventory.refresh()}
-        retrying={props.content.automations?.inventory.loading()}
-      />
-      <PanelFeedback
-        label={t("chat.sessionDetails.processes")}
-        message={
-          props.content.processes?.errorKind === "access"
-            ? props.content.processes.error
-            : undefined
-        }
-        onRetry={() => void props.content.processes?.refresh()}
-        retrying={props.content.processes?.loading}
-        presented={props.presented}
-      />
       <ChatDetailsMobileRoot
         {...props.content.entries}
         presented={props.presented}

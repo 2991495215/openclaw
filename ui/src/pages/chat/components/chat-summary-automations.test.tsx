@@ -4,7 +4,6 @@ import { createSignal } from "solid-js";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import type { CronCompactJob, CronJobsListResult } from "../../../api/types.ts";
-import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { createApplicationGateway } from "../../../test-helpers/application-context.ts";
 import {
   createGatewayRequestMock,
@@ -79,9 +78,9 @@ function component(
     presented,
   });
   const view = mountSolid(() => (
-    <PanelFeedbackScope presented={props().presented}>
+    <>
       <ChatSummaryAutomations {...props()} />
-    </PanelFeedbackScope>
+    </>
   ));
   const element = view.container.querySelector<HTMLElement>("openclaw-chat-summary-automations")!;
   return {
@@ -319,7 +318,7 @@ it.each([false, true])(
   },
 );
 
-it.each(["retry", "event", "reconnect"] as const)(
+it.each(["event", "reconnect"] as const)(
   "retires refused automation content until a new %s read",
   async (recovery) => {
     vi.useFakeTimers();
@@ -344,9 +343,7 @@ it.each(["retry", "event", "reconnect"] as const)(
       expect(request).toHaveBeenCalledTimes(2);
       expect(vi.getTimerCount()).toBe(0);
       request.mockResolvedValue(page([job({ name: "Authorized automation", enabled: false })]));
-      if (recovery === "retry") {
-        current.getByRole("button", { name: "Retry" }).click();
-      } else if (recovery === "event") {
+      if (recovery === "event") {
         current.cron();
       } else {
         const snapshot = current.gateway.snapshot;
@@ -402,43 +399,37 @@ it.each(["hidden", "offline", "denied", "unmounted"] as const)(
   },
 );
 
-it.each([false, true])("restores retry focus: moved=%s", async (moved) => {
+it("keeps composer focus and its draft while an automatic read recovers", async () => {
+  vi.useFakeTimers();
   const pending = createDeferred<Page>();
   const current = component(
     createGatewayRequestMock()
       .mockRejectedValueOnce(
-        new GatewayProtocolRequestError({ code: "FORBIDDEN", message: "private server detail" }),
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          message: "temporary failure",
+          retryable: true,
+        }),
       )
       .mockReturnValueOnce(pending.promise),
   );
-  const { element, find } = current;
-  const sibling = document.createElement("details");
-  document.body.append(sibling);
-  await waitForSolid(() => {
-    expect(current.getByRole("status").textContent).toBe("Automations unavailable");
-  });
-  expect(element.textContent).not.toContain("private server detail");
-  const retry = current.getByRole("button", { name: "Retry" });
-  expect(retry.textContent?.trim()).toBe("Retry");
-  retry.focus();
-  retry.click();
-  flush();
-  expect(document.activeElement).toBe(retry);
-  expect(retry.getAttribute("aria-disabled")).toBe("true");
-  retry.click();
-  expect(current.request).toHaveBeenCalledTimes(2);
   const composer = document.createElement("textarea");
   composer.value = "Keep my draft";
   document.body.append(composer);
-  if (moved) {
-    composer.focus();
-  }
-  pending.resolve(moved ? page() : page([job()]));
-  await (moved ? current.empty() : current.ready());
+  composer.focus();
+  await vi.advanceTimersByTimeAsync(30_000);
   flush();
-  expect(document.activeElement).toBe(moved ? composer : find(".chat-summary__automation"));
+  expect(current.request).toHaveBeenCalledTimes(2);
+  expect(document.activeElement).toBe(composer);
+  pending.resolve(page([job()]));
+  await vi.advanceTimersByTimeAsync(0);
+  flush();
+  expect(current.element.textContent).toContain("Check the task");
+  expect(document.activeElement).toBe(composer);
   expect(composer.value).toBe("Keep my draft");
-  expect(sibling.open).toBe(false);
+  expect(current.queryByRole("button", { name: "Retry" })).toBeNull();
+  current.unmount();
+  vi.useRealTimers();
 });
 
 it("fences late pages on session and same-client reconnect boundaries", async () => {
@@ -574,13 +565,13 @@ it("shares the session inventory with consumers without starting another catalog
     const props = { gateway: current.gateway, sessionKey: "agent:ops:task", presented: true };
     const inventory = createSessionAutomationInventory(props, () => host);
     return (
-      <PanelFeedbackScope>
+      <>
         <section ref={(element) => (host = element)}>
           {inventory.lifecycle}
           <output>{inventory.loaded() ? inventory.total() : "unknown"}</output>
           <ChatSummaryAutomations {...props} inventory={inventory} />
         </section>
-      </PanelFeedbackScope>
+      </>
     );
   });
   await waitForSolid(() => {

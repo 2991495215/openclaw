@@ -59,7 +59,7 @@ async function settle(element: { updateComplete: Promise<unknown> }, ms: number)
   await vi.advanceTimersByTimeAsync(ms);
 }
 
-it.each([false, true])("distinguishes retired vs unlisted (truncated: %s)", async (truncated) => {
+it("keeps empty output blank and allows returning after the process is retired", async () => {
   let result: SessionsProcessesListResult = { ...completeList, processes: [process()] };
   const { connection, mount } = mountProcesses(() => result);
   const panel = document.createElement("openclaw-chat-processes-panel");
@@ -80,27 +80,16 @@ it.each([false, true])("distinguishes retired vs unlisted (truncated: %s)", asyn
   await panel.updateComplete;
   expect(panel.querySelector(".chat-processes__output pre")?.textContent).toBe("");
   expect(panel.textContent).not.toContain("No output yet");
-  result = { ...completeList, processes: [], truncated };
+  result = { ...completeList, processes: [] };
   connection.publishEvent("sessions.processes.changed", {
     sessionKey: "agent:main:parent",
     agentId: "main",
   });
   await vi.advanceTimersByTimeAsync(0);
   await panel.updateComplete;
-  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
-  await settle(panel, 0);
-  expect(document.querySelector(".panel-feedback__messages")?.textContent).toContain(
-    truncated ? "limited list" : "no longer retained",
-  );
-  expect(panel.querySelector(".chat-processes__detail")?.textContent).not.toContain(
-    "no longer retained",
-  );
-  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
-  await settle(panel, 0);
   panel.querySelector<HTMLButtonElement>('button[aria-label="Back to Processes"]')!.click();
   await panel.updateComplete;
   expect(panel.querySelector(".chat-processes__list")?.textContent).toBe("");
-  expect(panel.querySelector(".panel-feedback")).toBeNull();
 });
 
 it("keeps Stop separate from opening output and restores list focus after returning", async () => {
@@ -238,7 +227,7 @@ it("keeps details process observation through refreshes and follows its presente
   expect(details.querySelector(".chat-details__process")?.textContent).toContain("Main build");
 });
 
-it("keeps the full panel read-error flow while compact Details retains its shared rows", async () => {
+it("retains shared process rows and recovers a failed read without user action", async () => {
   const result = { ...completeList, processes: [process()] };
   const retry = createDeferred<SessionsProcessesListResult>();
   const request = vi
@@ -271,25 +260,13 @@ it("keeps the full panel read-error flow while compact Details retains its share
     agentId: "main",
   });
   await settle(panel, 0);
-  expect(panel.textContent).not.toContain("Build app");
-  expect(panel.querySelector(".panel-feedback")).not.toBeNull();
-  expect(panel.querySelector(".chat-processes__list")?.textContent).not.toContain(
-    "Worker reconnecting",
-  );
-  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
-  await settle(panel, 0);
-  expect(document.querySelector(".panel-feedback__messages")?.textContent).toContain(
-    "Worker reconnecting",
-  );
-  panel.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
-  await settle(panel, 0);
+  expect(panel.textContent).toContain("Build app");
   expect(details.textContent).toContain("Build app");
+  expect(panel.textContent).not.toContain("Worker reconnecting");
   expect(details.textContent).not.toContain("Worker reconnecting");
-  panel.querySelector<HTMLButtonElement>(".panel-feedback__retry")!.click();
-  await settle(panel, 0);
-  expect(panel.querySelector(".panel-feedback")).toBeNull();
-  expect(panel.textContent).not.toContain("Build app");
-  expect(panel.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe("Loading…");
+  await settle(panel, 60_000);
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(panel.textContent).toContain("Build app");
   expect(details.textContent).toContain("Build app");
   retry.resolve(result);
   await settle(panel, 0);

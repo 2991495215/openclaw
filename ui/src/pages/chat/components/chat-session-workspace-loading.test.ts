@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
+import { GatewayRequestError } from "../../../api/gateway.ts";
 import type { SessionWorkspaceListResult } from "../../../api/types.ts";
+import { gatewayHelloForMethods } from "../../../test-helpers/gateway-methods.ts";
 import {
   createGatewayBrowserClientFixture,
   createSessionCapabilityFixture,
@@ -15,15 +17,16 @@ import {
 import {
   getSessionWorkspace,
   loadSessionWorkspace,
-  loadSessionWorkspaceArtifacts,
   loadSessionWorkspaceDirectory,
   retainSessionWorkspaceArtifacts,
+  sessionWorkspaceReadRetention,
   refreshSessionWorkspaceState,
 } from "./chat-session-workspace-state.ts";
 import {
   createSessionWorkspaceProps,
   openSessionWorkspaceFile,
   type SessionWorkspaceHost,
+  resolveSessionDiffSidebarContent,
 } from "./chat-session-workspace.ts";
 
 async function fixture({ loadInitialListing = true } = {}) {
@@ -178,6 +181,7 @@ describe("workspace catalog demand", () => {
   );
 
   it("reloads invalidated in-flight artifacts for Files without retained demand", async () => {
+    vi.useFakeTimers();
     const { state } = await fixture({ loadInitialListing: false });
     const oldResponse = createDeferred<{
       artifacts: NonNullable<SessionWorkspaceListResult["artifacts"]>;
@@ -191,25 +195,24 @@ describe("workspace catalog demand", () => {
       .mockReturnValueOnce(freshResponse.promise);
     state.client = createGatewayBrowserClientFixture({ request });
     createSessionWorkspaceProps(state, { expanded: true });
-    const oldLoad = loadSessionWorkspaceArtifacts(state);
     refreshSessionWorkspaceState(state, true);
     oldResponse.resolve({
       artifacts: [{ id: "old", title: "old.txt", type: "file", download: { mode: "bytes" } }],
     });
-    await oldLoad;
+    await vi.advanceTimersByTimeAsync(0);
     expect(request).toHaveBeenCalledTimes(2);
     expect(getSessionWorkspace(state).artifacts?.loaded).toBe(false);
     expect(getSessionWorkspace(state).artifacts?.items).toEqual([]);
-    const freshLoad = loadSessionWorkspaceArtifacts(state);
     freshResponse.resolve({
       artifacts: [{ id: "fresh", title: "fresh.txt", type: "file", download: { mode: "bytes" } }],
     });
-    await freshLoad;
+    await vi.advanceTimersByTimeAsync(0);
     expect(getSessionWorkspace(state).artifacts?.items.map((item) => item.id)).toEqual(["fresh"]);
     expect(getSessionWorkspace(state).artifacts?.loaded).toBe(true);
   });
 
   it("keeps assistant Outputs separate from Files and retains resolved data during refresh errors", async () => {
+    vi.useFakeTimers();
     const { state, listFiles } = await fixture({ loadInitialListing: false });
     const artifact = (id: string) => ({
       id,
@@ -223,8 +226,10 @@ describe("workspace catalog demand", () => {
       .mockResolvedValueOnce({ artifacts: [artifact("upload"), artifact("delivered")] });
     state.client = createGatewayBrowserClientFixture({ request });
     const release = retainSessionWorkspaceArtifacts(state, "assistant");
-    await loadSessionWorkspaceArtifacts(state, false, "assistant");
-    await loadSessionWorkspaceArtifacts(state);
+    await vi.advanceTimersByTimeAsync(0);
+    const releaseAll = retainSessionWorkspaceArtifacts(state);
+    await vi.advanceTimersByTimeAsync(0);
+    releaseAll();
     expect(request).toHaveBeenCalledTimes(2);
     expect(request).toHaveBeenNthCalledWith(1, "artifacts.list", {
       sessionKey: state.sessionKey,
@@ -245,7 +250,7 @@ describe("workspace catalog demand", () => {
     expect(listFiles).not.toHaveBeenCalled();
     request.mockRejectedValueOnce(new Error("refresh unavailable"));
     refreshSessionWorkspaceState(state, false);
-    await loadSessionWorkspaceArtifacts(state, false, "assistant");
+    await vi.advanceTimersByTimeAsync(0);
     expect(getSessionWorkspace(state).assistantArtifacts).toMatchObject({
       resolved: true,
       loaded: false,
@@ -296,6 +301,7 @@ describe("workspace catalog demand", () => {
   });
 
   it("shares Outputs and Files artifact demand without loading a tree for Outputs", async () => {
+    vi.useFakeTimers();
     const { state, listFiles } = await fixture({ loadInitialListing: false });
     const response = createDeferred<{
       artifacts: NonNullable<SessionWorkspaceListResult["artifacts"]>;
@@ -303,7 +309,6 @@ describe("workspace catalog demand", () => {
     const request = vi.fn(() => response.promise);
     state.client = createGatewayBrowserClientFixture({ request });
     const release = retainSessionWorkspaceArtifacts(state);
-    const joined = loadSessionWorkspaceArtifacts(state);
     expect(listFiles).not.toHaveBeenCalled();
     createSessionWorkspaceProps(state, { expanded: true });
     expect(request).toHaveBeenCalledTimes(1);
@@ -312,18 +317,19 @@ describe("workspace catalog demand", () => {
         { id: "assistant-result", title: "report.md", type: "file", download: { mode: "bytes" } },
       ],
     });
-    await joined;
-    await vi.waitFor(() => expect(getSessionWorkspace(state).loading).toBe(false));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getSessionWorkspace(state).loading).toBe(false);
     expect(getSessionWorkspace(state).artifacts?.items[0]?.id).toBe("assistant-result");
     expect(getSessionWorkspace(state).list?.artifacts?.[0]?.id).toBe("assistant-result");
     refreshSessionWorkspaceState(state, false);
-    await loadSessionWorkspaceArtifacts(state);
+    await vi.advanceTimersByTimeAsync(0);
     expect(request).toHaveBeenCalledTimes(2);
     expect(listFiles).toHaveBeenCalledTimes(1);
     release();
   });
 
   it("keeps artifact results scoped when the session changes during a request", async () => {
+    vi.useFakeTimers();
     const { state } = await fixture({ loadInitialListing: false });
     const oldResponse = createDeferred<{
       artifacts: NonNullable<SessionWorkspaceListResult["artifacts"]>;
@@ -333,15 +339,18 @@ describe("workspace catalog demand", () => {
       .mockReturnValueOnce(oldResponse.promise)
       .mockResolvedValue({ artifacts: [] });
     state.client = createGatewayBrowserClientFixture({ request });
-    const old = loadSessionWorkspaceArtifacts(state);
+    const releaseOld = retainSessionWorkspaceArtifacts(state);
     state.sessionKey = "agent:main:other";
-    await loadSessionWorkspaceArtifacts(state);
+    const releaseCurrent = retainSessionWorkspaceArtifacts(state);
+    await vi.advanceTimersByTimeAsync(0);
     oldResponse.resolve({
       artifacts: [
         { id: "old-file", title: "private.md", type: "file", download: { mode: "bytes" } },
       ],
     });
-    await old;
+    await vi.advanceTimersByTimeAsync(0);
+    releaseOld();
+    releaseCurrent();
     expect(getSessionWorkspace(state).artifacts?.items).toEqual([]);
     expect(getSessionWorkspace(state).sessionKey).toBe("agent:main:other");
   });
@@ -528,3 +537,364 @@ it("offers folder filters only for project files inside that path boundary", () 
   expect(workspaceCatalogFilters(catalog, "ui-other")).toEqual(["all", "read"]);
   expect(workspaceCatalogFilters(catalog, "empty")).toEqual(["all"]);
 });
+
+it.each(["files", "directory", "artifacts"] as const)(
+  "recovers a transient %s read only while the catalog is retained",
+  async (kind) => {
+    const { state, listing } = await fixture({ loadInitialListing: false });
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const unavailable = new GatewayRequestError({
+      code: "UNAVAILABLE",
+      message: "Busy",
+      retryable: true,
+    });
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(unavailable)
+      .mockRejectedValueOnce(unavailable)
+      .mockResolvedValue(kind === "artifacts" ? { artifacts: [] } : listing);
+    if (kind === "artifacts") {
+      state.client = createGatewayBrowserClientFixture({ request: read });
+    } else {
+      state.sessions = createSessionCapabilityFixture({ listFiles: read });
+    }
+    const workspace = getSessionWorkspace(state);
+    let release =
+      kind === "artifacts"
+        ? retainSessionWorkspaceArtifacts(state)
+        : sessionWorkspaceReadRetention(state)();
+    const request = () =>
+      kind === "artifacts"
+        ? refreshSessionWorkspaceState(state, false)
+        : kind === "directory"
+          ? loadSessionWorkspaceDirectory(state, "", true)
+          : loadSessionWorkspace(state, workspace);
+    try {
+      if (kind !== "artifacts") {
+        void request();
+      }
+      await vi.advanceTimersByTimeAsync(0);
+      expect(read).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(read).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(read).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(read).toHaveBeenCalledTimes(3);
+      expect(
+        kind === "artifacts"
+          ? workspace.artifacts?.loaded
+          : kind === "directory"
+            ? workspace.directories?.[""]?.browser
+            : workspace.list,
+      ).toBeTruthy();
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(read).toHaveBeenCalledTimes(3);
+      read.mockRejectedValueOnce(unavailable);
+      void request();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(read).toHaveBeenCalledTimes(5);
+      read.mockRejectedValueOnce(unavailable);
+      void request();
+      await vi.advanceTimersByTimeAsync(0);
+      release();
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(read).toHaveBeenCalledTimes(6);
+      release = () => {};
+    } finally {
+      release();
+      visibility.mockRestore();
+    }
+  },
+);
+
+it("retains a server diff retry deadline across document visibility changes", async () => {
+  const { state } = await fixture({ loadInitialListing: false });
+  vi.useFakeTimers();
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  const request = vi
+    .fn()
+    .mockRejectedValueOnce(
+      new GatewayRequestError({
+        code: "UNAVAILABLE",
+        message: "Busy",
+        retryable: true,
+        retryAfterMs: 90_000,
+      }),
+    )
+    .mockResolvedValue({ sessionKey: state.sessionKey, files: [], additions: 0, deletions: 0 });
+  state.client = createGatewayBrowserClientFixture({ request });
+  state.hello = gatewayHelloForMethods(["sessions.diff"]);
+  const content = resolveSessionDiffSidebarContent(state);
+  if (content?.kind !== "session-diff") {
+    throw new Error("Expected diff owner");
+  }
+  const release = content.requestUncommitted?.();
+  try {
+    await vi.advanceTimersByTimeAsync(10_000);
+    visibility.mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(20_000);
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(request).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(content.uncommitted?.files).toEqual([]);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(request).toHaveBeenCalledTimes(2);
+  } finally {
+    release?.();
+    visibility.mockRestore();
+  }
+});
+
+it.each(["files", "directory", "artifacts"] as const)(
+  "withdraws cached %s data after read access is revoked",
+  async (kind) => {
+    const { state, listing } = await fixture({ loadInitialListing: false });
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(
+        kind === "artifacts"
+          ? {
+              artifacts: [
+                { id: "private", title: "private.txt", type: "file", download: { mode: "bytes" } },
+              ],
+            }
+          : {
+              ...listing,
+              browser: {
+                path: "",
+                entries: [{ path: "private.txt", name: "private.txt", kind: "file" }],
+              },
+            },
+      )
+      .mockRejectedValue(new GatewayRequestError({ code: "FORBIDDEN", message: "Access revoked" }));
+    if (kind === "artifacts") {
+      state.client = createGatewayBrowserClientFixture({ request: read });
+    } else {
+      state.sessions = createSessionCapabilityFixture({ listFiles: read });
+    }
+    const workspace = getSessionWorkspace(state);
+    const release =
+      kind === "artifacts"
+        ? retainSessionWorkspaceArtifacts(state)
+        : sessionWorkspaceReadRetention(state)();
+    const request = () =>
+      kind === "artifacts"
+        ? refreshSessionWorkspaceState(state, false)
+        : kind === "directory"
+          ? loadSessionWorkspaceDirectory(state, "", true)
+          : loadSessionWorkspace(state, workspace);
+    try {
+      if (kind !== "artifacts") {
+        void request();
+      }
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        kind === "artifacts"
+          ? workspace.artifacts?.items.length
+          : kind === "directory"
+            ? workspace.directories?.[""]?.browser?.entries.length
+            : workspace.list?.browser?.entries.length,
+      ).toBe(1);
+      void request();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        kind === "artifacts"
+          ? workspace.artifacts?.items.length
+          : kind === "directory"
+            ? (workspace.directories?.[""]?.browser?.entries.length ?? 0)
+            : (workspace.list?.browser?.entries.length ?? 0),
+      ).toBe(0);
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
+      visibility.mockRestore();
+    }
+  },
+);
+
+it.each(["files", "artifacts"] as const)(
+  "resumes failed %s at the original deadline after closing and reopening",
+  async (kind) => {
+    const { state, listing } = await fixture({ loadInitialListing: false });
+    vi.useFakeTimers();
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new GatewayRequestError({ code: "UNAVAILABLE", message: "Busy", retryable: true }),
+      )
+      .mockResolvedValue(kind === "artifacts" ? { artifacts: [] } : listing);
+    state.sessions = createSessionCapabilityFixture({
+      listFiles: kind === "files" ? read : vi.fn().mockResolvedValue(listing),
+    });
+    if (kind === "artifacts") {
+      state.client = createGatewayBrowserClientFixture({ request: read });
+    }
+    const workspace = getSessionWorkspace(state);
+    let release = sessionWorkspaceReadRetention(state)();
+    loadSessionWorkspace(state, workspace);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(kind === "files" ? workspace.error : workspace.artifacts?.error).toBeTruthy();
+    release();
+    await vi.advanceTimersByTimeAsync(10_000);
+    release = sessionWorkspaceReadRetention(state)();
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(read).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(workspace.artifacts?.loaded).toBe(true);
+    release();
+    release = sessionWorkspaceReadRetention(state)();
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(read).toHaveBeenCalledTimes(2);
+    release();
+  },
+);
+
+it("ignores an old directory denial after a new generation schedules recovery", async () => {
+  const { state, listing } = await fixture({ loadInitialListing: false });
+  vi.useFakeTimers();
+  const old = createDeferred<SessionWorkspaceListResult>();
+  const read = vi
+    .fn()
+    .mockReturnValueOnce(old.promise)
+    .mockRejectedValueOnce(
+      new GatewayRequestError({ code: "UNAVAILABLE", message: "Busy", retryable: true }),
+    )
+    .mockResolvedValue(listing);
+  state.sessions = createSessionCapabilityFixture({ listFiles: read });
+  const workspace = getSessionWorkspace(state);
+  const release = sessionWorkspaceReadRetention(state)();
+  const oldRequest = loadSessionWorkspaceDirectory(state, "", true);
+  refreshSessionWorkspaceState(state, false);
+  await loadSessionWorkspaceDirectory(state, "", true);
+  old.reject(new GatewayRequestError({ code: "FORBIDDEN", message: "Old denial" }));
+  await oldRequest;
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(workspace.directories?.[""]?.browser).toEqual(listing.browser);
+  release();
+});
+
+it.each(["artifacts", "directory"] as const)(
+  "keeps Files and %s recovery deadlines independent",
+  async (kind) => {
+    const { state, listing } = await fixture({ loadInitialListing: false });
+    vi.useFakeTimers();
+    const failure = (retryAfterMs: number) =>
+      new GatewayRequestError({
+        code: "UNAVAILABLE",
+        message: "Busy",
+        retryable: true,
+        retryAfterMs,
+      });
+    const files = vi.fn().mockRejectedValueOnce(failure(30_000)).mockResolvedValue(listing);
+    const secondary = vi
+      .fn()
+      .mockRejectedValueOnce(failure(600_000))
+      .mockResolvedValue(kind === "artifacts" ? { artifacts: [] } : listing);
+    state.sessions = createSessionCapabilityFixture({
+      listFiles: (_key, options) => (options?.path === "src" ? secondary() : files()),
+    });
+    if (kind === "artifacts") {
+      state.client = createGatewayBrowserClientFixture({ request: secondary });
+    }
+    const workspace = getSessionWorkspace(state);
+    const release = sessionWorkspaceReadRetention(state)();
+    if (kind === "directory") {
+      workspace.tree!.expandedPaths.push("src");
+      void loadSessionWorkspaceDirectory(state, "src");
+    }
+    loadSessionWorkspace(state, workspace);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(files).toHaveBeenCalledTimes(2);
+    expect(workspace.list?.browser).toEqual(listing.browser);
+    expect(secondary).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(569_999);
+    expect(secondary).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(secondary).toHaveBeenCalledTimes(2);
+    expect(
+      kind === "artifacts" ? workspace.artifacts?.loaded : workspace.directories?.src?.browser,
+    ).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(files).toHaveBeenCalledTimes(2);
+    expect(secondary).toHaveBeenCalledTimes(2);
+    release();
+  },
+);
+
+it.each([undefined, "assistant"] as const)(
+  "preserves the %s artifact deadline across release and re-retain",
+  async (role) => {
+    const { state } = await fixture({ loadInitialListing: false });
+    vi.useFakeTimers();
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new GatewayRequestError({
+          code: "UNAVAILABLE",
+          message: "Busy",
+          retryable: true,
+          retryAfterMs: 600_000,
+        }),
+      )
+      .mockResolvedValue({ artifacts: [] });
+    state.client = createGatewayBrowserClientFixture({ request: read });
+    let release = retainSessionWorkspaceArtifacts(state, role);
+    await vi.advanceTimersByTimeAsync(10_000);
+    release();
+    await vi.advanceTimersByTimeAsync(10_000);
+    release = retainSessionWorkspaceArtifacts(state, role);
+    await vi.advanceTimersByTimeAsync(579_999);
+    expect(read).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(read).toHaveBeenCalledTimes(2);
+    release();
+    release = retainSessionWorkspaceArtifacts(state, role);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(read).toHaveBeenCalledTimes(2);
+    release();
+  },
+);
+
+it.each(["invalidate", "collapse"] as const)(
+  "admits a directory after %s retires its pending retry",
+  async (transition) => {
+    const { state, listing } = await fixture({ loadInitialListing: false });
+    vi.useFakeTimers();
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new GatewayRequestError({ code: "UNAVAILABLE", message: "Busy", retryable: true }),
+      )
+      .mockResolvedValue(listing);
+    state.sessions = createSessionCapabilityFixture({ listFiles: read });
+    const workspace = getSessionWorkspace(state);
+    workspace.tree!.expandedPaths.push("src");
+    const release = sessionWorkspaceReadRetention(state)();
+    await loadSessionWorkspaceDirectory(state, "src");
+    if (transition === "invalidate") {
+      refreshSessionWorkspaceState(state, false);
+    } else {
+      workspace.tree!.expandedPaths = [""];
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(read).toHaveBeenCalledOnce();
+      workspace.tree!.expandedPaths.push("src");
+    }
+    await loadSessionWorkspaceDirectory(state, "src");
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(workspace.directories?.src?.browser).toEqual(listing.browser);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(read).toHaveBeenCalledTimes(2);
+    release();
+  },
+);

@@ -1,5 +1,9 @@
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
+import { GatewayRequestError } from "../../../api/gateway.ts";
+import { isRetryableGatewayReadError } from "../../../lib/gateway-errors.ts";
 import { isGatewayMethodAdvertised } from "../../../lib/gateway-methods.ts";
+import { createGatewayRetryOwner } from "../../../lib/gateway-retry.ts";
+import { listen } from "../../../lib/reactive/listener.ts";
 import { readWorkspaceFileText } from "./chat-session-workspace-file-content.ts";
 import {
   getSessionWorkspace,
@@ -26,15 +30,60 @@ export function resolveSessionWorkspaceDiff(
   const agentId = workspace.agentId;
   const canLoadFileText =
     isGatewayMethodAdvertised(state, "sessions.files.get") === true && Boolean(state.client);
-  let uncommittedLoad: Promise<SessionsDiffResult> | undefined;
+  let uncommittedLoad: { promise: Promise<SessionsDiffResult>; pending: boolean } | undefined;
+  let demands = 0;
+  let inFlight = false;
+  let pendingRead = true;
+  let retired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopVisibility: (() => void) | undefined;
+  const retry = createGatewayRetryOwner();
+  const visible = () => document.visibilityState !== "hidden";
+  const currentScope = () => content.canRead?.() && workspace.diffContent?.load === content.load;
+  const retire = () => {
+    retired = true;
+    clearTimeout(timer);
+    retry.cancel();
+    stopVisibility?.();
+    stopVisibility = undefined;
+  };
+  const refresh = async () => {
+    if (!demands || inFlight || !visible() || !currentScope()) {
+      return;
+    }
+    inFlight = true;
+    retry.cancel();
+    try {
+      await content.load({ scope: "uncommitted" });
+    } catch {
+      // The retained loader records recovery once for all consumers of this request.
+    } finally {
+      inFlight = false;
+    }
+  };
+  const sync = () => {
+    clearTimeout(timer);
+    if (!currentScope()) {
+      retire();
+    } else if (!demands || !visible()) {
+      retry.pause();
+    } else if (!retry.resume() && pendingRead) {
+      void refresh();
+    }
+  };
   const content: Extract<SidebarContent, { kind: "session-diff" }> = {
     kind: "session-diff",
     // Checkout retirement replaces this identity; ordinary refreshes retain it.
     owner: workspace,
+    canRead: () =>
+      !retired &&
+      state.connected &&
+      state.client === client &&
+      isCurrentSessionWorkspace(state, workspace),
     load: (scope, options) => {
       // Background readers share a request; explicit refresh revalidates native state.
-      if (scope.scope === "uncommitted" && uncommittedLoad && !options?.refresh) {
-        return uncommittedLoad;
+      if (scope.scope === "uncommitted" && uncommittedLoad?.pending && !options?.refresh) {
+        return uncommittedLoad.promise;
       }
       const request = client.request<SessionsDiffResult>("sessions.diff", {
         sessionKey,
@@ -45,48 +94,59 @@ export function resolveSessionWorkspaceDiff(
       if (scope.scope !== "uncommitted") {
         return request;
       }
-      const load: Promise<SessionsDiffResult> = request
+      clearTimeout(timer);
+      retry.cancel();
+      const load = { promise: request, pending: true };
+      load.promise = request
         .then((result) => {
-          if (uncommittedLoad === load) {
+          if (uncommittedLoad === load && currentScope()) {
+            retry.reset();
+            pendingRead = result.computing === true;
+            if (demands && visible() && pendingRead) {
+              timer = setTimeout(() => void refresh(), 500);
+            }
             content.onResult?.({ owner: workspace, scope, result });
           }
           return result;
         })
-        .finally(() => {
-          if (uncommittedLoad === load) {
-            uncommittedLoad = undefined;
+        .catch((error: unknown) => {
+          if (uncommittedLoad === load && currentScope()) {
+            pendingRead = isRetryableGatewayReadError(error, "sessions.diff");
+            if (pendingRead) {
+              retry.schedule(
+                () => void refresh(),
+                error instanceof GatewayRequestError ? error.retryAfterMs : undefined,
+              );
+              if (!demands || !visible()) {
+                retry.pause();
+              }
+            }
           }
+          throw error;
+        })
+        .finally(() => {
+          load.pending = false;
         });
       uncommittedLoad = load;
-      return load;
+      return load.promise;
     },
+    retireUncommitted: retire,
     requestUncommitted: () => {
-      let active = true;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const refresh = async () => {
-        const current = workspace.diffContent;
-        if (
-          !active ||
-          !state.connected ||
-          !isCurrentSessionWorkspace(state, workspace) ||
-          current?.kind !== "session-diff" ||
-          current.load !== content.load
-        ) {
-          return;
+      demands++;
+      if (demands === 1) {
+        stopVisibility = listen(document, "visibilitychange", sync);
+        if (!inFlight && !retry.hasPending()) {
+          pendingRead = true;
         }
-        try {
-          const result = await content.load({ scope: "uncommitted" });
-          if (active && result.computing) {
-            timer = setTimeout(() => void refresh(), 500);
-          }
-        } catch {
-          // A later visible demand retries errors; only computing responses poll.
-        }
-      };
-      void refresh();
+        sync();
+      }
       return () => {
-        active = false;
-        clearTimeout(timer);
+        demands--;
+        if (!demands) {
+          stopVisibility?.();
+          stopVisibility = undefined;
+          sync();
+        }
       };
     },
     onResult: ({ owner, scope, result }) => {
@@ -97,13 +157,17 @@ export function resolveSessionWorkspaceDiff(
         scope.scope !== "uncommitted" ||
         !isCurrentSessionWorkspace(state, workspace) ||
         current?.kind !== "session-diff" ||
-        current.load !== content.load ||
-        current.uncommitted === result
+        current.load !== content.load
       ) {
         return;
       }
-      current.uncommitted = result;
-      sessionWorkspaceForHost(state).publish();
+      retry.reset();
+      pendingRead = false;
+      clearTimeout(timer);
+      if (current.uncommitted !== result) {
+        current.uncommitted = result;
+        sessionWorkspaceForHost(state).publish();
+      }
     },
     loadFileText: canLoadFileText
       ? async (path) => {

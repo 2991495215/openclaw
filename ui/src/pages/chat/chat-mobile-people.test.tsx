@@ -1,6 +1,8 @@
 /* @vitest-environment jsdom */
-import { afterEach, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import { GatewayRequestError } from "../../api/gateway.ts";
+import * as toast from "../../lib/toast.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { flush } from "../../test-helpers/solid-settle.ts";
 import {
@@ -20,6 +22,10 @@ import {
   type ChatMobilePeopleBodyProps,
 } from "./components/chat-mobile-people.tsx";
 
+beforeEach(() => {
+  const notice = vi.spyOn(toast, "showToast").mockReturnValue(true);
+  onTestFinished(() => notice.mockRestore());
+});
 afterEach(resetMentionComposerFixture);
 
 const labels: ChatMobilePeopleBodyProps["labels"] = {
@@ -34,6 +40,7 @@ const labels: ChatMobilePeopleBodyProps["labels"] = {
 };
 
 it("projects native identities and mentions through the People body without sending or closing on rejection", async () => {
+  const notice = vi.mocked(toast.showToast);
   const composer = composerFixture("chat", "Review this");
   const mentions = createChatMobilePeopleMentions(composer.mentionAccess);
   const release = mentions.activate();
@@ -133,9 +140,13 @@ it("projects native identities and mentions through the People body without send
   });
   expect(close).toHaveBeenCalledOnce();
   expect(composer.send).not.toHaveBeenCalled();
-  composer.replaceOwner();
+  textarea.readOnly = true;
   participantMention.click();
   expect(mentions.status).toBe("insert-rejected");
+  expect(notice).toHaveBeenCalledExactlyOnceWith({
+    message: "Mention was not inserted. Return to the composer and try again.",
+    severity: "error",
+  });
   expect(close).toHaveBeenCalledOnce();
   expect(composer.value().draft).toBe("Review @Alex ");
   release();
@@ -151,16 +162,22 @@ it("ignores retired activation results and preserves explicit failure and retry 
     result: { ...people, truncated: true },
     insert: vi.fn(() => false),
   };
-  const first: HumanMentionAccess = { read: () => null, request: () => old.promise };
+  const first: HumanMentionAccess = {
+    scope: {},
+    onDirectoryChange: () => () => {},
+    read: () => null,
+    request: () => old.promise,
+  };
   const request = vi.fn<HumanMentionAccess["request"]>().mockReturnValueOnce(current.promise);
   let access: HumanMentionAccess | undefined = first;
   const mentions = createChatMobilePeopleMentions(() => access);
   const releaseOld = mentions.activate();
   releaseOld();
-  access = { read: () => receipt, request };
+  access = { scope: {}, onDirectoryChange: () => () => {}, read: () => receipt, request };
   const releaseCurrent = mentions.activate();
   onTestFinished(releaseCurrent);
   releaseOld();
+  releaseOld.setPresented(false);
   old.resolve({ ...receipt, result: { users: [], truncated: false } });
   await old.promise;
   await Promise.resolve();
@@ -182,4 +199,125 @@ it("ignores retired activation results and preserves explicit failure and retry 
   access = undefined;
   expect(mentions.status).toBe("unavailable");
   expect(mentions.read()).toBeNull();
+});
+
+it("recovers the visible People directory when its first failure settled while hidden", async () => {
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  onTestFinished(() => visibility.mockRestore());
+  const composer = composerFixture("chat", "Keep this draft");
+  const pending = createDeferred<typeof people>();
+  composer.request.mockReturnValueOnce(pending.promise);
+  const mentions = createChatMobilePeopleMentions(composer.mentionAccess);
+  onTestFinished(mentions.activate());
+  visibility.mockReturnValue("hidden");
+  document.dispatchEvent(new Event("visibilitychange"));
+  pending.reject(
+    new GatewayRequestError({
+      code: "UNAVAILABLE",
+      message: "Directory unavailable",
+      retryable: true,
+    }),
+  );
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(composer.request).toHaveBeenCalledOnce();
+  visibility.mockReturnValue("visible");
+  document.dispatchEvent(new Event("visibilitychange"));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(composer.request).toHaveBeenCalledTimes(2);
+  expect(mentions.read()?.result).toEqual(people);
+  expect(mentions.status).toBe("ready");
+  await vi.advanceTimersByTimeAsync(600_000);
+  expect(composer.request).toHaveBeenCalledTimes(2);
+  expect(composer.value()).toEqual({ draft: "Keep this draft", mentions: [] });
+  expect(composer.send).not.toHaveBeenCalled();
+});
+
+it.each(["release", "access denial"])("does not retry People after %s", async (retirement) => {
+  const composer = composerFixture("chat");
+  composer.request.mockRejectedValueOnce(
+    new GatewayRequestError({
+      code: retirement === "access denial" ? "FORBIDDEN" : "UNAVAILABLE",
+      message: "Directory unavailable",
+      retryable: retirement !== "access denial",
+    }),
+  );
+  const mentions = createChatMobilePeopleMentions(composer.mentionAccess);
+  const release = mentions.activate();
+  onTestFinished(release);
+  await vi.advanceTimersByTimeAsync(0);
+  if (retirement === "release") {
+    release();
+  }
+  await vi.advanceTimersByTimeAsync(600_000);
+  expect(composer.request).toHaveBeenCalledOnce();
+  expect(mentions.read()).toBeNull();
+  expect(mentions.status).toBe(retirement === "release" ? "idle" : "unavailable");
+});
+
+it.each(["initially offline", "in-flight reconnect", "hidden reconnect"])(
+  "recovers retained People after %s without reopening or replaying healthy reads",
+  async (mode) => {
+    const composer = composerFixture("chat", "Keep this draft");
+    const pending = createDeferred<typeof people>();
+    if (mode === "initially offline") {
+      composer.setUnsupported();
+    } else {
+      composer.request.mockReturnValueOnce(pending.promise);
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    const mentions = createChatMobilePeopleMentions(composer.mentionAccess);
+    const release = mentions.activate();
+    onTestFinished(release);
+    await vi.advanceTimersByTimeAsync(0);
+    const initialReads = mode === "initially offline" ? 0 : 1;
+    expect(composer.request).toHaveBeenCalledTimes(initialReads);
+    if (mode === "hidden reconnect") {
+      release.setPresented(false);
+    }
+    composer.setUnsupported();
+    await vi.advanceTimersByTimeAsync(0);
+    composer.setUnsupported(false);
+    await vi.advanceTimersByTimeAsync(0);
+    if (mode === "hidden reconnect") {
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(composer.request).toHaveBeenCalledTimes(initialReads);
+      release.setPresented(true);
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    expect(composer.request).toHaveBeenCalledTimes(initialReads + 1);
+    expect(mentions.status).toBe("ready");
+    expect(mentions.read()?.result).toEqual(people);
+    pending.resolve({ users: [], truncated: false });
+    await vi.advanceTimersByTimeAsync(0);
+    composer.refresh();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(composer.request).toHaveBeenCalledTimes(initialReads + 1);
+    expect(mentions.read()?.result).toEqual(people);
+    expect(composer.value()).toEqual({ draft: "Keep this draft", mentions: [] });
+  },
+);
+
+it("deduplicates reentrant directory admission and retires old activation listeners", async () => {
+  const composer = composerFixture("chat");
+  const mentions = createChatMobilePeopleMentions(composer.mentionAccess);
+  const old = mentions.activate();
+  await vi.advanceTimersByTimeAsync(0);
+  const release = mentions.activate();
+  onTestFinished(release);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(composer.request).toHaveBeenCalledOnce();
+  composer.replaceOwner();
+  await mentions.request();
+  await vi.advanceTimersByTimeAsync(0);
+  old();
+  old.setPresented(false);
+  expect(composer.request).toHaveBeenCalledTimes(2);
+  expect(mentions.status).toBe("ready");
+  expect(mentions.read()?.result).toEqual(people);
+  release();
+  composer.setUnsupported();
+  composer.setUnsupported(false);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(composer.request).toHaveBeenCalledTimes(2);
+  expect(mentions.status).toBe("idle");
 });

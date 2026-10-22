@@ -2,6 +2,7 @@ import type { SessionApprovalEvent } from "../../../../packages/gateway-protocol
 import { isIncognitoSessionKey } from "../../../../src/shared/incognito-session-key.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { formatUiError } from "../../lib/format-error.ts";
+import type { createGatewayRetryOwner } from "../../lib/gateway-retry.ts";
 import {
   areUiSessionKeysEquivalent,
   isUiSelectedGlobalSessionKey,
@@ -16,7 +17,7 @@ import { readChatSessionProjectionScope, reduceChatSessionProjection } from "./h
 export type ChatBranchesQueryState =
   | { readonly status: "idle" }
   | { readonly status: "loading" | "ready" }
-  | { readonly status: "error"; readonly message: string };
+  | { readonly status: "error"; readonly message: string; readonly retryable?: boolean };
 
 type ChatBranchesQueryReceipt = {
   readonly isCurrent: () => boolean;
@@ -61,6 +62,7 @@ type ChatHistoryLoadState =
 type ChatHistoryPaneRequests = {
   historyVersion: number;
   branchVersion: number;
+  branchRetry?: ReturnType<typeof createGatewayRetryOwner>;
   branchQuery: ChatBranchesQueryReceipt | undefined;
   subscriptionGeneration: number;
   pendingApprovalReplay?: { generation: number; events: Map<string, SessionApprovalEvent> };

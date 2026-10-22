@@ -24,6 +24,10 @@ import { resolveSessionKey } from "../../lib/sessions/index.ts";
 import { parseAgentSessionKey } from "../../lib/sessions/session-key.ts";
 import { takeCreatedComposer } from "../new-session/creation-composer.ts";
 import * as chatAvatars from "./chat-avatar.ts";
+import {
+  retireChatBranchRequests,
+  syncChatBranchRetryPresentation,
+} from "./chat-history-branches.ts";
 import { CHAT_ROUTE_READY_EVENT } from "./chat-history-events.ts";
 import { retireInitialChatSnapshot } from "./chat-history-state.ts";
 import { syncSelectedSessionMessageSubscription } from "./chat-history-subscription.ts";
@@ -302,6 +306,8 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
     pageState.chatMetadataIsPresented = () =>
       this.presented && document.visibilityState !== "hidden";
     const refreshPresentedReads = () => {
+      syncChatBranchRetryPresentation(pageState);
+      this.syncSharingReadRetryPresentation();
       if (pageState.chatMetadataIsPresented?.()) {
         void refreshChatMetadata(pageState);
         this.resumeDeferredSessionHydration();
@@ -682,6 +688,7 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
     this.composerPresentation?.dispose();
     this.composerPresentation = undefined;
     if (this.state) {
+      retireChatBranchRequests(this.state);
       cancelChatModelRecovery(this.state);
       retireInitialChatSnapshot(this.state);
       chatAvatars.invalidateChatAvatarCache(this.state);

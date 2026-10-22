@@ -6,7 +6,6 @@ import type {
 } from "../../../../../src/gateway/control-ui-contract.js";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import type { PresentationValue } from "../../../lib/presentation.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
@@ -68,20 +67,5 @@ export function ChecksRows(props: {
         </Show>
       )}
     </For>
-  );
-}
-
-export function StatusWarning(props: { status: ControlUiSessionPullRequestSnapshot["status"] }) {
-  const message = () =>
-    t(
-      props.status === "rate-limited"
-        ? "chat.pullRequests.rateLimited"
-        : "chat.pullRequests.unavailable",
-    );
-  return (
-    <PanelFeedback
-      label={t("sessionHovercard.pullRequests")}
-      message={props.status !== "ready" ? message() : undefined}
-    />
   );
 }

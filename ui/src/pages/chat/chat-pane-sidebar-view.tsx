@@ -2,12 +2,11 @@ import { dynamic } from "@solidjs/web";
 import { For, Show, createSignal, onSettled } from "solid-js";
 import { shellViewport } from "../../app/shell-viewport.ts";
 import { Icon } from "../../components/solid/icon.tsx";
-import { PanelFeedback, PanelFeedbackScope } from "../../components/solid/panel-feedback.tsx";
+import { LazyViewError } from "../../components/solid/lazy-view-error.tsx";
 import { PanelLoadingSkeleton } from "../../components/solid/panel-loading-skeleton.tsx";
 import { createTextOverflow } from "../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import "../../styles/chat/mobile-host.css";
-import { formatUiError } from "../../lib/format-error.ts";
 import { elementRef } from "../../lib/reactive/element-ref.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { listen } from "../../lib/reactive/listener.ts";
@@ -605,7 +604,7 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
             }));
             return (
               <ContentPresentation value={mobileVisible}>
-                <PanelFeedbackScope presented={mobileVisible()}>
+                <>
                   <div
                     class="chat-mobile-host__page"
                     data-mobile-page={page().key}
@@ -613,7 +612,7 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
                   >
                     <Page />
                   </div>
-                </PanelFeedbackScope>
+                </>
               </ContentPresentation>
             );
           }}
@@ -670,17 +669,7 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
                           <Icon name="x" />
                         </button>
                       </header>
-                      <PanelFeedbackScope>
-                        <PanelFeedback
-                          label={label()}
-                          message={formatUiError(
-                            props.regionError!.error,
-                            t("lazyView.errorTitle"),
-                          )}
-                          recovery={props.regionError!.stale ? "reload" : "retry"}
-                          onRetry={(event) => props.regionError?.onRetry(event)}
-                        />
-                      </PanelFeedbackScope>
+                      <LazyViewError {...props.regionError!} />
                     </section>
                   );
                 }}

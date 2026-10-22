@@ -6,11 +6,7 @@ import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.t
 import type { PresentationValue } from "../../lib/presentation.ts";
 import { detailsOutputsIcons } from "./chat-details-output-icons.tsx";
 import { chatGoalPresentation } from "./chat-goals.ts";
-import {
-  canLoadChatBranches,
-  getChatBranchesQueryState,
-  loadChatBranches,
-} from "./chat-history-branches.ts";
+import { getChatBranchesQueryState } from "./chat-history-branches.ts";
 import type { ChatMobileHost, MobileDetailsRoute } from "./chat-mobile-host.ts";
 import { ChatPaneBrowserAnnotationRender } from "./chat-pane-browser-annotation-render.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
@@ -183,11 +179,6 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
         ]),
         branches: nativeHeader.branches,
         query: branchesQuery.status === "idle" ? { status: "loading" } : branchesQuery,
-        onRetry: canLoadChatBranches(state)
-          ? () => {
-              void loadChatBranches(state);
-            }
-          : undefined,
         branchSwitchDisabledReason: nativeHeader.branchSwitchDisabledReason,
         onBranchSelect: nativeHeader.onBranchSelect,
       };

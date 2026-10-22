@@ -2,7 +2,6 @@
 import { createSignal, flush } from "solid-js";
 import { expect, it, vi } from "vitest";
 import type { SessionProcessSummary } from "../../../../../packages/gateway-protocol/src/schema/session-processes.js";
-import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import {
   ChatDetailsMobileProcesses,
@@ -27,19 +26,19 @@ it("shows two prioritized processes and opens the full collection without mutati
     row("running", "running"),
   ];
   const refresh = vi.fn(async () => {});
-  const [data, setData] = createSignal<ChatDetailsMobileProcessesProps["data"]>({
+  const data: ChatDetailsMobileProcessesProps["data"] = {
     rows: source,
     error: null,
     errorKind: null,
     loading: false,
     refresh,
-  });
+  };
   const [presented, setPresented] = createSignal(true);
   const onOpen = vi.fn();
   const view = mountSolid(() => (
-    <PanelFeedbackScope>
-      <ChatDetailsMobileProcesses data={data()} presented={presented()} onOpen={onOpen} />
-    </PanelFeedbackScope>
+    <>
+      <ChatDetailsMobileProcesses data={data} presented={presented()} onOpen={onOpen} />
+    </>
   ));
   expect(
     [...view.container.querySelectorAll('[role="listitem"]')].map((item) =>
@@ -62,12 +61,4 @@ it("shows two prioritized processes and opens the full collection without mutati
   running.click();
   view.getByRole("button", { name: "Show all" }).click();
   expect(onOpen).toHaveBeenCalledTimes(2);
-  setData({ rows: [], error: "Unavailable", errorKind: "read", loading: false, refresh });
-  flush();
-  expect(view.queryByRole("button", { name: "Retry" })).toBeNull();
-  setData({ rows: [], error: "Access denied", errorKind: "access", loading: false, refresh });
-  setPresented(true);
-  flush();
-  view.getByRole("button", { name: "Retry" }).click();
-  expect(refresh).toHaveBeenCalledOnce();
 });

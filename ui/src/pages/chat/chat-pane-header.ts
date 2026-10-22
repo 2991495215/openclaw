@@ -529,13 +529,6 @@ export abstract class ChatPaneHeader extends ChatPaneDiscussion {
               query: branchQuery,
               branchSwitchDisabledReason,
               onBranchSelect,
-              onRetry: canLoadChatBranches(this.state)
-                ? () => {
-                    if (this.state) {
-                      void loadChatBranches(this.state);
-                    }
-                  }
-                : undefined,
             }
           : undefined,
       platform: headerState.platform,

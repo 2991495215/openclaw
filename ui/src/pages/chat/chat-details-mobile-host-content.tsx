@@ -1,7 +1,5 @@
 import { For, Show, createMemo, createSignal, onSettled } from "solid-js";
 import type { ControlUiSessionPullRequestSnapshot } from "../../../../src/gateway/control-ui-contract.js";
-import { PanelFeedback, PanelFeedbackScope } from "../../components/solid/panel-feedback.tsx";
-import { PanelLoadingSkeleton } from "../../components/solid/panel-loading-skeleton.tsx";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import { useOptionalApplication } from "../../lib/reactive/context.ts";
 import { elementRef } from "../../lib/reactive/element-ref.ts";
@@ -10,7 +8,10 @@ import { scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../lib/solid-bridge.ts";
 import { ContentPresentation } from "../../lib/solid/presentation.ts";
 import type { ChatMobileHost, MobileDetailsRoute } from "./chat-mobile-host.ts";
-import type { ChatMobilePeopleMentions } from "./chat-mobile-people-mentions.ts";
+import type {
+  ChatMobilePeopleActivation,
+  ChatMobilePeopleMentions,
+} from "./chat-mobile-people-mentions.ts";
 import type { ChatMobilePeople } from "./chat-mobile-people.ts";
 import { ChatAuthorAvatar } from "./components/chat-author-avatar-view.tsx";
 import type { ChatDetailsGoalProps } from "./components/chat-details-goal.tsx";
@@ -50,6 +51,17 @@ type MobileHostContentProps = {
 };
 export type ChatDetailsMobileHostContent = SolidBridgeElement<MobileHostContentProps>;
 
+const peopleActivations = new WeakMap<ChatDetailsMobileHostContent, ChatMobilePeopleActivation>();
+
+function peoplePresented(host: ChatDetailsMobileHostContent): boolean {
+  return Boolean(
+    host.presented &&
+    host.host?.open &&
+    !host.host.suspended &&
+    host.host.destination.page?.details?.kind === "people",
+  );
+}
+
 /** Native input receipts retire old process demand before the next rendered presentation. */
 export const ChatDetailsMobileHostContent = defineSolidBridge<MobileHostContentProps>(
   "openclaw-chat-details-mobile-host-content",
@@ -69,7 +81,10 @@ export const ChatDetailsMobileHostContent = defineSolidBridge<MobileHostContentP
     );
   },
   {
-    propertyChanged: syncSessionPanelInputs,
+    propertyChanged: (host) => {
+      syncSessionPanelInputs(host);
+      peopleActivations.get(host)?.setPresented(peoplePresented(host));
+    },
     properties: {
       details: { default: undefined, attribute: false },
       host: { default: undefined, attribute: false },
@@ -512,7 +527,16 @@ function MobileHostContent(
       {inventory.lifecycle}
       <Show when={activePeople()} keyed>
         {(activate) => {
-          onSettled(activate);
+          onSettled(() => {
+            const activation = activate(peoplePresented(nativeHost));
+            peopleActivations.set(nativeHost, activation);
+            return () => {
+              if (peopleActivations.get(nativeHost) === activation) {
+                peopleActivations.delete(nativeHost);
+              }
+              activation();
+            };
+          });
           return null;
         }}
       </Show>
@@ -533,51 +557,33 @@ function MobileHostContent(
                 inert={!visible()}
                 data-details-page={page().kind}
               >
-                <PanelFeedbackScope presented={visible()}>
-                  <div
-                    class="chat-mobile-details-page__body"
-                    ref={[elementRef(props.details.onScrollPortRef)]}
-                  >
-                    <Show when={page().kind === "people"}>
-                      <Show when={props.bindings?.peopleMentions?.status === "loading"}>
-                        <PanelLoadingSkeleton
-                          variant="file-list"
-                          label={t("common.loading")}
-                          compact
-                        />
-                      </Show>
-                      <Show
-                        when={["error", "unavailable", "insert-rejected"].includes(
-                          props.bindings?.peopleMentions?.status ?? "",
-                        )}
-                      >
-                        <PanelFeedback
-                          label={t("chat.sessionHeader.people")}
-                          message={
-                            props.bindings?.peopleMentions?.status === "insert-rejected"
-                              ? t("chat.sessionHeader.mentionRejected")
-                              : (props.bindings?.peopleMentions?.error ??
-                                t("chat.mentions.unavailable"))
-                          }
-                          onRetry={() => void props.bindings?.peopleMentions?.request()}
-                        />
-                      </Show>
-                      <Show when={props.bindings?.peopleMentions?.truncated}>
-                        <p role="status">{t("chat.sessionHeader.mentionsTruncated")}</p>
-                      </Show>
-                    </Show>
-                    <ChatDetailsMobileContent
-                      details={props.details}
-                      presented={visible()}
-                      page={page()}
-                    />
-                  </div>
-                  <ChatDetailsMobileControls
+                <div
+                  class="chat-mobile-details-page__body"
+                  aria-busy={
+                    page().kind === "people"
+                      ? props.bindings?.peopleMentions?.status === "loading"
+                        ? "true"
+                        : "false"
+                      : undefined
+                  }
+                  aria-description={
+                    page().kind === "people" && props.bindings?.peopleMentions?.truncated
+                      ? t("chat.sessionHeader.mentionsTruncated")
+                      : undefined
+                  }
+                  ref={[elementRef(props.details.onScrollPortRef)]}
+                >
+                  <ChatDetailsMobileContent
                     details={props.details}
                     presented={visible()}
                     page={page()}
                   />
-                </PanelFeedbackScope>
+                </div>
+                <ChatDetailsMobileControls
+                  details={props.details}
+                  presented={visible()}
+                  page={page()}
+                />
               </div>
             </ContentPresentation>
           );

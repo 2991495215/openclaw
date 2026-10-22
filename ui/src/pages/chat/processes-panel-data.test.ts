@@ -14,7 +14,10 @@ import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { ProcessesPanelData } from "./processes-panel-data.ts";
 
-vi.mock("../../lib/toast.ts", () => ({ showToast: vi.fn() }));
+vi.mock("../../lib/toast.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/toast.ts")>()),
+  showToast: vi.fn(),
+}));
 
 const key = "agent:main:parent";
 beforeEach(() => {

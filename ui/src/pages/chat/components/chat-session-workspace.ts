@@ -32,6 +32,7 @@ import {
   loadSessionWorkspace,
   refreshSessionWorkspaceState,
   sessionWorkspaceForHost,
+  sessionWorkspaceReadRetention,
 } from "./chat-session-workspace-state.ts";
 import type {
   SessionWorkspaceHost,
@@ -41,7 +42,6 @@ import type {
   FileReaderView,
   SessionWorkspaceFilter,
   SessionWorkspaceMobileNavigation,
-  SidebarContent,
   TranscriptAttachments,
 } from "./chat-sidebar-content-types.ts";
 
@@ -526,7 +526,10 @@ export function createSessionWorkspaceProps(
     loadSessionWorkspace(state, workspace);
     publish();
   };
+  const artifacts = workspace.artifacts;
+  const pendingArtifacts = artifacts?.loading && !artifacts.resolved && !artifacts.error;
   return {
+    retainReads: sessionWorkspaceReadRetention(state),
     presentation: options?.presentation,
     folderView:
       options?.presentation === "desktop" &&
@@ -593,8 +596,9 @@ export function createSessionWorkspaceProps(
       }
     },
     sessionKey: state.sessionKey,
-    list: workspace.list?.sessionKey === state.sessionKey ? workspace.list : null,
-    loading: workspace.loading,
+    list:
+      pendingArtifacts || workspace.list?.sessionKey !== state.sessionKey ? null : workspace.list,
+    loading: workspace.loading || Boolean(pendingArtifacts),
     error: workspace.error ?? workspace.artifacts?.error ?? null,
     activeId: workspace.activeId,
     filter: workspace.filter,
@@ -714,9 +718,7 @@ export function createSessionWorkspaceProps(
   };
 }
 
-export function resolveSessionDiffSidebarContent(
-  state: SessionWorkspaceHost,
-): SidebarContent | null {
+export function resolveSessionDiffSidebarContent(state: SessionWorkspaceHost) {
   return resolveSessionWorkspaceDiff(state, (path) =>
     openFile(state, getSessionWorkspace(state), path),
   );

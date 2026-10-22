@@ -4,6 +4,7 @@ import { GatewayRequestError } from "../../api/gateway.ts";
 import { t } from "../../i18n/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { isAgentDatabaseInspectionPendingError } from "../../lib/gateway-availability.ts";
+import { isRetryableGatewayReadError } from "../../lib/gateway-errors.ts";
 
 export const CHAT_HISTORY_RETRY_WINDOW_MS = 60_000;
 
@@ -13,8 +14,11 @@ export function isRetryableChatReadError(
   err: unknown,
   method: string,
 ): err is RetryableChatReadError {
-  if (err instanceof GatewayProtocolRequestTimeoutError) {
-    return err.method === method;
+  if (
+    (err instanceof GatewayProtocolRequestTimeoutError || err instanceof GatewayRequestError) &&
+    isRetryableGatewayReadError(err, method)
+  ) {
+    return true;
   }
   if (!(err instanceof GatewayRequestError)) {
     return false;
@@ -28,11 +32,7 @@ export function isRetryableChatReadError(
       details.method === method
     );
   }
-  if (err.gatewayCode !== "UNAVAILABLE" || !err.retryable) {
-    return false;
-  }
-  const detailMethod = details?.method;
-  return typeof detailMethod !== "string" || detailMethod === method;
+  return false;
 }
 
 export function formatChatHistoryLoadError(error: unknown): string {

@@ -1,19 +1,23 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import type { JSX } from "@solidjs/web";
-import { For, Loading, Show, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Loading, Show, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 import type { SessionSystemPromptReport } from "../../../../../src/config/sessions/session-system-prompt-report.js";
 import type { GatewaySessionRow } from "../../../api/types.ts";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatCompactTokenCount } from "../../../lib/format.ts";
+import { isRetryableGatewayReadError } from "../../../lib/gateway-errors.ts";
+import { createGatewayRetryOwner } from "../../../lib/gateway-retry.ts";
 import { projectGateway } from "../../../lib/reactive/application.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
+import { listen } from "../../../lib/reactive/listener.ts";
 import {
   areUiSessionKeysEquivalent,
   scopedSessionArtifactKey,
 } from "../../../lib/sessions/session-key.ts";
 import { requestSessionUsage } from "../../../lib/sessions/usage.ts";
+import { showToast } from "../../../lib/toast.ts";
 import "../../../styles/chat/context-breakdown.css";
 import {
   buildChatContextCategories,
@@ -201,6 +205,7 @@ export function ChatContextBreakdown(props: {
 }) {
   const gateway = createMemo(() => projectGateway(props.gateway));
   const [revision, setRevision] = createSignal(0);
+  const documentVisible = () => document.visibilityState !== "hidden";
   const target = createMemo(
     () => {
       const connection = gateway().read();
@@ -211,8 +216,6 @@ export function ChatContextBreakdown(props: {
         sessionId: props.session.sessionId,
         model: props.session.activeModel || props.session.model,
         provider: props.session.modelProvider,
-        revision: revision(),
-        used: props.used,
       };
     },
     {
@@ -222,79 +225,119 @@ export function ChatContextBreakdown(props: {
         a.key === b.key &&
         a.sessionId === b.sessionId &&
         a.model === b.model &&
-        a.provider === b.provider &&
-        a.revision === b.revision &&
-        a.used === b.used,
+        a.provider === b.provider,
     },
   );
-  const result = createMemo(
-    async (): Promise<{
-      report: SessionSystemPromptReport | null;
-      failed?: boolean;
-      offline?: boolean;
-    }> => {
-      const current = target();
-      if (!current.client) {
-        return { report: null, offline: true };
+  const recovery = createMemo<{
+    retry: ReturnType<typeof createGatewayRetryOwner>;
+    skipped: boolean;
+    report: SessionSystemPromptReport | null;
+  }>(() => {
+    target();
+    const retry = createGatewayRetryOwner();
+    onCleanup(retry.cancel);
+    return { retry, skipped: false, report: null };
+  });
+  onSettled(() =>
+    listen(document, "visibilitychange", () => {
+      const current = recovery();
+      if (!documentVisible()) {
+        current.retry.pause();
+      } else if (current.skipped) {
+        current.skipped = false;
+        setRevision((value) => value + 1);
+      } else {
+        current.retry.resume();
       }
-      const controller = new AbortController();
-      onCleanup(() => controller.abort());
-      try {
-        // Context reports are independent of the usage date range. Keep this
-        // existing single-session read bounded to today's usage, not its history.
-        const today = new Date().toISOString().slice(0, 10);
-        const response = await requestSessionUsage(
-          current.client,
-          {
-            startDate: today,
-            endDate: today,
-            timeZone: "utc",
-            scope: "instance",
-            agentId: props.agentId,
+    }),
+  );
+  let manualRefresh: ReturnType<typeof target> | undefined;
+  const requestState = createMemo(() => ({
+    target: target(),
+    used: props.used,
+    revision: revision(),
+  }));
+  const result = createMemo(async (): Promise<{ report: SessionSystemPromptReport | null }> => {
+    const current = requestState().target;
+    const pending = recovery();
+    const userRequested = manualRefresh === current;
+    manualRefresh = undefined;
+    pending.retry.cancel();
+    pending.skipped = false;
+    if (!current.client || !documentVisible()) {
+      pending.skipped = current.client !== null;
+      if (userRequested && !current.client) {
+        showToast({ message: t("chat.sessionDetails.contextOffline"), severity: "error" });
+      }
+      return { report: pending.report };
+    }
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    try {
+      // Context reports are independent of the usage date range. Keep this
+      // existing single-session read bounded to today's usage, not its history.
+      const today = new Date().toISOString().slice(0, 10);
+      const response = await requestSessionUsage(
+        current.client,
+        {
+          startDate: today,
+          endDate: today,
+          timeZone: "utc",
+          scope: "instance",
+          agentId: props.agentId,
+        },
+        { key: current.key, includeContextWeight: true, signal: controller.signal },
+      );
+      if (controller.signal.aborted) {
+        return { report: null };
+      }
+      pending.retry.reset();
+      const row = response.sessions.find((entry) =>
+        areUiSessionKeysEquivalent(entry.key, current.key),
+      );
+      const report = row?.contextWeight;
+      if (
+        !report ||
+        (current.sessionId &&
+          (row?.sessionId !== current.sessionId ||
+            (report.sessionId && report.sessionId !== current.sessionId))) ||
+        (report.model && current.model && report.model !== current.model) ||
+        (report.provider && current.provider && report.provider !== current.provider)
+      ) {
+        pending.report = null;
+        return { report: null };
+      }
+      pending.report = report;
+      return { report };
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return { report: null };
+      }
+      if (userRequested) {
+        showToast({ message: t("chat.sessionDetails.contextError"), severity: "error" });
+      }
+      if (isRetryableGatewayReadError(error, "sessions.usage")) {
+        pending.retry.schedule(
+          () => {
+            if (!controller.signal.aborted && documentVisible()) {
+              setRevision((value) => value + 1);
+            }
           },
-          { key: current.key, includeContextWeight: true, signal: controller.signal },
+          error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
         );
-        const row = response.sessions.find((entry) =>
-          areUiSessionKeysEquivalent(entry.key, current.key),
-        );
-        const report = row?.contextWeight;
-        if (
-          !report ||
-          (current.sessionId &&
-            (row?.sessionId !== current.sessionId ||
-              (report.sessionId && report.sessionId !== current.sessionId))) ||
-          (report.model && current.model && report.model !== current.model) ||
-          (report.provider && current.provider && report.provider !== current.provider)
-        ) {
-          return { report: null };
+        if (!documentVisible()) {
+          pending.retry.pause();
         }
-        return { report };
-      } catch {
-        return { report: null, failed: true };
+      } else {
+        pending.retry.reset();
+        pending.report = null;
       }
-    },
-  );
+      return { report: pending.report };
+    }
+  });
   return (
     <div class="chat-context">
       <Loading on={target()}>
-        <Show
-          when={
-            result().offline
-              ? t("chat.sessionDetails.contextOffline")
-              : result().failed
-                ? t("chat.sessionDetails.contextError")
-                : undefined
-          }
-          keyed
-        >
-          {(message) => (
-            <PanelFeedback
-              label={t("chat.sessionDetails.context")}
-              message={message}
-              onRetry={() => setRevision((value) => value + 1)}
-            />
-          )}
-        </Show>
         <Show when={result().report}>
           {(report) => {
             const categories = createMemo(() => buildChatContextCategories(report(), props.used));
@@ -355,16 +398,17 @@ export function ChatContextBreakdown(props: {
             );
           }}
         </Show>
-        <Show when={!result().failed && !result().offline}>
-          <button
-            type="button"
-            class="chat-context__refresh"
-            onClick={() => setRevision((value) => value + 1)}
-          >
-            <Icon name="refresh" />
-            {t("common.refresh")}
-          </button>
-        </Show>
+        <button
+          type="button"
+          class="chat-context__refresh"
+          onClick={() => {
+            manualRefresh = target();
+            setRevision((value) => value + 1);
+          }}
+        >
+          <Icon name="refresh" />
+          {t("common.refresh")}
+        </button>
       </Loading>
     </div>
   );

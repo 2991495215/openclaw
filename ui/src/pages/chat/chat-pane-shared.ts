@@ -18,6 +18,13 @@ import {
 import type { ChatPageHost } from "./chat-state-host.ts";
 
 export type PaneSessionChangeOptions = { replace?: boolean };
+
+export type ChatPaneSessionListReceipt = {
+  sessions: ApplicationContext["sessions"];
+  revision: number;
+  outboxState?: string;
+};
+
 const PANE_SESSION_HANDOFF_LIMIT = 4;
 
 function paneHandoffs(

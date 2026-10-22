@@ -2,7 +2,6 @@ import { Show, createMemo, createSignal } from "solid-js";
 import type { ChatInputRegion } from "../../../app/chat-input-owner.ts";
 import { ElapsedTime } from "../../../components/elapsed-time.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
@@ -225,13 +224,7 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
       props.mobile === true ? finished().map(mobileItem) : [],
     );
     return (
-      <PanelFeedbackScope>
-        <PanelFeedback
-          label={t("chat.subagentsPanel.title")}
-          message={!selected() && props.presented ? data().error : null}
-          onRetry={() => void data().refresh()}
-          retrying={data().loading}
-        />
+      <>
         <Show when={props.mobile === true}>
           <div style={{ display: !selected() && props.presented ? "contents" : "none" }}>
             <ChatSubagentsMobileList
@@ -426,7 +419,7 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
             />
           )}
         </Show>
-      </PanelFeedbackScope>
+      </>
     );
   },
   {

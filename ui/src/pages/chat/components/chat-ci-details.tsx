@@ -1,3 +1,4 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { For, Show, createMemo, createStore } from "solid-js";
 import type {
   ControlUiSessionPullRequestCheck,
@@ -6,13 +7,13 @@ import type {
 } from "../../../../../src/gateway/control-ui-contract.js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import type { MenuControls } from "../../../components/solid/menu.tsx";
-import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { StrokeIcon } from "../../../components/solid/stroke-icon.tsx";
 import { registerChatCiEnglish } from "../../../i18n/locales/en-chat-ci.ts";
 import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import { formatDurationCompact } from "../../../lib/format-duration.ts";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { createGatewayConnectionLifecycle } from "../../../lib/gateway-connection-lifecycle.ts";
+import { isRetryableGatewayReadError } from "../../../lib/gateway-errors.ts";
 import { resolveSafeExternalUrl } from "../../../lib/open-external-url.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
@@ -22,6 +23,7 @@ registerEnglishCatalog(registerChatCiEnglish);
 registerEnglishCatalog(registerGitHubEnglish);
 
 const REFRESH_MS = 30_000;
+const MAX_RETRY_MS = 5 * 60_000;
 const CHECK_ORDER = { failed: 0, running: 1, passed: 2, skipped: 3 } as const;
 type CheckState = ControlUiSessionPullRequestCheck["state"] | "queued";
 
@@ -109,6 +111,7 @@ function createCiDetails(host: ChatCiDetailsElement) {
   let requestController: AbortController | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let expansionInitialized = false;
+  let retryDelay = REFRESH_MS;
   const disclosure = createCiDisclosure(host, handleVisibility, () => {
     inputHandlers.set(host, handleInputsChanged);
     bindGateway();
@@ -189,6 +192,7 @@ function createCiDetails(host: ChatCiDetailsElement) {
       draft.expandedJobs = {};
     });
     expansionInitialized = false;
+    retryDelay = REFRESH_MS;
   }
 
   function handleVisibility() {
@@ -260,11 +264,12 @@ function createCiDetails(host: ChatCiDetailsElement) {
           }
         }
       });
-      if (retryAt > Date.now()) {
-        scheduleRetryAvailability(retryAt);
-      } else if (result.status === "ready") {
+      if (result.status === "ready" && !result.rateLimited && !result.error) {
+        retryDelay = REFRESH_MS;
         // Completed jobs can be rerun on the same head without changing the summary counts.
-        refreshTimer = setTimeout(() => void load(), REFRESH_MS);
+        scheduleRetryAvailability(Math.max(retryAt, Date.now() + REFRESH_MS));
+      } else {
+        retryRead(retryAt);
       }
     } catch (error) {
       if (current()) {
@@ -273,6 +278,12 @@ function createCiDetails(host: ChatCiDetailsElement) {
           draft.result = undefined;
           draft.error = formatUiError(error, t("chat.pullRequests.checksUnavailable"));
         });
+        if (isRetryableGatewayReadError(error, "controlUi.sessionPullRequests.checks")) {
+          retryRead(
+            Date.now() +
+              (error instanceof GatewayProtocolRequestError ? (error.retryAfterMs ?? 0) : 0),
+          );
+        }
       }
     } finally {
       if (current()) {
@@ -284,6 +295,15 @@ function createCiDetails(host: ChatCiDetailsElement) {
     }
   }
 
+  function retryRead(serverRetryAt = 0) {
+    const retryAt = Math.max(serverRetryAt, Date.now() + retryDelay);
+    retryDelay = Math.min(MAX_RETRY_MS, retryDelay * 2);
+    setState((draft) => {
+      draft.retryAt = retryAt;
+    });
+    scheduleRetryAvailability(retryAt);
+  }
+
   function scheduleRetryAvailability(retryAt: number) {
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(
@@ -291,13 +311,13 @@ function createCiDetails(host: ChatCiDetailsElement) {
         setState((draft) => {
           draft.retryAt = 0;
         });
+        void load();
       },
       Math.min(2_147_483_647, Math.max(0, retryAt - Date.now())),
     );
   }
   return {
     state,
-    load,
     setExpanded: (id: number, open: boolean) => {
       setState((draft) => {
         draft.expandedJobs[id] = open;
@@ -317,7 +337,6 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
   const skippedRef = createMemo(() => props.controls?.ref());
   const model = createCiDetails(host);
   const state = model.state;
-  const retryWait = () => Math.max(0, state.retryAt - Date.now());
   const result = () => state.result;
   const checks = () => result()?.checks ?? [];
   const jobs = () =>
@@ -325,12 +344,6 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
       .filter((check) => check.state !== "skipped")
       .toSorted((a, b) => CHECK_ORDER[a.state] - CHECK_ORDER[b.state]);
   const skipped = () => checks().filter((check) => check.state === "skipped");
-  const showNotice = () =>
-    result()?.rateLimited ||
-    result()?.status === "stale" ||
-    state.error ||
-    result()?.status === "unavailable" ||
-    result()?.error;
   const job = (check: () => ControlUiSessionPullRequestCheck) => {
     const summaryRef = createMemo(() => props.controls?.ref());
     const linkRef = createMemo(() => props.controls?.ref());
@@ -407,52 +420,31 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
     );
   };
   return (
-    <PanelFeedbackScope presented={props.presented}>
-      <PanelFeedback
-        label={t("chat.pullRequests.checksTitle")}
-        message={
-          showNotice()
-            ? (state.error ??
-                t(
-                  result()?.rateLimited
-                    ? "chat.pullRequests.checksRateLimited"
-                    : result()?.status === "stale"
-                      ? "chat.pullRequests.checksStale"
-                      : "chat.pullRequests.checksUnavailable",
-                )) +
-              (retryWait() > 0
-                ? t("chat.pullRequests.checksRetryAfter", {
-                    duration: formatDurationCompact(retryWait()) ?? "",
-                  })
-                : "")
-            : undefined
-        }
-        onRetry={() => void model.load()}
-        retryDisabled={retryWait() > 0}
-        retrying={state.loading}
-      />
-      <div class="chat-ci__jobs" aria-busy={state.loading ? "true" : "false"}>
-        <For each={jobs()} keyed={(check) => check.id}>
-          {job}
-        </For>
-        <Show when={skipped().length}>
-          <details class="chat-ci__skipped">
-            <summary ref={skippedRef()} data-form-control={props.menuControls ? "" : undefined}>
-              <CheckStatus state="skipped" />
-              <span>
-                {t("chat.pullRequests.checksSkippedCount", { count: String(skipped().length) })}
-              </span>
-              <span class="chat-ci__chevron" aria-hidden="true">
-                <Icon name="chevronDown" />
-              </span>
-            </summary>
-            <For each={skipped()} keyed={(check) => check.id}>
-              {job}
-            </For>
-          </details>
-        </Show>
-      </div>
-    </PanelFeedbackScope>
+    <div
+      class="chat-ci__jobs"
+      aria-busy={state.loading ? "true" : "false"}
+      aria-description={state.error ?? undefined}
+    >
+      <For each={jobs()} keyed={(check) => check.id}>
+        {job}
+      </For>
+      <Show when={skipped().length}>
+        <details class="chat-ci__skipped">
+          <summary ref={skippedRef()} data-form-control={props.menuControls ? "" : undefined}>
+            <CheckStatus state="skipped" />
+            <span>
+              {t("chat.pullRequests.checksSkippedCount", { count: String(skipped().length) })}
+            </span>
+            <span class="chat-ci__chevron" aria-hidden="true">
+              <Icon name="chevronDown" />
+            </span>
+          </summary>
+          <For each={skipped()} keyed={(check) => check.id}>
+            {job}
+          </For>
+        </details>
+      </Show>
+    </div>
   );
 }
 

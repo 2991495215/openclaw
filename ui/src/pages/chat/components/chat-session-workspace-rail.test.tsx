@@ -2,6 +2,8 @@
 
 import { createSignal, flush } from "solid-js";
 import { afterEach, assert, describe, expect, it, onTestFinished, vi } from "vitest";
+import { createDeferred } from "../../../../../test/helpers/promise.js";
+import { GatewayRequestError } from "../../../api/gateway.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import {
@@ -12,12 +14,15 @@ import { SessionWorkspaceRail } from "./chat-session-workspace-rail-solid.tsx";
 import {
   getSessionWorkspace,
   loadSessionWorkspace,
+  refreshSessionWorkspaceState,
+  retainSessionWorkspaceArtifacts,
   sessionWorkspaceForHost,
 } from "./chat-session-workspace-state.ts";
 import {
   createSessionWorkspaceProps,
   type SessionWorkspaceHost,
 } from "./chat-session-workspace.ts";
+import type { TranscriptAttachments } from "./chat-sidebar-content-types.ts";
 import type { SessionWorkspaceProps } from "./chat-sidebar-view-types.ts";
 
 type List = NonNullable<SessionWorkspaceProps["list"]>;
@@ -103,7 +108,7 @@ describe("session workspace path actions", () => {
     ["reports", true, null],
   ] as const)(
     "keeps folder recovery available for %s (loading: %s)",
-    async (path, loading, parentPath) => {
+    (path, loading, parentPath) => {
       const onBrowsePath = vi.fn();
       const workspace = createWorkspace({
         browserPath: path,
@@ -118,14 +123,7 @@ describe("session workspace path actions", () => {
         expect(mount.textContent).not.toContain("This folder is unavailable.");
       } else {
         expect(parent).not.toBeNull();
-        const feedback = mount.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!;
-        feedback.click();
-        await waitForSolid(() =>
-          expect(document.querySelector(".panel-feedback__messages")?.textContent).toContain(
-            "This folder is unavailable.",
-          ),
-        );
-        feedback.click();
+        expect(mount.textContent).not.toContain("This folder is unavailable.");
         parent!.click();
         expect(onBrowsePath).toHaveBeenCalledExactlyOnceWith(parentPath);
       }
@@ -370,7 +368,7 @@ describe("session workspace path actions", () => {
       update();
       expect(mount.textContent).not.toContain("No matching files.");
     }
-    expect(mount.querySelector(".panel-feedback__trigger")).not.toBeNull();
+    expect(mount.textContent).not.toContain(workspace.error);
   });
 
   it("matches every Files group without collapsing internal spaces", () => {
@@ -537,8 +535,10 @@ it("desktop distinguishes incomplete matching searches from empty complete resul
   try {
     expect(
       [
-        ...mounted.container.querySelectorAll(".workspace-desktop__project-scroll [aria-label]"),
-      ].filter((node) => node.getAttribute("aria-label") === warning),
+        ...mounted.container.querySelectorAll(
+          ".workspace-desktop__project-scroll [aria-description]",
+        ),
+      ].filter((node) => node.getAttribute("aria-description") === warning),
     ).toHaveLength(2);
     mounted.update({
       ...workspace,
@@ -546,8 +546,8 @@ it("desktop distinguishes incomplete matching searches from empty complete resul
       navigation: { ...navigation, searchOpen: true },
     });
     const hasIncompleteResults = () =>
-      [...mounted.container.querySelectorAll(".workspace-desktop__results [aria-label]")].some(
-        (node) => node.getAttribute("aria-label") === warning,
+      [...mounted.container.querySelectorAll(".workspace-desktop__results[aria-description]")].some(
+        (node) => node.getAttribute("aria-description") === warning,
       );
     expect(hasIncompleteResults()).toBe(false);
     mounted.update({
@@ -683,3 +683,136 @@ it("mobile restores folder search and root groups without mixing global search r
   expect(button(mounted.container, "docs/report.txt")).not.toBeNull();
   expect(button(mounted.container, "outside/report.txt")).toBeNull();
 });
+
+it.each(["files", "artifacts"] as const)(
+  "mobile retains healthy rows during %s recovery and withdraws denied data",
+  async (kind) => {
+    setupDesktopLayout();
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const listing = {
+      sessionKey: "agent:main:workspace",
+      files: [file("private.ts")],
+      browser: { path: "", entries: [] },
+    };
+    const files = vi.fn().mockResolvedValue(listing);
+    const artifacts = vi.fn().mockResolvedValue({ artifacts: [artifact("report", "report.md")] });
+    const state: SessionWorkspaceHost = {
+      sessionKey: listing.sessionKey,
+      connected: true,
+      connectionEpoch: 1,
+      hello: null,
+      agentsList: { defaultId: "main", mainKey: "main", scope: "global", agents: [] },
+      client: createGatewayBrowserClientFixture({ request: artifacts }),
+      sessions: createSessionCapabilityFixture({ listFiles: files }),
+      sidebarContent: null,
+      handleOpenSidebar: () => {},
+    };
+    const props = () =>
+      createSessionWorkspaceProps(state, { expanded: true, presentation: "mobile" });
+    props();
+    const workspace = getSessionWorkspace(state);
+    workspace.mobileNavigation!.expandedGroups.artifacts = true;
+    const release = retainSessionWorkspaceArtifacts(state);
+    const mounted = mountWorkspace(props());
+    const unsubscribe = sessionWorkspaceForHost(state).subscribe(() => mounted.update(props()));
+    onTestFinished(() => {
+      unsubscribe();
+      mounted.unmount();
+      release();
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(button(mounted.container, "private.ts")).not.toBeNull();
+    expect(mounted.container.textContent).toContain("report.md");
+    const pending = createDeferred();
+    const unavailable = new GatewayRequestError({
+      code: "UNAVAILABLE",
+      message: "Busy",
+      retryable: true,
+    });
+    const read = kind === "files" ? files : artifacts;
+    read
+      .mockRejectedValueOnce(unavailable)
+      .mockReturnValueOnce(pending.promise)
+      .mockRejectedValueOnce(
+        new GatewayRequestError({ code: "FORBIDDEN", message: "Access revoked" }),
+      );
+    if (kind === "files") {
+      loadSessionWorkspace(state, workspace);
+    } else {
+      refreshSessionWorkspaceState(state, false);
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    expect(button(mounted.container, "private.ts")).not.toBeNull();
+    expect(mounted.container.textContent).toContain("report.md");
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(button(mounted.container, "private.ts")).not.toBeNull();
+    expect(mounted.container.textContent).toContain("report.md");
+    pending.reject(unavailable);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(button(mounted.container, "private.ts")).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(60_000);
+    if (kind === "files") {
+      expect(button(mounted.container, "private.ts")).toBeNull();
+    } else {
+      expect(mounted.container.textContent).not.toContain("report.md");
+      expect(button(mounted.container, "private.ts")).not.toBeNull();
+    }
+  },
+);
+
+it.each(["artifacts", "attachments"] as const)(
+  "mobile keeps available %s while the workspace read is unresolved",
+  (kind) => {
+    setupDesktopLayout();
+    const workspace = createWorkspace({ presentation: "mobile", loading: true });
+    const mounted = mountWorkspace(workspace);
+    expect(mounted.container.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
+    const transcript: TranscriptAttachments = {
+      pairingQrExpirations: [],
+      coverage: "complete",
+      loading: false,
+      omittedMedia: false,
+      refresh: () => transcript,
+      entries: [
+        {
+          key: "report",
+          label: "report.pdf",
+          kind: "attachment",
+          options: {},
+          onOpenSidebar: vi.fn(),
+          item: {
+            type: "attachment",
+            attachment: {
+              kind: "document",
+              label: "report.pdf",
+              mimeType: "application/pdf",
+              url: "https://example.test/report.pdf",
+            },
+          },
+        },
+      ],
+    };
+    mounted.update({
+      ...workspace,
+      error: "Workspace temporarily unavailable",
+      mobileNavigation: {
+        expandedGroups: { changed: true, read: false, artifacts: true, workspace: true },
+        scrollTop: 0,
+      },
+      ...(kind === "artifacts"
+        ? {
+            list: {
+              sessionKey: workspace.sessionKey,
+              files: [],
+              artifacts: [artifact("report", "report.pdf")],
+            },
+          }
+        : { transcriptAttachments: transcript }),
+    });
+    expect(mounted.container.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
+    expect(mounted.container.textContent).toContain("report");
+  },
+);

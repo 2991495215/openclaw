@@ -295,7 +295,7 @@ describe("chat pane board loading states", () => {
     }
   });
 
-  it("keeps a failed initial dashboard read in the fixed feedback surface", async () => {
+  it("keeps a failed initial dashboard read out of the panel content", async () => {
     const { pane, request, container, draw, cleanup } = createGatewayBoardPane(
       "agent:main:failing-board",
     );
@@ -305,12 +305,7 @@ describe("chat pane board loading states", () => {
       await vi.waitFor(() => expect(provider.loadError$.value).toBeTruthy());
       draw();
       expect(container.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
-      container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")!.click();
-      await vi.waitFor(() =>
-        expect(container.querySelector(".panel-feedback__messages")?.textContent).toContain(
-          "gateway offline",
-        ),
-      );
+      expect(container.textContent).not.toContain("gateway offline");
     } finally {
       cleanup();
     }

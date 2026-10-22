@@ -1,6 +1,5 @@
 import { For, Show } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { t } from "../../../lib/reactive/i18n.ts";
 import {
   ChatMachineFacts,
@@ -67,17 +66,6 @@ export function ChatMachine(props: ChatMachineProps) {
                     : view().label}
             </span>
           </header>
-          <PanelFeedback
-            label={view().machineName}
-            message={
-              props.session?.placementMove?.error ??
-              (view().deviceOffline
-                ? t("sessionsView.waitingForDevice")
-                : view().placementState === "failed"
-                  ? view().exceptionState
-                  : undefined)
-            }
-          />
           <Show when={view().deviceOffline}>{actions(true)}</Show>
           <Show when={view().deviceOffline} fallback={<ChatMachineFacts view={view()} includeId />}>
             <section class="chat-machine__facts-group">

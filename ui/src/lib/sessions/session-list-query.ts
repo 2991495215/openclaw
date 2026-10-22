@@ -2,6 +2,7 @@ import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { sessionActivityTimestamp } from "../../../../src/shared/session-activity-timestamp.js";
 import { SESSIONS_LIST_OWNER_LIMIT } from "../../../../src/shared/session-list-limits.js";
 import type { GatewaySessionRow, SessionsListResult } from "../../api/types.ts";
+import type { createGatewayRetryOwner } from "../gateway-retry.ts";
 import type { createSessionEventRefreshCoordinator } from "./event-refresh-coordinator.ts";
 import { compareSessionRowsByUpdatedAt, sessionMatchesArchivedFilter } from "./navigation.ts";
 import {
@@ -465,6 +466,7 @@ export type ManagedSessionList = ObservedSessionList & {
   /** Raw page identities, scoped to this window, for completeness despite hidden rows. */
   receivedKeys: Set<string>;
   startupRetryAttempt: number;
+  readRetry?: ReturnType<typeof createGatewayRetryOwner>;
   /** Invalidation retires remaining pages without cancelling the correlated RPC. */
   readGeneration: number;
   readRevision: number;

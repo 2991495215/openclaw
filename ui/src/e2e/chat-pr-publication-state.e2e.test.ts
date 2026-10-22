@@ -141,7 +141,8 @@ suite.define(() => {
       await expect.poll(() => menu.textContent()).toContain("#43");
       expect(await warning.count()).toBe(0);
       await emit("unavailable", "merged");
-      await expect.poll(() => warning.textContent()).toContain("Pull requests unavailable");
+      await expect.poll(() => row.locator("article").getAttribute("data-state")).toBe("merged");
+      expect(await warning.count()).toBe(0);
       expect(await menu.locator(".chat-pr__stale").count()).toBe(0);
       expect(await menu.textContent()).toContain("#43");
       expect(await row.locator("article").getAttribute("data-state")).toBe("merged");

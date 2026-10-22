@@ -1,7 +1,6 @@
 import { For, Show, createMemo, createSignal, createStore, onSettled } from "solid-js";
 import type { SessionParticipant } from "../../../../../packages/gateway-protocol/src/schema/session-participant.js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback, PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { sessionParticipantIdentityKey } from "../../../lib/chat/sender-label.ts";
@@ -24,12 +23,7 @@ import type {
   ChatDetailsOutputs,
   ChatDetailsProps,
 } from "./chat-details-types.ts";
-import {
-  ChatOutputsFeedback,
-  ChatOutputsDesktop,
-  getChatOutputsCount,
-  hasChatDesktopOutputs,
-} from "./chat-outputs.tsx";
+import { ChatOutputsDesktop, getChatOutputsCount, hasChatDesktopOutputs } from "./chat-outputs.tsx";
 import { hasChatPullRequests } from "./chat-pull-requests.ts";
 import { ChatPullRequests, type ChatPullRequestsProps } from "./chat-pull-requests.tsx";
 import { syncSessionPanelInputs, useSessionPanel } from "./chat-session-panel.tsx";
@@ -122,7 +116,7 @@ export const ChatDetailsSession = defineSolidBridge<ChatDetailsSessionProps>(
         : undefined,
     );
     return (
-      <PanelFeedbackScope presented={props.presented}>
+      <>
         {[
           <Show when={outputsDemand()} keyed>
             {(retain) => {
@@ -245,20 +239,6 @@ export const ChatDetailsSession = defineSolidBridge<ChatDetailsSessionProps>(
                       snapshot.onViewAll();
                     }
                   },
-                  onRetryArtifacts: snapshot.onRetryArtifacts
-                    ? () => {
-                        if (current()) {
-                          snapshot.onRetryArtifacts?.();
-                        }
-                      }
-                    : undefined,
-                  onRetryDashboard: snapshot.onRetryDashboard
-                    ? () => {
-                        if (current()) {
-                          snapshot.onRetryDashboard?.();
-                        }
-                      }
-                    : undefined,
                   dashboard: snapshot.dashboard
                     ? {
                         title: snapshot.dashboard.title,
@@ -479,18 +459,6 @@ export const ChatDetailsSession = defineSolidBridge<ChatDetailsSessionProps>(
                     <Show when={pullRequests()}>
                       {(requests) => (
                         <>
-                          <PanelFeedback
-                            label={t("sessionHovercard.pullRequests")}
-                            message={
-                              requests().status !== "ready"
-                                ? t(
-                                    requests().status === "rate-limited"
-                                      ? "chat.pullRequests.rateLimited"
-                                      : "chat.pullRequests.unavailable",
-                                  )
-                                : undefined
-                            }
-                          />
                           <Show
                             when={
                               (!props.desktop && Boolean(props.props?.onOpenSessionDiff)) ||
@@ -644,7 +612,6 @@ export const ChatDetailsSession = defineSolidBridge<ChatDetailsSessionProps>(
                     <Show when={desktopPresentation() && outputs()}>
                       {(data) => (
                         <>
-                          <ChatOutputsFeedback {...data()} />
                           <Show when={hasChatDesktopOutputs(data())}>
                             <ChatDetailsDesktopSection
                               section="outputs"
@@ -678,7 +645,7 @@ export const ChatDetailsSession = defineSolidBridge<ChatDetailsSessionProps>(
             }}
           </Show>,
         ]}
-      </PanelFeedbackScope>
+      </>
     );
   },
   {

@@ -8,7 +8,6 @@ import type { ChatSubagentActivity } from "../chat-subagent-wait.ts";
 import { ChatDetailsSubagents, type ChatDetailsSubagentsProps } from "./chat-details-subagents.tsx";
 import {
   ChatPullRequestMobileRow,
-  ChatPullRequestMobileRecovery,
   type ChatPullRequestMobileCollectionProps,
 } from "./chat-pull-request-mobile.tsx";
 import { chatPullRequestId } from "./chat-pull-requests.ts";
@@ -233,14 +232,7 @@ export function ChatDetailsMobileRoot(props: ChatDetailsMobileRootProps) {
           {props.context}
         </RootGroup>
       </Show>
-      <Show
-        when={
-          pullRequestsTotal() > 0 ||
-          (props.pullRequests && props.pullRequests.status !== "ready") ||
-          props.publication ||
-          props.publicationEntry
-        }
-      >
+      <Show when={pullRequestsTotal() > 0 || props.publication || props.publicationEntry}>
         <RootGroup name="pull-requests" label={props.labels.pullRequests}>
           <Show when={props.pullRequests}>
             {(collection) => (
@@ -264,7 +256,6 @@ export function ChatDetailsMobileRoot(props: ChatDetailsMobileRootProps) {
                     root={props}
                   />
                 </Show>
-                <ChatPullRequestMobileRecovery {...collection()} collection />
               </>
             )}
           </Show>

@@ -480,13 +480,11 @@ function BoardWidgetCellContent(
       : undefined;
   const label = () => props.widget?.title || props.widget?.name || "";
   const scrollable = () =>
-    Boolean(
-      bodyErrored() ||
-      props.widget?.grantState === "pending" ||
-      props.widget?.grantState === "rejected" ||
-      props.widget?.contentKind === "mcp-app" ||
-      (props.widget?.contentKind === "plugin" && !props.widget.frameUrl),
-    );
+    bodyErrored() ||
+    props.widget?.grantState === "pending" ||
+    props.widget?.grantState === "rejected" ||
+    props.widget?.contentKind === "mcp-app" ||
+    (props.widget?.contentKind === "plugin" && !props.widget.frameUrl);
   const style = (): SolidJSX.CSSProperties => {
     const rect = props.rect!;
     const height =

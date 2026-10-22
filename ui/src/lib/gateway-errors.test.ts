@@ -1,8 +1,10 @@
 // @vitest-environment node
+import { GatewayProtocolRequestTimeoutError } from "@openclaw/gateway-client/browser";
 import { describe, expect, it } from "vitest";
 import { GatewayRequestError } from "../api/gateway.ts";
 import {
   isMissingOperatorReadScopeError,
+  isRetryableGatewayReadError,
   isWizardNotFoundError,
   isSetupAdmissionBusyError,
 } from "./gateway-errors.ts";
@@ -19,6 +21,43 @@ function missingScope(scope: string, message = `missing scope: ${scope}`) {
 }
 
 describe("gateway error helpers", () => {
+  it("retries only typed transient failures for the requested read", () => {
+    const method = "sessions.usage";
+    const deadline = new GatewayProtocolRequestTimeoutError({
+      method,
+      timeoutMs: 30_000,
+      requestSent: true,
+    });
+    expect(isRetryableGatewayReadError(deadline, method)).toBe(true);
+    expect(isRetryableGatewayReadError(deadline, "sessions.diff")).toBe(false);
+    expect(
+      isRetryableGatewayReadError(
+        new GatewayRequestError({
+          code: "UNAVAILABLE",
+          message: "busy",
+          retryable: true,
+          details: { method },
+        }),
+        method,
+      ),
+    ).toBe(true);
+    for (const error of [
+      new GatewayRequestError({ code: "UNAVAILABLE", message: "permanent" }),
+      new GatewayRequestError({ code: "FORBIDDEN", message: "denied", retryable: true }),
+      new GatewayRequestError({ code: "INVALID_REQUEST", message: "invalid", retryable: true }),
+      new GatewayRequestError({
+        code: "UNAVAILABLE",
+        message: "another read",
+        retryable: true,
+        details: { method: "sessions.diff" },
+      }),
+      new TypeError("programming failure"),
+      new Error("unknown failure"),
+    ]) {
+      expect(isRetryableGatewayReadError(error, method)).toBe(false);
+    }
+  });
+
   it.each([
     [isWizardNotFoundError, "INVALID_REQUEST", "WIZARD_NOT_FOUND"],
     [isSetupAdmissionBusyError, "UNAVAILABLE", "SETUP_ADMISSION_BUSY"],

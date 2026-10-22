@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { createComponent, createSignal } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ControlUiSessionPullRequestCheckDetails } from "../../../../../src/gateway/control-ui-contract.js";
@@ -124,28 +125,22 @@ describe("ChatPullRequests", () => {
     expect(container.querySelector<HTMLButtonElement>(".chat-pr__create")?.disabled).toBe(true);
   });
 
-  it("marks retained merged PR status unavailable without pretending it is rate limited", () => {
-    paintChatPullRequests(
-      {
-        pullRequests: [pullRequest({ state: "merged" })],
-        status: "unavailable",
-        onDismiss: () => {},
-      },
-      container,
-    );
-    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
-    flush();
-    expect(container.querySelector(".panel-feedback__messages")?.textContent).toContain(
-      "could not be refreshed",
-    );
-    expect(container.querySelector(".panel-feedback__messages")?.textContent).not.toContain(
-      "rate limit",
-    );
-    expect(container.querySelector(".chat-pr__warning")).toBeNull();
-    expect(container.querySelector(".chat-pr__number")?.textContent).toBe(
-      "openclaw/openclaw#103469",
-    );
-  });
+  it.each(["unavailable", "rate-limited"] as const)(
+    "keeps the known PR through %s and adopts the next snapshot",
+    (status) => {
+      const pr = pullRequest({ state: "merged" });
+      paint({ pullRequests: [pr] });
+      const row = container.querySelector(".chat-pr");
+      paint({ pullRequests: [pr], status });
+      expect(container.querySelector(".chat-pr")).toBe(row);
+      expect(row?.textContent).toContain("openclaw/openclaw#103469");
+      expect(row?.querySelector(".chat-pr__additions")?.textContent).toBe("+4");
+      expect(container.querySelector(".panel-feedback, .chat-pr__warning")).toBeNull();
+      paint({ pullRequests: [{ ...pr, additions: 8 }], status: "ready" });
+      expect(container.querySelector(".chat-pr")).toBe(row);
+      expect(row?.querySelector(".chat-pr__additions")?.textContent).toBe("+8");
+    },
+  );
 
   it("renders merged PRs without a redundant completed publication card", () => {
     const onDismiss = vi.fn();
@@ -371,20 +366,6 @@ describe("ChatPullRequests", () => {
     action?.click();
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(container.querySelectorAll(".chat-pr__dismiss")).toHaveLength(1);
-  });
-
-  it("reports rate limits once outside the PR rows", () => {
-    paint({
-      pullRequests: [pullRequest()],
-      status: "rate-limited",
-    });
-    expect(container.querySelector(".chat-pr__warning")).toBeNull();
-    expect(container.querySelectorAll(".panel-feedback")).toHaveLength(1);
-    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
-    flush();
-    expect(container.querySelector(".panel-feedback__messages")?.textContent).toContain(
-      "rate limit",
-    );
   });
 
   it("opens the session diff from interactive branch stats", () => {
@@ -684,8 +665,8 @@ describe("CI job details", () => {
       props,
       element,
       disclosure,
-      disconnect() {
-        snapshot = { ...snapshot, phase: "offline" };
+      setPhase(phase: ApplicationGatewaySnapshot["phase"]) {
+        snapshot = { ...snapshot, phase };
         for (const listener of listeners) {
           listener(snapshot);
         }
@@ -878,67 +859,114 @@ describe("CI job details", () => {
     },
   );
 
-  it("clears prior CI details and redacts the RPC error", async () => {
+  it.each(["rejected", "unavailable", "stale"] as const)(
+    "recovers %s CI reads with bounded backoff, then restores the healthy cadence",
+    async (failure) => {
+      const h = harness();
+      if (failure === "rejected") {
+        h.request.mockRejectedValue(
+          new GatewayProtocolRequestError({
+            code: "UNAVAILABLE",
+            message: "GitHub request failed: token=synthetic-secret",
+            retryable: true,
+            details: { method: "controlUi.sessionPullRequests.checks" },
+          }),
+        );
+      } else {
+        h.request.mockResolvedValue(details({ checks: [], status: failure }));
+      }
+      await settle(h.element);
+      h.disclosure.open = true;
+      await settle(h.element);
+      expect(h.request).toHaveBeenCalledTimes(1);
+      for (const delay of [30_000, 60_000, 120_000, 240_000, 300_000, 300_000]) {
+        const count = h.request.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(delay - 1);
+        expect(h.request).toHaveBeenCalledTimes(count);
+        await vi.advanceTimersByTimeAsync(1);
+        await h.element.updateComplete;
+        expect(h.request).toHaveBeenCalledTimes(count + 1);
+      }
+      expect(container.querySelector(".chat-ci__job")).toBeNull();
+      expect(container.textContent).not.toContain("synthetic-secret");
+      expect(container.querySelector(".panel-feedback, .chat-ci__notice")).toBeNull();
+      h.request.mockResolvedValue(details());
+      await vi.advanceTimersByTimeAsync(300_000);
+      await h.element.updateComplete;
+      expect(container.querySelector(".chat-ci__job")).not.toBeNull();
+      const recovered = h.request.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(h.request).toHaveBeenCalledTimes(recovered);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.request).toHaveBeenCalledTimes(recovered + 1);
+    },
+  );
+
+  it.each(["hidden", "disconnected"] as const)(
+    "cancels scheduled CI recovery while %s and recovers on return",
+    async (boundary) => {
+      const h = harness();
+      h.request.mockRejectedValue(
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          message: "Temporary failure",
+          retryable: true,
+        }),
+      );
+      await settle(h.element);
+      h.disclosure.open = true;
+      await settle(h.element);
+      expect(h.request).toHaveBeenCalledTimes(1);
+      if (boundary === "hidden") {
+        h.element.presented = false;
+      } else {
+        h.setPhase("offline");
+      }
+      await settle(h.element);
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(h.request).toHaveBeenCalledTimes(1);
+      h.request.mockResolvedValue(details());
+      if (boundary === "hidden") {
+        h.element.presented = true;
+      } else {
+        h.setPhase("connected");
+      }
+      await settle(h.element);
+      expect(h.request).toHaveBeenCalledTimes(2);
+      expect(container.querySelector(".chat-ci__job")).not.toBeNull();
+    },
+  );
+
+  it("honors a server retry delay longer than the local backoff cap", async () => {
     const h = harness();
     h.request.mockResolvedValueOnce(
-      details({
-        checks: [
-          { id: 9, name: "Private build", state: "passed", status: "completed", source: "actions" },
-        ],
-      }),
+      details({ checks: [], status: "unavailable", rateLimited: true, retryAfterMs: 600_000 }),
     );
     await settle(h.element);
     h.disclosure.open = true;
     await settle(h.element);
-    expect(container.textContent).toContain("Private build");
-    h.request.mockRejectedValue(new Error("GitHub request failed: token=synthetic-secret"));
-    await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
-    expect(container.querySelector(".chat-ci__job")).toBeNull();
-    expect(container.textContent).not.toContain("Private build");
-    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
-    flush();
-    expect(container.textContent).toContain("GitHub request failed: token=[redacted]");
-    expect(container.textContent).not.toContain("synthetic-secret");
-    h.request.mockResolvedValue(details());
-    container.querySelector<HTMLButtonElement>(".panel-feedback__retry")?.click();
-    await settle(h.element);
-    expect(container.textContent).not.toContain("GitHub request failed");
-    expect(container.querySelector(".chat-ci__job")).not.toBeNull();
-  });
-
-  it("clears details when the connection retires", async () => {
-    const h = harness();
-    await settle(h.element);
-    h.disclosure.open = true;
-    await settle(h.element);
-    expect(container.querySelector(".chat-ci__job")).not.toBeNull();
-    h.disconnect();
-    await settle(h.element);
-    expect(container.querySelector(".chat-ci__job")).toBeNull();
-    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
-    flush();
-    expect(container.textContent).toContain("Couldn’t load all CI details");
-  });
-
-  it("offers fixed-footer recovery without retrying before the server delay", async () => {
-    const h = harness();
-    h.request.mockResolvedValueOnce(
-      details({ checks: [], status: "unavailable", rateLimited: true, retryAfterMs: 30_000 }),
-    );
-    await settle(h.element);
-    h.disclosure.open = true;
-    await settle(h.element);
-    const retry = container.querySelector<HTMLButtonElement>(".panel-feedback__retry")!;
-    container.querySelector<HTMLButtonElement>(".panel-feedback__trigger")?.click();
-    flush();
-    expect(container.textContent).toContain("rate limit");
-    expect(retry.getAttribute("aria-disabled")).toBe("true");
-    await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
     expect(h.request).toHaveBeenCalledTimes(1);
-    expect(retry.getAttribute("aria-disabled")).toBe("false");
-    retry.click();
+    await vi.advanceTimersByTimeAsync(599_999);
+    expect(h.request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await h.element.updateComplete;
+    expect(h.request).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".chat-ci__job")).not.toBeNull();
+  });
+
+  it("does not retry an unclassified failure until the monitor is reopened", async () => {
+    const h = harness();
+    h.request.mockRejectedValue(new Error("Unexpected response shape"));
+    await settle(h.element);
+    h.disclosure.open = true;
+    await settle(h.element);
+    expect(h.request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(h.request).toHaveBeenCalledTimes(1);
+    h.disclosure.open = false;
+    await settle(h.element);
+    h.request.mockResolvedValue(details());
+    h.disclosure.open = true;
     await settle(h.element);
     expect(h.request).toHaveBeenCalledTimes(2);
     expect(container.querySelector(".chat-ci__job")).not.toBeNull();

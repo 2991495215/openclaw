@@ -9,7 +9,6 @@ import {
   type PersonActivityRouting,
 } from "../../../components/person-activity-link.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { SessionOwnerAvatar } from "../../../components/solid/session-owner-chip.tsx";
 import { SettingsToggleRow } from "../../../components/solid/settings-ui.tsx";
@@ -52,7 +51,6 @@ export type ChatSessionSharingMobileProps = {
   labels: ChatSessionSharingMobileLabels;
   accessDisabledReason?: string;
   onOpenAccess: () => void;
-  error?: string;
   publicLink?: {
     enabled: boolean;
     description: string;
@@ -79,7 +77,6 @@ export type ChatSessionAccessMobileProps = {
   label: string;
   pending: boolean;
   disabledReason?: string;
-  error?: string;
   /** True only after an applied mutation still belonging to this current destination. */
   onVisibilityChange: (visibility: SessionVisibility) => Promise<boolean>;
   onApplied: () => void;
@@ -170,7 +167,6 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
           </section>
         )}
       </Show>
-      <PanelFeedback label={t("chat.sessionSharing.sharingOptions")} message={props.error} />
       <Show when={props.permissions}>
         {(permissions) => <SharingPermissions data={permissions()} labels={props.labels} />}
       </Show>
@@ -381,7 +377,6 @@ export function ChatSessionAccessMobile(props: ChatSessionAccessMobileProps) {
           )}
         </For>
       </div>
-      <PanelFeedback label={props.label} message={props.error} />
     </div>
   );
 }

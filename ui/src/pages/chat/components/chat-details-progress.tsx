@@ -123,35 +123,13 @@ export function MobileTaskProgressContent(props: MobileTaskProgressProps) {
       <Show
         when={props.card}
         fallback={
-          <Show
-            when={props.initialLoading || props.error || props.card === undefined}
-            fallback={
-              <div class="task-progress-details__empty">
-                <Icon name="listChecks" />
-                <strong>{t("sessionProgressCard.detailsEmptyTitle")}</strong>
-                <p>{t("sessionProgressCard.detailsEmptyDescription")}</p>
-              </div>
-            }
-          >
-            <Show
-              when={props.error}
-              fallback={
-                <PanelLoadingSkeleton
-                  variant="document"
-                  label={t("sessionProgressCard.widgetLoading")}
-                  compact
-                />
-              }
-            >
-              <div class="chat-details__muted" role="status">
-                {t(
-                  props.error === "access-denied"
-                    ? "sessionProgressCard.widgetAccessDenied"
-                    : "sessionProgressCard.widgetUnavailable",
-                )}
-              </div>
-            </Show>
-          </Show>
+          props.initialLoading && (
+            <PanelLoadingSkeleton
+              variant="document"
+              label={t("sessionProgressCard.widgetLoading")}
+              compact
+            />
+          )
         }
       >
         {(card) => (

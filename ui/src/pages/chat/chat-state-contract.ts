@@ -45,6 +45,8 @@ export type ChatState = StreamCausalBoundaryState & {
   uploadConfig?: ApplicationConfigCapability;
   client: GatewayBrowserClient | null;
   connected: boolean;
+  /** Pane/document demand supplied by the native host for metadata and failed-read recovery. */
+  chatMetadataIsPresented?: () => boolean;
   chatSubmissions?: ApplicationChatSubmissions;
   reconcileApprovalTerminals?: ApplicationOverlays["reconcileApprovalTerminals"];
   hasPendingInitialTurn?: (sessionKey: string) => boolean;

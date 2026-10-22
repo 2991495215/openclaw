@@ -1,7 +1,6 @@
 import { createMemo, createProjection, For, onSettled, Show } from "solid-js";
 import type { SessionBranch } from "../../../api/types.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelFeedback } from "../../../components/solid/panel-feedback.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatRelativeTimestamp } from "../../../lib/format.ts";
@@ -18,7 +17,6 @@ export type ChatSessionVersionsMobileProps = {
   query: { status: "loading" | "ready" } | { status: "error"; message: string };
   branchSwitchDisabledReason: string | null;
   onBranchSelect: (leafEntryId: string) => void;
-  onRetry?: () => void;
 };
 
 /** Interior only: the mobile host owns its header, navigation, retention and scrolling. */
@@ -40,7 +38,6 @@ export function ChatSessionVersionsMobile(props: ChatSessionVersionsMobileProps)
   const branchesById = createMemo(
     () => new Map(props.branches.map((branch) => [branch.leafEntryId, branch])),
   );
-  const error = () => (props.query.status === "error" ? props.query.message : null);
   const select = (branch: SessionBranch) => {
     if (!branch.active && !props.branchSwitchDisabledReason) {
       props.onBranchSelect(branch.leafEntryId);
@@ -52,11 +49,6 @@ export function ChatSessionVersionsMobile(props: ChatSessionVersionsMobileProps)
       <Show when={props.query.status === "loading" && props.branches.length === 0}>
         <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
       </Show>
-      <PanelFeedback
-        label={t("chat.sessionHeader.branches")}
-        message={error()}
-        onRetry={props.onRetry}
-      />
       <Show when={props.branches.length > 0}>
         <ol
           class="chat-session-versions-mobile__list"

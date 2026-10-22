@@ -1,7 +1,6 @@
 /* @vitest-environment jsdom */
 import { createComponent, createSignal, flush, merge } from "solid-js";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
-import { PanelFeedbackScope } from "../../../components/solid/panel-feedback.tsx";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { mountChatPaneHeader, openNativeMenu } from "./chat-pane-header.test-support.ts";
@@ -100,13 +99,7 @@ it("keeps mobile order and selection authoritative across active-first receipts,
     branchSwitchDisabledReason: null,
     onBranchSelect,
   });
-  const view = mountSolid(() =>
-    createComponent(PanelFeedbackScope, {
-      get children() {
-        return createComponent(ChatSessionVersionsMobile, merge(props));
-      },
-    }),
-  );
+  const view = mountSolid(() => createComponent(ChatSessionVersionsMobile, merge(props)));
   onTestFinished(view.unmount);
   flush();
   const radios = () =>
@@ -139,24 +132,16 @@ it("keeps mobile order and selection authoritative across active-first receipts,
   expect(radios()[0]?.textContent).toContain("Earlier idea");
 });
 
-it("keeps mobile query failures outside the list and preserves the owner's disabled reason", async () => {
+it("keeps mobile query failures quiet and preserves the owner's disabled reason", () => {
   const onBranchSelect = vi.fn();
-  const onRetry = vi.fn();
   const [props, setProps] = createSignal<ChatSessionVersionsMobileProps>({
     scopeKey: "connection/main/session",
     branches: [],
     query: { status: "loading" },
     branchSwitchDisabledReason: null,
     onBranchSelect,
-    onRetry,
   });
-  const view = mountSolid(() =>
-    createComponent(PanelFeedbackScope, {
-      get children() {
-        return createComponent(ChatSessionVersionsMobile, merge(props));
-      },
-    }),
-  );
+  const view = mountSolid(() => createComponent(ChatSessionVersionsMobile, merge(props)));
   onTestFinished(view.unmount);
   flush();
   expect(view.getByRole("status", { name: "Loading…" }).getAttribute("aria-busy")).toBe("true");
@@ -166,15 +151,8 @@ it("keeps mobile query failures outside the list and preserves the owner's disab
     query: { status: "error", message: "Connection lost. Retry when connected." },
   }));
   flush();
-  view.getByRole("button", { name: "Details status" }).click();
-  await waitForSolid(() =>
-    expect(view.container.querySelector(".panel-feedback__messages")?.textContent).toContain(
-      "Connection lost",
-    ),
-  );
+  expect(view.container.querySelector('[role="alert"]')).toBeNull();
   expect(view.container.textContent).not.toContain("No earlier versions");
-  view.getByRole("button", { name: "Retry" }).click();
-  expect(onRetry).toHaveBeenCalledOnce();
   setProps((value) => ({ ...value, query: { status: "ready" } }));
   flush();
   expect(view.container.querySelector("[role=radio]")).toBeNull();

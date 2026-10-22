@@ -112,6 +112,7 @@ export type SessionDiffProps = {
   /** Native host presentation, not the width of the panel. Unknown retains the native UI. */
   mobile?: boolean | null;
   active?: boolean;
+  canRead?: () => boolean;
   /** A new object requests a scope on the same native checkout, including on a retained tab. */
   scopeRequest?: { owner: SessionDiffOwner; scope: SessionDiffScope } | null;
   onResult?:
@@ -241,10 +242,13 @@ type SessionDiffSidebarContent = {
   kind: "session-diff";
   owner: SessionDiffOwner;
   load: SessionDiffLoader;
+  canRead?: () => boolean;
   /** Last accepted native Uncommitted result for this exact diff loader. */
   uncommitted?: SessionsDiffResult;
   /** Visible Environment demand shares this content's native diff loader. */
   requestUncommitted?: () => void | (() => void);
+  /** Checkout owner retires retained read recovery when this content identity is invalidated. */
+  retireUncommitted?: () => void;
   onResult?: SessionDiffProps["onResult"];
   loadFileText?: SessionDiffFileTextLoader;
   openFile?: (path: string) => void | Promise<SessionWorkspacePreview | undefined>;
