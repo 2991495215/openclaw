@@ -2,11 +2,6 @@ import type { MediaAttachmentDisposition, MediaUnderstandingCapability } from ".
 
 const MAX_SKIPPED_FILE_MARKERS = 5;
 
-// Reason-neutral because the shared overflow can mix file and media outcomes.
-function renderSkippedFileOverflowSummary(count: number): string {
-  return `[${count} more attachment${count === 1 ? "" : "s"} skipped]`;
-}
-
 export function renderMediaAttachmentDisposition(
   capability: MediaUnderstandingCapability,
   disposition: MediaAttachmentDisposition,
@@ -45,5 +40,8 @@ export function applyAttachmentMarkerBudget(blocks: AttachmentContextBlock[]): s
     markers += Number(block.consumesMarkerBudget);
     rendered.push(block.text);
   }
-  return overflow > 0 ? [...rendered, renderSkippedFileOverflowSummary(overflow)] : rendered;
+  // Reason-neutral because the shared overflow can mix file and media outcomes.
+  return overflow > 0
+    ? [...rendered, `[${overflow} more attachment${overflow === 1 ? "" : "s"} skipped]`]
+    : rendered;
 }
