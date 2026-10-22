@@ -1,5 +1,13 @@
 import Panzoom, { type PanzoomObject } from "@panzoom/panzoom";
-import { createEffect, createMemo, createSignal, onCleanup, Show, useContext } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onSettled,
+  Show,
+  useContext,
+} from "solid-js";
 import { t } from "../lib/reactive/i18n.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import { nativeListener } from "../lib/solid-native-listener.ts";
@@ -490,18 +498,20 @@ export function ImageLightboxContent(props: ImageLightboxProps) {
       }
     },
   );
-  const stopMotionChange = motionQuery
-    ? listen(motionQuery, "change", handleMotionPreferenceChange)
-    : undefined;
-  onCleanup(() => {
-    disposed = true;
-    cancelSwipe();
-    touchPointers.clear();
-    slideAnimation?.cancel();
-    stopMotionChange?.();
-    destroyPanzoom();
-    originalUrlRequest += 1;
-    revokeOriginalBlobUrl();
+  onSettled(() => {
+    const stopMotionChange = motionQuery
+      ? listen(motionQuery, "change", handleMotionPreferenceChange)
+      : undefined;
+    return () => {
+      disposed = true;
+      cancelSwipe();
+      touchPointers.clear();
+      slideAnimation?.cancel();
+      stopMotionChange?.();
+      destroyPanzoom();
+      originalUrlRequest += 1;
+      revokeOriginalBlobUrl();
+    };
   });
 
   const title = () =>
