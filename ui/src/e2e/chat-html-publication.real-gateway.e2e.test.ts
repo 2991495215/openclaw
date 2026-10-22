@@ -258,9 +258,9 @@ suite.define(() => {
         await panel
           .locator("openclaw-chat-html-preview [role=status]")
           .waitFor({ state: "hidden" });
-        // Inner-frame readiness does not settle the enclosing panel's layout transition.
+        // Inner-frame readiness does not settle the enclosing region's layout transition.
         await page
-          .locator('[data-region="side"]')
+          .locator(".sidebar-region")
           .filter({ has: panel })
           .evaluate(finishElementAnimations);
         await document.getByRole("button", { name: "Count", exact: true }).click();
