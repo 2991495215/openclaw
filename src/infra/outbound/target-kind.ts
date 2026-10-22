@@ -109,6 +109,13 @@ export function classifyRewrittenTarget(params: {
     if (typedKind && typedKind !== originalTypedKind) {
       return typedKind;
     }
+    if (
+      originalTypedKind &&
+      !typedKind &&
+      inferTargetKind(params.channel, params.resolvedTo, params.plugin) === "user"
+    ) {
+      return "user";
+    }
     if (params.originalKindIsResolved || params.originalKind === "user") {
       return params.originalKind;
     }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChannelPlugin } from "../../channels/plugins/types.plugin.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../../plugins/runtime.js";
-import { resolveHeartbeatDeliveryTargetWithSessionRoute } from "./targets.js";
+import { resolveProactiveDeliveryTargetWithSessionRoute } from "./targets.js";
 import { createTestChannelPlugin, createTargetsTestRegistry } from "./targets.test-helpers.js";
 
 const mocks = vi.hoisted(() => ({
@@ -42,7 +42,7 @@ function createNamespacePlugin(options: {
   };
 }
 
-async function resolveNamespaceHeartbeat(
+async function resolveNamespaceProactive(
   plugin: ChannelPlugin,
   directPolicy?: "allow" | "block",
   target = "alpha",
@@ -50,10 +50,10 @@ async function resolveNamespaceHeartbeat(
 ) {
   setActivePluginRegistry(createTargetsTestRegistry([plugin]));
   mocks.resolveOutboundChannelPlugin.mockReturnValue(plugin);
-  return await resolveHeartbeatDeliveryTargetWithSessionRoute({
+  return await resolveProactiveDeliveryTargetWithSessionRoute({
     cfg: { channels: { alpha: {} } } as OpenClawConfig,
     agentId: "main",
-    heartbeat: { target, to, directPolicy },
+    policy: { target, to, directPolicy },
   });
 }
 
@@ -204,7 +204,7 @@ describe("outbound channel namespace targets", () => {
       expectedTo: "group:C123456",
     },
   ])("$name", async ({ plugin, expectedTo, directPolicy, to }) => {
-    const resolved = await resolveNamespaceHeartbeat(plugin, directPolicy, "alpha", to);
+    const resolved = await resolveNamespaceProactive(plugin, directPolicy, "alpha", to);
 
     expect(resolved).toMatchObject({ channel: "alpha", to: expectedTo });
   });
@@ -215,7 +215,7 @@ describe("outbound channel namespace targets", () => {
       kind: "group" as const,
       source: "normalized" as const,
     }));
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({
         messaging: {
           targetPrefixes: ["a"],
@@ -233,7 +233,7 @@ describe("outbound channel namespace targets", () => {
   });
 
   it("blocks a native outbound namespace rewritten to an explicit direct recipient", async () => {
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({
         outbound: {
           deliveryMode: "direct",
@@ -251,7 +251,7 @@ describe("outbound channel namespace targets", () => {
   });
 
   it("blocks a confirmed group handle rewritten to a typed peer with the same native ID", async () => {
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({
         entries: [{ kind: "group", id: "@ops", name: "alpha" }],
         outbound: {
@@ -269,8 +269,33 @@ describe("outbound channel namespace targets", () => {
     expect(resolved).toMatchObject({ channel: "none", reason: "dm-blocked" });
   });
 
+  it.each(["group", "channel"])(
+    "blocks a resolved %s after its routing prefix is removed",
+    async (prefix) => {
+      const resolved = await resolveNamespaceProactive(
+        createNamespacePlugin({
+          entries: [{ kind: "group", id: `${prefix}:42`, name: "alpha" }],
+          outbound: {
+            deliveryMode: "direct",
+            resolveTarget: ({ to }) => ({
+              ok: true,
+              to: to === `${prefix}:42` ? "42" : (to ?? ""),
+            }),
+          },
+          messaging: {
+            targetPrefixes: ["a"],
+            inferTargetChatType: ({ to }) => (to === "42" ? "direct" : "group"),
+          },
+        }),
+        "block",
+      );
+
+      expect(resolved).toMatchObject({ channel: "none", reason: "dm-blocked" });
+    },
+  );
+
   it("keeps a confirmed peer direct through an opaque rewrite with weak group inference", async () => {
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({
         entries: [{ kind: "user", id: "D123456", name: "alpha" }],
         outbound: {
@@ -289,7 +314,7 @@ describe("outbound channel namespace targets", () => {
   });
 
   it("blocks a normalized native direct destination after a directory miss", async () => {
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({ entries: [] }),
       "block",
     );
@@ -298,7 +323,7 @@ describe("outbound channel namespace targets", () => {
   });
 
   it("blocks a canonical direct recipient after normalization removes its group wrapper", async () => {
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({
         messaging: {
           targetPrefixes: ["a"],
@@ -316,7 +341,7 @@ describe("outbound channel namespace targets", () => {
   });
 
   it("fails closed when namespace directory resolution fails", async () => {
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({
         listGroups: vi.fn().mockRejectedValue(new Error("directory unavailable")),
       }),
@@ -325,7 +350,7 @@ describe("outbound channel namespace targets", () => {
     expect(resolved).toMatchObject({ channel: "none", reason: "no-target" });
   });
 
-  it("applies asynchronously prepared heartbeat policy to an exact directory destination", async () => {
+  it("applies asynchronously prepared proactive policy to an exact directory destination", async () => {
     const resolveTarget = vi.fn(({ to, allowFrom }: { to?: string; allowFrom?: string[] }) =>
       to === "C123456" && allowFrom?.includes("operator")
         ? { ok: false as const, error: new Error("recipient not allowed") }
@@ -343,7 +368,7 @@ describe("outbound channel namespace targets", () => {
       resolveAllowFromAsync: async () => ["operator"],
     };
 
-    const resolved = await resolveNamespaceHeartbeat(plugin);
+    const resolved = await resolveNamespaceProactive(plugin);
 
     expect(resolved).toMatchObject({ channel: "none", reason: "no-target" });
     expect(resolveTarget).toHaveBeenCalledWith(
@@ -352,7 +377,7 @@ describe("outbound channel namespace targets", () => {
     expect(resolveAllowFrom).not.toHaveBeenCalled();
   });
 
-  it("fails closed when heartbeat policy rejects an ordinary resolved directory target", async () => {
+  it("fails closed when proactive policy rejects an ordinary resolved directory target", async () => {
     const plugin = createNamespacePlugin({
       entries: [{ kind: "group", id: "blocked-room", name: "ops" }],
       messaging: { targetPrefixes: ["a"], targetResolver: { hint: "<channel>" } },
@@ -365,7 +390,7 @@ describe("outbound channel namespace targets", () => {
       },
     });
 
-    const resolved = await resolveNamespaceHeartbeat(plugin, undefined, "ops");
+    const resolved = await resolveNamespaceProactive(plugin, undefined, "ops");
 
     expect(resolved).toMatchObject({ channel: "none", reason: "no-target" });
   });
@@ -406,7 +431,7 @@ describe("outbound channel namespace targets", () => {
       },
     },
   ])("blocks $name", async ({ entries, resolveTarget, messaging }) => {
-    const resolved = await resolveNamespaceHeartbeat(
+    const resolved = await resolveNamespaceProactive(
       createNamespacePlugin({
         entries,
         outbound: { deliveryMode: "direct", resolveTarget },

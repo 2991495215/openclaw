@@ -21,8 +21,17 @@ export function missingChannelDestinationError(
   );
 }
 
-export function missingMessageActionTargetError(action: string): Error {
-  return requiredTargetError(`Action ${action} requires a target.`);
+export function missingMessageActionTargetError(
+  action: string,
+  options?: { hasCurrentSourceConversation: boolean },
+): Error {
+  return requiredTargetError(
+    `Action ${action} requires a target.${
+      options?.hasCurrentSourceConversation === false
+        ? " This turn has no current conversation; pass an explicit target, or reply in normal text."
+        : ""
+    }`,
+  );
 }
 
 export function invalidMessageActionTargetError(message: string): Error {

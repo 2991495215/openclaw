@@ -22,7 +22,6 @@ import {
 } from "./target-errors.js";
 import { classifyRewrittenTarget, detectTargetKind } from "./target-kind.js";
 import {
-  buildTargetResolverSignature,
   looksLikeTargetId,
   maybeResolvePluginMessagingTarget,
   normalizeTargetForProvider,
@@ -48,6 +47,8 @@ type ResolveMessagingTargetResult =
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const directoryCache = new DirectoryCache<ChannelDirectoryEntry[]>(CACHE_TTL_MS);
+const directoryPluginIds = new WeakMap<ChannelPlugin, number>();
+let nextDirectoryPluginId = 1;
 
 export function resetDirectoryCache(params?: {
   cfg: OpenClawConfig;
@@ -185,13 +186,19 @@ async function getDirectoryEntries(params: {
   preferLiveOnMiss?: boolean;
   plugin?: ChannelPlugin;
 }): Promise<ChannelDirectoryEntry[]> {
-  const signature = buildTargetResolverSignature(params.channel, params.plugin);
+  const plugin = params.plugin ?? getRuntimeVisibleChannelPlugin(params.channel);
+  let pluginId = plugin ? directoryPluginIds.get(plugin) : undefined;
+  if (plugin && pluginId === undefined) {
+    pluginId = nextDirectoryPluginId++;
+    directoryPluginIds.set(plugin, pluginId);
+  }
   const cacheQuery = normalizeLowercaseStringOrEmpty(params.query ?? "");
   const cacheKey = buildDirectoryCacheKey({
     channel: params.channel,
     accountId: params.accountId,
     kind: params.kind,
-    signature,
+    // Plugin metadata is stable; in-place edits use the normal TTL or explicit reset.
+    signature: pluginId?.toString(),
     query: cacheQuery,
   });
   const cached = directoryCache.get(cacheKey, params.cfg);
@@ -199,7 +206,6 @@ async function getDirectoryEntries(params: {
     return cached;
   }
   const listEntries = async (useLive: boolean): Promise<ChannelDirectoryEntry[]> => {
-    const plugin = params.plugin ?? getRuntimeVisibleChannelPlugin(params.channel);
     const directory = plugin?.directory;
     if (!directory) {
       return [];
@@ -444,7 +450,6 @@ export async function lookupDirectoryDisplay(params: {
   channel: ChannelId;
   targetId: string;
   accountId?: string | null;
-  runtime?: RuntimeEnv;
 }): Promise<string | undefined> {
   const normalized = normalizeTargetForProvider(params.channel, params.targetId) ?? params.targetId;
 
@@ -456,7 +461,6 @@ export async function lookupDirectoryDisplay(params: {
         channel: params.channel,
         accountId: params.accountId,
         kind,
-        runtime: params.runtime,
         preferLiveOnMiss: false,
       }),
     ),

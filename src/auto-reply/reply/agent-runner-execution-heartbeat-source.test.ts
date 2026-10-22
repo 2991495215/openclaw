@@ -2,9 +2,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractMessagingToolSourceReplyPayload } from "../../agents/embedded-agent-messaging-extraction.js";
 import type { RunEmbeddedAgentInternalParams } from "../../agents/embedded-agent-runner/run/internal-params.js";
-import { createOpenClawTools } from "../../agents/openclaw-tools.js";
+import { createOpenClawToolsAsync } from "../../agents/openclaw-tools.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import { withSessionTranscriptWriteAssertion } from "../../config/sessions/transcript-write-context.js";
+import { TEST_SCHEDULED_OCCURRENCE } from "../../cron/scheduled-occurrence.test-support.js";
 import {
   createFollowupRun,
   createMinimalRunAgentTurnParams,
@@ -17,10 +18,10 @@ import {
 
 const state = await setupAgentRunnerExecutionTestState();
 
-describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (runtime) => {
-  it.each([false, true, undefined])(
-    "honors the admitted explicit-target policy (%s) at message-tool creation",
-    async (requireExplicitMessageTarget) => {
+describe.each(["cli", "embedded"] as const)("%s source delivery", (runtime) => {
+  it.each([false, true])(
+    "requires an explicit message target only for scheduled execution (%s)",
+    async (scheduled) => {
       const sessionKey = "agent:main:dashboard:completion";
       const followupRun = createFollowupRun();
       followupRun.run.sessionKey = sessionKey;
@@ -46,21 +47,25 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
       );
       const runAgent = isCli ? state.runCliAgentMock : state.runEmbeddedAgentMock;
       let sourceReply:
-        | Awaited<ReturnType<ReturnType<typeof createOpenClawTools>[number]["execute"]>>
+        | Awaited<
+            ReturnType<Awaited<ReturnType<typeof createOpenClawToolsAsync>>[number]["execute"]>
+          >
         | undefined;
       let sendError: unknown;
       runAgent.mockImplementationOnce(async (runParams: RunEmbeddedAgentInternalParams) => {
         // Exercise the actual runner policy and tool factory while the run owns delivery.
-        const message = createOpenClawTools({
-          config: runParams.config,
-          agentSessionKey: runParams.sessionKey,
-          workspaceDir: runParams.workspaceDir,
-          runId: runParams.runId,
-          agentChannel: runParams.messageProvider,
-          currentChannelId: runParams.currentChannelId,
-          requireExplicitMessageTarget: runParams.requireExplicitMessageTarget,
-          sourceReplyDeliveryMode: runParams.sourceReplyDeliveryMode,
-        }).find((tool) => tool.name === "message");
+        const message = (
+          await createOpenClawToolsAsync({
+            config: runParams.config,
+            agentSessionKey: runParams.sessionKey,
+            workspaceDir: runParams.workspaceDir,
+            runId: runParams.runId,
+            agentChannel: runParams.messageProvider,
+            currentChannelId: runParams.currentChannelId,
+            requireExplicitMessageTarget: runParams.requireExplicitMessageTarget,
+            sourceReplyDeliveryMode: runParams.sourceReplyDeliveryMode,
+          })
+        ).find((tool) => tool.name === "message");
         if (!message) {
           throw new Error("message tool was not created");
         }
@@ -74,10 +79,27 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
         }
         return { payloads: [], meta: {} };
       });
-      const opts = { isHeartbeat: true, requireExplicitMessageTarget };
+      if (scheduled) {
+        followupRun.run.scheduledAutomation = {
+          occurrence: TEST_SCHEDULED_OCCURRENCE,
+          admissionSource: "operator-schedule",
+          job: {
+            id: "scheduled-source-policy",
+            name: "Scheduled source policy",
+            enabled: true,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+            schedule: { kind: "every", everyMs: 60_000 },
+            sessionTarget: "session:main",
+            wakeMode: "now",
+            payload: { kind: "agentTurn", message: "Check for updates" },
+            state: {},
+          },
+          assertCurrent: () => {},
+        };
+      }
       const params = createMinimalRunAgentTurnParams({
         followupRun,
-        opts,
         sessionCtx: {
           Provider: "webchat",
           Surface: "webchat",
@@ -88,13 +110,12 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
           SessionKey: sessionKey,
         },
       });
-      params.isHeartbeat = true;
       params.sessionKey = sessionKey;
       const executeAgentTurn = await getExecuteAgentTurnForTest();
       const result = await executeAgentTurn(params);
       expect(result.kind).toBe("success");
       expect(runAgent).toHaveBeenCalledOnce();
-      if (requireExplicitMessageTarget === false) {
+      if (!scheduled) {
         expect(sendError).toBeUndefined();
         expect(sourceReply?.details).toMatchObject({
           channel: "webchat",
@@ -153,9 +174,8 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
     const execute = await getExecuteAgentTurnForTest();
     const params = createMinimalRunAgentTurnParams({
       followupRun,
-      opts: { isHeartbeat: true },
+      opts: {},
     });
-    params.isHeartbeat = true;
     params.storePath = path.join(followupRun.run.workspaceDir, "sessions.json");
     params.sessionKey = followupRun.run.sessionKey;
     const entry = await replaceSessionEntry(
