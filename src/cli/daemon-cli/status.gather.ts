@@ -49,64 +49,6 @@ import { projectDaemonRuntimeStatus } from "./status.projection.js";
 import { readDaemonServiceStatus } from "./status.service.js";
 import type { GatewayRpcOpts } from "./types.js";
 
-async function loadDaemonConfigContext(
-  serviceEnv?: Record<string, string>,
-  opts: { deep?: boolean } = {},
-) {
-  const mergedDaemonEnv = {
-    ...process.env,
-    ...(serviceEnv ?? undefined),
-  } satisfies Record<string, string | undefined>;
-
-  const cliConfigPath = resolveConfigPath(process.env, resolveStateDir(process.env));
-  const daemonConfigPath = resolveConfigPath(mergedDaemonEnv, resolveStateDir(mergedDaemonEnv));
-  const sameConfigPath = cliConfigPath === daemonConfigPath;
-  const cliConfigRead = await readDaemonStatusConfig({
-    env: process.env,
-    configPath: cliConfigPath,
-    deep: opts.deep,
-  });
-  const sharesDaemonConfigContext =
-    sameConfigPath && (cliConfigRead.mode === "fast" || !serviceEnv);
-  const daemonConfigRead = sharesDaemonConfigContext
-    ? cliConfigRead
-    : await readDaemonStatusConfig({
-        env: mergedDaemonEnv,
-        configPath: daemonConfigPath,
-        deep: opts.deep,
-      });
-
-  return {
-    mergedDaemonEnv,
-    cliCfg: cliConfigRead.cfg,
-    daemonCfg: daemonConfigRead.cfg,
-    cliConfigSummary: cliConfigRead.summary,
-    daemonConfigSummary: daemonConfigRead.summary,
-    configMismatch: cliConfigRead.summary.path !== daemonConfigRead.summary.path,
-  };
-}
-
-async function inspectEstablishedGatewayClients(params: {
-  daemonPort: number;
-  deep?: boolean;
-  gatewayMode?: string;
-}): Promise<{ port: number; established: PortConnection[] } | undefined> {
-  if (params.deep !== true || params.gatewayMode === "remote") {
-    return undefined;
-  }
-  const result = await inspectPortConnections(params.daemonPort).catch(() => null);
-  const establishedClients = result?.connections.filter(
-    (connection) => connection.direction !== "server",
-  );
-  if (!result || !establishedClients || establishedClients.length === 0) {
-    return undefined;
-  }
-  return {
-    port: result.port,
-    established: establishedClients,
-  };
-}
-
 function hasActiveGatewayExecProbeCredential(params: {
   cfg: OpenClawConfig;
   env: NodeJS.ProcessEnv;
@@ -208,14 +150,34 @@ async function gatherDaemonStatusImpl(
         timeoutMs,
       }),
   );
-  const {
-    mergedDaemonEnv,
-    cliCfg,
-    daemonCfg,
-    cliConfigSummary,
-    daemonConfigSummary,
-    configMismatch,
-  } = await loadDaemonConfigContext(targetServiceCommand?.environment, { deep: opts.deep });
+  const configServiceEnv = targetServiceCommand?.environment;
+  const configDeep = opts.deep;
+  const mergedDaemonEnv = {
+    ...process.env,
+    ...(configServiceEnv ?? undefined),
+  } satisfies Record<string, string | undefined>;
+  const cliConfigPath = resolveConfigPath(process.env, resolveStateDir(process.env));
+  const daemonConfigPath = resolveConfigPath(mergedDaemonEnv, resolveStateDir(mergedDaemonEnv));
+  const sameConfigPath = cliConfigPath === daemonConfigPath;
+  const cliConfigRead = await readDaemonStatusConfig({
+    env: process.env,
+    configPath: cliConfigPath,
+    deep: configDeep,
+  });
+  const sharesDaemonConfigContext =
+    sameConfigPath && (cliConfigRead.mode === "fast" || !configServiceEnv);
+  const daemonConfigRead = sharesDaemonConfigContext
+    ? cliConfigRead
+    : await readDaemonStatusConfig({
+        env: mergedDaemonEnv,
+        configPath: daemonConfigPath,
+        deep: configDeep,
+      });
+  const cliCfg = cliConfigRead.cfg;
+  const daemonCfg = daemonConfigRead.cfg;
+  const cliConfigSummary = cliConfigRead.summary;
+  const daemonConfigSummary = daemonConfigRead.summary;
+  const configMismatch = cliConfigSummary.path !== daemonConfigSummary.path;
   const { gateway, daemonPort, cliPort, probeUrl, probeUrlOverride } =
     await resolveGatewayStatusSummary({
       cliCfg,
@@ -253,11 +215,14 @@ async function gatherDaemonStatusImpl(
     cliPort,
     daemonBindHost: gateway.bindHost,
   });
-  const establishedClients = await inspectEstablishedGatewayClients({
-    daemonPort,
-    deep: opts.deep,
-    gatewayMode: shouldInspectLocalGateway ? "local" : "remote",
-  });
+  let establishedClients: { port: number; established: PortConnection[] } | undefined;
+  if (opts.deep === true && shouldInspectLocalGateway) {
+    const result = await inspectPortConnections(daemonPort).catch(() => null);
+    const clients = result?.connections.filter((connection) => connection.direction !== "server");
+    if (result && clients && clients.length > 0) {
+      establishedClients = { port: result.port, established: clients };
+    }
+  }
 
   const extraServices = opts.deep
     ? await import("../../daemon/inspect.js")

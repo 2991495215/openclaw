@@ -131,81 +131,6 @@ export function renderGatewayServiceCleanupHints(
   return hints;
 }
 
-async function scanLaunchdDir(params: {
-  dir: string;
-  scope: "user" | "system";
-  managedLabel?: string;
-  selectedName?: string;
-  errors?: GatewayServiceInventory["errors"];
-}): Promise<InspectedGatewayService[]> {
-  const results: InspectedGatewayService[] = [];
-  const isPotentialName = (name: string) =>
-    isPotentialGatewayServiceName(name, "darwin", params.selectedName);
-  const candidates = await collectServiceFiles({
-    dir: params.dir,
-    extension: ".plist",
-    isPotentialName,
-    errors: params.errors,
-  });
-
-  for (const { name: labelFromName, fullPath, contents } of candidates) {
-    const plist = await decodeLaunchdPlistMetadata(contents).catch((error: unknown) => {
-      if (hasCommandProcessCleanupError(error)) {
-        throw error;
-      }
-      const contentHint = normalizeLowercaseStringOrEmpty(
-        contents.toString("utf8").replaceAll("\0", ""),
-      );
-      if (
-        isPotentialName(labelFromName) ||
-        EXTRA_MARKERS.some((marker) => contentHint.includes(marker))
-      ) {
-        params.errors?.push({ source: fullPath, message: "Service plist could not be inspected." });
-      }
-      return undefined;
-    });
-    if (!plist) {
-      continue;
-    }
-    const label = typeof plist.Label === "string" && plist.Label ? plist.Label : labelFromName;
-    const executionMarker = detectLaunchdGatewayExecutionMarker(plist);
-    const serviceMarker = hasGatewayServiceMarker(plist.EnvironmentVariables);
-    const legacyLabel = isLegacyLabel(labelFromName) || isLegacyLabel(label);
-    const marker =
-      label === params.managedLabel || serviceMarker
-        ? "openclaw"
-        : (executionMarker ?? (legacyLabel ? "clawdbot" : null));
-    if (!marker) {
-      continue;
-    }
-    results.push({
-      platform: "darwin",
-      label,
-      detail: `plist: ${fullPath}`,
-      sourcePath: fullPath,
-      scope: params.scope,
-      marker,
-      legacy: marker !== "openclaw" || isLegacyLabel(label),
-      managedGateway: marker === "openclaw" && (serviceMarker || executionMarker === "openclaw"),
-      extra:
-        params.scope === "system" ||
-        (label !== resolveGatewayLaunchAgentLabel() &&
-          !(
-            marker === "openclaw" &&
-            !legacyLabel &&
-            params.scope === "user" &&
-            label === params.selectedName
-          ) &&
-          !(
-            marker === "openclaw" &&
-            (serviceMarker || (executionMarker === "openclaw" && label.startsWith("ai.openclaw.")))
-          )),
-    });
-  }
-
-  return results;
-}
-
 export async function findSystemGatewayServices(): Promise<ExtraGatewayService[]> {
   if (process.platform !== "linux") {
     return [];
@@ -230,134 +155,6 @@ export async function findSystemGatewayServices(): Promise<ExtraGatewayService[]
   return results;
 }
 
-async function scanWindowsStartupEntries(
-  env: Record<string, string | undefined>,
-  errors: GatewayServiceInventory["errors"],
-  deadline: number,
-): Promise<InspectedGatewayService[]> {
-  let directory: string;
-  let selected: Set<string>;
-  try {
-    directory = path.dirname(resolveStartupEntryPath(env));
-    selected = new Set(
-      resolveStartupEntryPaths(env).map((entry) => path.win32.normalize(entry).toLowerCase()),
-    );
-  } catch {
-    errors.push({ source: "startup", message: "Windows Startup folder could not be located." });
-    return [];
-  }
-  let entries: string[];
-  try {
-    const found = await awaitWithinDeadline(
-      async () => {
-        try {
-          return await fs.readdir(directory);
-        } catch (error) {
-          if (!hasErrnoCode(error, "ENOENT") || performance.now() >= deadline) {
-            throw error;
-          }
-          // Windows also reports ENOENT when a path traverses a non-directory.
-          const ancestor = await findExistingAncestor(directory);
-          if (
-            !ancestor ||
-            ancestor === path.resolve(directory) ||
-            performance.now() >= deadline ||
-            !(await fs.stat(ancestor)).isDirectory()
-          ) {
-            throw error;
-          }
-          return [];
-        }
-      },
-      deadline,
-      () => performance.now(),
-    );
-    if (found === ABSOLUTE_DEADLINE_EXPIRED) {
-      throw new Error("Startup inventory deadline expired.");
-    }
-    entries = found;
-  } catch {
-    errors.push({ source: directory, message: "Windows Startup folder could not be inspected." });
-    return [];
-  }
-  const selectedStartupEntries = new Set<string>();
-  if (
-    entries.some((entry) =>
-      selected.has(path.win32.normalize(path.join(directory, entry)).toLowerCase()),
-    )
-  ) {
-    try {
-      const command = await readScheduledTaskCommand(env, { requireLoaded: true, deadline });
-      for (const entry of command?.startupEntryPaths ?? []) {
-        selectedStartupEntries.add(path.win32.normalize(entry).toLowerCase());
-      }
-    } catch {
-      errors.push({
-        source: resolveTaskName(env),
-        message: "Selected Gateway service could not be inspected.",
-      });
-    }
-  }
-  const services: InspectedGatewayService[] = [];
-  for (const entry of entries.toSorted()) {
-    if (performance.now() >= deadline) {
-      errors.push({ source: directory, message: "Startup inventory deadline expired." });
-      break;
-    }
-    if (!/\.(?:cmd|vbs)$/i.test(entry)) {
-      continue;
-    }
-    const name = entry.slice(0, -4);
-    const pathname = path.join(directory, entry);
-    const pathIdentity = path.win32.normalize(pathname).toLowerCase();
-    let gateway = /(?:openclaw|clawdbot).*gateway/i.test(name);
-    let marker: Marker | undefined;
-    try {
-      const command = await readStartupEntryCommand(pathname, {
-        deadline,
-        onLauncherContent: (content) => {
-          const hint = detectLauncherGatewayMarker(content);
-          gateway ||= Boolean(hint);
-          marker = hint ?? marker;
-        },
-      });
-      const commandMarker = detectWindowsServiceExecutionMarker(
-        command.programArguments,
-        command.workingDirectory,
-      );
-      const serviceMarker = hasGatewayServiceMarker(command.environment);
-      gateway = hasGatewaySubcommandArg(command.programArguments) || serviceMarker;
-      marker = serviceMarker ? "openclaw" : (commandMarker ?? undefined);
-      const profile = resolveWindowsServiceCommandProfile(command);
-      const label = command.environment?.OPENCLAW_WINDOWS_TASK_NAME?.trim() || name;
-      if (!marker || (!gateway && marker !== "clawdbot")) {
-        continue;
-      }
-      services.push({
-        platform: "win32",
-        label,
-        detail: `startup: ${pathname}`,
-        scope: "user",
-        marker,
-        legacy: marker !== "openclaw",
-        windowsStartupEntry: pathname,
-        extra: marker !== "openclaw" || !selectedStartupEntries.has(pathIdentity),
-        managedGateway: marker === "openclaw" && gateway,
-        ...(profile.kind === "resolved" ? { windowsProfile: profile.profile } : {}),
-      });
-    } catch {
-      const expired = performance.now() >= deadline;
-      if (expired || gateway || selected.has(pathIdentity)) {
-        errors.push({ source: pathname, message: "Startup launcher could not be inspected." });
-      }
-      if (expired) {
-        break;
-      }
-    }
-  }
-  return services;
-}
-
 async function scanGatewayServices(
   env: Record<string, string | undefined>,
   opts: FindExtraGatewayServicesOptions,
@@ -380,13 +177,76 @@ async function scanGatewayServices(
     try {
       const home = resolveDaemonHomeDir(env);
       const scan = async (dir: string, scope: "user" | "system", managedLabel?: string) => {
-        for (const svc of await scanLaunchdDir({
+        const selectedName = resolveLaunchAgentLabel(env);
+        const scannedServices: InspectedGatewayService[] = [];
+        const isPotentialName = (name: string) =>
+          isPotentialGatewayServiceName(name, "darwin", selectedName);
+        const candidates = await collectServiceFiles({
           dir,
-          scope,
-          managedLabel,
-          selectedName: resolveLaunchAgentLabel(env),
+          extension: ".plist",
+          isPotentialName,
           errors,
-        })) {
+        });
+
+        for (const { name: labelFromName, fullPath, contents } of candidates) {
+          const plist = await decodeLaunchdPlistMetadata(contents).catch((error: unknown) => {
+            if (hasCommandProcessCleanupError(error)) {
+              throw error;
+            }
+            const contentHint = normalizeLowercaseStringOrEmpty(
+              contents.toString("utf8").replaceAll("\0", ""),
+            );
+            if (
+              isPotentialName(labelFromName) ||
+              EXTRA_MARKERS.some((marker) => contentHint.includes(marker))
+            ) {
+              errors.push({ source: fullPath, message: "Service plist could not be inspected." });
+            }
+            return undefined;
+          });
+          if (!plist) {
+            continue;
+          }
+          const label =
+            typeof plist.Label === "string" && plist.Label ? plist.Label : labelFromName;
+          const executionMarker = detectLaunchdGatewayExecutionMarker(plist);
+          const serviceMarker = hasGatewayServiceMarker(plist.EnvironmentVariables);
+          const legacyLabel = isLegacyLabel(labelFromName) || isLegacyLabel(label);
+          const marker =
+            label === managedLabel || serviceMarker
+              ? "openclaw"
+              : (executionMarker ?? (legacyLabel ? "clawdbot" : null));
+          if (!marker) {
+            continue;
+          }
+          scannedServices.push({
+            platform: "darwin",
+            label,
+            detail: `plist: ${fullPath}`,
+            sourcePath: fullPath,
+            scope,
+            marker,
+            legacy: marker !== "openclaw" || isLegacyLabel(label),
+            managedGateway:
+              marker === "openclaw" && (serviceMarker || executionMarker === "openclaw"),
+            extra:
+              scope === "system" ||
+              (label !== resolveGatewayLaunchAgentLabel() &&
+                !(
+                  marker === "openclaw" &&
+                  !legacyLabel &&
+                  scope === "user" &&
+                  label === selectedName
+                ) &&
+                !(
+                  marker === "openclaw" &&
+                  (serviceMarker ||
+                    (executionMarker === "openclaw" && label.startsWith("ai.openclaw.")))
+                )),
+          });
+        }
+
+        for (const svc of scannedServices) {
           push(svc);
         }
       };
@@ -694,7 +554,127 @@ async function scanGatewayServices(
       recordDeadline();
       return inventory;
     }
-    for (const service of await scanWindowsStartupEntries(env, errors, deadline)) {
+    let directory: string;
+    let selected: Set<string>;
+    try {
+      directory = path.dirname(resolveStartupEntryPath(env));
+      selected = new Set(
+        resolveStartupEntryPaths(env).map((entry) => path.win32.normalize(entry).toLowerCase()),
+      );
+    } catch {
+      errors.push({ source: "startup", message: "Windows Startup folder could not be located." });
+      return inventory;
+    }
+    let entries: string[];
+    try {
+      const found = await awaitWithinDeadline(
+        async () => {
+          try {
+            return await fs.readdir(directory);
+          } catch (error) {
+            if (!hasErrnoCode(error, "ENOENT") || performance.now() >= deadline) {
+              throw error;
+            }
+            // Windows also reports ENOENT when a path traverses a non-directory.
+            const ancestor = await findExistingAncestor(directory);
+            if (
+              !ancestor ||
+              ancestor === path.resolve(directory) ||
+              performance.now() >= deadline ||
+              !(await fs.stat(ancestor)).isDirectory()
+            ) {
+              throw error;
+            }
+            return [];
+          }
+        },
+        deadline,
+        () => performance.now(),
+      );
+      if (found === ABSOLUTE_DEADLINE_EXPIRED) {
+        throw new Error("Startup inventory deadline expired.");
+      }
+      entries = found;
+    } catch {
+      errors.push({ source: directory, message: "Windows Startup folder could not be inspected." });
+      return inventory;
+    }
+    const selectedStartupEntries = new Set<string>();
+    if (
+      entries.some((entry) =>
+        selected.has(path.win32.normalize(path.join(directory, entry)).toLowerCase()),
+      )
+    ) {
+      try {
+        const command = await readScheduledTaskCommand(env, { requireLoaded: true, deadline });
+        for (const entry of command?.startupEntryPaths ?? []) {
+          selectedStartupEntries.add(path.win32.normalize(entry).toLowerCase());
+        }
+      } catch {
+        errors.push({
+          source: resolveTaskName(env),
+          message: "Selected Gateway service could not be inspected.",
+        });
+      }
+    }
+    const services: InspectedGatewayService[] = [];
+    for (const entry of entries.toSorted()) {
+      if (performance.now() >= deadline) {
+        errors.push({ source: directory, message: "Startup inventory deadline expired." });
+        break;
+      }
+      if (!/\.(?:cmd|vbs)$/i.test(entry)) {
+        continue;
+      }
+      const name = entry.slice(0, -4);
+      const pathname = path.join(directory, entry);
+      const pathIdentity = path.win32.normalize(pathname).toLowerCase();
+      let gateway = /(?:openclaw|clawdbot).*gateway/i.test(name);
+      let marker: Marker | undefined;
+      try {
+        const command = await readStartupEntryCommand(pathname, {
+          deadline,
+          onLauncherContent: (content) => {
+            const hint = detectLauncherGatewayMarker(content);
+            gateway ||= Boolean(hint);
+            marker = hint ?? marker;
+          },
+        });
+        const commandMarker = detectWindowsServiceExecutionMarker(
+          command.programArguments,
+          command.workingDirectory,
+        );
+        const serviceMarker = hasGatewayServiceMarker(command.environment);
+        gateway = hasGatewaySubcommandArg(command.programArguments) || serviceMarker;
+        marker = serviceMarker ? "openclaw" : (commandMarker ?? undefined);
+        const profile = resolveWindowsServiceCommandProfile(command);
+        const label = command.environment?.OPENCLAW_WINDOWS_TASK_NAME?.trim() || name;
+        if (!marker || (!gateway && marker !== "clawdbot")) {
+          continue;
+        }
+        services.push({
+          platform: "win32",
+          label,
+          detail: `startup: ${pathname}`,
+          scope: "user",
+          marker,
+          legacy: marker !== "openclaw",
+          windowsStartupEntry: pathname,
+          extra: marker !== "openclaw" || !selectedStartupEntries.has(pathIdentity),
+          managedGateway: marker === "openclaw" && gateway,
+          ...(profile.kind === "resolved" ? { windowsProfile: profile.profile } : {}),
+        });
+      } catch {
+        const startupExpired = performance.now() >= deadline;
+        if (startupExpired || gateway || selected.has(pathIdentity)) {
+          errors.push({ source: pathname, message: "Startup launcher could not be inspected." });
+        }
+        if (startupExpired) {
+          break;
+        }
+      }
+    }
+    for (const service of services) {
       push(service);
     }
     return inventory;

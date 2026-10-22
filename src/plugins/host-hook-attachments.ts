@@ -15,12 +15,7 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { isDeliverableMessageChannel, normalizeMessageChannel } from "../utils/message-channel.js";
-import type {
-  PluginAttachmentChannelHints,
-  PluginSessionAttachmentCaptionFormat,
-  PluginSessionAttachmentParams,
-  PluginSessionAttachmentResult,
-} from "./host-hooks.js";
+import type { PluginSessionAttachmentParams, PluginSessionAttachmentResult } from "./host-hooks.js";
 import type { PluginOrigin } from "./plugin-origin.types.js";
 
 const DEFAULT_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
@@ -35,14 +30,6 @@ const loadSendMessage = createLazyRuntimeModule(() =>
 const loadGetChannelPlugin = createLazyRuntimeModule(() =>
   import("../channels/plugins/index.js").then((module) => module.getChannelPlugin),
 );
-
-type ResolvedAttachmentDelivery = {
-  parseMode?: "HTML";
-  escapePlainHtmlCaption?: boolean;
-  silent?: boolean;
-  forceDocumentMime?: string;
-  threadId?: string | number;
-};
 
 function escapeHtmlText(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -73,38 +60,6 @@ async function readMimeSniffBuffer(
   } finally {
     await handle?.close().catch(() => undefined);
   }
-}
-
-/** Resolves portable attachment delivery options while honoring shipped channel-specific hints. */
-function resolveAttachmentDelivery(params: {
-  channel: string;
-  captionFormat?: PluginSessionAttachmentCaptionFormat;
-  channelHints?: PluginAttachmentChannelHints;
-}): ResolvedAttachmentDelivery {
-  const fallbackParseMode = params.captionFormat === "html" ? "HTML" : undefined;
-  const channel = params.channel.trim().toLowerCase();
-  const hints = params.channelHints;
-  // These nested fields shipped before attachment hints became transport-neutral.
-  const legacyTelegram = channel === "telegram" ? hints?.telegram : undefined;
-  const legacySlack = channel === "slack" ? hints?.slack : undefined;
-  const parseMode =
-    hints?.parseMode ??
-    legacyTelegram?.parseMode ??
-    (channel === "telegram" && params.captionFormat === "plain" ? "HTML" : fallbackParseMode);
-  const escapePlainHtmlCaption = params.captionFormat === "plain" && parseMode === "HTML";
-  const silent = hints?.silent ?? legacyTelegram?.disableNotification;
-  const forceDocumentMime = normalizeMimeType(
-    hints?.forceDocumentMime ?? legacyTelegram?.forceDocumentMime,
-  );
-  const threadId =
-    normalizeOptionalThreadId(hints?.threadId) ?? normalizeOptionalString(legacySlack?.threadTs);
-  return {
-    ...(parseMode ? { parseMode } : {}),
-    ...(escapePlainHtmlCaption ? { escapePlainHtmlCaption: true } : {}),
-    ...(silent !== undefined ? { silent } : {}),
-    ...(forceDocumentMime ? { forceDocumentMime } : {}),
-    ...(threadId !== undefined ? { threadId } : {}),
-  };
 }
 
 async function validateAttachmentFiles(
@@ -220,13 +175,27 @@ export async function sendPluginSessionAttachment(
     };
   }
   const rawText = normalizeOptionalString(params.text) ?? "";
-  const resolvedDelivery = resolveAttachmentDelivery({
-    channel: deliveryContext.channel,
-    captionFormat: params.captionFormat,
-    channelHints: params.channelHints,
-  });
+  const attachmentChannel = deliveryContext.channel;
+  const captionFormat = params.captionFormat;
+  const hints = params.channelHints;
+  const fallbackParseMode = captionFormat === "html" ? "HTML" : undefined;
+  const channel = attachmentChannel.trim().toLowerCase();
+  // These nested fields shipped before attachment hints became transport-neutral.
+  const legacyTelegram = channel === "telegram" ? hints?.telegram : undefined;
+  const legacySlack = channel === "slack" ? hints?.slack : undefined;
+  const parseMode =
+    hints?.parseMode ??
+    legacyTelegram?.parseMode ??
+    (channel === "telegram" && captionFormat === "plain" ? "HTML" : fallbackParseMode);
+  const escapePlainHtmlCaption = captionFormat === "plain" && parseMode === "HTML";
+  const silent = hints?.silent ?? legacyTelegram?.disableNotification;
+  const forceDocumentMime = normalizeMimeType(
+    hints?.forceDocumentMime ?? legacyTelegram?.forceDocumentMime,
+  );
+  const hintedThreadId =
+    normalizeOptionalThreadId(hints?.threadId) ?? normalizeOptionalString(legacySlack?.threadTs);
   const validated = await validateAttachmentFiles(params.files, maxBytes, {
-    forceDocumentMime: resolvedDelivery.forceDocumentMime,
+    forceDocumentMime,
     config: params.config,
     sessionKey,
   });
@@ -234,7 +203,7 @@ export async function sendPluginSessionAttachment(
     return { ok: false, error: validated.error };
   }
   const resolvedThreadId =
-    resolvedDelivery.threadId ??
+    hintedThreadId ??
     normalizeOptionalThreadId(params.threadId) ??
     normalizeOptionalThreadId(threadId) ??
     normalizeOptionalThreadId(deliveryContext.threadId);
@@ -243,17 +212,17 @@ export async function sendPluginSessionAttachment(
     const sendMessage = await loadSendMessage();
     result = await sendMessage({
       to: deliveryContext.to,
-      content: resolvedDelivery.escapePlainHtmlCaption ? escapeHtmlText(rawText) : rawText,
+      content: escapePlainHtmlCaption ? escapeHtmlText(rawText) : rawText,
       channel: deliveryContext.channel,
       accountId: deliveryContext.accountId,
       threadId: resolvedThreadId,
       requesterSessionKey: sessionKey,
       mediaUrls: validated,
-      forceDocument: resolvedDelivery.forceDocumentMime ? true : params.forceDocument,
+      forceDocument: forceDocumentMime ? true : params.forceDocument,
       bestEffort: false,
       cfg: params.config,
-      ...(resolvedDelivery.parseMode ? { parseMode: resolvedDelivery.parseMode } : {}),
-      ...(resolvedDelivery.silent !== undefined ? { silent: resolvedDelivery.silent } : {}),
+      ...(parseMode ? { parseMode } : {}),
+      ...(silent !== undefined ? { silent } : {}),
     });
   } catch (error) {
     return { ok: false, error: `attachment delivery failed: ${formatErrorMessage(error)}` };

@@ -223,116 +223,6 @@ function matchSlackAcpConversation(params: {
   return null;
 }
 
-async function resolveSlackOutboundSessionRoute(params: {
-  cfg: OpenClawConfig;
-  agentId: string;
-  accountId?: string | null;
-  target: string;
-  deliveryPurpose?: "heartbeat-owner";
-  replyToId?: string | null;
-  threadId?: string | number | null;
-  currentSessionKey?: string | null;
-}) {
-  const parsed = parseSlackTarget(params.target, { defaultKind: "channel" });
-  if (!parsed) {
-    return null;
-  }
-  const apiTargetId = canonicalizeSlackApiTargetId(parsed.kind, parsed.id, params.target);
-  const isDm = parsed.kind === "user";
-  if (
-    params.deliveryPurpose === "heartbeat-owner" &&
-    isDm &&
-    !parsed.teamId &&
-    /^[UW][A-Z0-9]{8,}$/.test(apiTargetId)
-  ) {
-    const teamId = await resolveSlackEnterpriseUserTeamId({
-      cfg: params.cfg,
-      accountId: params.accountId,
-      userId: apiTargetId,
-    });
-    if (teamId) {
-      parsed.teamId = teamId;
-      parsed.id = apiTargetId;
-    }
-  }
-  let peerKind: "direct" | "channel" | "group" = isDm ? "direct" : "channel";
-  let peerId = formatSlackTarget(parsed);
-  let recipientSessionExact = isDm
-    ? /^[UW][A-Z0-9]{8,}$/i.test(parsed.id)
-    : /^C[A-Z0-9]{8,}$/i.test(parsed.id);
-  if (!isDm && /^D/i.test(parsed.id)) {
-    const conversation = await resolveSlackConversationInfo({
-      cfg: params.cfg,
-      accountId: params.accountId,
-      channelId: apiTargetId,
-      teamId: parsed.teamId,
-    });
-    if (conversation.type !== "dm" || !conversation.user) {
-      return null;
-    }
-    peerKind = "direct";
-    peerId = formatSlackTarget({
-      teamId: parsed.teamId,
-      kind: "user",
-      id: conversation.user,
-    });
-    recipientSessionExact = true;
-  } else if (!isDm && /^G/i.test(parsed.id)) {
-    const channelType = await resolveSlackChannelType({
-      cfg: params.cfg,
-      accountId: params.accountId,
-      channelId: apiTargetId,
-      teamId: parsed.teamId,
-    });
-    if (channelType === "group") {
-      peerKind = "group";
-    }
-    if (channelType === "dm") {
-      peerKind = "direct";
-    }
-    recipientSessionExact = channelType !== "unknown";
-  }
-  const peer: RoutePeer = {
-    kind: peerKind,
-    id: peerId,
-  };
-  const unpartitionedBaseSessionKey = buildOutboundBaseSessionKey({
-    channel: "slack",
-    cfg: params.cfg,
-    agentId: params.agentId,
-    accountId: params.accountId,
-    peer,
-  });
-  const baseSessionKey =
-    parsed.teamId && peerKind === "direct" && (params.cfg.session?.dmScope ?? "main") === "main"
-      ? `${unpartitionedBaseSessionKey}:account:${encodeURIComponent(
-          resolveSlackAccount({ cfg: params.cfg, accountId: params.accountId }).accountId,
-        ).toLowerCase()}:team:${encodeURIComponent(parsed.teamId).toLowerCase()}`
-      : unpartitionedBaseSessionKey;
-  return buildThreadAwareOutboundSessionRoute({
-    route: {
-      sessionKey: baseSessionKey,
-      baseSessionKey,
-      recipientSessionExact,
-      peer,
-      chatType: peerKind === "direct" ? ("direct" as const) : ("channel" as const),
-      from:
-        peerKind === "direct"
-          ? `slack:${peerId}`
-          : peerKind === "group"
-            ? `slack:group:${peerId}`
-            : `slack:channel:${peerId}`,
-      to: parsed.teamId ? peerId : peerKind === "direct" ? `user:${peerId}` : `channel:${peerId}`,
-    },
-    replyToId: params.replyToId,
-    threadId: params.threadId,
-    currentSessionKey: params.currentSessionKey,
-    // Shared DM sessions do not encode the peer, so prior threads can belong to another DM.
-    canRecoverCurrentThread: () =>
-      peerKind !== "direct" || (params.cfg.session?.dmScope ?? "main") !== "main",
-  });
-}
-
 function formatSlackScopeDiagnostic(params: {
   tokenType: "bot" | "user";
   result: SlackScopesResult;
@@ -497,7 +387,112 @@ export const slackPlugin = createChatChannelPlugin<ResolvedSlackAccount, SlackPr
         return normalizeSlackMessagingTarget(`channel:${id}`);
       },
       inferTargetChatType: ({ to }) => resolveSlackRouteTarget(to)?.chatType,
-      resolveOutboundSessionRoute: resolveSlackOutboundSessionRoute,
+      resolveOutboundSessionRoute: async (params) => {
+        const parsed = parseSlackTarget(params.target, { defaultKind: "channel" });
+        if (!parsed) {
+          return null;
+        }
+        const apiTargetId = canonicalizeSlackApiTargetId(parsed.kind, parsed.id, params.target);
+        const isDm = parsed.kind === "user";
+        if (
+          params.deliveryPurpose === "heartbeat-owner" &&
+          isDm &&
+          !parsed.teamId &&
+          /^[UW][A-Z0-9]{8,}$/.test(apiTargetId)
+        ) {
+          const teamId = await resolveSlackEnterpriseUserTeamId({
+            cfg: params.cfg,
+            accountId: params.accountId,
+            userId: apiTargetId,
+          });
+          if (teamId) {
+            parsed.teamId = teamId;
+            parsed.id = apiTargetId;
+          }
+        }
+        let peerKind: "direct" | "channel" | "group" = isDm ? "direct" : "channel";
+        let peerId = formatSlackTarget(parsed);
+        let recipientSessionExact = isDm
+          ? /^[UW][A-Z0-9]{8,}$/i.test(parsed.id)
+          : /^C[A-Z0-9]{8,}$/i.test(parsed.id);
+        if (!isDm && /^D/i.test(parsed.id)) {
+          const conversation = await resolveSlackConversationInfo({
+            cfg: params.cfg,
+            accountId: params.accountId,
+            channelId: apiTargetId,
+            teamId: parsed.teamId,
+          });
+          if (conversation.type !== "dm" || !conversation.user) {
+            return null;
+          }
+          peerKind = "direct";
+          peerId = formatSlackTarget({
+            teamId: parsed.teamId,
+            kind: "user",
+            id: conversation.user,
+          });
+          recipientSessionExact = true;
+        } else if (!isDm && /^G/i.test(parsed.id)) {
+          const channelType = await resolveSlackChannelType({
+            cfg: params.cfg,
+            accountId: params.accountId,
+            channelId: apiTargetId,
+            teamId: parsed.teamId,
+          });
+          if (channelType === "group") {
+            peerKind = "group";
+          }
+          if (channelType === "dm") {
+            peerKind = "direct";
+          }
+          recipientSessionExact = channelType !== "unknown";
+        }
+        const peer: RoutePeer = {
+          kind: peerKind,
+          id: peerId,
+        };
+        const unpartitionedBaseSessionKey = buildOutboundBaseSessionKey({
+          channel: "slack",
+          cfg: params.cfg,
+          agentId: params.agentId,
+          accountId: params.accountId,
+          peer,
+        });
+        const baseSessionKey =
+          parsed.teamId &&
+          peerKind === "direct" &&
+          (params.cfg.session?.dmScope ?? "main") === "main"
+            ? `${unpartitionedBaseSessionKey}:account:${encodeURIComponent(
+                resolveSlackAccount({ cfg: params.cfg, accountId: params.accountId }).accountId,
+              ).toLowerCase()}:team:${encodeURIComponent(parsed.teamId).toLowerCase()}`
+            : unpartitionedBaseSessionKey;
+        return buildThreadAwareOutboundSessionRoute({
+          route: {
+            sessionKey: baseSessionKey,
+            baseSessionKey,
+            recipientSessionExact,
+            peer,
+            chatType: peerKind === "direct" ? ("direct" as const) : ("channel" as const),
+            from:
+              peerKind === "direct"
+                ? `slack:${peerId}`
+                : peerKind === "group"
+                  ? `slack:group:${peerId}`
+                  : `slack:channel:${peerId}`,
+            to: parsed.teamId
+              ? peerId
+              : peerKind === "direct"
+                ? `user:${peerId}`
+                : `channel:${peerId}`,
+          },
+          replyToId: params.replyToId,
+          threadId: params.threadId,
+          currentSessionKey: params.currentSessionKey,
+          // Shared DM sessions do not encode the peer, so prior threads can belong to another DM.
+          canRecoverCurrentThread: () =>
+            peerKind !== "direct" || (params.cfg.session?.dmScope ?? "main") !== "main",
+        });
+      },
       hasStructuredReplyPayload: ({ payload }) => {
         try {
           return Boolean(resolveSlackReplyBlocks(payload)?.length);

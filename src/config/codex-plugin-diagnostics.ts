@@ -233,62 +233,6 @@ function configuredProviderPoliciesNeedCodex(
   return false;
 }
 
-function configuredModelRefsNeedCodex(params: {
-  cfg: OpenClawConfig;
-  sourceConfigBeforeMigrations?: unknown;
-  env: NodeJS.ProcessEnv;
-  agentIds: string[];
-}): { complete: boolean; needsCodex: boolean } {
-  const refs = collectConfiguredModelRefs(params.sourceConfigBeforeMigrations ?? params.cfg);
-  let complete = true;
-  for (const agentId of params.agentIds) {
-    const selected = resolveEffectiveSelectedModelRefs({ cfg: params.cfg, agentId });
-    complete &&= selected.complete;
-    const primary = resolveDefaultModelForAgent({
-      cfg: params.cfg,
-      agentId,
-      manifestPlugins: [],
-    });
-    const aliasIndex = buildModelAliasIndex({
-      cfg: params.cfg,
-      defaultProvider: primary.provider,
-      manifestPlugins: [],
-    });
-    for (const ref of refs) {
-      if (
-        ref.capability === "decision" ||
-        !configuredRefIsEffectiveForAgent({
-          cfg: params.cfg,
-          sourceConfigBeforeMigrations: params.sourceConfigBeforeMigrations,
-          path: ref.path,
-          value: ref.value,
-          agentId,
-          selectedModelRefs: selected.values,
-        })
-      ) {
-        continue;
-      }
-      const resolved = resolveModelRefFromString({
-        cfg: params.cfg,
-        raw: ref.value,
-        defaultProvider: primary.provider,
-        aliasIndex,
-        allowManifestNormalization: false,
-      });
-      const route = resolved
-        ? { provider: resolved.ref.provider, modelId: resolved.ref.model }
-        : undefined;
-      if (
-        route &&
-        configuredModelRouteNeedsCodex({ cfg: params.cfg, env: params.env, agentId, route })
-      ) {
-        return { complete, needsCodex: true };
-      }
-    }
-  }
-  return { complete, needsCodex: false };
-}
-
 function defaultOpenAiRouteNeedsCodex(
   cfg: OpenClawConfig,
   env: NodeJS.ProcessEnv,
@@ -310,19 +254,54 @@ function configNeedsCodexForOpenAi(
   sourceConfigBeforeMigrations?: unknown,
 ): boolean {
   const agentIds = listAgentIds(cfg);
-  const configuredRefs = configuredModelRefsNeedCodex({
-    cfg,
-    env,
-    agentIds,
-    sourceConfigBeforeMigrations,
-  });
-  if (configuredRefs.needsCodex) {
-    return true;
+  const refs = collectConfiguredModelRefs(sourceConfigBeforeMigrations ?? cfg);
+  let complete = true;
+  for (const agentId of agentIds) {
+    const selected = resolveEffectiveSelectedModelRefs({ cfg, agentId });
+    complete &&= selected.complete;
+    const primary = resolveDefaultModelForAgent({
+      cfg,
+      agentId,
+      manifestPlugins: [],
+    });
+    const aliasIndex = buildModelAliasIndex({
+      cfg,
+      defaultProvider: primary.provider,
+      manifestPlugins: [],
+    });
+    for (const ref of refs) {
+      if (
+        ref.capability === "decision" ||
+        !configuredRefIsEffectiveForAgent({
+          cfg,
+          sourceConfigBeforeMigrations,
+          path: ref.path,
+          value: ref.value,
+          agentId,
+          selectedModelRefs: selected.values,
+        })
+      ) {
+        continue;
+      }
+      const resolved = resolveModelRefFromString({
+        cfg,
+        raw: ref.value,
+        defaultProvider: primary.provider,
+        aliasIndex,
+        allowManifestNormalization: false,
+      });
+      const route = resolved
+        ? { provider: resolved.ref.provider, modelId: resolved.ref.model }
+        : undefined;
+      if (route && configuredModelRouteNeedsCodex({ cfg, env, agentId, route })) {
+        return true;
+      }
+    }
   }
   if (configuredProviderPoliciesNeedCodex(cfg, env, agentIds)) {
     return true;
   }
-  return configuredRefs.complete ? false : defaultOpenAiRouteNeedsCodex(cfg, env, agentIds);
+  return complete ? false : defaultOpenAiRouteNeedsCodex(cfg, env, agentIds);
 }
 
 /** Suppresses missing Codex diagnostics when no effective OpenAI route selects it. */

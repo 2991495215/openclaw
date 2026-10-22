@@ -1,6 +1,7 @@
 import { addAbortListener } from "node:events";
 import type { VerboseLevel } from "../auto-reply/thinking.js";
 import type { CliDeps } from "../cli/deps.types.js";
+import { getRuntimeConfig } from "../config/io.js";
 import { createSessionWorkStartChangedError } from "../config/sessions/lifecycle.js";
 import type { RestartRecoveryTerminalDeliveryEvidenceResult } from "../config/sessions/restart-recovery-types.js";
 import {
@@ -8,6 +9,7 @@ import {
   captureAgentRunLifecycleGeneration,
   withAgentRunLifecycleGeneration,
 } from "../infra/agent-events.js";
+import { isDiagnosticsEnabled, emitTrustedDiagnosticEvent } from "../infra/diagnostic-events.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
@@ -19,6 +21,7 @@ import { getCurrentSessionControllerOwner } from "../sessions/session-controller
 import { classifySessionStateActor } from "../sessions/session-state-events.js";
 import { isIncognitoSessionKey } from "../shared/incognito-session-key.js";
 import { sessionDeliveryChannel, type DeliveryContext } from "../utils/delivery-context.read.js";
+import { estimateAggregateUsageCost } from "../utils/usage-format.js";
 import {
   executionIdentity,
   prepareAgentCommandExecutionIdentity,
@@ -40,7 +43,6 @@ import { runAcpAgentCommand } from "./command/acp-execution.js";
 import { persistAgentSession } from "./command/attempt-execution.shared.js";
 import { finishAgentCommandCleanup } from "./command/cleanup.js";
 import { createCompactionSessionIdReporter } from "./command/compaction-accounting.js";
-import { emitIngressModelUsageDiagnostic } from "./command/ingress-diagnostics.js";
 import { prepareCommandForegroundRun } from "./command/maintenance.js";
 import { resolveEmbeddedModelSelection } from "./command/model-selection.js";
 import { finalizeEmbeddedAgentCommand } from "./command/post-run.js";
@@ -71,6 +73,7 @@ import {
   type SessionMaintenanceRequest,
 } from "./session-maintenance/run.js";
 import { measureAgentStartup } from "./startup-timing.js";
+import { hasBillableUsage, toDiagnosticUsage } from "./usage.js";
 
 const log = createSubsystemLogger("agents/agent-command");
 
@@ -635,7 +638,41 @@ async function agentCommandFromIngressInternal(
       });
 
       if (result && preparedAgentDir) {
-        emitIngressModelUsageDiagnostic(result, opts, preparedAgentDir);
+        const diagnosticConfig = getRuntimeConfig();
+        if (isDiagnosticsEnabled(diagnosticConfig)) {
+          const agentMeta = result.meta?.agentMeta;
+          const usage = agentMeta?.diagnosticUsage ?? agentMeta?.usage;
+          if (agentMeta && hasBillableUsage(usage)) {
+            const providerUsed = agentMeta.provider ?? "";
+            const modelUsed = agentMeta.model ?? "";
+            const costUsd = estimateAggregateUsageCost({
+              usage,
+              provider: providerUsed,
+              model: modelUsed,
+              config: diagnosticConfig,
+              agentDir: preparedAgentDir,
+            });
+
+            emitTrustedDiagnosticEvent({
+              type: "model.usage",
+              sessionKey: opts.sessionKey,
+              sessionId: agentMeta.sessionId,
+              channel:
+                opts.runContext?.messageChannel ?? opts.messageChannel ?? opts.channel ?? "http",
+              agentId: opts.agentId,
+              provider: providerUsed,
+              model: modelUsed,
+              usage: toDiagnosticUsage(usage),
+              lastCallUsage: agentMeta.lastCallUsage,
+              context: {
+                limit: agentMeta.contextTokens,
+                ...(agentMeta.promptTokens !== undefined ? { used: agentMeta.promptTokens } : {}),
+              },
+              costUsd,
+              durationMs: result.meta?.durationMs,
+            });
+          }
+        }
       }
       return result;
     });

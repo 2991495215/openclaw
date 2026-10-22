@@ -1,4 +1,4 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { asOptionalRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
 import { readAgentRosterProperty } from "../../../agents/agent-scope-config.js";
 import { inheritLegacyDefaultAgentId } from "../../../config/legacy.default-agent-owner.js";
 import type { OpenClawConfigWithLegacyRoster } from "../../../config/legacy.roster.js";
@@ -28,7 +28,14 @@ import {
   migrateLegacyWebSearchConfig,
   migrateLegacyXSearchConfig,
 } from "./legacy-web-tools-migrate.js";
-import { migrateReservedMcpServerNames } from "./reserved-mcp-server-name-migrate.js";
+
+const RESERVED_MCP_SERVER_NAME = "__proto__";
+
+function resolveMcpServers(raw: unknown, nodeHost: boolean): Record<string, unknown> | undefined {
+  const root = asOptionalRecord(raw);
+  const owner = nodeHost ? asOptionalRecord(root?.nodeHost) : root;
+  return asOptionalRecord(asOptionalRecord(owner?.mcp)?.servers);
+}
 
 function repairInvalidHeartbeatActiveHours(cfg: OpenClawConfig, changes: string[]): void {
   const repairHeartbeat = (heartbeat: unknown, path: string) => {
@@ -81,10 +88,30 @@ export function normalizeCompatibilityConfigValues(
   }
   const changes: string[] = [];
   const warnings: string[] = [];
-  const reserved = migrateReservedMcpServerNames(raw, options.sourceRaw);
-  changes.push(...reserved.changes);
+  const sourceRaw = options.sourceRaw;
+  const locations = [
+    { path: "mcp.servers", nodeHost: false },
+    { path: "nodeHost.mcp.servers", nodeHost: true },
+  ].filter(({ nodeHost }) =>
+    [sourceRaw === undefined ? raw : sourceRaw, raw].some((value) =>
+      Object.hasOwn(resolveMcpServers(value, nodeHost) ?? {}, RESERVED_MCP_SERVER_NAME),
+    ),
+  );
+  let reservedConfig: OpenClawConfig = raw;
+  if (locations.length > 0) {
+    reservedConfig = structuredClone(raw);
+    for (const { path, nodeHost } of locations) {
+      const servers = resolveMcpServers(reservedConfig, nodeHost);
+      if (servers) {
+        delete servers[RESERVED_MCP_SERVER_NAME];
+      }
+      changes.push(
+        `Dropped MCP server "${RESERVED_MCP_SERVER_NAME}" from ${path} because the name is reserved; re-add it under a different name.`,
+      );
+    }
+  }
   // Account promotion creates the private candidate used by the mutable core passes.
-  let next = seedMissingDefaultAccountsFromSingleAccountBase(reserved.config, changes);
+  let next = seedMissingDefaultAccountsFromSingleAccountBase(reservedConfig, changes);
   const setup = runPluginSetupConfigMigrations({ config: next });
   next = setup.config;
   changes.push(...setup.changes);

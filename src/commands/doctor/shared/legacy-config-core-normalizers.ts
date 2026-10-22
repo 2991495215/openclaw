@@ -28,13 +28,23 @@ import {
   rewriteModelRefs,
 } from "./legacy-config-migrations.runtime.models.refs.js";
 import { isRecord } from "./legacy-config-record-shared.js";
-import { normalizeLegacyMistralModelCost } from "./legacy-mistral-model-cost.js";
 import { isLegacyModelsAddCodexMetadataModel } from "./legacy-models-add-metadata.js";
 import { modelEntryWithRuntimePolicy } from "./legacy-runtime-model-policy.js";
 import { migrateLegacyRuntimeModelRef } from "./legacy-runtime-model-providers.js";
 export { normalizeLegacyTalkConfig } from "./legacy-talk-config-normalizer.js";
 
 const log = createSubsystemLogger("doctor");
+
+const MISTRAL_MODEL_CACHE_READ_COST_BY_ID = new Map([
+  ["codestral-latest", 0.03],
+  ["devstral-medium-latest", 0.04],
+  ["magistral-small", 0.05],
+  ["mistral-large-latest", 0.05],
+  ["mistral-medium-2508", 0.04],
+  ["mistral-medium-3-5", 0.15],
+  ["mistral-small-latest", 0.01],
+  ["pixtral-large-latest", 0.2],
+]);
 
 /** Seed an empty account map without changing an existing account set or route. */
 export function seedMissingDefaultAccountsFromSingleAccountBase(
@@ -555,10 +565,18 @@ export function normalizeLegacyMistralModelDefaults(cfg: OpenClawConfig, changes
           );
         }
       }
-      Object.assign(
-        model,
-        normalizeLegacyMistralModelCost({ providerId, model, modelId, index, changes }),
+      const cost = model.cost;
+      if (!isRecord(cost) || cost.cacheRead !== 0) {
+        continue;
+      }
+      const normalizedCacheRead = MISTRAL_MODEL_CACHE_READ_COST_BY_ID.get(modelId.toLowerCase());
+      if (normalizedCacheRead === undefined) {
+        continue;
+      }
+      changes.push(
+        `Normalized models.providers.${sanitizeForLog(providerId)}.models[${index}].cost.cacheRead (0 → ${normalizedCacheRead}) for Mistral prompt-cache billing.`,
       );
+      model.cost = { ...cost, cacheRead: normalizedCacheRead };
     }
   }
 }

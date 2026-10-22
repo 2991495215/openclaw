@@ -26,82 +26,60 @@ import {
 const THREAD_BOUND_SUBAGENT_SPAWN_CAPABILITY = "threadbound-subagent-spawn";
 const THREAD_BOUND_ACP_SPAWN_CAPABILITY = "threadbound-acp-spawn";
 
-function mergeRuntimeCapabilities(
-  base?: readonly string[] | null,
-  additions: readonly string[] = [],
-): string[] | undefined {
-  const merged = [...(base ?? [])];
-  const seen = new Set(normalizeStringEntriesLower(merged));
-
-  for (const capability of additions) {
-    const normalizedCapability = normalizeOptionalLowercaseString(capability);
-    if (!normalizedCapability || seen.has(normalizedCapability)) {
-      continue;
-    }
-    seen.add(normalizedCapability);
-    merged.push(capability);
-  }
-
-  return merged.length > 0 ? merged : undefined;
-}
-
-/** Collects the effective runtime capabilities for a channel/account pair. */
-export function collectRuntimeChannelCapabilities(params: {
+/** Shared channel facts for ordinary and compaction system prompts. */
+export function resolveRuntimeChannelPromptContext(params: {
   cfg?: OpenClawConfig;
   channel?: string | null;
   accountId?: string | null;
   requester?: SpawnRequesterConversationSource;
-}): string[] | undefined {
-  if (!params.channel) {
-    return undefined;
-  }
-  // Control UI renders disclosures natively in its markdown pipeline.
-  // This capability is core-owned because webchat has no channel plugin.
-  const internalChannelCapabilities =
-    params.channel === INTERNAL_MESSAGE_CHANNEL ? ["markdownDetails"] : [];
-  const threadSpawnCapabilities: string[] = [];
-  const { requester, ...channelContext } = params;
-  const conversation = resolveSpawnRequesterConversationTarget(requester ?? {});
-  if (
-    params.cfg &&
-    (conversation.to || conversation.threadId != null) &&
-    supportsThreadBindingSpawn(params.channel)
-  ) {
-    for (const [kind, capability] of [
-      ["subagent", THREAD_BOUND_SUBAGENT_SPAWN_CAPABILITY],
-      ["acp", THREAD_BOUND_ACP_SPAWN_CAPABILITY],
-    ] as const) {
-      const policy = resolveThreadBindingSpawnPolicy({
-        cfg: params.cfg,
-        channel: params.channel,
-        accountId: params.accountId ?? undefined,
-        kind,
-      });
-      if (policy.enabled && policy.spawnEnabled) {
-        threadSpawnCapabilities.push(capability);
-      }
-    }
-  }
-  const channelPromptCapabilities = params.cfg
-    ? resolveChannelPromptCapabilities(channelContext)
-    : [];
-  return mergeRuntimeCapabilities(resolveChannelCapabilities(channelContext), [
-    ...channelPromptCapabilities,
-    ...internalChannelCapabilities,
-    ...threadSpawnCapabilities,
-  ]);
-}
-
-/** Shared channel facts for ordinary and compaction system prompts. */
-export function resolveRuntimeChannelPromptContext(
-  params: Parameters<typeof collectRuntimeChannelCapabilities>[0],
-) {
+}) {
   const runtimeChannel = normalizeMessageChannel(params.channel);
   const context = { cfg: params.cfg, channel: runtimeChannel, accountId: params.accountId };
-  const runtimeCapabilities = collectRuntimeChannelCapabilities({
-    ...context,
-    requester: params.requester,
-  });
+  let runtimeCapabilities: string[] | undefined;
+  if (runtimeChannel) {
+    // Control UI renders disclosures natively in its markdown pipeline.
+    // This capability is core-owned because webchat has no channel plugin.
+    const internalChannelCapabilities =
+      runtimeChannel === INTERNAL_MESSAGE_CHANNEL ? ["markdownDetails"] : [];
+    const threadSpawnCapabilities: string[] = [];
+    const conversation = resolveSpawnRequesterConversationTarget(params.requester ?? {});
+    if (
+      params.cfg &&
+      (conversation.to || conversation.threadId != null) &&
+      supportsThreadBindingSpawn(runtimeChannel)
+    ) {
+      for (const [kind, capability] of [
+        ["subagent", THREAD_BOUND_SUBAGENT_SPAWN_CAPABILITY],
+        ["acp", THREAD_BOUND_ACP_SPAWN_CAPABILITY],
+      ] as const) {
+        const policy = resolveThreadBindingSpawnPolicy({
+          cfg: params.cfg,
+          channel: runtimeChannel,
+          accountId: params.accountId ?? undefined,
+          kind,
+        });
+        if (policy.enabled && policy.spawnEnabled) {
+          threadSpawnCapabilities.push(capability);
+        }
+      }
+    }
+    const channelPromptCapabilities = params.cfg ? resolveChannelPromptCapabilities(context) : [];
+    const merged = [...(resolveChannelCapabilities(context) ?? [])];
+    const seen = new Set(normalizeStringEntriesLower(merged));
+    for (const capability of [
+      ...channelPromptCapabilities,
+      ...internalChannelCapabilities,
+      ...threadSpawnCapabilities,
+    ]) {
+      const normalizedCapability = normalizeOptionalLowercaseString(capability);
+      if (!normalizedCapability || seen.has(normalizedCapability)) {
+        continue;
+      }
+      seen.add(normalizedCapability);
+      merged.push(capability);
+    }
+    runtimeCapabilities = merged.length > 0 ? merged : undefined;
+  }
   return {
     runtimeChannel,
     ...(runtimeChannel && getChannelPlugin(runtimeChannel)?.agentPrompt?.customInlineButtonHint

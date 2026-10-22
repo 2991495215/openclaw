@@ -4,8 +4,9 @@ import { getPluginCliCommandDescriptors } from "../../plugins/cli-root-descripto
 import type { PluginLoadOptions } from "../../plugins/loader.js";
 import { VERSION } from "../../version.js";
 import {
-  addCommandDescriptorsToProgram,
   collectUniqueCommandDescriptors,
+  normalizeCommandDescriptorName,
+  sanitizeCommandDescriptorDescription,
 } from "./command-descriptor-utils.js";
 import type { NamedCommandDescriptor } from "./command-group-descriptors.js";
 import { getCoreCliCommandDescriptors } from "./core-command-descriptors.js";
@@ -38,14 +39,25 @@ export async function outputRootHelp(renderOptions?: RootHelpRenderOptions): Pro
     },
   );
 
-  addCommandDescriptorsToProgram(
-    program,
-    collectUniqueCommandDescriptors<NamedCommandDescriptor>([
-      getCoreCliCommandDescriptors(),
-      getSubCliCommandMetadata(),
-      pluginDescriptors,
-    ]),
-  );
+  const existingCommands = new Set<string>();
+  for (const descriptor of collectUniqueCommandDescriptors<NamedCommandDescriptor>([
+    getCoreCliCommandDescriptors(),
+    getSubCliCommandMetadata(),
+    pluginDescriptors,
+  ])) {
+    const descriptorName = descriptor.name;
+    const name = normalizeCommandDescriptorName(descriptorName);
+    if (!name) {
+      throw new Error(`Invalid CLI command name: ${JSON.stringify(descriptorName.trim())}`);
+    }
+    if (existingCommands.has(name)) {
+      continue;
+    }
+    program
+      .command(name, { hidden: descriptor.hidden })
+      .description(sanitizeCommandDescriptorDescription(descriptor.description));
+    existingCommands.add(name);
+  }
 
   let output = "";
   program.configureOutput({ writeOut: (chunk) => (output += formatProgramHelpOutput(chunk)) });

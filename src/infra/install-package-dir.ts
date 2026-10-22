@@ -117,16 +117,6 @@ async function hideProjectNpmConfigForInstall(targetDir: string): Promise<Hidden
   }
 }
 
-async function restoreProjectNpmConfigAfterInstall(
-  hiddenConfig: HiddenProjectConfigFile,
-): Promise<void> {
-  if (!hiddenConfig) {
-    return;
-  }
-  await fs.rename(hiddenConfig.hiddenPath, hiddenConfig.originalPath);
-  await fs.rm(hiddenConfig.hiddenDir, { recursive: true, force: true });
-}
-
 function isInstallBaseChangedError(error: unknown): boolean {
   return error instanceof Error && error.message === INSTALL_BASE_CHANGED_ERROR_MESSAGE;
 }
@@ -143,27 +133,6 @@ async function assertInstallBaseStable(params: {
   if (currentRealPath !== params.expectedRealPath) {
     throw new Error(INSTALL_BASE_CHANGED_ERROR_MESSAGE);
   }
-}
-
-async function resolveInstallPublishTarget(params: {
-  installBaseDir: string;
-  targetDir: string;
-}): Promise<{ installBaseRealPath: string; canonicalTargetDir: string }> {
-  const installBaseResolved = path.resolve(params.installBaseDir);
-  const targetResolved = path.resolve(params.targetDir);
-  const targetRelativePath = path.relative(installBaseResolved, targetResolved);
-  if (
-    !targetRelativePath ||
-    targetRelativePath === ".." ||
-    targetRelativePath.startsWith(`..${path.sep}`)
-  ) {
-    throw new Error("invalid install target path");
-  }
-  const installBaseRealPath = await fs.realpath(params.installBaseDir);
-  return {
-    installBaseRealPath,
-    canonicalTargetDir: path.join(installBaseRealPath, targetRelativePath),
-  };
 }
 
 export type PackageDirInstallTransaction = {
@@ -286,10 +255,18 @@ export async function installPackageDir<
   let installBaseRealPath: string;
   let canonicalTargetDir: string;
   try {
-    ({ installBaseRealPath, canonicalTargetDir } = await resolveInstallPublishTarget({
-      installBaseDir,
-      targetDir: params.targetDir,
-    }));
+    const installBaseResolved = path.resolve(installBaseDir);
+    const targetResolved = path.resolve(params.targetDir);
+    const targetRelativePath = path.relative(installBaseResolved, targetResolved);
+    if (
+      !targetRelativePath ||
+      targetRelativePath === ".." ||
+      targetRelativePath.startsWith(`..${path.sep}`)
+    ) {
+      throw new Error("invalid install target path");
+    }
+    installBaseRealPath = await fs.realpath(installBaseDir);
+    canonicalTargetDir = path.join(installBaseRealPath, targetRelativePath);
     if (installBaseRealPath !== initialInstallBaseRealPath) {
       throw new Error(INSTALL_BASE_CHANGED_ERROR_MESSAGE);
     }
@@ -584,7 +561,13 @@ export async function installPackageDir<
                 },
               );
             } finally {
-              await restoreProjectNpmConfigAfterInstall(hiddenProjectNpmConfig);
+              if (hiddenProjectNpmConfig) {
+                await fs.rename(
+                  hiddenProjectNpmConfig.hiddenPath,
+                  hiddenProjectNpmConfig.originalPath,
+                );
+                await fs.rm(hiddenProjectNpmConfig.hiddenDir, { recursive: true, force: true });
+              }
             }
           },
           (result) => result.code === 0,
