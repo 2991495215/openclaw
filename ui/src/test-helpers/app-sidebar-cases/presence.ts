@@ -200,7 +200,9 @@ describe("AppSidebar viewer presence", () => {
       ],
     });
     await settleLitElement(sidebar);
-    expect(sidebar.querySelectorAll(".sidebar-online__person")).toHaveLength(1);
+    await vi.waitFor(() =>
+      expect(sidebar.querySelectorAll(".sidebar-online__person")).toHaveLength(1),
+    );
     expect(sidebar.querySelector('[data-online-user-id="self"]')).not.toBeNull();
 
     gatewayHarness.publishEvent("presence", {
