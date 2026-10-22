@@ -1,5 +1,5 @@
 {
   "startupJsGzipBytes": 315967,
-  "reason": "Preserve current main startup baseline corrected after runtime English deferrals; optional catalog and grammar head measured 315762 B",
+  "reason": "Measured cd982fce7e5 startup at 315967 B: +37 B vs c4fd27d76ca (shared UI chunk +13 B with self-profile scopes; hash-only chunks +24 B), no new eager modules; correct the below-measurement baseline from #180890.",
   "updatedAt": "2026-10-22"
 }
