@@ -282,8 +282,9 @@ async function dispatchSlackMessageWithSetup(
           if (ttsSupplement) {
             ttsPreviewFinalization = { threadTs: edit.threadTs };
           }
-          const finalized = await draftStream?.finalizeMessage(preview.messageId, async () => {
-            await finalizeSlackPreviewEdit({
+          const finalized = await draftStream?.finalizeMessage(preview.messageId, (publication) =>
+            finalizeSlackPreviewEdit({
+              ...publication,
               client: slackClient,
               token: ctx.botToken,
               accountId: account.accountId,
@@ -292,8 +293,8 @@ async function dispatchSlackMessageWithSetup(
               text: edit.text,
               ...(edit.blocks?.length ? { blocks: edit.blocks } : {}),
               threadTs: edit.threadTs,
-            });
-          });
+            }),
+          );
           if (!finalized) {
             throw new Error("Slack preview moved below a newer conversation message");
           }

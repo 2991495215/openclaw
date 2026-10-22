@@ -69,6 +69,14 @@ export function createSlackDraftStream(params: {
     streamMessage = undefined;
     lastSentKey = "";
   };
+  // Every edit of this draft, including finalization, needs the same deletion-aware writer.
+  const editPublication = {
+    writeClient: params.eventScope?.writeClient,
+    replyParentDeleted: params.replyParentDeleted,
+  };
+  if (params.eventScope && !editPublication.writeClient) {
+    throw new Error("missing_enterprise_slack_write_client");
+  }
   const editPreview = (message: SlackDraftMessage, update: SlackVisibleDraftUpdate) =>
     (update.textIsSlackMrkdwn ? editSlackRenderedMessage : editSlackMessage)(
       message.channelId,
@@ -78,7 +86,8 @@ export function createSlackDraftStream(params: {
         cfg: params.cfg,
         token: params.token,
         accountId: params.accountId,
-        ...(params.eventScope ? { client: params.eventScope.client } : {}),
+        client: editPublication.writeClient,
+        replyParentDeleted: editPublication.replyParentDeleted,
         ...(update.blocks ? { blocks: update.blocks } : {}),
       },
     );
@@ -241,7 +250,7 @@ export function createSlackDraftStream(params: {
 
   const finalizeMessage = async (
     messageId: string,
-    editFinal: () => Promise<void>,
+    editFinal: (publication: typeof editPublication) => Promise<void>,
   ): Promise<boolean> => {
     const currentMessage = streamMessage;
     if (
@@ -251,7 +260,7 @@ export function createSlackDraftStream(params: {
     ) {
       return false;
     }
-    await editFinal();
+    await editFinal(editPublication);
     // An accepted final stays final even if a human replied during the edit.
     currentMessage.retained = true;
     stopTrackingConversationBoundary();
