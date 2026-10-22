@@ -84,11 +84,11 @@ it("retires a held publication before displaying a replacement binding", async (
   const view = render(first.binding);
   await waitForSolid(() => expect(view.getByRole("button", { name: "Publish PR" })).toBeTruthy());
   view.getByRole("button", { name: "Publish PR" }).click();
-  await waitForSolid(() =>
-    expect(view.container.querySelector<HTMLButtonElement>(".chat-pr__create")?.disabled).toBe(
-      true,
-    ),
-  );
+  await waitForSolid(() => {
+    const button = view.container.querySelector<HTMLButtonElement>(".chat-pr__create");
+    expect(button?.disabled).toBe(true);
+    expect(button?.textContent).toContain("Publishing");
+  });
   const nextRead = Promise.withResolvers<unknown>();
   const next = bind(vi.fn().mockReturnValue(nextRead.promise));
   first.binding.detach();

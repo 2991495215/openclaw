@@ -352,18 +352,12 @@ function PublicationButton(props: { publication: GitHubPublicationView; controls
           disabled={action().disabled}
           onClick={() => operation.run(action().click)}
         >
-          <Loading
-            on={operation.scope()}
-            fallback={t(
-              props.publication.activity === "read"
-                ? "common.loading"
-                : "chat.pullRequests.publishing",
-            )}
-          >
+          {action().label}
+          <Loading on={operation.scope()} fallback={null}>
             {(() => {
               operation.read();
               operation.outcome();
-              return action().label;
+              return null;
             })()}
           </Loading>
         </button>
