@@ -98,14 +98,23 @@ try {
   git(["init", "-q"]);
   git(["remote", "add", "origin", "https://github.com/openclaw/openclaw.git"]);
   const preparedGit = path.join(cwd, ".git");
+  const preparedEnv = {
+    ...env,
+    GIT_DIR: preparedGit,
+    GIT_INDEX_FILE: path.join(preparedGit, "index"),
+  };
   const reuseBase = stat(preparedGit)?.isDirectory() &&
     git(["for-each-ref", "--format=%(objectname)", "refs/remotes/origin/main"], {
-      env: { ...env, GIT_DIR: preparedGit, GIT_INDEX_FILE: path.join(preparedGit, "index") }
+      env: preparedEnv,
     }).trim() === expected.baseSha;
-  // A reused lease already owns this exact base. Fetch its objects into the new
-  // private Git directory; no alternates may survive replacement of preparedGit.
-  git(["fetch", "-q", "--depth=2", reuseBase ? preparedGit : "origin",
-    expected.baseSha + ":refs/remotes/origin/main"], { phase: "base-fetch" });
+  const reuseHistory = reuseBase &&
+    git(["rev-parse", "--is-shallow-repository"], { env: preparedEnv }).trim() === "false";
+  // A reused lease already owns this exact base. Preserve its complete history
+  // after native hydration; legacy shallow and cold workspaces retain depth 2.
+  // The new private Git directory never keeps an alternate to preparedGit.
+  git(["fetch", "-q", ...(reuseHistory ? [] : ["--depth=2"]),
+    reuseBase ? preparedGit : "origin", expected.baseSha + ":refs/remotes/origin/main"],
+    { phase: "base-fetch" });
   if (git(["rev-parse", "refs/remotes/origin/main"]).trim() !== expected.baseSha)
     fail("source base mismatch");
   git(["fetch", "-q", bundle, "refs/openclaw/source-capsule:refs/heads/openclaw-source"],

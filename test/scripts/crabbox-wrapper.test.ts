@@ -4534,6 +4534,7 @@ process.on("exit", () => {
       writeFileSync(path.join(origin, "restored", "old.txt"), restored);
       git(origin, ["add", "-A"]);
       git(origin, ["commit", "-qm", "old content"]);
+      const restoredCommit = git(origin, ["rev-parse", "HEAD"]);
       rmSync(path.join(origin, "restored"), { recursive: true });
       git(origin, ["add", "-A"]);
       git(origin, ["commit", "-qm", "remove old content"]);
@@ -4858,7 +4859,7 @@ require('node:module').syncBuiltinESMExports();`,
         const sent = runSender();
         const first = receive("reused", sent);
         expect(first.result.status, failureDetail(first.result)).toBe(0);
-        expect(git(first.receiver, ["rev-parse", "--is-shallow-repository"])).toBe("true");
+        expect(git(first.receiver, ["rev-parse", "--is-shallow-repository"])).toBe("false");
         const capturedMode = git(first.receiver, ["ls-tree", "HEAD", "--", "mode.sh"]);
         expect(capturedMode).toMatch(/^100755 blob /u);
         const retained =
@@ -4899,7 +4900,24 @@ require('node:module').syncBuiltinESMExports();`,
         }
         expect(lstatSync(path.join(reused.receiver, "mode.sh")).mode & 0o100).toBe(0o100);
         expectFileText(deletionReferent, "canary.txt", "private referent\n");
+        expect(git(reused.receiver, ["show", `${restoredCommit}:restored/old.txt`])).toBe(
+          restored.trim(),
+        );
         git(reused.receiver, ["fsck", "--connectivity-only", "--no-dangling"]);
+
+        // An existing shallow receiver has no complete history to retain. Preserve
+        // the depth-bounded path while still verifying and publishing its exact base.
+        const legacy = receive("legacy-shallow", sent, {
+          prepareReceiver: (receiver) => {
+            rmSync(receiver, { recursive: true });
+            git(root, ["clone", "-q", "--depth=2", `file://${origin}`, receiver]);
+          },
+        });
+        expect(legacy.result.status, failureDetail(legacy.result)).toBe(0);
+        expect(git(legacy.receiver, ["rev-parse", "--is-shallow-repository"])).toBe("true");
+        expect(git(legacy.receiver, ["rev-parse", "origin/main"])).toBe(base);
+        expect(git(legacy.receiver, ["rev-parse", "HEAD^"])).toBe(base);
+        expect(existsSync(path.join(legacy.receiver, ".git/objects/info/alternates"))).toBe(false);
         return;
       }
       if (installsDependencies) {
@@ -5561,7 +5579,9 @@ require('node:module').syncBuiltinESMExports();`,
         expectFileText(imported.receiver, "newer-private.ignored", "changed private bytes\n");
       }
       expect(git(imported.receiver, ["rev-parse", "HEAD^"])).toBe(base);
-      expect(git(imported.receiver, ["rev-list", "--count", "HEAD"])).toBe("3");
+      expect(git(imported.receiver, ["show", `${restoredCommit}:restored/old.txt`])).toBe(
+        restored.trim(),
+      );
       if (alias) {
         expect(git(imported.receiver, ["rev-parse", alias])).toBe(base);
       }
