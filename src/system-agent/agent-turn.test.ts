@@ -256,18 +256,25 @@ describe("runSystemAgentTurn", () => {
       const fixture = await createSystemAgentVerifiedInferenceTestFixture(config);
       const first = createSystemAgentSession(fixture.binding);
       const second = createSystemAgentSession(fixture.binding);
-      const deps = {
-        ...fixture.deps,
-        readConfigFileSnapshot: vi.fn(async () => configSnapshot(config)) as never,
-      };
-
-      for (const session of [first, second, first]) {
-        await runSystemAgentTurnWithDeps(
-          { input: "hello", surface: "gateway", approvalArmed: false, session },
-          deps,
-        );
+      const turns = [
+        { session: first, input: "hello" },
+        { session: second, input: "new conversation" },
+        { session: first, input: "continue this conversation" },
+      ];
+      for (const { session, input } of turns) {
+        await runSystemAgentTurn(turnParams(session, input));
       }
 
+      const recorders = mocks.runEmbeddedAgent.mock.calls.map(([params]) =>
+        expectDefined(params.userTurnTranscriptRecorder, "missing system-agent user-turn recorder"),
+      );
+      expect(new Set(recorders).size).toBe(turns.length);
+      for (const [index, recorder] of recorders.entries()) {
+        await expect(recorder.resolveMessage()).resolves.toMatchObject({
+          role: "user",
+          content: turns[index]?.input,
+        });
+      }
       const [firstCall, secondCall, resumedCall] = mocks.runEmbeddedAgent.mock.calls.map(
         ([params]) => params,
       );
