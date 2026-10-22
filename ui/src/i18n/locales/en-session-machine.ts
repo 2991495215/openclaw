@@ -3,6 +3,11 @@ import { en } from "./en.ts";
 
 const copy = {
   sessionsView: {
+    moveSession: "Move session…",
+    moveSessionFailed: "Move failed",
+    moveSessionGatewayTarget: "Gateway",
+    movingSession: "Moving to {target}…",
+    movingSessionGeneric: "Moving session…",
     workerStopTitle: "Stop worker?",
     workerStopDescription: "This will save workspace changes and stop this session’s worker.",
     workerStopCloudDescription:

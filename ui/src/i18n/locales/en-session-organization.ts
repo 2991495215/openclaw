@@ -1,4 +1,5 @@
 import type { TranslationMap } from "../lib/types.ts";
+import { registerSessionMachineEnglish } from "./en-session-machine.ts";
 import { en } from "./en.ts";
 
 // The ordered source retains hot labels by reference; menu and management copy loads on use.
@@ -310,7 +311,7 @@ const enSessionOrganization = {
     archiveSessionCount: "Archive {count}",
     restoreSession: en.sessionsView.restoreSession,
     restoreSessionCount: "Restore {count}",
-    moveSession: "Move session…",
+    moveSession: registerSessionMachineEnglish.catalog.sessionsView.moveSession,
     moveSessionTitle: "Move session",
     moveSessionDescription: 'Choose where "{session}" should continue.',
     moveSessionNoReplayWarning:
@@ -319,10 +320,11 @@ const enSessionOrganization = {
       "The active turn will be interrupted. Partial output is not replayed; send the next turn again after the move.",
     moveSessionAction: "Move session",
     moveSessionCatalogFailed: "Could not load available destinations.",
-    moveSessionFailed: "Move failed",
-    moveSessionGatewayTarget: "Gateway",
-    movingSession: "Moving to {target}…",
-    movingSessionGeneric: "Moving session…",
+    moveSessionFailed: registerSessionMachineEnglish.catalog.sessionsView.moveSessionFailed,
+    moveSessionGatewayTarget:
+      registerSessionMachineEnglish.catalog.sessionsView.moveSessionGatewayTarget,
+    movingSession: registerSessionMachineEnglish.catalog.sessionsView.movingSession,
+    movingSessionGeneric: registerSessionMachineEnglish.catalog.sessionsView.movingSessionGeneric,
     stopCloudWorker: en.sessionsView.stopCloudWorker,
     initialTurnPausedByWorkerStop:
       "Worker stop requested. Review the initial message before retrying.",
