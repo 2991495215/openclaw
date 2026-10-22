@@ -288,7 +288,7 @@ describe("guest session rename through the agent catalog", () => {
                 expect(tool.parameters).toHaveProperty("properties.archived");
                 expect(tool.parameters).toHaveProperty("properties.ownerType");
                 if (!canRename) {
-                  const before = loadSessionEntry({ agentId: "main", sessionKey });
+                  const before = sessionToolsEntry(sessionKey);
                   const result = tool.execute("denied", { action: "patch", label: "Read only" });
                   if (renameOnly) {
                     // Default-policy declarations survive without a turn-local rename grant.
@@ -298,7 +298,7 @@ describe("guest session rename through the agent catalog", () => {
                       "Only assign_owner is available to non-owner callers",
                     );
                   }
-                  expect(loadSessionEntry({ agentId: "main", sessionKey })).toEqual(before);
+                  expect(sessionToolsEntry(sessionKey)).toEqual(before);
                   continue;
                 }
                 if (renameOnly) {
@@ -343,7 +343,7 @@ describe("guest session rename through the agent catalog", () => {
                     })
                   ).tools,
                 );
-                const before = loadSessionEntry({ agentId: "main", sessionKey });
+                const before = sessionToolsEntry(sessionKey);
                 for (const tools of [
                   createOpenClawCodingTools({ ...nativeOptions, senderIsOwner: true }),
                   createOpenClawCodingTools({
@@ -358,7 +358,7 @@ describe("guest session rename through the agent catalog", () => {
                   await expect(
                     tool.execute("denied", { action: "patch", label: "Not admitted" }),
                   ).resolves.toMatchObject({ details: { gated: true } });
-                  expect(loadSessionEntry({ agentId: "main", sessionKey })).toEqual(before);
+                  expect(sessionToolsEntry(sessionKey)).toEqual(before);
                 }
                 const unmarked: SandboxToolPolicy = {
                   allow: sandboxConfig.tools.allow,
