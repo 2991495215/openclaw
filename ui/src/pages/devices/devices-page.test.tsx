@@ -14,6 +14,7 @@ import {
   deviceDesktopEnvironments,
 } from "../../test-helpers/devices-fixtures.ts";
 import { waitForRenderedModalDialog } from "../../test-helpers/modal-dialog.ts";
+import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import {
   gatewaySnapshot,
   gatewayFixture,

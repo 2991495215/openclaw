@@ -47,6 +47,7 @@ describe("DevicesPage policy saves", () => {
         },
       );
       const save = button(page.container, t("common.save"));
+      await waitForSolid(() => expect(save.disabled).toBe(false));
       save.click();
       await waitForSolid(() => {
         expect(save.textContent).toContain(t("common.saving"));
@@ -94,7 +95,9 @@ describe("DevicesPage policy saves", () => {
       },
       execApprovalsDirty: true,
     });
-    button(page.container, t("common.save")).click();
+    const save = button(page.container, t("common.save"));
+    await waitForSolid(() => expect(save.disabled).toBe(false));
+    save.click();
     await waitForSolid(() => expect(page.container.textContent).toContain(t("common.saving")));
     const replacement = clientFor();
     page.replaceGateway(
@@ -140,10 +143,15 @@ describe("DevicesPage policy saves", () => {
     await runtimeConfig.ensureLoaded();
     runtimeConfig.patchForm(["tools", "exec", "node"], "node-1");
     const page = mountPage(fixture, { nodes: [{ nodeId: "node-1" }] }, undefined, runtimeConfig);
-    const save = [...page.container.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent?.trim() === t("common.save") && !candidate.disabled,
+    const save = await waitForSolid(() =>
+      expectDefined(
+        [...page.container.querySelectorAll("button")].find(
+          (candidate) => candidate.textContent?.trim() === t("common.save") && !candidate.disabled,
+        ),
+        "enabled binding save",
+      ),
     );
-    expectDefined(save).click();
+    save.click();
     await waitForSolid(() => {
       expect(save?.textContent).toContain(t("common.saving"));
       expect(save?.disabled).toBe(true);
