@@ -169,8 +169,7 @@ describe("showInputDialog", () => {
     submitForm();
     submitForm();
     expect(submit).toHaveBeenCalledOnce();
-    flush();
-    expect(dialogInput().disabled).toBe(true);
+    await waitForSolid(() => expect(dialogInput().disabled).toBe(true));
 
     const cancelEvent = new CustomEvent("modal-cancel", { cancelable: true });
     modal.dispatchEvent(cancelEvent);
@@ -195,8 +194,7 @@ describe("showInputDialog", () => {
       await getRenderedModalDialog(document.body);
       await type("Old draft");
       submitForm();
-      flush();
-      expect(dialogInput().disabled).toBe(true);
+      await waitForSolid(() => expect(dialogInput().disabled).toBe(true));
 
       controller.abort();
       await expect(closed).resolves.toBeNull();
@@ -239,20 +237,21 @@ describe("showInputDialog", () => {
 
       await type("Client work");
       submitForm();
-      await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
-      await Promise.resolve();
-
-      expect(document.body.textContent).toContain("gateway exploded");
-      expect(dialogInput().disabled).toBe(false);
-      expect(dialogInput().value).toBe("Client work");
-      expect(findButton("Create group").disabled).toBe(false);
-      expect(document.activeElement).toBe(dialogInput());
+      expect(submit).toHaveBeenCalledOnce();
+      await waitForSolid(() => {
+        expect(document.body.textContent).toContain("gateway exploded");
+        expect(dialogInput().disabled).toBe(false);
+        expect(dialogInput().value).toBe("Client work");
+        expect(findButton("Create group").disabled).toBe(false);
+        expect(document.activeElement).toBe(dialogInput());
+      });
 
       submitForm();
-      flush();
-      expect(dialogInput().disabled).toBe(true);
-      expect(dialogInput().hasAttribute("aria-invalid")).toBe(false);
-      expect(document.body.querySelector('[role="alert"]')).toBeNull();
+      await waitForSolid(() => {
+        expect(dialogInput().disabled).toBe(true);
+        expect(dialogInput().hasAttribute("aria-invalid")).toBe(false);
+        expect(document.body.querySelector('[role="alert"]')).toBeNull();
+      });
       retry.resolve(null);
       await closed;
       expect(document.body.querySelector("openclaw-modal-dialog")).toBeNull();

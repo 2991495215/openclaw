@@ -54,7 +54,7 @@ export function InputDialogView(props: {
     }
     setFailure(message);
   });
-  function submit(event: SubmitEvent) {
+  async function submit(event: SubmitEvent) {
     event.preventDefault();
     if (props.settled() || submitting || submitBlocked(input.value)) {
       return;
@@ -68,6 +68,8 @@ export function InputDialogView(props: {
     submitting = true;
     // Owner abort retires presentation without cancelling the admitted operation.
     const pending = racePromiseWithAbortSignal(() => submitValue(value), initialOptions.signal);
+    // Publish the owner's changes before the presentation action holds the tick.
+    await Promise.resolve();
     void presentSubmit(value, pending);
     onSettled(() => {
       if (!props.settled()) {
@@ -88,7 +90,7 @@ export function InputDialogView(props: {
         }
       }}
     >
-      <form class="exec-approval-card" onSubmit={submit}>
+      <form class="exec-approval-card" onSubmit={(event) => void submit(event)}>
         <div class="exec-approval-header">
           <div class="exec-approval-title">{initialOptions.title}</div>
         </div>
