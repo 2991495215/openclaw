@@ -73,6 +73,63 @@ async function setThemeMode(page: Page, mode: "dark" | "light"): Promise<void> {
 }
 
 suite.define(() => {
+  it("retains keyboard reading focus after revealing hidden code lines", async () => {
+    await suite.withPage(desktop, async ({ page }) => {
+      const source = Array.from(
+        { length: 12 },
+        (_, index) =>
+          `const deploymentCheck${index} = "${"staging deployment verification ".repeat(6)}";`,
+      ).join("\n");
+      await installMockGateway(page, {
+        historyMessages: [
+          { role: "assistant", content: "```ts\n" + source + "\n```", timestamp: 2000 },
+        ],
+      });
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: async (text: string) => {
+              document.documentElement.dataset.copiedCode = text;
+            },
+          },
+        });
+      });
+      await page.goto(`${suite.server.baseUrl}chat`);
+      const block = page.locator(".chat-thread .code-block-wrapper");
+      const code = block.locator("pre");
+      const copy = block.getByRole("button", { name: "Copy code", exact: true });
+      await copy.waitFor();
+      await copy.focus();
+      await page.keyboard.press("Tab");
+      expect(await code.evaluate((element) => document.activeElement === element)).toBe(true);
+      const initialScroll = code.evaluate(
+        (element) =>
+          new Promise<void>((resolve) => {
+            element.addEventListener("scrollend", () => resolve(), { once: true });
+          }),
+      );
+      await page.keyboard.press("ArrowRight");
+      await initialScroll;
+      await expect.poll(() => code.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+      await page.keyboard.press("Tab");
+      const expand = block.locator(".code-block-expand");
+      expect(await expand.evaluate((element) => document.activeElement === element)).toBe(true);
+      const before = await code.evaluate((element) => element.scrollLeft);
+      await page.keyboard.press("Enter");
+      await expand.waitFor({ state: "hidden" });
+      await page.keyboard.press("ArrowRight");
+      await expect
+        .poll(() => code.evaluate((element) => element.scrollLeft))
+        .toBeGreaterThan(before);
+      expect(await code.evaluate((element) => document.activeElement === element)).toBe(true);
+      await page.keyboard.press("Shift+Tab");
+      expect(await copy.evaluate((element) => document.activeElement === element)).toBe(true);
+      await page.keyboard.press("Enter");
+      await expect.poll(() => page.locator("html").getAttribute("data-copied-code")).toBe(source);
+    });
+  });
+
   it("retains code controls when a streaming fence closes", async () => {
     await suite.withPage(desktop, async ({ page }) => {
       const gateway = await installMockGateway(page);

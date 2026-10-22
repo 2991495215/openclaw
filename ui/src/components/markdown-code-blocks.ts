@@ -112,8 +112,15 @@ function handleCodeBlockDisclosure(target: Element): void {
   }
   const expandButton = target.closest<HTMLButtonElement>(".code-block-expand");
   if (expandButton) {
+    const hadFocus = wrapper.ownerDocument.activeElement === expandButton;
     wrapper.classList.add("is-expanded");
     expandButton.setAttribute("aria-expanded", "true");
+    // The renderer puts the code viewport immediately before its now-hidden button.
+    const code = expandButton.previousElementSibling?.firstElementChild;
+    if (hadFocus && code instanceof HTMLPreElement) {
+      code.tabIndex = 0;
+      code.focus({ preventScroll: true });
+    }
   }
   const jsonMode = target.closest<HTMLButtonElement>(".code-block-json-mode");
   if (jsonMode) {
