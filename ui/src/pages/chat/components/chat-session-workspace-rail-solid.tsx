@@ -1,16 +1,6 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { JSX } from "@solidjs/web";
-import {
-  createMemo,
-  Errored,
-  For,
-  isPending,
-  latest,
-  Loading,
-  Match,
-  Show,
-  Switch,
-} from "solid-js";
+import { createMemo, Errored, For, isPending, Loading, Match, Show, Switch } from "solid-js";
 import { shortestFileLabels } from "../../../components/file-kind.ts";
 import { CopyButton } from "../../../components/solid/copy-button.tsx";
 import { Icon, type IconName } from "../../../components/solid/icon.tsx";
@@ -473,9 +463,12 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
           </div>
         </Show>
       </div>
-      <Errored
-        fallback={(error, reset) => (
-          <>
+      <Loading
+        on={scope()}
+        fallback={<PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />}
+      >
+        <Errored
+          fallback={(error, reset) => (
             <div class="chat-workspace-rail__state chat-workspace-rail__state--error">
               <div role="alert">{formatUiError(error())}</div>
               <button
@@ -489,20 +482,19 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
                 {t("common.retry")}
               </button>
             </div>
-            <Contents pending={false} />
-          </>
-        )}
-      >
-        <Loading
-          on={scope()}
+          )}
+        >
+          {read()}
+        </Errored>
+        <Show
+          when={props.workspace.list || !isPending(read)}
           fallback={
             <PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />
           }
         >
-          {latest(read)}
           <Contents pending={isPending(read)} />
-        </Loading>
-      </Errored>
+        </Show>
+      </Loading>
     </aside>
   );
 }
