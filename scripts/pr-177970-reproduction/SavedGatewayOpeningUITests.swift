@@ -28,9 +28,15 @@ final class SavedGatewayOpeningUITests: XCTestCase {
                         value.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression) == expected
                     }
                 }) else { return false }
+                XCTContext.runActivity(named: "Inspect the exact local network prompt") { activity in
+                    let tree = XCTAttachment(string: dialog.debugDescription)
+                    tree.name = "local-network-alert-accessibility-tree"
+                    tree.lifetime = .keepAlways
+                    activity.add(tree)
+                }
+                let denyTitles = ["Don’t Allow", "Don't Allow"]
                 let buttons = dialog.buttons.matching(NSPredicate(
-                    format: "label IN %@",
-                    ["Don’t Allow", "Don't Allow"]))
+                    format: "label IN %@ OR title IN %@ OR value IN %@", denyTitles, denyTitles, denyTitles))
                     .allElementsBoundByIndex
                 guard buttons.count == 1, let deny = buttons.first, deny.isHittable else { return false }
                 XCTContext
