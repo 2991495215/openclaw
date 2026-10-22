@@ -1,8 +1,9 @@
 /* @vitest-environment jsdom */
 
 import type { SkillsLibraryListResult } from "@openclaw/gateway-protocol";
+import { createRouter, definePage } from "@openclaw/uirouter";
 import { createComponent, flush } from "solid-js";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred as deferred } from "../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import type { AgentsListResult } from "../api/types.ts";
@@ -147,7 +148,12 @@ function contextWithClient(
     setScope: vi.fn(),
     subscribe,
   });
+  const router = createRouter({
+    routes: [definePage({ id: "skills", path: "/skills", component: () => ({}) })],
+  });
+  onTestFinished(() => router.stop());
   return {
+    router,
     gateway: gatewayWithClient(client, options.connected ?? false),
     agents: {
       state: { agentsList, agentsLoading: false, agentsError: null },
