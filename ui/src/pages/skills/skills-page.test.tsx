@@ -1,6 +1,6 @@
-import type { SkillsLibraryListResult } from "@openclaw/gateway-protocol";
+import type { SkillsLibraryListResult, SkillsLibraryReceipt } from "@openclaw/gateway-protocol";
 import { createSignal, flush } from "solid-js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred as deferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { createAgentSelectionCapability } from "../../app/agent-selection.ts";
@@ -9,10 +9,12 @@ import { ApplicationProvider } from "../../lib/reactive/context.ts";
 import type { ClawHubSkillDetail } from "../../lib/skills/index.ts";
 import { createApplicationGateway } from "../../test-helpers/application-context.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
+import { getRenderedModalDialog, installDialogPolyfill } from "../../test-helpers/modal-dialog.ts";
 // @vitest-environment jsdom
 import { mountSolid, cleanupSolid } from "../../test-helpers/mount-solid.ts";
 import { waitForFast } from "../../test-helpers/wait-for.ts";
 import { SkillsPage, type SkillsRouteData } from "./skills-page.tsx";
+import { libraryEntry } from "./skills.test-support.ts";
 import { createSkill } from "./view.test-support.ts";
 
 const personalLibrary = {
@@ -121,6 +123,53 @@ afterEach(() => {
 });
 
 describe("Skills discovery lifecycle", () => {
+  it("keeps Discovery library status in sync with a held editor toggle", async () => {
+    onTestFinished(installDialogPolyfill());
+    const entry = libraryEntry();
+    const mutation = deferred<SkillsLibraryReceipt>();
+    const request = vi.fn(async (method: string) => {
+      if (method === "skills.library.list") {
+        return { ...personalLibrary, entries: [entry] };
+      }
+      if (method === "skills.library.read") {
+        return { entry, content: "# Existing skill", files: [], revisions: [] };
+      }
+      if (method === "skills.library.mutate") {
+        return mutation.promise;
+      }
+      if (method === "skills.search") {
+        return { results: [] };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    });
+    const { page } = mountSkills(request);
+    const selector = `[data-skill-id="library:${entry.skillId}"]`;
+    await waitForFast(() => expect(page.querySelector(selector)).not.toBeNull());
+    const card = page.querySelector(selector)!;
+    const status = () => card.querySelector(".settings-status")!.getAttribute("aria-label");
+    expect(status()).toContain("Enabled");
+    card.querySelector<HTMLButtonElement>(".skill-discovery-card__open")!.click();
+    const { dialog } = await getRenderedModalDialog(page);
+    const button = (label: string) =>
+      [...dialog.querySelectorAll<HTMLButtonElement>("button")].find(
+        (candidate) => candidate.textContent?.trim() === label,
+      )!;
+    button("Disable").click();
+    try {
+      await waitForFast(() => expect(button("Enable").disabled).toBe(true));
+      expect(status()).toContain("Disabled");
+      expect(page.querySelector(selector)).toBe(card);
+    } finally {
+      mutation.reject(new Error("Synthetic rejected library update"));
+    }
+    await waitForFast(() => {
+      expect(button("Disable").disabled).toBe(false);
+      expect(status()).toContain("Enabled");
+      expect(dialog.textContent).toContain("Synthetic rejected library update");
+    });
+    expect(page.querySelector(selector)).toBe(card);
+  });
+
   it("keeps detail chrome usable while one admitted read is pending", async () => {
     const warnings = vi.spyOn(console, "warn");
     const pending = deferred<ClawHubSkillDetail>();

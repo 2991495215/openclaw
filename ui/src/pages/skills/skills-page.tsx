@@ -603,7 +603,7 @@ export function SkillsPage(props: SkillsPageProps) {
             state={viewState()}
             readClawHubDetail={readClawHubDetail}
             surface={surface()}
-            libraryEntries={library.state.list?.entries ?? []}
+            libraryEntries={library.entries()}
             onLibraryOpen={(skillId) => void library.open(skillId)}
             library={
               surface() === "discovery" ? (
