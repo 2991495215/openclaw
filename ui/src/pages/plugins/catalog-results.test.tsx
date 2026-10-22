@@ -372,24 +372,35 @@ describe("renderPluginCatalogResults", () => {
     expect(container.querySelectorAll(".plugin-catalog-card")).toHaveLength(1);
   });
 
-  it("keeps built-in filters usable while category placeholders settle", async () => {
-    const pending = Promise.withResolvers<null>();
-    const props = baseProps({
-      categories: [],
-      reads: { browse: null, categories: pending.promise, more: null },
-    });
-    const container = await mount(props);
-    const chips = container.querySelector(".plugin-catalog-chips")!;
-    expect(chips.querySelectorAll("button")).toHaveLength(3);
-    expect(chips.querySelectorAll(".plugin-catalog-chip--skeleton").length).toBeGreaterThan(0);
-    expect(chips.querySelector('[role="status"]')).not.toBeNull();
-    pending.resolve(null);
-    await waitForSolid(() =>
-      expect(container.querySelector(".plugin-catalog-chip--skeleton")).toBeNull(),
-    );
-    expect(container.querySelector(".plugin-catalog-chip--skeleton")).toBeNull();
-    expect(container.querySelectorAll(".plugin-catalog-chips button")).toHaveLength(3);
-  });
+  it.each(["initial", "delayed"] as const)(
+    "keeps built-in filters usable when the category read is %s",
+    async (timing) => {
+      const pending = Promise.withResolvers<null>();
+      const props = baseProps({
+        categories: [],
+        reads: {
+          browse: null,
+          categories: timing === "initial" ? pending.promise : null,
+          more: null,
+        },
+      });
+      const container = await mount(props);
+      if (timing === "delayed") {
+        update(container, { ...props, reads: { ...props.reads, categories: pending.promise } });
+      }
+      await waitForSolid(() => {
+        const chips = container.querySelector(".plugin-catalog-chips")!;
+        expect(chips.querySelectorAll("button")).toHaveLength(3);
+        expect(chips.querySelectorAll(".plugin-catalog-chip--skeleton").length).toBeGreaterThan(0);
+        expect(chips.querySelector('[role="status"]')).not.toBeNull();
+      });
+      pending.resolve(null);
+      await waitForSolid(() =>
+        expect(container.querySelector(".plugin-catalog-chip--skeleton")).toBeNull(),
+      );
+      expect(container.querySelectorAll(".plugin-catalog-chips button")).toHaveLength(3);
+    },
+  );
 
   it("uses the package fallback for unknown and inherited category icon names", async () => {
     const container = await mount(

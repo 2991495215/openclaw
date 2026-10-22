@@ -407,7 +407,7 @@ function BuiltinCategoryChips(props: PluginCatalogResultsProps): JSX.Element {
 
 function CategoryChips(props: PluginCatalogResultsProps): JSX.Element {
   const recordedError = createMemo(() => props.categoriesError);
-  const { ready } = createCatalogRead(() => props.reads.categories, recordedError);
+  const { ready, receipt } = createCatalogRead(() => props.reads.categories, recordedError);
   const sourceCategories = createMemo(() => props.categories);
   const categories = createMemo(() =>
     sourceCategories()
@@ -416,7 +416,7 @@ function CategoryChips(props: PluginCatalogResultsProps): JSX.Element {
   );
   return (
     <Loading
-      on={recordedError()}
+      on={[recordedError(), receipt().promise]}
       fallback={
         <CatalogDiscoveryChips label={t("pluginsPage.categoriesLabel")}>
           <BuiltinCategoryChips {...props} />
