@@ -134,7 +134,6 @@ export async function runStateIntegrityHealth(ctx: DoctorHealthFlowContext): Pro
 export async function runCodexSessionRouteHealth(ctx: DoctorHealthFlowContext): Promise<void> {
   const { maybeRepairCodexSessionRoutes } =
     await import("../commands/doctor/shared/codex-route-warnings.js");
-  const { note } = await import("../../packages/terminal-core/src/note.js");
   const result = await maybeRepairCodexSessionRoutes({
     cfg: ctx.cfg,
     ...(ctx.configResult.retiredModelRefConfig
@@ -152,7 +151,7 @@ export async function runCodexSessionRouteHealth(ctx: DoctorHealthFlowContext): 
         }
       : {}),
   });
-  noteDoctorRepairResult(result, note);
+  noteDoctorRepairResult(result);
 }
 
 export async function runSessionTranscriptsHealth(ctx: DoctorHealthFlowContext): Promise<void> {
@@ -215,26 +214,25 @@ export async function runConfigAuditScrubHealth(ctx: DoctorHealthFlowContext): P
 export async function runLegacyCronHealth(ctx: DoctorHealthFlowContext): Promise<void> {
   const { maybeRepairLegacyCronStore, noteLegacyWhatsAppCrontabHealthCheck } =
     await import("../commands/doctor/cron/index.js");
-  await noteLegacyWhatsAppCrontabHealthCheck();
-  await maybeRepairLegacyCronStore({
-    cfg: ctx.cfg,
-    options: ctx.options,
-    prompter: ctx.prompter,
-  });
-}
-
-export async function runSandboxHealth(ctx: DoctorHealthFlowContext): Promise<void> {
-  const { maybeRepairSandboxImages, maybeRepairSandboxRegistryFiles, noteSandboxScopeWarnings } =
-    await import("../commands/doctor-sandbox.js");
-  await maybeRepairSandboxRegistryFiles(ctx.prompter);
-  await maybeRepairSandboxImages(ctx.cfg, ctx.runtime, ctx.prompter);
-  noteSandboxScopeWarnings(ctx.cfg);
-}
-
-export async function runCodexBwrapHealth(ctx: DoctorHealthFlowContext): Promise<void> {
-  const { noteCodexBwrapNamespaceWarnings } = await import("../commands/doctor-sandbox.js");
-  await noteCodexBwrapNamespaceWarnings(ctx.cfg, {
-    env: ctx.env,
-    cwd: resolveDoctorWorkspaceDir(ctx.cfg, ctx.env),
-  });
+  await measureGatewayBootstrapStep("doctor.legacy-cron.crontab", () =>
+    noteLegacyWhatsAppCrontabHealthCheck(),
+  );
+  await measureGatewayBootstrapStep("doctor.legacy-cron.store", () =>
+    maybeRepairLegacyCronStore({
+      cfg: ctx.cfg,
+      options: ctx.options,
+      prompter: ctx.prompter,
+    }),
+  );
+  const { maybeRepairCronInferenceBindings } =
+    await import("../commands/doctor/cron/inference-binding-migration.js");
+  const inference = await measureGatewayBootstrapStep("doctor.legacy-cron.inference", () =>
+    maybeRepairCronInferenceBindings({
+      cfg: ctx.cfg,
+      env: ctx.env,
+      shouldRepair: ctx.prompter.shouldRepair,
+    }),
+  );
+  noteDoctorRepairResult(inference);
+  recordDoctorHealthWarnings(ctx, [], inference.warnings);
 }

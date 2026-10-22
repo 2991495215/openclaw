@@ -263,7 +263,39 @@ export function resolveInitialDoctorHealthContributions(params: {
             ).map(configuredPluginInstallIssueToRepairEffect);
           }, "legacy doctor configured plugin install repair owns package mutation"),
         },
-        run: runReleaseConfiguredPluginInstallsHealth,
+        async run(ctx) {
+          if (!ctx.sourceConfigValid || !ctx.prompter.shouldRepair) {
+            return;
+          }
+          const { maybeRunConfiguredPluginInstallReleaseStep } =
+            await import("../commands/doctor/shared/release-configured-plugin-installs.js");
+          const { VERSION } = await import("../version.js");
+          const result = await maybeRunConfiguredPluginInstallReleaseStep({
+            cfg: ctx.cfg,
+            env: ctx.env ?? process.env,
+            touchedVersion:
+              ctx.configResult.sourceLastTouchedVersion ?? ctx.cfg.meta?.lastTouchedVersion,
+          });
+          if (result.pluginInventoryChanged) {
+            ctx.invalidatePluginMetadataSnapshot?.();
+          }
+          if (result.postInstallDoctorResult) {
+            ctx.postInstallDoctorResult = result.postInstallDoctorResult;
+          }
+          noteDoctorRepairResult(result);
+          if (!result.touchedConfig) {
+            return;
+          }
+          const lastTouchedVersion = isLegacyParentWritableUpdateDoctorPass(ctx.env ?? process.env)
+            ? ctx.configResult.sourceLastTouchedVersion?.trim() ||
+              ctx.cfg.meta?.lastTouchedVersion ||
+              VERSION
+            : VERSION;
+          const config = { ...ctx.cfg, meta: { ...ctx.cfg.meta, lastTouchedVersion } };
+          copyConfigResolutionFactsThroughRewrite(ctx.cfg, config);
+          ctx.cfg = config;
+          writeConfigMachineState("config.lastTouchedAt", new Date().toISOString());
+        },
       },
     ),
     createDoctorHealthContribution("doctor:plugin-registry", "Plugin registry", {
