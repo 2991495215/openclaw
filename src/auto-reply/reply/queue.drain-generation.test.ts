@@ -26,6 +26,7 @@ it.each(["followup", "collect"] as const)(
   async (mode) => {
     const released = createDeferred();
     const started = createDeferred();
+    const finished = createDeferred();
     const key = `generation-reload-${mode}`;
     const original = captureActivePluginRegistrySnapshot();
     const predecessor = new PluginInstance("queue-generation-fixture");
@@ -76,6 +77,7 @@ it.each(["followup", "collect"] as const)(
                 key: "synthetic-only",
               }),
             });
+            finished.resolve();
           });
         },
       );
@@ -84,15 +86,13 @@ it.each(["followup", "collect"] as const)(
       await predecessor.dispose();
       expect(() => retiredHook()).toThrow(PluginInstanceUnavailableError);
       setActivePluginRegistry(current);
-      const claim = queued.controllerInput!.claim!;
       released.resolve();
-      await queued.controllerInput!.settlement.promise;
-      await claim.settlement.promise;
+      await finished.promise;
       expect(delivered).toHaveLength(1);
       expect(delivered[0]?.prompt).toContain("accepted before reload");
       expect(delivered[0]?.reply).toBe("current provider reply");
       expect(currentHook).toHaveBeenCalledOnce();
-      expect(getExistingFollowupQueue(key)).toBeUndefined();
+      await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined());
     } finally {
       released.resolve();
       clearFollowupQueue(key);
