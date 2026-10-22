@@ -58,7 +58,7 @@ describe("DevicesPage gateway lifecycle", () => {
     const page = mountPage(gatewayFixture(gatewaySnapshot(client, true, [], ["operator.admin"])), {
       nodes: [{ nodeId: "available", displayName: "Available node" }],
     });
-    expect(page.container.textContent).toContain("Available node");
+    await waitForSolid(() => expect(page.container.textContent).toContain("Available node"));
     expect(page.container.querySelector('select[aria-label="Mode"]')).toBeNull();
     expect(button(page.container, t("common.loading")).disabled).toBe(true);
     expect(request.mock.calls.filter(([method]) => method === policyMethod)).toHaveLength(1);
@@ -126,14 +126,16 @@ describe("DevicesPage gateway lifecycle", () => {
     const page = mountPage(fixture, {
       nodes: [{ nodeId: "preloaded", displayName: "Preloaded Mac" }],
     });
-    expect(page.container.textContent).toContain("Preloaded Mac");
+    await waitForSolid(() => expect(page.container.textContent).toContain("Preloaded Mac"));
     fixture.emitEvent("presence", {
       presence: [{ host: "Stale presence", instanceId: "stale", ts: 1_000 }],
     });
-    expect(page.container.textContent).toContain("Stale presence");
+    await waitForSolid(() => expect(page.container.textContent).toContain("Stale presence"));
     page.replaceGateway(gatewayFixture(gatewaySnapshot(null, false)));
-    expect(page.container.textContent).not.toContain("Preloaded Mac");
-    expect(page.container.textContent).not.toContain("Stale presence");
+    await waitForSolid(() => {
+      expect(page.container.textContent).not.toContain("Preloaded Mac");
+      expect(page.container.textContent).not.toContain("Stale presence");
+    });
   });
 
   it("retains inventory and an edited approval policy through a same-client reconnect", async () => {
@@ -150,12 +152,21 @@ describe("DevicesPage gateway lifecycle", () => {
       },
       execApprovalsForm: { version: 1, defaults: { security: "deny" } },
     });
+    await waitForSolid(() =>
+      expect(page.container.querySelector('select[aria-label="Mode"]')).not.toBeNull(),
+    );
     const policy = page.container.querySelector<HTMLSelectElement>('select[aria-label="Mode"]')!;
     expect(policy).not.toBeNull();
     policy.value = "allowlist";
     policy.dispatchEvent(new Event("change", { bubbles: true }));
     flush();
     page.config.configForm = { tools: { exec: { node: "draft-node" } } };
+    page.publishConfig();
+    await waitForSolid(() =>
+      expect(
+        page.container.querySelector<HTMLSelectElement>('select[aria-label="Node"]')?.value,
+      ).toBe("draft-node"),
+    );
     invalidateConfigConnection(page.config);
     fixture.emitSnapshot({ ...snapshot, phase: "reconnecting", hello: null });
     expect(page.container.textContent).toContain("Retained Mac");
@@ -171,8 +182,10 @@ describe("DevicesPage gateway lifecycle", () => {
       page.container.querySelector<HTMLSelectElement>('select[aria-label="Mode"]')?.value,
     ).toBe("allowlist");
     page.replaceGateway(gatewayFixture(gatewaySnapshot(null, false)));
-    expect(page.container.textContent).not.toContain("Retained Mac");
-    expect(page.container.querySelector('select[aria-label="Mode"]')).toBeNull();
+    await waitForSolid(() => {
+      expect(page.container.textContent).not.toContain("Retained Mac");
+      expect(page.container.querySelector('select[aria-label="Mode"]')).toBeNull();
+    });
   });
 
   it("rejects preloaded data after a same-client gateway epoch change", async () => {
@@ -204,13 +217,22 @@ describe("DevicesPage gateway lifecycle", () => {
         devicesList: { paired: [], pending: [] },
         lastError: "Earlier operator action failed",
       });
+      const row = [...page.container.querySelectorAll(".device-entry")].find((entry) =>
+        entry.textContent?.includes("Office Mac"),
+      );
+      expect(row).toBeDefined();
       fixture.emitEvent(event, { nodeId: "node-1" });
       expect(request).toHaveBeenCalledWith("node.list", {});
       expect(page.container.textContent).toContain("Office Mac");
+      expect(row?.isConnected).toBe(true);
       expect(page.container.textContent).toContain("Earlier operator action failed");
       nodes.resolve({ nodes: [{ nodeId: "node-1", displayName: "Current Mac", connected: true }] });
       await vi.waitFor(() => expect(page.container.textContent).toContain("Current Mac"));
+      const refreshedRow = [...page.container.querySelectorAll(".device-entry")].find((entry) =>
+        entry.textContent?.includes("Current Mac"),
+      );
       page.refreshPresentation();
+      expect(refreshedRow?.isConnected).toBe(true);
       expect(page.container.textContent).toContain("Current Mac");
       expect(page.container.textContent).not.toContain("Office Mac");
     },
@@ -409,6 +431,9 @@ describe("DevicesPage gateway lifecycle", () => {
       const fixture = gatewayFixture(gatewaySnapshot(client));
       const page = mountPage(fixture);
       await vi.waitFor(() => expect(listCalls).toBe(1));
+      await waitForSolid(() =>
+        expect(page.container.querySelector(".settings-loading-skeleton")).not.toBeNull(),
+      );
       fixture.emitEvent(kind === "device" ? "device.pair.changed" : "node.hostStats", {});
       stale.resolve(
         kind === "device"
@@ -416,6 +441,7 @@ describe("DevicesPage gateway lifecycle", () => {
           : { nodes: [{ nodeId: "node-1", displayName: "Kitchen Mac" }] },
       );
       await vi.waitFor(() => expect(listCalls).toBe(2));
+      expect(page.container.querySelector(".settings-loading-skeleton")).not.toBeNull();
       refreshed.resolve(
         kind === "device"
           ? {
@@ -427,9 +453,34 @@ describe("DevicesPage gateway lifecycle", () => {
           : { nodes: [{ nodeId: "node-1", displayName: "Studio Mac" }] },
       );
       await vi.waitFor(() => expect(page.container.textContent).toContain("Studio Mac"));
+      expect(page.container.querySelector(".settings-loading-skeleton")).toBeNull();
       expect(request.mock.calls.filter(([method]) => method === methodName)).toHaveLength(2);
     },
   );
+
+  it("shows a skeleton for an event refresh of an already-loaded empty inventory", async () => {
+    const completion = createDeferred<unknown>();
+    let holdPairing = false;
+    const { client } = clientFor(
+      vi.fn(async (method: string) =>
+        holdPairing && method === "device.pair.list" ? completion.promise : responseFor(method),
+      ),
+    );
+    const fixture = gatewayFixture(gatewaySnapshot(client));
+    const page = mountPage(fixture, { devicesList: { paired: [], pending: [] } });
+    await waitForSolid(() =>
+      expect(page.container.querySelector(".settings-loading-skeleton")).toBeNull(),
+    );
+    holdPairing = true;
+    fixture.emitEvent("device.pair.requested", {});
+    await waitForSolid(() =>
+      expect(page.container.querySelectorAll(".settings-loading-skeleton")).toHaveLength(1),
+    );
+    completion.resolve({ paired: [], pending: [] });
+    await waitForSolid(() =>
+      expect(page.container.querySelector(".settings-loading-skeleton")).toBeNull(),
+    );
+  });
 
   it("keeps initial and event-driven pairing and exec-approval loads gated by scopes", async () => {
     const { client, request } = clientFor();
@@ -559,13 +610,14 @@ describe("DevicesPage gateway lifecycle", () => {
         page = mountPage(fixture);
       }
       await vi.waitFor(() => expect(listCalls).toBe(2));
+      second.resolve({ nodes: [{ nodeId: "new", displayName: "New Mac" }] });
+      await vi.waitFor(() => expect(page.container.textContent).toContain("New Mac"));
       first.resolve({ nodes: [{ nodeId: "old", displayName: "Old Mac" }] });
       await first.promise;
       await Promise.resolve();
       flush();
       expect(page.container.textContent).not.toContain("Old Mac");
-      second.resolve({ nodes: [{ nodeId: "new", displayName: "New Mac" }] });
-      await vi.waitFor(() => expect(page.container.textContent).toContain("New Mac"));
+      expect(page.container.textContent).toContain("New Mac");
     },
   );
 

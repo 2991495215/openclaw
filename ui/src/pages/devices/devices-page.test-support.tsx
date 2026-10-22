@@ -16,16 +16,17 @@ import {
 import { createModalDialogTestFixture } from "../../test-helpers/modal-dialog.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../test-helpers/solid-settle.ts";
-import { DevicesPage, type DevicesRouteData } from "./devices-page.tsx";
+import { DevicesPage } from "./devices-page.tsx";
+import type { DevicesRouteData } from "./view.types.ts";
 
-const gatewayPresence: PresenceEntry = { mode: "gateway", host: "Gateway host", ts: 1_000 };
+export const gatewayPresence: PresenceEntry = { mode: "gateway", host: "Gateway host", ts: 1_000 };
 const pairedDevice = {
   deviceId: "device-1",
   displayName: "MacBook Pro",
   tokens: [{ role: "operator", scopes: [] }],
 };
 export let dialogs: ReturnType<typeof createModalDialogTestFixture>;
-const cleanups: Array<() => void> = [];
+export const cleanups: Array<() => void> = [];
 
 export function stubLocalDeviceIdentity() {
   localStorage.setItem(
@@ -126,11 +127,20 @@ export function mountPage(
   const [presentation, setPresentation] = createSignal({ routeData });
   const configListeners = new Set<() => void>();
   const reloadConfig = vi.fn(async () => undefined);
+  const routeListeners = new Set<() => void>();
   const context = {
     get gateway() {
       return currentGateway();
     },
     basePath: "",
+    router: {
+      subscribe: (listener: () => void) => {
+        routeListeners.add(listener);
+        return () => {
+          routeListeners.delete(listener);
+        };
+      },
+    },
     runtimeConfig: {
       state: { configSnapshot: {}, configForm: {}, configLoading: false, configFormMode: "form" },
       subscribe: (listener: () => void) => {
@@ -168,6 +178,12 @@ export function mountPage(
     reloadConfig,
     publishConfig: () => configListeners.forEach((listener) => listener()),
     dispose,
+    leaveRoute() {
+      for (const listener of routeListeners) {
+        listener();
+      }
+      flush();
+    },
     refreshPresentation() {
       setPresentation({ routeData });
       flush();
@@ -227,6 +243,8 @@ export async function selectEntryAction(
   action: string,
   name = "MacBook Pro",
 ) {
+  // Let initial native readiness settle before keeping an interactive row reference.
+  await waitForSolid(() => expect(container.textContent).toContain(name));
   const row = [...container.querySelectorAll(".device-entry")].find(
     (entry) => entry.querySelector(".settings-row__title")?.textContent === name,
   );
