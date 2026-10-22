@@ -488,6 +488,7 @@ suite.define(() => {
       await rawButton.click();
       const rawCard = activityCard(page, raw.name);
       await rawCard.waitFor({ state: "visible" });
+      await link(rawCard, /^Raw watch(?:\s|$)/).waitFor({ state: "visible" });
       await expectCount(link(rawCard, /^Raw watch(?:\s|$)/), 1);
       await expectCount(link(rawCard, /^Profile watch(?:\s|$)/), 0);
       await expectCount(link(rawCard, "View activity"), 0);
