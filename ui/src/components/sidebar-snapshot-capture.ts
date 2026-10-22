@@ -48,11 +48,12 @@ export function isSidebarSnapshotSettled(host: AppSidebarRenderHost): boolean {
   const fallback = host.sidebarSnapshotFallback;
   return (
     (fallback?.rootsReady ?? isSidebarSessionListSettled(host, host.sessionData)) &&
-    [...host.childSessionParents()].every((key) =>
-      fallback
-        ? fallback.readyParents.has(key)
-        : isSidebarChildSessionSettled(host.sessionData, key),
-    )
+    (host.navigationView !== "sessions" ||
+      [...host.childSessionParents()].every((key) =>
+        fallback
+          ? fallback.readyParents.has(key)
+          : isSidebarChildSessionSettled(host.sessionData, key),
+      ))
   );
 }
 

@@ -134,6 +134,44 @@ async function expectRowRefresh(sidebar: Sidebar, change: (() => void) | Partial
 }
 
 describe("sidebar projection memo", () => {
+  it("does not wait for hidden session children when restoring Online", async () => {
+    const parent = session("parent", { childSessions: [key("child")] });
+    const { sidebar, sessions } = await mount([parent]);
+    sidebar.connected = true;
+    const owner = getAppSidebarOwner(sidebar.hostElement)!;
+    const navigation = sidebar.getSessionNavigationState();
+    const rows = snapshotSessions(
+      [
+        {
+          ...navigation.toSidebarSession(parent),
+          children: [navigation.toSidebarSession(session("child", { spawnedBy: parent.key }))],
+          childLoadParentKeys: [parent.key],
+        },
+      ],
+      () => ({ childrenDisplayMode: "expanded" }),
+    );
+    owner.restoreSidebarSnapshot({
+      ...sidebarBootSnapshot(captureBootRoster(sessions.sessions.state)),
+      mode: "chip",
+      navigationView: "online",
+      sessions: rows,
+      sections: [
+        {
+          id: "ungrouped",
+          rows,
+          totalRowCount: 1,
+          visibleRowCount: 1,
+          visibleLimit: 10,
+          collapsedVisibleRowCount: 1,
+          renderHeader: false,
+        },
+      ],
+    });
+    expect(owner.childSessionParents()).toContain(parent.key);
+    expect(owner.sessionData.loadedChildSessionKeys.has(parent.key)).toBe(false);
+    expect(owner.sidebarSnapshotSettled()).toBe(true);
+  });
+
   it("never restores completed omissions when another boot child outlives a refresh", async () => {
     const child = session("removed-child", { spawnedBy: key("parent") });
     const keptChild = session("kept-child", { spawnedBy: key("parent") });
