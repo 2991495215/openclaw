@@ -1,5 +1,5 @@
 import type { ResolvedCliBackend } from "../cli-backends.js";
-import { prepareConversationCapabilityProfile } from "../conversation-capability-profile.js";
+import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
 import { resolveExecConfigState } from "../exec-defaults.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "../tool-fs-policy.js";
 import { expandToolGroups, normalizeToolPolicyName } from "../tool-policy.js";
@@ -19,7 +19,9 @@ export function resolveCliRuntimeToolPolicy(input: {
   backendId: string;
   bundleMcp: boolean;
   canEnforceExactToolAvailability: boolean;
+  projectNativeToolAuthority?: ResolvedCliBackend["projectNativeToolAuthority"];
   isSideQuestion: boolean;
+  sideQuestionToolMode?: "disabled" | "native";
   skipsTurnPreparation: boolean;
 }): { params: RunCliAgentParams; runtimeToolsAllowPolicy: string[] | undefined } {
   let { params } = input;
@@ -84,7 +86,6 @@ export function resolveCliRuntimeToolPolicy(input: {
           modelId: params.model,
         }).policy;
   const senderRestricted = requesterPolicy?.inheritedToolPolicySource === "sender";
-  const delegatedExecution = Boolean(requesterPolicy?.delegatedToolPolicy);
   // Internal controls and backend-enforced tool-free questions have no file authority.
   const workspaceOnly =
     params.controlOperation === undefined &&
@@ -108,7 +109,6 @@ export function resolveCliRuntimeToolPolicy(input: {
   if (
     (params.trustedInternalHandoff ||
       senderRestricted ||
-      delegatedExecution ||
       workspaceOnly ||
       ordinaryClaudeMediation) &&
     params.disableTools !== true
@@ -124,13 +124,22 @@ export function resolveCliRuntimeToolPolicy(input: {
         `CLI backend ${input.backendId} cannot enforce ${senderRestricted ? "conversation" : "completion"} tool policy`,
       );
     }
-    runtimeToolsAllowPolicy ??= senderRestricted
-      ? (params.cliToolAvailability?.openClaw ?? ["*"])
-      : ["*"];
+    const exactWorkspaceTools =
+      workspaceOnly && params.cliToolAvailability && runtimeToolsAllowPolicy === undefined
+        ? [
+            ...params.cliToolAvailability.openClaw,
+            ...(input.projectNativeToolAuthority?.(params.cliToolAvailability.native) ?? []),
+          ]
+        : undefined;
+    if (exactWorkspaceTools === undefined) {
+      runtimeToolsAllowPolicy ??= senderRestricted
+        ? (params.cliToolAvailability?.openClaw ?? ["*"])
+        : ["*"];
+    }
     params = {
       ...params,
       toolsAllow: undefined,
-      cliToolAvailability: { native: [], openClaw: [] },
+      cliToolAvailability: { native: [], openClaw: exactWorkspaceTools ?? [] },
     };
   }
   return { params, runtimeToolsAllowPolicy };

@@ -140,7 +140,6 @@ import { isClaudeCliBackendId, normalizeCliModel } from "./helpers.js";
 import { prepareCliHistoryBoundary } from "./history-boundary.js";
 import { cliBackendLog } from "./log.js";
 import { prepareCliLoopbackBundleMcp } from "./loopback-bundle-mcp.js";
-import { mintCliMcpClientGrant } from "./mcp-client-grant.js";
 import { buildCliMcpGrantContext } from "./mcp-grant-context.js";
 import { resolveCliCatalogCapabilities } from "./model-capabilities.js";
 import { detectNodeClaudePlacement, resolveClaudeCliContextModelId } from "./prepare-claude.js";
@@ -310,7 +309,9 @@ async function prepareCliRunContextWithinReadFence(
     backendId: backendResolved.id,
     bundleMcp: backendResolved.bundleMcp,
     canEnforceExactToolAvailability,
+    projectNativeToolAuthority: backendResolved.projectNativeToolAuthority,
     isSideQuestion,
+    sideQuestionToolMode: backendResolved.sideQuestionToolMode,
     skipsTurnPreparation,
   });
   params = toolPolicy.params;
@@ -766,7 +767,7 @@ async function prepareCliRunContextWithinReadFence(
           workspaceDir,
           agentId: sessionAgentId,
           agentDir,
-          resolveCapabilityProfile: () =>
+          resolveCapabilityProfile: async () =>
             mcp.resolveCliNativeMcpPolicy(params, {
               config: runConfig,
               policySessionKey,
@@ -996,14 +997,6 @@ async function prepareCliRunContextWithinReadFence(
             ...(mcpToolAuth ? { toolAuth: mcpToolAuth } : {}),
           })
         : undefined;
-    const mcpClientGrant = mcpClient?.grant;
-    // The grant's cleanup also releases the memory audience leased for this turn.
-    // Configured MCP tools close only after their grant can no longer reach them.
-    const cleanupMcpClientGrant = sequenceCliCleanups(
-      mcpClient?.cleanup,
-      loopbackBundleMcp?.takeCleanup(),
-    );
-    cleanupPreparedResources = cleanupMcpClientGrant;
     const bindMcpClientGrantAdmission = (
       admittedRunContext: NonNullable<RunCliAgentParams["admittedRunContext"]>,
     ) => {
@@ -1110,7 +1103,14 @@ async function prepareCliRunContextWithinReadFence(
           revokeMcpLoopbackClientGrant(mcpClientGrant.token);
         }
       : undefined;
-    cleanupPreparedResources = cleanupMcpClientGrant;
+    const cleanupConfiguredMcp = loopbackBundleMcp?.takeCleanup();
+    cleanupPreparedResources =
+      cleanupMcpClientGrant || cleanupConfiguredMcp
+        ? async () => {
+            await cleanupMcpClientGrant?.();
+            await cleanupConfiguredMcp?.();
+          }
+        : undefined;
     const rawLoopbackServerConfig = mcpLoopbackRuntime
       ? createMcpLoopbackServerConfig(mcpLoopbackRuntime.port)
       : undefined;

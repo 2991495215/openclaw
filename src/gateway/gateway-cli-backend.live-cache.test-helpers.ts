@@ -366,8 +366,8 @@ export async function verifyCliBackendAnnounceOrdering({
     const replies = assistantMessages.map(
       (record) => extractTextFromChatContent(record.content, { joinWith: "" }) ?? "",
     );
-    const parentIndex = replies.findIndex((reply) => reply.includes(parentToken));
-    const completionIndex = replies.findIndex((reply) => reply.includes(childToken));
+    const parentIndex = replies.findIndex((reply) => reply.includes(announceParentToken));
+    const completionIndex = replies.findIndex((reply) => reply.includes(announceChildToken));
     return parentIndex >= 0 && completionIndex >= 0
       ? { parentReplyIndex: parentIndex, completionReplyIndex: completionIndex }
       : undefined;
@@ -391,11 +391,11 @@ export async function verifyCliBackendAnnounceOrdering({
   const completionHitRate = logCliCacheUsage("announce-completion", {
     meta: { agentMeta: { usage: assistantUsage[completionReplyIndex] } },
   });
-  const followupToken = `CLI_ANNOUNCE_FOLLOWUP_${nonce}`;
+  const followupToken = `CLI_ANNOUNCE_FOLLOWUP_${announceNonce}`;
   const followup = await client.request(
     "agent",
     {
-      sessionKey,
+      sessionKey: announceSessionKey,
       idempotencyKey: `cli-announce-followup-${randomUUID()}`,
       deliver: false,
       timeout: 240,
