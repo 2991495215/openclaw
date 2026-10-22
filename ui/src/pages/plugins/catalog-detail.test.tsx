@@ -14,7 +14,7 @@ function mount(result = createDiscoveryDetail(), overrides: Partial<Props> = {})
   const props: Props = {
     connected: true,
     result,
-    error: null,
+    read: { receipt: () => null, value: () => null },
     backHref: "/plugins",
     onBack: vi.fn(),
     onRetry: vi.fn(),

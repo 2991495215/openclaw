@@ -29,7 +29,7 @@ import { createPluginMcpLogin } from "./plugin-mcp-login.ts";
 import { createPluginPageTargets } from "./plugin-removal-focus.ts";
 import { pluginRowKey, type PluginRowMessage } from "./plugin-row-message.tsx";
 import { pluginMutationWarnings, createPluginsConsent } from "./plugins-consent.ts";
-import { loadInstalledPluginDetail, loadPluginCatalogDetail } from "./plugins-detail-loader.ts";
+import { createPluginDetailReads } from "./plugins-detail-reads.ts";
 import type { PluginsHubTab } from "./plugins-hub.ts";
 import { createPluginsPageIcons } from "./plugins-page-icons.ts";
 import {
@@ -59,6 +59,17 @@ export function createPluginsPage(options: {
   const [settingsTab, setSettingsTab] = createSignal<PluginSettingsTab>("installed");
 
   const state = createPluginsPageState();
+  const details = createPluginDetailReads({
+    state,
+    setState,
+    context,
+    gateway: () => gateway,
+    surface: () => surface,
+    routeData: () => routeData,
+    uninstalling: uninstallingSelection,
+    selectInstalled: (pluginId) => mcpLogin.select(pluginId),
+  });
+  const { showDetails, showCatalogDetail } = details;
 
   function read() {
     revision();
@@ -74,6 +85,12 @@ export function createPluginsPage(options: {
   function setState(patch: Partial<typeof state>) {
     if (!active) {
       return;
+    }
+    if (patch.detail === null) {
+      details.inspection.reset();
+    }
+    if (patch.catalogDetail === null) {
+      details.catalog.reset();
     }
     Object.assign(state, patch);
     publish();
@@ -201,7 +218,11 @@ export function createPluginsPage(options: {
     },
     onError: (error) => setState({ error: formatUiError(error) }),
   });
-  onCleanup(catalogTask.cancel);
+  onCleanup(() => {
+    catalogTask.cancel();
+    details.inspection.release();
+    details.catalog.release();
+  });
 
   onSettled(() => {
     const runtimeConfig = context.runtimeConfig;
@@ -418,6 +439,8 @@ export function createPluginsPage(options: {
   }
 
   function invalidateRequests(invalidateCatalog: boolean, retirePresentation = true) {
+    details.inspection.reset();
+    details.catalog.reset();
     mcpLogin.reset();
     if (invalidateCatalog) {
       void setCatalog(null);
@@ -593,37 +616,6 @@ export function createPluginsPage(options: {
     replaceResult(mergePluginCatalogItem(state.result, result.plugin));
   }
 
-  function showDetails(pluginId: string | null) {
-    mcpLogin.select(pluginId);
-    return loadInstalledPluginDetail({
-      pluginId,
-      plugin: state.result?.plugins.find((entry) => entry.id === pluginId),
-      catalog: state.catalogDetail?.result,
-      gateway,
-      canInspect: !pluginId || state.busy[pluginRowKey(pluginId)] !== "uninstall",
-      getDetail: () => state.detail,
-      onChange: (detail) => setState({ detail }),
-    });
-  }
-
-  async function showCatalogDetail(id: string | null) {
-    if (surface !== "discovery") {
-      setState({ catalogDetail: null });
-      return;
-    }
-    return loadPluginCatalogDetail({
-      id,
-      gateway,
-      context,
-      location: routeData?.location,
-      inventory: state.result,
-      uninstalling: uninstallingSelection(),
-      getDetail: () => state.catalogDetail,
-      onChange: (detail) => setState({ catalogDetail: detail }),
-      showInstalled: showDetails,
-    });
-  }
-
   async function installCatalogEntry(id: string): Promise<void> {
     const scope = gateway.capture();
     const key = `install:${id}`;
@@ -738,6 +730,8 @@ export function createPluginsPage(options: {
     },
     routeLoading: () => gateway.connected && !routeDataConsumed,
     catalogRead: catalog,
+    inspectionRead: details.inspection,
+    detailRead: details.catalog,
     setState,
     refreshCatalog,
     selectHubTab,
