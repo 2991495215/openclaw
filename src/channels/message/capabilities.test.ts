@@ -50,7 +50,6 @@ describe("deriveDurableFinalDeliveryRequirementsForBatch", () => {
           },
         ],
         replyToId: "reply-1",
-        reconcileUnknownSend: true,
       }),
     ).toEqual({
       text: true,
