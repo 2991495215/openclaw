@@ -1,9 +1,4 @@
-import { noteBackupDoctorHint } from "../commands/backup-health.js";
-import { isLegacyParentWritableUpdateDoctorPass } from "../commands/doctor/shared/update-phase.js";
-import { copyConfigResolutionFactsThroughRewrite } from "../config/resolution-facts.js";
 import { resolveUpdateRehearsalRoot } from "../infra/update-rehearsal-paths.js";
-import { writeConfigMachineState } from "../state/config-machine-state-write.js";
-import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import { runInitialConfigWriteHealth } from "./doctor-health-contribution-runners.config.js";
 import {
   runClaudeCliHealth,

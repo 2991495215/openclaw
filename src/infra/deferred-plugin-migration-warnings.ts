@@ -7,6 +7,7 @@
  */
 export async function readRetiredDeferredPluginMigrationWarnings(
   messages: readonly (string | undefined)[],
+  finallyReportedPluginIds: ReadonlySet<string> = new Set(),
 ): Promise<ReadonlySet<string>> {
   const pluginWarnings = new Map<string, string>();
   const latestByPlugin = new Map<string, string>();
