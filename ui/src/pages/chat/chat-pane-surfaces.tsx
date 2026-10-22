@@ -49,9 +49,6 @@ export function ChatBoardResetConfirmation(props: { onResolve: (confirmed: boole
           </div>
         </div>
         <openclaw-modal-actions class="exec-approval-actions">
-          <button class="btn primary" type="button" onClick={() => props.onResolve(true)}>
-            {t("common.confirm")}
-          </button>
           <button
             ref={(element) => {
               cancelButton = element;
@@ -62,6 +59,9 @@ export function ChatBoardResetConfirmation(props: { onResolve: (confirmed: boole
             onClick={() => props.onResolve(false)}
           >
             {t("common.cancel")}
+          </button>
+          <button class="btn primary" type="button" onClick={() => props.onResolve(true)}>
+            {t("common.confirm")}
           </button>
         </openclaw-modal-actions>
       </div>
