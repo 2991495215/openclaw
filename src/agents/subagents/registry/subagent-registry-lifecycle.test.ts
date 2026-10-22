@@ -1645,6 +1645,30 @@ describe("subagent registry lifecycle hardening", () => {
     expect(entry.terminalOwner).toBeUndefined();
   });
 
+  it.each([
+    ["with", "requester-revision"],
+    ["without", undefined],
+  ] as const)(
+    "hands a quiet interrupted child to a requester %s a lifecycle revision",
+    async (_label, completionRequesterLifecycleRevision) => {
+      const entry = createRunEntry({
+        expectsCompletionMessage: false,
+        completionRequesterSessionId: "requester-session",
+        completionRequesterLifecycleRevision,
+      });
+      const controller = createLifecycleController({ entry });
+
+      await controller.completeSubagentRun(makeInterruptedSubagentCompletion(entry));
+
+      expect(entry).toMatchObject({
+        terminalOwner: "interrupted-recovery",
+        completionTarget: "parent",
+        cleanup: "keep",
+        execution: { interruptionReason: "gateway-restart" },
+      });
+    },
+  );
+
   it("persists interrupted recovery before task projection and rejects late provider or yield", async () => {
     const entry = createRunEntry();
     const persistOrThrow = vi.fn();

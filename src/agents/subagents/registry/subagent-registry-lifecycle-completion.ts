@@ -264,6 +264,16 @@ export async function completeSubagentRunAttempt(
         };
         entry.cleanupHandled = false;
         entry.terminalOwner = "interrupted-recovery";
+        if (!entry.collect && !suppressSessionEffects) {
+          // Unfinished work needs its history even when successful completion would delete it.
+          entry.cleanup = "keep";
+          if (entry.expectsCompletionMessage === false && entry.completionRequesterSessionId) {
+            // Quiet completion does not waive continuation after a restart. Sessions created
+            // without a lifecycle revision still bind by session id plus that absent revision.
+            entry.completionTarget = "parent";
+            entry.requesterTurnRunId = undefined;
+          }
+        }
         mutated = true;
         if (!(await commit(entrySnapshot))) {
           return;
