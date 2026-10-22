@@ -82,7 +82,9 @@ async function choose(page: Page, kind: string) {
   expect(chooser.isMultiple()).toBe(kind !== "camera");
   expect(await input.getAttribute("class")).toBe(`agent-chat__${kind}-input`);
   expect(await input.getAttribute("capture")).toBe(kind === "camera" ? "environment" : null);
-  expect(await input.getAttribute("accept")).toBe(kind === "file" ? null : "image/*");
+  expect(await input.getAttribute("accept")).toBe(
+    kind === "file" ? null : kind === "media" ? "image/*,video/*" : "image/*",
+  );
   return chooser;
 }
 
@@ -151,7 +153,7 @@ suite.define(() => {
         for (const [width, height] of widths) {
           // Exercise a prior Photo selection before the fallback picker is repositioned.
           if (cameraFallback && width === 320) {
-            const chooser = await choose(page, "photo");
+            const chooser = await choose(page, "media");
             await expectPickerAtPlusButton(chooser);
             await chooser.setFiles([]);
           }
@@ -269,7 +271,9 @@ suite.define(() => {
           await trigger.press("Enter");
           await attachmentOption(page, "file").waitFor({ state: "visible" });
           expect((await items.allTextContents()).map((text) => text.trim())).toEqual(
-            fixture.single ? ["Attach…"] : ["Take photo", "Photo", "File"],
+            fixture.single
+              ? ["Photos & videos", "Attach…"]
+              : ["Take photo", "Photos & videos", "File"],
           );
           for (const value of ["open-skills", "open-connectors", "manage-plugins"]) {
             expect(await page.locator(`.oc-menu-item[data-value="${value}"]`).isVisible()).toBe(
@@ -279,7 +283,7 @@ suite.define(() => {
           await page.keyboard.press("Escape");
           await attachmentOption(page, "file").waitFor({ state: "hidden" });
         }
-        for (const kind of fixture.single ? ["file"] : ["file", "photo"]) {
+        for (const kind of ["file", "media"]) {
           const chooser = await choose(page, kind);
           // Boundary-only cancellation: Playwright does not exercise OS dialogs.
           await chooser.setFiles([]);
