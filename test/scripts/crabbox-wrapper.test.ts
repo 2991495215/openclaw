@@ -4535,6 +4535,7 @@ process.on("exit", () => {
       git(origin, ["add", "-A"]);
       git(origin, ["commit", "-qm", "old content"]);
       const restoredCommit = git(origin, ["rev-parse", "HEAD"]);
+      git(origin, ["tag", "retained-root"]);
       rmSync(path.join(origin, "restored"), { recursive: true });
       git(origin, ["add", "-A"]);
       git(origin, ["commit", "-qm", "remove old content"]);
@@ -4903,6 +4904,7 @@ require('node:module').syncBuiltinESMExports();`,
         expect(git(reused.receiver, ["show", `${restoredCommit}:restored/old.txt`])).toBe(
           restored.trim(),
         );
+        expect(git(reused.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
         git(reused.receiver, ["fsck", "--connectivity-only", "--no-dangling"]);
 
         // An existing shallow receiver has no complete history to retain. Preserve
@@ -4917,7 +4919,26 @@ require('node:module').syncBuiltinESMExports();`,
         expect(git(legacy.receiver, ["rev-parse", "--is-shallow-repository"])).toBe("true");
         expect(git(legacy.receiver, ["rev-parse", "origin/main"])).toBe(base);
         expect(git(legacy.receiver, ["rev-parse", "HEAD^"])).toBe(base);
+        expect(git(legacy.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
         expect(existsSync(path.join(legacy.receiver, ".git/objects/info/alternates"))).toBe(false);
+        for (const condition of ["missing ref", "missing base"] as const) {
+          const fallback = receive(`prepared-${condition.replace(" ", "-")}`, sent, {
+            prepareReceiver: (receiver) => {
+              if (condition === "missing ref") {
+                git(receiver, ["update-ref", "-d", "refs/remotes/origin/main"]);
+                return;
+              }
+              rmSync(receiver, { recursive: true });
+              mkdirSync(receiver);
+              git(receiver, ["init", "-q", "-b", "main"]);
+              git(receiver, ["commit", "--allow-empty", "-qm", "unrelated prepared source"]);
+              git(receiver, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+            },
+          });
+          expect(fallback.result.status, failureDetail(fallback.result)).toBe(0);
+          expect(git(fallback.receiver, ["rev-parse", "origin/main"])).toBe(base);
+          expect(git(fallback.receiver, ["rev-parse", "--is-shallow-repository"])).toBe("true");
+        }
         return;
       }
       if (installsDependencies) {
@@ -5545,6 +5566,7 @@ require('node:module').syncBuiltinESMExports();`,
           "newer-private.ignored",
         ]);
         git(receiver, ["commit", "-qm", "newer workflow source"]);
+        git(receiver, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
         // A stale execution index cannot erase ownership recorded by its commit.
         git(receiver, ["update-index", "--force-remove", ...newerFiles]);
         writeFileSync(path.join(receiver, "newer-private.ignored"), "changed private bytes\n");
@@ -5582,6 +5604,7 @@ require('node:module').syncBuiltinESMExports();`,
       expect(git(imported.receiver, ["show", `${restoredCommit}:restored/old.txt`])).toBe(
         restored.trim(),
       );
+      expect(git(imported.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
       if (alias) {
         expect(git(imported.receiver, ["rev-parse", alias])).toBe(base);
       }

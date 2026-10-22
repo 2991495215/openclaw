@@ -86,9 +86,10 @@ try {
   delete env.GIT_ALTERNATE_OBJECT_DIRECTORIES;
   delete env.GIT_SHALLOW_FILE;
   function git(args, options = {}) {
-    const { encoding, phase = args[0], ...spawnOptions } = options;
+    const { encoding, phase = args[0], statusOnly = false, ...spawnOptions } = options;
     const result = spawnSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args],
       { cwd, env, maxBuffer: 64 * 1024 * 1024, ...spawnOptions });
+    if (statusOnly && (result.status === 0 || result.status === 1)) return result.status;
     if (result.status !== 0) fail("source Git operation failed: " + JSON.stringify(gitFailure(phase, result)));
     if (encoding === "buffer") return result.stdout;
     if (result.stdout === null) return "";
@@ -103,17 +104,26 @@ try {
     GIT_DIR: preparedGit,
     GIT_INDEX_FILE: path.join(preparedGit, "index"),
   };
-  const reuseBase = stat(preparedGit)?.isDirectory() &&
+  const preparedBase = stat(preparedGit)?.isDirectory() ?
     git(["for-each-ref", "--format=%(objectname)", "refs/remotes/origin/main"], {
       env: preparedEnv,
-    }).trim() === expected.baseSha;
-  const reuseHistory = reuseBase &&
+    }).trim() : "";
+  const reuseBase = preparedBase === expected.baseSha;
+  const preparedExpectedBase = preparedBase &&
+    git(["cat-file", "--batch-check=%(objectname) %(objecttype)"], {
+      env: preparedEnv, input: expected.baseSha + "\n",
+    }).trim() === expected.baseSha + " commit";
+  const reusePreparedBase = reuseBase || preparedExpectedBase &&
+    git(["merge-base", "--is-ancestor", expected.baseSha, "refs/remotes/origin/main"], {
+      env: preparedEnv, statusOnly: true,
+    }) === 0;
+  const reuseHistory = reusePreparedBase &&
     git(["rev-parse", "--is-shallow-repository"], { env: preparedEnv }).trim() === "false";
-  // A reused lease already owns this exact base. Preserve its complete history
-  // after native hydration; legacy shallow and cold workspaces retain depth 2.
+  // A reused lease can own this exact base through a newer verified ref. Preserve
+  // its complete history; legacy shallow and cold workspaces retain depth 2.
   // The new private Git directory never keeps an alternate to preparedGit.
-  git(["fetch", "-q", ...(reuseHistory ? [] : ["--depth=2"]),
-    reuseBase ? preparedGit : "origin", expected.baseSha + ":refs/remotes/origin/main"],
+  git(["fetch", "-q", ...(reuseHistory ? ["--no-tags"] : ["--depth=2"]),
+    reusePreparedBase ? preparedGit : "origin", expected.baseSha + ":refs/remotes/origin/main"],
     { phase: "base-fetch" });
   if (git(["rev-parse", "refs/remotes/origin/main"]).trim() !== expected.baseSha)
     fail("source base mismatch");
