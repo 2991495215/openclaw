@@ -1,5 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import { createMemo, For } from "solid-js";
+import { resolveContrast } from "../../app/contrast.ts";
 import { Icon } from "../../components/solid/icon.tsx";
 import {
   SettingsRow,
@@ -7,6 +8,7 @@ import {
   SettingsToggleRow,
 } from "../../components/solid/settings-ui.tsx";
 import { t } from "../../lib/reactive/i18n.ts";
+import { createMediaQuery } from "../../lib/reactive/platform.ts";
 import type { createAppearanceBackground } from "./appearance-background-state.ts";
 import { APPEARANCE_SETTINGS_TARGET_IDS } from "./route-data.ts";
 type BackgroundView = ReturnType<ReturnType<typeof createAppearanceBackground>["viewProps"]>;
@@ -22,6 +24,12 @@ export type AppearanceBackgroundView = Omit<
   onRetry?: BackgroundView["onRetry"];
 };
 export function AppearanceBackground(props: AppearanceBackgroundView) {
+  const systemContrast = createMediaQuery("(prefers-contrast: more)");
+  const reducedBackgrounds = createMediaQuery(
+    "(forced-colors: active), (prefers-reduced-transparency: reduce)",
+  );
+  const backgroundSuppressed = () =>
+    reducedBackgrounds() || resolveContrast(props.contrast, systemContrast()) === "enhanced";
   const preference = createMemo(() => props.preference);
   const disabled = createMemo(() => props.busy || preference().source.kind === "none");
   const presentation = () => preference().presentation ?? "faded";
@@ -49,6 +57,7 @@ export function AppearanceBackground(props: AppearanceBackgroundView) {
                 class="settings-background-options"
                 role="group"
                 aria-label={t("configView.appearance.background.source")}
+                aria-describedby="settings-background-visibility-hint"
               >
                 <For each={["none", "theme", "custom"] as const}>
                   {(source) => (
@@ -154,7 +163,11 @@ export function AppearanceBackground(props: AppearanceBackgroundView) {
           title={t("configView.appearance.background.visibility")}
           description={
             <span id="settings-background-visibility-hint">
-              {t("configView.appearance.background.visibilityHint")}
+              {t(
+                backgroundSuppressed()
+                  ? "configView.appearance.background.accessibilityHint"
+                  : "configView.appearance.background.visibilityHint",
+              )}
             </span>
           }
           stackedOnNarrow={true}

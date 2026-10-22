@@ -12,7 +12,6 @@ import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { titleForRoute } from "../../app-navigation.ts";
 import { pathForRoute, sameRouteLocation } from "../../app-route-paths.ts";
 import type { ApplicationContext } from "../../app/context-types.ts";
-import type { ContrastPreference } from "../../app/contrast.ts";
 import { hasOperatorAdminAccess } from "../../app/operator-access.ts";
 import { resetServerUiPref, selectThemeSettings } from "../../app/server-prefs-controls.ts";
 import { canSyncAppearancePreference } from "../../app/server-prefs-profile-runtime.ts";
@@ -27,7 +26,7 @@ import {
   UI_APPEARANCE_DEFAULTS,
   type UiSettings,
 } from "../../app/settings.ts";
-import type { ThemeMode, ThemeName } from "../../app/theme.ts";
+import type { ThemeName } from "../../app/theme.ts";
 import type { TypefaceId } from "../../app/typography.ts";
 import {
   loadStoredHiddenSessionCatalogIds,
@@ -65,6 +64,7 @@ import {
   ADVANCED_EXCLUDED_SECTIONS,
   type ConfigPageId,
 } from "./config-sections.ts";
+import { configThemeProps } from "./config-theme-props.ts";
 import * as themeImport from "./custom-theme-import-owner.ts";
 import { importCustomThemeFromUrl } from "./custom-theme-import.ts";
 import { createMediaDevicePreferences, refreshMediaDevice } from "./media-device-discovery.ts";
@@ -564,9 +564,6 @@ export function createConfigPage(
     const id = context.agentSelection.state.selectedId;
     const agent = agents.read().agentsList?.agents.find((entry) => entry.id === id);
     const unlocked = lobsterdex.read();
-    const themePref = currentSyncedPref("theme");
-    const themeModePref = currentSyncedPref("themeMode");
-    const contrastPref = currentSyncedPref("contrast");
     const accentPref = currentSyncedPref("accent");
     const localePref = currentSyncedPref("locale");
     const chatSendShortcutPref = currentSyncedPref("chatSendShortcut");
@@ -665,29 +662,13 @@ export function createConfigPage(
       presentationRetired: () => commandLifetime.promise,
       onRawDiscard: () => runtimeConfig.discardDraft(),
       onOpenFile: () => runtimeConfig.openFile(),
-      theme: settings.theme,
-      themeOverridden: themePref.overridden,
-      themeProvenance: themePref.provenance,
-      themeResetValue: themePref.resetValue ?? UI_APPEARANCE_DEFAULTS.theme,
-      themeMode: settings.themeMode,
-      themeModeOverridden: themeModePref.overridden,
-      themeModeProvenance: themeModePref.provenance,
-      themeModeResetValue: themeModePref.resetValue ?? UI_APPEARANCE_DEFAULTS.themeMode,
-      contrast: settings.contrast ?? UI_APPEARANCE_DEFAULTS.contrast,
-      contrastProvenance: contrastPref.provenance,
-      contrastOverridden: contrastPref.overridden,
-      contrastResetValue: contrastPref.resetValue ?? UI_APPEARANCE_DEFAULTS.contrast,
-      setContrast: (contrast: ContrastPreference) => {
-        const preference = currentSyncedPref("contrast");
-        if (
-          preference.overridden &&
-          contrast === (preference.resetValue ?? UI_APPEARANCE_DEFAULTS.contrast)
-        ) {
-          resetSyncedPref("contrast");
-        } else {
-          applySettings({ contrast });
-        }
-      },
+      ...configThemeProps({
+        settings,
+        theme: context.theme,
+        readPreference: currentSyncedPref,
+        resetPreference: resetSyncedPref,
+        applySettings,
+      }),
       accent: settings.accent,
       accentProvenance: accentPref.provenance,
       accentResetValue: accentPref.resetValue,
@@ -715,22 +696,6 @@ export function createConfigPage(
       },
       themeCatalog: pageId === "appearance" ? context.theme.catalog : undefined,
       onRetryThemeCatalog: () => context.theme.retryCatalog?.(),
-      setTheme: (theme: ThemeName) => {
-        const preference = currentSyncedPref("theme");
-        if (preference.overridden && theme === preference.resetValue) {
-          resetSyncedPref("theme");
-        } else {
-          applySettings({}, theme);
-        }
-      },
-      setThemeMode: (mode: ThemeMode) => {
-        const preference = currentSyncedPref("themeMode");
-        if (preference.overridden && mode === preference.resetValue) {
-          resetSyncedPref("themeMode");
-        } else {
-          context.theme.setMode(mode);
-        }
-      },
       setAccent: (accent: string | undefined) =>
         accent === undefined ? resetSyncedPref("accent") : applySettings({ accent }),
       hasCustomTheme: Boolean(settings.customTheme),

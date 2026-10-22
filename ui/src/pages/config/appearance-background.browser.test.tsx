@@ -693,6 +693,7 @@ function fixture(
   preference: Partial<BackgroundPreference>,
 ): BackgroundViewProps {
   return {
+    contrast: "standard",
     preference: { ...DEFAULT_BACKGROUND_PREFERENCE, source: { kind: "theme" }, ...preference },
     imageUrl: null,
     hasImage: false,

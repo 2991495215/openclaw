@@ -129,7 +129,7 @@ openclaw-session-background[data-presentation="faded"][data-surface="session"]
   );
 }
 
-:root[data-contrast="enhanced"] .session-background__image {
+:root[data-contrast-intent="enhanced"] .session-background__image {
   display: none;
   background-image: none;
 }

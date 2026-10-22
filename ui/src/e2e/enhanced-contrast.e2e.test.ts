@@ -12,7 +12,7 @@ import {
   waitForControlUiSettingsTakeover,
 } from "../test-helpers/control-ui-e2e.ts";
 import { resolveRenderedColors, type RenderedColor } from "../test-helpers/rendered-colors.ts";
-import { configResponse } from "./appearance-prefs.test-support.ts";
+import { configResponse, patchPrefs } from "./appearance-prefs.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createControlUiE2eSuite({ name: "Enhanced built-in contrast" });
@@ -164,15 +164,77 @@ suite.define(() => {
           const group = page.getByRole("radiogroup", { name: "Contrast", exact: true });
           await expect.poll(() => root.getAttribute("data-contrast")).toBe("standard");
           const before = await palette(page);
-          await screenshot(page, theme + "-" + mode + "-before");
+          await screenshot(page, theme + "-" + mode + "-standard-reference");
           if (mode === "dark") {
-            await screenshot(page, theme + "-mobile-before", true);
+            await screenshot(page, theme + "-mobile-standard-reference", true);
           }
           await page.setViewportSize({ width: 1440, height: 1000 });
           await group.getByRole("radio", { name: "Enhanced", exact: true }).check();
           await expect.poll(() => root.getAttribute("data-contrast")).toBe("enhanced");
           const after = await palette(page);
           expect(after.identity).toEqual(before.identity);
+          if (theme === "claw") {
+            await page.getByRole("heading", { name: "Appearance", exact: true }).click();
+            const selected = group.locator("label:has(input:checked)");
+            const raw = await selected.evaluate((element) => ({
+              ink: getComputedStyle(element).color,
+              fill: getComputedStyle(element).backgroundColor,
+              track: getComputedStyle(element.parentElement!).backgroundColor,
+            }));
+            const colors = await page.evaluate(resolveRenderedColors, raw);
+            const ratio = (a: RenderedColor, b: RenderedColor) => {
+              const x = luminance(a);
+              const y = luminance(b);
+              return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+            };
+            expect(ratio(colors.ink!, colors.fill!)).toBeGreaterThanOrEqual(7);
+            expect(ratio(colors.fill!, colors.track!)).toBeGreaterThanOrEqual(3);
+            for (const preset of ["mint", "default"]) {
+              const swatch = page.locator(`[data-accent-preset="${preset}"]`);
+              const expectedPrefs = preset === "mint" ? { accent: "#52c99a" } : { accent: null };
+              const nextPrefs = {
+                theme,
+                themeMode: mode,
+                ...(preset === "mint" ? { accent: "#52c99a" } : {}),
+              };
+              const nextConfig = configResponse(nextPrefs, `contrast-${preset}`);
+              const previousPatches = (await gateway.getRequests("config.patch")).length;
+              await gateway.setMethodResponse("config.patch", {
+                ok: true,
+                config: nextConfig.config,
+                hash: nextConfig.hash,
+              });
+              await gateway.setMethodResponse("config.get", nextConfig);
+              await swatch.click();
+              const request = await gateway.waitForRequest("config.patch", {
+                after: previousPatches,
+              });
+              expect(patchPrefs(request)).toEqual(expectedPrefs);
+              await expect
+                .poll(async () => {
+                  const rawSwatch = await swatch.evaluate((button) => {
+                    const glyph = button.querySelector(".settings-accent-swatch__check svg");
+                    if (
+                      !button.isConnected ||
+                      button.getAttribute("aria-pressed") !== "true" ||
+                      !glyph?.isConnected
+                    ) {
+                      return null;
+                    }
+                    return {
+                      ink: getComputedStyle(glyph).color,
+                      fill: getComputedStyle(button).backgroundColor,
+                    };
+                  });
+                  if (!rawSwatch) {
+                    return 0;
+                  }
+                  const swatchColors = await page.evaluate(resolveRenderedColors, rawSwatch);
+                  return ratio(swatchColors.ink!, swatchColors.fill!);
+                })
+                .toBeGreaterThanOrEqual(3);
+            }
+          }
           if (theme === "beacon") {
             for (const token of [
               "--muted",
@@ -303,7 +365,7 @@ suite.define(() => {
           await page.goto(suite.server.baseUrl + "chat");
           await message.waitFor();
           await input.fill("Check keyboard focus and the next action.");
-          await chatCapture("before");
+          await chatCapture("standard-reference");
           await page.goto(suite.server.baseUrl + "settings/appearance");
           await waitForControlUiSettingsTakeover(page);
           await page

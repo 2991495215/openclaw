@@ -64,7 +64,8 @@ export const SessionBackground = defineSolidBridge<Props>(
         ? matchMedia("(forced-colors: active), (prefers-reduced-transparency: reduce)")
         : null;
     const suppressBackground = () =>
-      accessibility?.matches || host.ownerDocument.documentElement.dataset.contrast === "enhanced";
+      accessibility?.matches ||
+      host.ownerDocument.documentElement.dataset.contrastIntent === "enhanced";
     let request: BackgroundImageRequest | null = null;
     let failedIdentity: string | null = null;
     let surfaceElement: HTMLElement | null = null;
@@ -166,7 +167,7 @@ export const SessionBackground = defineSolidBridge<Props>(
           "data-theme",
           "data-theme-mode",
           "data-theme-background",
-          "data-contrast",
+          "data-contrast-intent",
         ],
       });
       const stopAccessibility =

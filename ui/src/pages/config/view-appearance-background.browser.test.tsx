@@ -30,6 +30,7 @@ function renderBackground(props: AppearanceBackgroundView) {
 }
 function fixture(overrides: Partial<AppearanceBackgroundView> = {}): AppearanceBackgroundView {
   return {
+    contrast: "standard",
     preference: { ...DEFAULT_BACKGROUND_PREFERENCE, source: { kind: "theme" } },
     imageUrl: null,
     hasImage: false,
@@ -61,6 +62,20 @@ afterEach(() => {
 });
 
 describe("Appearance backgrounds", () => {
+  it("describes suspended artwork without disabling or changing saved controls", () => {
+    const props = fixture({ contrast: "enhanced" });
+    renderBackground(props);
+    const hint = host.querySelector(`#${range().getAttribute("aria-describedby")}`);
+    expect(hint?.textContent).toContain("Hidden for accessibility");
+    expect(range().disabled).toBe(false);
+    expect(source("theme").getAttribute("aria-pressed")).toBe("true");
+    source("none").click();
+    expect(props.onSource).toHaveBeenCalledExactlyOnceWith("none");
+    expect(props.onChange).not.toHaveBeenCalled();
+    renderBackground(fixture({ contrast: "standard" }));
+    expect(hint?.textContent).toContain("Adjust to preview");
+  });
+
   it("keeps source selection separate from both placement preferences", () => {
     const props = fixture();
     renderBackground(props);

@@ -538,6 +538,7 @@ export function createAppearanceBackground(
           ? { kind: "status" as const, text: t("common.saving") }
           : null);
     return {
+      contrast: application.theme.settings.contrast,
       preference: readPreference(),
       imageUrl,
       hasImage: Boolean(readSnapshot()?.asset),

@@ -109,6 +109,8 @@ export const baseProps = () => ({
   themeResetValue: "claw" as ThemeName,
   themeMode: "system" as ThemeMode,
   contrast: "system" as const,
+  appliedContrast: "standard" as const,
+  contrastSupported: true,
   contrastOverridden: false,
   contrastResetValue: "system" as const,
   contrastProvenance: "default" as const,

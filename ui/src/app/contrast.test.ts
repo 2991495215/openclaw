@@ -15,6 +15,7 @@ afterEach(() => {
   localStorage.clear();
   document.documentElement.removeAttribute("style");
   delete document.documentElement.dataset.contrast;
+  delete document.documentElement.dataset.contrastIntent;
   document.head
     .querySelectorAll('[id^="openclaw-theme-palette-"]')
     .forEach((link) => link.remove());
@@ -48,13 +49,14 @@ it("honors contrast intent before first paint for every built-in, independent of
           document.documentElement.dataset.contrast,
           `${theme}/${themeMode}/${contrast}/${systemMore}`,
         ).toBe(expected);
+        expect(document.documentElement.dataset.contrastIntent).toBe(expected);
         expect(document.documentElement.dataset.themeMode).toBe(themeMode);
       }
     }
   }
 });
 
-it("defaults to the local OS on unavailable storage without claiming an imported palette", () => {
+it("uses the built-in first-paint fallback when storage or an imported palette is unavailable", () => {
   const window = { matchMedia: () => ({ matches: true }) };
   vm.runInNewContext(script, {
     document,
@@ -72,7 +74,8 @@ it("defaults to the local OS on unavailable storage without claiming an imported
       getItem: () => JSON.stringify({ theme: "custom", contrast: "enhanced" }),
     },
   });
-  expect(document.documentElement.dataset.contrast).toBe("standard");
+  expect(document.documentElement.dataset.contrast).toBe("enhanced");
+  expect(document.documentElement.dataset.contrastIntent).toBe("enhanced");
 });
 
 it("reacts to OS changes only in System, restoring the saved accent without altering typography", () => {
@@ -124,6 +127,15 @@ it("reacts to OS changes only in System, restoring the saved accent without alte
     expect(root.dataset.contrast).toBe("standard");
     expect(loadSettings().contrast).toBe("enhanced");
     expect(root.style.getPropertyValue("--primary")).toBe("#123456");
+    expect(root.dataset.contrastIntent).toBe("enhanced");
+    expect(theme.appliedPalette).toMatchObject({ contrast: "standard", contrastSupported: false });
+    patchSettings({ contrast: "standard" });
+    contrastMedia.matches = true;
+    contrastMedia.dispatchEvent(new Event("change"));
+    expect(root.dataset.contrastIntent).toBe("standard");
+    patchSettings({ contrast: "system" });
+    expect(root.dataset.contrastIntent).toBe("enhanced");
+    expect(root.dataset.contrast).toBe("standard");
   } finally {
     theme.dispose();
     gateway.stop();

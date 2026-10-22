@@ -1728,6 +1728,7 @@ const enSettings = {
         sessions: "Conversations",
         visibility: "Image visibility",
         visibilityHint: "Adjust to preview. Esc to dismiss.",
+        accessibilityHint: "Hidden for accessibility. Your choices are retained.",
 
         browserOnly: "Saved in this browser. Connect with a personal profile to upload an image.",
         profileRequired: "Connect with a personal profile to save a custom image.",

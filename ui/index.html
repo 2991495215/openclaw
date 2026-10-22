@@ -130,23 +130,23 @@
             document.head.appendChild(palette);
           }
           document.documentElement.setAttribute("data-theme", resolved);
-          document.documentElement.setAttribute(
-            "data-contrast",
-            resolveContrast(
-              s && s.contrast,
-              window.matchMedia("(prefers-contrast: more)").matches,
-              t !== "custom" && t.indexOf("/") < 0,
-            ),
+          var contrast = resolveContrast(
+            s && s.contrast,
+            window.matchMedia("(prefers-contrast: more)").matches,
           );
+          document.documentElement.setAttribute("data-contrast-intent", contrast);
+          document.documentElement.setAttribute("data-contrast", contrast);
           var resolvedMode = resolved.includes("light") ? "light" : "dark";
           document.documentElement.setAttribute("data-theme-mode", resolvedMode);
           // Plugin semantic styles select on [data-theme-resolved]; keep in lockstep.
           document.documentElement.setAttribute("data-theme-resolved", resolvedMode);
         } catch (e) {
-          document.documentElement.setAttribute(
-            "data-contrast",
-            resolveContrast(undefined, window.matchMedia("(prefers-contrast: more)").matches),
+          var contrast = resolveContrast(
+            undefined,
+            window.matchMedia("(prefers-contrast: more)").matches,
           );
+          document.documentElement.setAttribute("data-contrast-intent", contrast);
+          document.documentElement.setAttribute("data-contrast", contrast);
         }
       })();
     </script>

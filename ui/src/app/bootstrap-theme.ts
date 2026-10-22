@@ -43,24 +43,27 @@ function subscribeMediaQuery(query: string, onChange: () => void): (() => void) 
   return listen(globalThis.matchMedia(query), "change", onChange);
 }
 
-function applyThemePresentation(settings: UiPreferences, catalogTheme?: CatalogTheme): void {
-  if (typeof document === "undefined") {
-    return;
-  }
-  const root = document.documentElement;
+function applyThemePresentation(
+  settings: UiPreferences,
+  catalogTheme?: CatalogTheme,
+): Pick<ApplicationThemePalette, "contrast" | "contrastSupported"> {
   const dynamic = settings.theme.includes("/");
   const effectiveTheme = dynamic && !catalogTheme ? "claw" : settings.theme;
+  const systemMore = globalThis.matchMedia?.("(prefers-contrast: more)").matches ?? false;
+  const contrastSupported = isBuiltinThemeId(effectiveTheme);
+  const contrast = resolveContrast(settings.contrast, systemMore, contrastSupported);
+  if (typeof document === "undefined") {
+    return { contrast, contrastSupported };
+  }
+  const root = document.documentElement;
   const mode = catalogTheme?.mode ?? settings.themeMode;
   const resolvedTheme = resolveTheme(effectiveTheme, mode);
   const resolvedMode = resolvedTheme.endsWith("light") ? "light" : "dark";
   root.dataset.themeId = effectiveTheme;
   root.dataset.theme = resolvedTheme;
   root.dataset.themeMode = resolvedMode;
-  root.dataset.contrast = resolveContrast(
-    settings.contrast,
-    globalThis.matchMedia?.("(prefers-contrast: more)").matches ?? false,
-    isBuiltinThemeId(settings.theme),
-  );
+  root.dataset.contrastIntent = resolveContrast(settings.contrast, systemMore);
+  root.dataset.contrast = contrast;
   const branding = themeBranding(settings, catalogTheme);
   syncThemeBackgroundArtwork(root, branding, resolvedMode, settings.background?.visibility);
   root.dataset.themeMascot = branding.mascot;
@@ -82,6 +85,7 @@ function applyThemePresentation(settings: UiPreferences, catalogTheme?: CatalogT
   applyControlUiAccent(settings.accent);
   // Custom palette CSS can change while the theme ID and inline styles stay the same.
   syncControlUiSystemChrome(true);
+  return { contrast, contrastSupported };
 }
 
 function livePreferencesKey(settings: UiPreferences): string {
@@ -123,10 +127,11 @@ export function createApplicationTheme(
       if (generation !== presentationGeneration) {
         return;
       }
-      applyThemePresentation(settings, catalog?.theme(settings.theme));
+      const contrast = applyThemePresentation(settings, catalog?.theme(settings.theme));
       const mode = catalog?.theme(settings.theme)?.mode ?? settings.themeMode;
       appliedPalette = {
         revision: generation,
+        ...contrast,
         theme: settings.theme,
         resolvedMode: resolveTheme(settings.theme, mode).endsWith("light") ? "light" : "dark",
       };

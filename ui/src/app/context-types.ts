@@ -22,6 +22,7 @@ import type { AssistantDock } from "./assistant-dock.ts";
 import type { ApplicationChatSubmissions } from "./chat-submissions.ts";
 import type { ApplicationConfigCapability } from "./config.ts";
 import type { ConnectionBootstrapCoordinator } from "./connection-bootstrap.ts";
+import type { EffectiveContrast } from "./contrast.ts";
 import type { ControlUiReadinessOutlet } from "./control-ui-readiness.ts";
 import type { ScopeUpgradeCapability } from "./device-scope-upgrade.ts";
 import type { ApplicationGateway } from "./gateway.ts";
@@ -54,6 +55,8 @@ export type ApplicationTheme = {
 };
 
 export type ApplicationThemePalette = {
+  readonly contrast: EffectiveContrast;
+  readonly contrastSupported: boolean;
   readonly revision: number;
   readonly theme: ThemeName;
   readonly resolvedMode: "dark" | "light";

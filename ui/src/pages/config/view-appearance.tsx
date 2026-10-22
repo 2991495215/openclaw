@@ -8,12 +8,8 @@ import {
   onSettled,
   Show,
 } from "solid-js";
-import {
-  BUILTIN_THEMES,
-  isBuiltinThemeId,
-} from "../../../../packages/gateway-protocol/src/theme.ts";
+import { BUILTIN_THEMES } from "../../../../packages/gateway-protocol/src/theme.ts";
 import { controlUiAccentInk } from "../../app/accent-contrast.ts";
-import { resolveContrast } from "../../app/contrast.ts";
 import {
   TEXT_SCALE_STOPS,
   UI_APPEARANCE_DEFAULTS,
@@ -31,7 +27,6 @@ import {
 } from "../../components/solid/settings-ui.tsx";
 import { formatUiError } from "../../lib/format-error.ts";
 import { t } from "../../lib/reactive/i18n.ts";
-import { createMediaQuery } from "../../lib/reactive/platform.ts";
 import { resolveScrollBehavior } from "../../lib/scroll-behavior.ts";
 import { AppearanceBackground } from "./appearance-background.tsx";
 import { APPEARANCE_SETTINGS_TARGET_IDS } from "./route-data.ts";
@@ -118,9 +113,7 @@ function renderThemeCardVisual(id: ThemeName, activeTheme: ThemeName) {
   );
 }
 export function AppearanceSection(props: ConfigProps) {
-  const systemContrast = createMediaQuery("(prefers-contrast: more)");
-  const effectiveContrast = () =>
-    resolveContrast(props.contrast, systemContrast(), isBuiltinThemeId(props.theme));
+  const effectiveContrast = () => props.appliedContrast;
   let customThemeImportInput: HTMLInputElement | undefined;
   const [importing, setImporting] = createOptimistic(false, { equals: false });
   // Pending work belongs to the action; terminal receipts feed the error region.
@@ -392,16 +385,16 @@ export function AppearanceSection(props: ConfigProps) {
           <SettingsRow
             title={t("configView.appearance.contrast.title")}
             description={
-              <>
+              <span id="settings-contrast-description">
                 {t("configView.appearance.contrast.hint")}{" "}
                 {serverUiPrefProvenanceHint(props.contrastProvenance)}
                 <br />
-                {isBuiltinThemeId(props.theme)
+                {props.contrastSupported
                   ? t("configView.appearance.contrast.effective", {
                       value: t(`configView.appearance.contrast.${effectiveContrast()}`),
                     })
                   : t("configView.appearance.contrast.unsupported")}
-              </>
+              </span>
             }
             stackedOnNarrow={true}
             control={
@@ -413,6 +406,7 @@ export function AppearanceSection(props: ConfigProps) {
                   { value: "enhanced", label: t("configView.appearance.contrast.enhanced") },
                 ]}
                 ariaLabel={t("configView.appearance.contrast.title")}
+                descriptionId="settings-contrast-description"
                 onChange={(contrast) => props.setContrast(contrast)}
                 onReselect={(contrast) => {
                   if (props.contrastOverridden && contrast === props.contrastResetValue) {
@@ -559,8 +553,14 @@ export function AppearanceSection(props: ConfigProps) {
                       ]}
                       style={{
                         "--settings-accent-swatch": preset.hex ?? themeAccentColor(),
+                        "--settings-accent-swatch-ink": preset.hex
+                          ? controlUiAccentInk(preset.hex)
+                          : props.accentResetValue && props.accentResetValue !== "theme"
+                            ? controlUiAccentInk(props.accentResetValue)
+                            : "var(--theme-chip-accent-ink)",
                       }}
                       data-accent-preset={preset.id}
+                      aria-describedby="settings-accent-status"
                       aria-label={label()}
                       aria-pressed={selected() ? "true" : "false"}
                       title={label()}

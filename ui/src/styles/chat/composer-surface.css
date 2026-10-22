@@ -342,10 +342,13 @@
   opacity: 0.6;
 }
 
+:root[data-contrast-intent="enhanced"][data-theme-mode] .agent-chat__input {
+  background: var(--chat-composer-surface);
+}
+
 :root[data-contrast="enhanced"][data-theme-mode] .agent-chat__input {
   --chat-composer-hairline: var(--border);
 
-  background: var(--chat-composer-surface);
   border-color: var(--border);
   box-shadow: none;
 

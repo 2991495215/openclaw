@@ -258,7 +258,7 @@
   --chat-composer-secondary: var(--muted);
   --chat-composer-tertiary: var(--muted);
 }
-:root[data-contrast="enhanced"] .agent-chat__input .chat-send-btn:hover:not(:disabled) {
+:root[data-contrast="enhanced"] .agent-chat__input .chat-send-btn--send:hover:not(:disabled) {
   background: var(--primary-hover);
 }
 
@@ -268,6 +268,13 @@
 }
 
 @media (forced-colors: none) {
+  :root[data-contrast="enhanced"]
+    .settings-segmented:not(.settings-segmented--accent, .settings-segmented--primary)
+    > :is(.settings-segmented__btn--active, .settings-segmented__btn:has(> input:checked)) {
+    background: var(--text-strong);
+    color: var(--bg);
+  }
+
   :root[data-contrast="enhanced"] .settings-segmented > .settings-segmented__btn:focus-visible,
   :root[data-contrast="enhanced"]
     .settings-segmented
