@@ -9,7 +9,6 @@ import {
   QA_EVIDENCE_FILENAME,
   buildQaSuiteEvidenceSummary,
   mergeQaEvidenceSummaries,
-  type QaEvidenceSummaryJson,
   type QaEvidenceSummaryV3Entry,
   type QaEvidenceSummaryV3Json,
 } from "./evidence-summary.js";
@@ -377,24 +376,6 @@ function createQaPartitionEvidenceOwner(params: {
   };
 }
 
-function summarizeQaEvidenceChannel(
-  summary: QaEvidenceSummaryJson,
-): { id?: string; driver: QaTransportDriver } | undefined {
-  const channels = summary.entries.map((entry) => entry.execution?.channel);
-  const first = channels[0];
-  if (
-    !first?.driver ||
-    !["qa-channel", "crabline", "live"].includes(first.driver) ||
-    channels.some((channel) => channel?.driver !== first.driver)
-  ) {
-    return undefined;
-  }
-  return {
-    ...(channels.every((channel) => channel?.id === first.id) ? { id: first.id } : {}),
-    driver: first.driver as QaTransportDriver,
-  };
-}
-
 type QaFlowChannelGroup = {
   channel: string | undefined;
   exclusiveKey?: string;
@@ -440,20 +421,6 @@ async function loadQaFlowSuiteRuntime() {
       ...params,
       startLab: params?.startLab ?? startLab,
     });
-}
-
-function resolveRequestedScenarios(params: {
-  scenarioIds: readonly string[];
-  scenarios: ReturnType<typeof readQaBootstrapScenarioCatalog>["scenarios"];
-}) {
-  const scenarioById = new Map(params.scenarios.map((scenario) => [scenario.id, scenario]));
-  return params.scenarioIds.map((scenarioId) => {
-    const scenario = scenarioById.get(scenarioId);
-    if (!scenario) {
-      throw new Error(`unknown QA scenario id(s): ${scenarioId}`);
-    }
-    return structuredClone(scenario);
-  });
 }
 
 async function resolveQaFlowChannelGroups(
@@ -552,9 +519,15 @@ async function resolveSuiteExecutionPlan(
   if (scenarioIds.length === 0) {
     return { kind: "flow", expectedCells: [], scenarios: [] };
   }
-  const selectedScenarios = resolveRequestedScenarios({
-    scenarioIds,
-    scenarios: params?.scenarioDefinitions ?? readQaBootstrapScenarioCatalog().scenarios,
+  const scenarioDefinitions =
+    params?.scenarioDefinitions ?? readQaBootstrapScenarioCatalog().scenarios;
+  const scenarioById = new Map(scenarioDefinitions.map((scenario) => [scenario.id, scenario]));
+  const selectedScenarios = scenarioIds.map((scenarioId) => {
+    const scenario = scenarioById.get(scenarioId);
+    if (!scenario) {
+      throw new Error(`unknown QA scenario id(s): ${scenarioId}`);
+    }
+    return structuredClone(scenario);
   });
   const flowScenarios = selectedScenarios.filter((scenario) => !isQaTestFileScenario(scenario));
   const testFileScenariosByKind = new Map<QaTestFileExecutionKind, QaTestFileScenario[]>();
@@ -629,18 +602,6 @@ async function prepareQaSuiteNativeRuntime(repoRoot: string) {
   const result = await runPluginCommandWithTimeout({ argv, cwd: repoRoot, timeoutMs: 20 * 60_000 });
   if (result.code !== 0) {
     throw new Error(`QA suite runtime preparation failed (${argv.join(" ")}): ${result.stderr}`);
-  }
-}
-
-function rejectFlowOnlySuiteOptionsForUnifiedRun(runParams: QaSuiteRunParams | undefined) {
-  if (runParams?.runtimePair) {
-    throw new Error("--runtime-pair requires execution.kind: flow scenarios.");
-  }
-  if (runParams?.forcedRuntime) {
-    throw new Error("forced runtime execution requires execution.kind: flow scenarios.");
-  }
-  if (runParams?.captureRuntimeParityCell) {
-    throw new Error("runtime parity capture requires execution.kind: flow scenarios.");
   }
 }
 
@@ -776,59 +737,21 @@ function testFileScenarioResultToSuiteScenario(
   };
 }
 
-async function writeUnifiedQaSuiteArtifacts(params: {
-  alternateModel: string;
-  channel?: string;
-  channelDriver?: QaTransportDriver;
-  concurrency: number;
-  evidence: QaEvidenceSummaryJson;
-  fastMode: boolean;
-  finishedAt: Date;
-  outputDir: string;
-  primaryModel: string;
-  providerMode: ReturnType<typeof normalizeQaProviderMode>;
-  runtimePair: QaSuiteRunParams["runtimePair"];
-  scenarioIds: readonly string[];
-  scenarios: readonly QaSuiteScenarioResult[];
-  startedAt: Date;
-}) {
-  const evidencePath = path.join(params.outputDir, QA_EVIDENCE_FILENAME);
-  const reportPath = path.join(params.outputDir, "qa-suite-report.md");
-  const summaryPath = path.join(params.outputDir, "qa-suite-summary.json");
-  const report = renderQaMarkdownReport({
-    title: "OpenClaw QA Scenario Suite",
-    finishedAt: params.finishedAt,
-    scenarios: [...params.scenarios],
-    startedAt: params.startedAt,
-  });
-  const summary = buildQaSuiteSummaryJson({
-    ...params,
-    scenarios: [...params.scenarios],
-  });
-  await publishQaSuiteArtifactFiles({
-    outputDir: params.outputDir,
-    files: [
-      { filePath: evidencePath, content: `${JSON.stringify(params.evidence, null, 2)}\n` },
-      { filePath: reportPath, content: report },
-      { filePath: summaryPath, content: `${JSON.stringify(summary, null, 2)}\n` },
-    ],
-  });
-  return {
-    evidencePath,
-    outputDir: params.outputDir,
-    report,
-    reportPath,
-    scenarios: [...params.scenarios],
-    summaryPath,
-  } satisfies QaUnifiedSuiteResult;
-}
-
 async function runUnifiedQaSuite(params: {
   plan: Extract<QaSuiteExecutionPlan, { kind: "unified" }>;
   runParams: QaSuiteRunParams | undefined;
 }): Promise<QaUnifiedSuiteResult & { observedCells: QaScenarioExecutionCell[] }> {
   if (params.plan.testFileScenariosByKind.size > 0) {
-    rejectFlowOnlySuiteOptionsForUnifiedRun(params.runParams);
+    const runParams = params.runParams;
+    if (runParams?.runtimePair) {
+      throw new Error("--runtime-pair requires execution.kind: flow scenarios.");
+    }
+    if (runParams?.forcedRuntime) {
+      throw new Error("forced runtime execution requires execution.kind: flow scenarios.");
+    }
+    if (runParams?.captureRuntimeParityCell) {
+      throw new Error("runtime parity capture requires execution.kind: flow scenarios.");
+    }
   }
   const startedAt = new Date();
   const repoRoot = path.resolve(params.runParams?.repoRoot ?? process.cwd());
@@ -1396,7 +1319,19 @@ async function runUnifiedQaSuite(params: {
       ),
     ],
   };
-  const channel = summarizeQaEvidenceChannel(evidence);
+  const channels = evidence.entries.map((entry) => entry.execution?.channel);
+  const first = channels[0];
+  const channel =
+    !first?.driver ||
+    !["qa-channel", "crabline", "live"].includes(first.driver) ||
+    channels.some((entryChannel) => entryChannel?.driver !== first.driver)
+      ? undefined
+      : {
+          ...(channels.every((entryChannel) => entryChannel?.id === first.id)
+            ? { id: first.id }
+            : {}),
+          driver: first.driver as QaTransportDriver,
+        };
   const resultsByOccurrence = new Map(
     partitionResults.flatMap((partition) =>
       partition.scenarioResults.map(({ result }) => [result.evidenceOccurrenceId, result] as const),
@@ -1413,7 +1348,18 @@ async function runUnifiedQaSuite(params: {
     }
     return [result];
   });
-  const unifiedResult = await writeUnifiedQaSuiteArtifacts({
+  const runtimePair = params.runParams?.runtimePair;
+  const scenarioIds = params.plan.scenarios.map((scenario) => scenario.id);
+  const evidencePath = path.join(outputDir, QA_EVIDENCE_FILENAME);
+  const reportPath = path.join(outputDir, "qa-suite-report.md");
+  const summaryPath = path.join(outputDir, "qa-suite-summary.json");
+  const report = renderQaMarkdownReport({
+    title: "OpenClaw QA Scenario Suite",
+    finishedAt,
+    scenarios: [...scenarios],
+    startedAt,
+  });
+  const summary = buildQaSuiteSummaryJson({
     alternateModel,
     channel: channel?.id,
     channelDriver: channel?.driver,
@@ -1421,14 +1367,29 @@ async function runUnifiedQaSuite(params: {
     evidence,
     fastMode,
     finishedAt,
-    outputDir,
     primaryModel,
     providerMode,
-    runtimePair: params.runParams?.runtimePair,
-    scenarioIds: params.plan.scenarios.map((scenario) => scenario.id),
-    scenarios,
+    runtimePair,
+    scenarioIds,
+    scenarios: [...scenarios],
     startedAt,
   });
+  await publishQaSuiteArtifactFiles({
+    outputDir,
+    files: [
+      { filePath: evidencePath, content: `${JSON.stringify(evidence, null, 2)}\n` },
+      { filePath: reportPath, content: report },
+      { filePath: summaryPath, content: `${JSON.stringify(summary, null, 2)}\n` },
+    ],
+  });
+  const unifiedResult = {
+    evidencePath,
+    outputDir,
+    report,
+    reportPath,
+    scenarios: [...scenarios],
+    summaryPath,
+  } satisfies QaUnifiedSuiteResult;
   const resultsByIndex = new Map<number, QaSuiteScenarioResult[]>();
   for (const { scenarioIndex, result } of progressEntries(
     partitionResults.flatMap((partition) => partition.scenarioResults),
