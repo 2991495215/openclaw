@@ -182,10 +182,11 @@ function channelSnapshotAllowsScope(
   });
 }
 
-function createInitialChannelsState(snapshot: ChannelGatewaySnapshot): ChannelsState {
-  return {
-    client: snapshot.client ?? null,
-    connected: snapshot.phase === "connected",
+export function createChannelCapability(gateway: ChannelGateway) {
+  const initialSnapshot = gateway.snapshot;
+  const state: ChannelsState = {
+    client: initialSnapshot.client ?? null,
+    connected: initialSnapshot.phase === "connected",
     channelsLoading: false,
     channelsLoadingProbe: null,
     channelsRefreshSeq: 0,
@@ -206,21 +207,6 @@ function createInitialChannelsState(snapshot: ChannelGatewaySnapshot): ChannelsS
     whatsappLoginConnected: null,
     whatsappBusy: false,
   };
-}
-
-function removePairingRequestFromSnapshot(state: ChannelsState, requestId: string): void {
-  const snapshot = state.pairingSnapshot;
-  if (!snapshot || !snapshot.requests.some((request) => request.requestId === requestId)) {
-    return;
-  }
-  state.pairingSnapshot = {
-    ...snapshot,
-    requests: snapshot.requests.filter((request) => request.requestId !== requestId),
-  };
-}
-
-export function createChannelCapability(gateway: ChannelGateway) {
-  const state = createInitialChannelsState(gateway.snapshot);
   const lifecycle = { whatsappEpoch: 0, pairingEpoch: 0 };
   let settlePairingRead: ((error: string | null) => void) | undefined;
 
@@ -294,7 +280,13 @@ export function createChannelCapability(gateway: ChannelGateway) {
       if (!isCurrent()) {
         return null;
       }
-      removePairingRequestFromSnapshot(state, requestId);
+      const pairingSnapshot = state.pairingSnapshot;
+      if (pairingSnapshot?.requests.some((row) => row.requestId === requestId)) {
+        state.pairingSnapshot = {
+          ...pairingSnapshot,
+          requests: pairingSnapshot.requests.filter((row) => row.requestId !== requestId),
+        };
+      }
       invalidatePairingRefresh();
       await loadChannelPairing({ duringMutation: true });
       return isCurrent() ? { result } : null;
@@ -504,7 +496,7 @@ export function createChannelCapability(gateway: ChannelGateway) {
         state.channelsLoadingProbe = null;
         resolve(state.channelsError);
         if (channelsInvalidated) {
-          await loadChannels(false);
+          await refreshChannels();
         }
       }
     }

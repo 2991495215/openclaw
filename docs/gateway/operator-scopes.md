@@ -42,6 +42,14 @@ require the `node` role.
 | `operator.talk`           | Creating, steering, and closing Talk sessions without general Gateway write access. `operator.write` also satisfies this scope.                               |
 | `operator.talk.secrets`   | Reading Talk configuration with secrets included.                                                                                                             |
 
+Personal profile editing is a narrowly self-scoped exception to read-only
+behavior: `operator.read` or `operator.sessions.read` (including their implied
+write/admin scopes) allows an authenticated person to change their own display
+name, avatar, and credit preference. Avatar downloads under session-only scopes
+are restricted to that person's profile. Editing someone else's profile,
+assigning roles, linking identity aliases, and merging profiles still require
+`operator.admin`. These edits do not grant general write access.
+
 ### Write access without credential enrollment
 
 Grant `operator.write.no-credential-enrollment` instead of `operator.write` to
@@ -76,10 +84,11 @@ credentials entered through unrestricted shell execution, and does not revoke
 already-saved credentials, stop refresh of existing authorizations, or clear
 session account selections.
 
-Personal GitHub connection management is a narrowly self-scoped exception to
-read-only behavior: `users.github.*` requires `operator.read` plus the exact
-authenticated durable profile. That person can connect, poll, cancel,
-reconnect, or disconnect only their own account. These methods do not expose
+Personal GitHub credential enrollment is a narrowly self-scoped exception to
+read-only behavior: `users.github.authorize.start` and `.poll` require legacy
+`operator.read` plus the exact authenticated durable profile. Status, cancellation,
+and disconnection also accept `operator.read.no-credential-enrollment`. A person
+can manage only their own account. These methods do not expose
 team secrets, mutate shared configuration, or grant OpenClaw write/admin scopes. System
 and per-agent GitHub changes remain `operator.admin`.
 

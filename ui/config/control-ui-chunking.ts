@@ -60,14 +60,10 @@ export function controlUiStableChunkName(id: string): string | undefined {
 
   switch (controlUiBootManifestKey(id)) {
     case "node_modules/@solidjs/signals/dist/prod/deferred.js":
-      // Only lazy resource consumers need this scheduler hook.
-      return "solid-deferred-runtime";
-    case "node_modules/@solidjs/signals/dist/prod/core/action.js":
-    case "node_modules/@solidjs/signals/dist/dev/core/action.js":
-    case "node_modules/@solidjs/signals/dist/prod/core/verdict.js":
-    case "node_modules/@solidjs/signals/dist/prod/core/lanes.js":
-      // Solid's eager initializers must not pull the route boot groups into startup.
-      return "solid-actions-runtime";
+      // Route readers share this hook below without adding it to eager Solid code.
+      return undefined;
+    case "ui/src/lib/nodes/device-signing.runtime.ts":
+      return "device-signing-runtime";
     case "ui/src/lib/device-pair-setup.ts":
       // Pairing loads on interaction; the earlier boot capture must not pull it into either route.
       return "device-pair-setup-runtime";
@@ -81,8 +77,7 @@ export function controlUiStableChunkName(id: string): string | undefined {
       // Pending New Session previews must render while the Chat route entry waits.
       return "chat-route-entry";
     case "ui/src/i18n/locales/en-chat-composer.ts":
-    case "ui/src/i18n/locales/en-chat-session.ts":
-      // Share deferred English compression without combining either route's renderers.
+      // New Session shares composer copy; session copy stays with Chat's boot group.
       return "chat-english";
     case "ui/src/pages/devices/devices-page.tsx":
       return "devices-page";
@@ -99,7 +94,6 @@ export function controlUiStableChunkName(id: string): string | undefined {
     case "ui/src/components/copy-button-state.ts":
       // Login recovery also copies commands, before any Chat route can load.
       return "copy-button-runtime";
-    case "ui/src/components/login-gate.ts":
     case "ui/src/components/login-gate-solid.tsx":
     case "ui/src/components/login-gate-feedback.ts":
     case "ui/src/i18n/locales/en-login.ts":
@@ -120,8 +114,7 @@ export function controlUiStableChunkName(id: string): string | undefined {
     moduleIdIncludesPackage(id, "@solidjs/signals") ||
     moduleIdIncludesPackage(id, "@solidjs/web")
   ) {
-    // Preserve the specific runtime chunks above, including lazy deferred reads.
-    // Keep the remaining Solid initializers out of route-only boot groups.
+    // Keep Solid's eager initializers out of route groups, with one compression dictionary.
     return "solid-runtime";
   }
 
@@ -130,10 +123,6 @@ export function controlUiStableChunkName(id: string): string | undefined {
   }
   if (normalized.startsWith(resolvedLocaleNamespaceModulePrefix)) {
     return `locale-namespace-${normalized.slice(resolvedLocaleNamespaceModulePrefix.length).replace("/", "-")}`;
-  }
-
-  if (normalized.endsWith("/ui/src/lib/gateway-methods.ts")) {
-    return "gateway-runtime";
   }
 
   if (
@@ -165,10 +154,9 @@ export function controlUiStableChunkName(id: string): string | undefined {
     return "phone-runtime";
   }
 
-  // @noble/hashes stays out of this startup chunk deliberately: it is only
-  // dynamically imported as the insecure-context fallback digest provider.
-  if (moduleIdIncludesPackage(id, "@noble/ed25519") || moduleIdIncludesPackage(id, "ipaddr.js")) {
-    return "gateway-runtime";
+  // Keep fallback digests separate so secure contexts only download the signer.
+  if (moduleIdIncludesPackage(id, "@noble/ed25519")) {
+    return "device-signing-runtime";
   }
 
   return undefined;
@@ -185,18 +173,10 @@ export function createControlUiCodeSplitting(options: { includeBootGroups?: bool
       },
       {
         name: "control-ui-core",
-        test: (id: string) => normalizeModuleId(id).includes("/ui/src/"),
+        test: () => true,
         tags: ["$initial"] as ["$initial"],
         priority: 10,
         maxSize: 1024 * 1024,
-      },
-      {
-        name: "control-ui-foundation",
-        test: (id: string) => !normalizeModuleId(id).includes("/ui/src/"),
-        tags: ["$initial"] as ["$initial"],
-        priority: 10,
-        // Already-initial dependencies compress well; the UI source-size cap
-        // fragmented them into tiny requests. The asset gzip budget bounds them.
       },
       {
         name: "control-ui-lib",
@@ -214,6 +194,8 @@ export function createControlUiCodeSplitting(options: { includeBootGroups?: bool
               if (route === "shared") {
                 // Plugin contributions can initialize after the New Session boot capture.
                 modules.add("ui/src/plugins/control-ui-actions.ts");
+                // Both routes read deferred resources; share their existing boot partition.
+                modules.add("node_modules/@solidjs/signals/dist/prod/deferred.js");
               }
               return {
                 name: `control-ui-boot-${route}`,

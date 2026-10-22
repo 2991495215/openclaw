@@ -17,12 +17,13 @@ function missingScope(scope: string, message = `missing scope: ${scope}`) {
     requiredScopes: [scope],
   });
 }
+const classifiers = [
+  [isWizardNotFoundError, "INVALID_REQUEST", "WIZARD_NOT_FOUND", "UNAVAILABLE"],
+  [isSetupAdmissionBusyError, "UNAVAILABLE", "SETUP_ADMISSION_BUSY", "INVALID_REQUEST"],
+] as const;
 
 describe("gateway error helpers", () => {
-  it.each([
-    [isWizardNotFoundError, "INVALID_REQUEST", "WIZARD_NOT_FOUND"],
-    [isSetupAdmissionBusyError, "UNAVAILABLE", "SETUP_ADMISSION_BUSY"],
-  ] as const)(
+  it.each(classifiers)(
     "classifies structured %s %s %s without parsing copy",
     (classify, code, detailCode) => {
       const details = { code: detailCode };
@@ -31,52 +32,40 @@ describe("gateway error helpers", () => {
     },
   );
 
-  it.each([
-    [isWizardNotFoundError, "INVALID_REQUEST", "WIZARD_NOT_FOUND", "UNAVAILABLE"],
-    [isSetupAdmissionBusyError, "UNAVAILABLE", "SETUP_ADMISSION_BUSY", "INVALID_REQUEST"],
-  ] as const)("rejects unrelated %s %s %s %s errors", (classify, code, detailCode, wrongCode) => {
-    expect(
-      classify({
-        gatewayCode: wrongCode,
-        details: { code: detailCode },
-      }),
-    ).toBe(false);
-    expect(
-      classify({
-        gatewayCode: code,
-        details: { code: "UNKNOWN_AGENT_ID" },
-      }),
-    ).toBe(false);
-    expect(classify({ gatewayCode: code, message: "wizard not found" })).toBe(false);
-    for (const details of [null, detailCode, [], { code: 42 }]) {
-      expect(classify({ gatewayCode: code, details })).toBe(false);
-    }
-  });
-
-  it.each(["operator.read", "operator.read.no-credential-enrollment"])(
-    "classifies structured %s failures without message parsing",
-    (scope) => {
-      expect(isMissingOperatorReadScopeError(missingScope(scope, "permission denied"))).toBe(true);
+  it.each(classifiers)(
+    "rejects unrelated %s %s %s %s errors",
+    (classify, code, detailCode, wrongCode) => {
+      expect(classify({ gatewayCode: wrongCode, details: { code: detailCode } })).toBe(false);
+      expect(classify({ gatewayCode: code, details: { code: "UNKNOWN_AGENT_ID" } })).toBe(false);
+      expect(classify({ gatewayCode: code, message: "wizard not found" })).toBe(false);
+      for (const details of [null, detailCode, [], { code: 42 }]) {
+        expect(classify({ gatewayCode: code, details })).toBe(false);
+      }
     },
   );
 
-  it("uses the shared client's missing-scope message reader", () => {
-    expect(
-      isMissingOperatorReadScopeError(
-        requestError("INVALID_REQUEST", "missing scope: operator.read"),
-      ),
-    ).toBe(true);
-  });
-
-  it("does not treat connect authorization errors as missing read scope", () => {
-    expect(
-      isMissingOperatorReadScopeError(
-        requestError("INVALID_REQUEST", "unauthorized", { code: "AUTH_UNAUTHORIZED" }),
-      ),
-    ).toBe(false);
-  });
-
-  it("does not confuse another missing scope with operator.read", () => {
-    expect(isMissingOperatorReadScopeError(missingScope("operator.questions"))).toBe(false);
-  });
+  it.each([
+    ["structured read scope", missingScope("operator.read", "permission denied"), true],
+    [
+      "structured restricted read scope",
+      missingScope("operator.read.no-credential-enrollment", "permission denied"),
+      true,
+    ],
+    [
+      "shared client message",
+      requestError("INVALID_REQUEST", "missing scope: operator.read"),
+      true,
+    ],
+    [
+      "connect authorization",
+      requestError("INVALID_REQUEST", "unauthorized", { code: "AUTH_UNAUTHORIZED" }),
+      false,
+    ],
+    ["another scope", missingScope("operator.questions"), false],
+  ] as const)(
+    "classifies %s independently of unrelated authorization failures",
+    (_name, error, expected) => {
+      expect(isMissingOperatorReadScopeError(error)).toBe(expected);
+    },
+  );
 });

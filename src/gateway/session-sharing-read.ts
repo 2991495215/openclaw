@@ -133,7 +133,7 @@ export function prepareSessionSharing(
     entryFilter: createSessionListEntryFilter(params, isCreator, { sessionCap }),
     roleForTarget,
     authorizeTarget: (target: SessionSharingTarget, role = roleForTarget(target)) =>
-      authorizeSessionSharingTarget(target, role, sessionCap),
+      authorizeSessionSharingTarget({ ...params, target }, { ...cap, role }),
   };
 }
 
@@ -370,7 +370,7 @@ export function prepareProjectedSessionSharing(params: {
       isMember,
     }),
     policy,
-    get cacheKey() {
+    getCacheKey() {
       return (cacheKey ??= JSON.stringify([
         actor,
         identity?.id,

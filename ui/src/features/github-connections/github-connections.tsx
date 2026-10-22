@@ -15,6 +15,7 @@ import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
 import { projectGateway, projectAgentSelection } from "../../lib/reactive/application.ts";
 import { useApplication } from "../../lib/reactive/context.ts";
 import { projectAgents } from "../../lib/reactive/domain-capabilities.ts";
+import { createGitHubIdentityView } from "../../lib/reactive/domain-github-identity.ts";
 import { t } from "../../lib/reactive/i18n.ts";
 import { PROFILE_SETTINGS_TARGET_IDS } from "../../pages/config/settings-targets.ts";
 import {
@@ -24,7 +25,6 @@ import {
   GitHubHealth,
   GitHubUnloadedStatus,
 } from "./github-identity-view.tsx";
-import { createGitHubIdentity } from "./github-identity.ts";
 
 function access(snapshot: ApplicationGatewaySnapshot) {
   const profileId = snapshot.phase === "connected" ? (snapshot.selfUser?.id ?? null) : null;
@@ -59,8 +59,8 @@ export function GitHubConnections() {
   // Gateway snapshots may mutate in place; retain the previous profile transition fact.
   let observedProfileId: string | null = null;
   const authorizationSucceeded = () => setSetupOpen(false);
-  const personal = createGitHubIdentity({ authorizationSucceeded });
-  const system = createGitHubIdentity({
+  const personal = createGitHubIdentityView({ authorizationSucceeded });
+  const system = createGitHubIdentityView({
     authorizationSucceeded,
     runExternalMutation: (task, options) =>
       context.runtimeConfig.runExternalMutation(task, options),
@@ -307,10 +307,7 @@ export function GitHubConnections() {
                 <>
                   <GitHubHealth
                     identity={view().systemIdentity}
-                    request={{
-                      loading: systemView().loading || personalView().loading,
-                      error: systemView().error ?? personalView().error,
-                    }}
+                    request={view().canAdmin ? systemView() : personalView()}
                   />
                   {view().canAdmin ? (
                     <button
@@ -367,6 +364,8 @@ export function GitHubConnections() {
           ) : undefined}
           <GitHubConnectionError
             error={personalView().error ?? systemView().error}
+            completion={personalView().completion}
+            secondaryCompletion={systemView().completion}
             control={
               <button class="btn btn--sm" disabled={view().locked} onClick={verify}>
                 {t("common.retry")}
