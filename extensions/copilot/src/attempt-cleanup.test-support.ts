@@ -23,51 +23,90 @@ export function registerCopilotCleanupTests({
   ) => AgentHarnessAttemptParamsV2;
   requireSession: (sdk: FakeSdk) => FakeSession;
 }) {
-  it.each(["auth", "proxy"] as const)(
-    "releases abort listeners when pre-session %s setup fails",
-    async (stage) => {
-      const controller = new AbortController();
-      const callerAbort = vi.fn();
-      controller.signal.addEventListener("abort", callerAbort);
-      const callerListeners = getEventListeners(controller.signal, "abort");
-      const sdk = makeFakeSdk();
-      const pool = makeFakePool(sdk);
-      const params = { ...makeParams(), abortSignal: controller.signal };
-      const deps = { pool, resolveSandboxContextOverride: async () => null };
-      try {
-        if (stage === "auth") {
-          const invalidAuth = {
-            ...params,
-            auth: { useLoggedInUser: false, gitHubToken: "synthetic-token" },
-          };
-          await expect(runCopilotAttempt(invalidAuth, deps)).rejects.toThrow(
-            "gitHubToken auth requires profileId+profileVersion",
-          );
-        } else {
-          const failure = new Error("synthetic proxy startup failure");
-          vi.spyOn(byokProxy, "createCopilotByokProxy").mockRejectedValueOnce(failure);
-          const result = await runCopilotAttempt(
-            {
-              ...params,
-              model: {
-                ...params.model,
-                provider: "custom-openai",
-                baseUrl: "https://api.example.test/v1",
-              },
-              resolvedApiKey: "synthetic-token",
-              authProfileId: "custom-openai:main",
-            },
-            deps,
-          );
-          expect(projectAgentRunAttemptTerminal(result.terminal).promptError).toMatchObject({
-            code: "model_not_supported",
-            cause: failure,
-          });
-        }
-        expect(pool.acquire).not.toHaveBeenCalled();
-        expect(getEventListeners(controller.signal, "abort")).toEqual(callerListeners);
-      } finally {
-        controller.abort();
+  it("joins detached background compaction before deleting its fresh native session", async () => {
+    const compacted = copilot.createAttemptGate();
+    const sdk = copilot.makeFakeSdk((session) => {
+      session.sendAndWait.mockImplementationOnce(async () => {
+        session.emit("user.message", { content: "hello" });
+        session.emit("session.compaction_start", {});
+        void compacted.wait().then(() => {
+          session.emit("session.compaction_complete", { success: true });
+          session.emit("session.idle", {});
+        });
+        return copilot.makeAssistantMessageEvent("done");
+      });
+    });
+    const pool = copilot.makeFakePool(sdk);
+    const attempt = copilot.runCopilotAttempt(
+      { ...makeParams(), sessionPersistence: "detached" },
+      { pool },
+    );
+    try {
+      await copilot.awaitAttemptStage(compacted.entered, attempt);
+      expect(sdk.client.deleteSession).not.toHaveBeenCalled();
+      expect(pool.release).not.toHaveBeenCalled();
+    } finally {
+      compacted.release();
+    }
+    expect((await attempt).terminal.kind).toBe("ok");
+    expect(requireSession(sdk).disconnect).toHaveBeenCalledOnce();
+    expect(sdk.client.deleteSession).toHaveBeenCalledWith(requireSession(sdk).sessionId);
+    expect(pool.release).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the primary failure when detached native deletion also fails", async () => {
+    const primary = new Error("synthetic send failure");
+    const cleanupFailure = new Error("synthetic deletion failure");
+    const sdk = copilot.makeFakeSdk((session) => {
+      session.sendAndWait.mockRejectedValueOnce(primary);
+    });
+    sdk.client.deleteSession.mockRejectedValueOnce(cleanupFailure);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const pool = copilot.makeFakePool(sdk);
+    const result = await copilot.runCopilotAttempt(
+      { ...makeParams(), sessionPersistence: "detached" },
+      { pool },
+    );
+    const { promptError } = copilot.projectAgentRunAttemptTerminal(result.terminal);
+    expect(promptError).toBe(primary);
+    expect(warning).toHaveBeenCalledWith(
+      "[copilot-attempt] detached session cleanup failed after primary error",
+      cleanupFailure,
+    );
+    expect(pool.release).toHaveBeenCalledOnce();
+  });
+
+  it.each(["auth", "proxy"] as const)("cleans up pre-session %s failures", async (stage) => {
+    const controller = new AbortController();
+    const callerAbort = vi.fn();
+    controller.signal.addEventListener("abort", callerAbort);
+    const pool = copilot.makeFakePool(copilot.makeFakeSdk());
+    const base = { ...makeParams(), abortSignal: controller.signal };
+    copilotAttemptOverrides.resolveSandboxContext = async () => null;
+    try {
+      if (stage === "auth") {
+        const auth = { useLoggedInUser: false, gitHubToken: "synthetic-token" };
+        const invalidAuth = { ...base, auth } satisfies Params &
+          Pick<import("./attempt-types.js").AttemptParamsLike, "auth">;
+        await expect(copilot.runCopilotAttempt(invalidAuth, { pool })).rejects.toThrow(
+          "gitHubToken auth requires profileId+profileVersion",
+        );
+      } else {
+        const failure = new Error("synthetic proxy startup failure");
+        vi.spyOn(byokProxy, "createCopilotByokProxy").mockRejectedValueOnce(failure);
+        const provider = "custom-openai";
+        const model = { ...base.model, provider, baseUrl: "https://api.example.test/v1" };
+        const result = await copilot.runCopilotAttempt(
+          {
+            ...base,
+            model,
+            resolvedApiKey: "synthetic-token",
+            authProfileId: "custom-openai:main",
+          },
+          { pool },
+        );
+        const { promptError } = copilot.projectAgentRunAttemptTerminal(result.terminal);
+        expect(promptError).toMatchObject({ code: "model_not_supported", cause: failure });
       }
       expect(callerAbort).toHaveBeenCalledOnce();
     },
