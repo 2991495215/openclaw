@@ -76,6 +76,7 @@ import type {
   PackageRuntimePreflight,
   PreManagedServiceStop,
 } from "./update-command-service-context-types.js";
+import { resolveUpdateServiceHeapEnv } from "./update-command-service-env.js";
 import { resolveServiceRecoveryContext } from "./update-command-service-env.js";
 
 export class GatewayServiceUpdateOwnershipError extends Error {
@@ -301,7 +302,10 @@ export function readGatewayServiceStateForUpdate(
       loadForInspection,
       validateEnvBeforeStatusRead: assertGatewayServiceManagementAllowedForUpdate,
       timeoutMs,
-    });
+    }).then((state) => ({
+      ...state,
+      env: resolveUpdateServiceHeapEnv(state.env, env, state.command?.programArguments),
+    }));
   if (process.platform !== "linux" || inspection?.managerUid === undefined) {
     return read();
   }
