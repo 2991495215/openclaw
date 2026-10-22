@@ -63,6 +63,9 @@ final class CatalogModeUITests: XCTestCase {
             app.terminate()
         }
         app.launch()
+        try await self.openProofWindowFromStatusItem(app) {
+            self.capture(app, name: "status-item-not-ready")
+        }
         var flows: [[String: Any]] = []
         for phase in ["local-1", "remote", "local-2"] {
             if phase != "local-1" { try self.closeCurrentChatWindow(app) }
@@ -84,6 +87,9 @@ final class CatalogModeUITests: XCTestCase {
         // A normal process restart exercises persisted identity and worker startup, not a private hook.
         app.terminate()
         app.launch()
+        try await self.openProofWindowFromStatusItem(app) {
+            self.capture(app, name: "status-item-not-ready-after-relaunch")
+        }
         try await self.openPrimaryChat(app)
         let observation = try await self.observe("local-reopened", app: app)
         let visible = try await self.readVisibleConversations(

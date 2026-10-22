@@ -16,8 +16,8 @@ func canonical(_ value: String) -> URL {
 }
 guard try required("GITHUB_ACTIONS") == "true",
       try required("RUNNER_ENVIRONMENT") == "github-hosted",
-      try required("OPENCLAW_PROFILE") == "catalogproof" else {
-    fatalError("Only the isolated catalogproof profile on the disposable runner is permitted")
+      try required("OPENCLAW_PROFILE") == "default" else {
+    fatalError("Only the isolated default profile on the disposable runner is permitted")
 }
 let runner = canonical(try required("RUNNER_TEMP"))
 let expectedHome = canonical(try required("HOME"))
@@ -32,7 +32,7 @@ guard expectedHome == fixedHome, nativeHome == expectedHome,
     fatalError("Foundation HOME or state root differs from the isolated fixture")
 }
 let socketPaths = [
-    nativeHome.appendingPathComponent(".openclaw-catalogproof/mac-control.sock").path,
+    nativeHome.appendingPathComponent(".openclaw/mac-control.sock").path,
     state.appendingPathComponent("exec-approvals.sock").path,
     applicationSupport.appendingPathComponent("OpenClaw/cua/0000000000000000/cua.sock").path,
 ]

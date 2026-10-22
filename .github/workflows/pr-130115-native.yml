@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: pr-130115-native
@@ -23,12 +24,30 @@ jobs:
       MAIN_SHA: d535d274183d19e2e838c7a7fc96063df676b368
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       # Do not publish until owner 177970 provides and reviews the shared helper.
-      LAUNCH_SUPPORT_SHA256: 8cff181fa3fa729ee13c39667bd4ca8d93146d3e605c92466f8dec86c647acb8
+      LAUNCH_SUPPORT_SHA256: f8f468e5bf2ac5875b0a705892f5c35b425a69dae15d2d8491b4c6244eaa89f7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 1
+      - name: Verify the preserved package provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/openclaw/openclaw/actions/artifacts/12452308201 --jq '
+            select(.expired == false and .workflow_run.id == 39833929614 and
+              .workflow_run.head_sha == "6f9be3a1bedb338cb3830028d2c71c4ae51e00b3" and
+              .digest == "sha256:2be735384558987d132b48d28131ab4f886d920d974e3a7eec8652fabd74bb62") | .id')" = 12452308201
+      - name: Restore the already verified official main package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          repository: openclaw/openclaw
+          run-id: 39833929614
+          name: pr-130115-main-bundle
+          path: ${{ runner.temp }}/pr-130115-reused-main
       - name: Select the preinstalled supported Xcode
         shell: bash
         run: |
@@ -52,15 +71,17 @@ jobs:
           scripts/install-xcodegen.sh "$RUNNER_TEMP/catalog-tools/bin"
           echo "$RUNNER_TEMP/catalog-tools/bin" >> "$GITHUB_PATH"
       - name: Observe main through the real app, worker and Gateways
+        env:
+          REUSED_MAIN_BUNDLE: ${{ runner.temp }}/pr-130115-reused-main
         shell: bash
         run: |
           python3 scripts/pr-130115-reproduction/run-main.py \
             "$GITHUB_WORKSPACE" "$RUNNER_TEMP/pr-130115-native-evidence" "$RUNNER_TEMP/pr-130115-main-bundle"
-      - name: Preserve the verified main bundle and pristine synthetic sources
+      - name: Preserve synthetic sources and the verified main bundle reference
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: pr-130115-main-bundle
+          name: pr-130115-recovery-inputs
           path: ${{ runner.temp }}/pr-130115-main-bundle
           if-no-files-found: warn
           compression-level: 0

@@ -47,7 +47,7 @@ const homeStat = await stat(appHome);
 if (!homeStat.isDirectory() || homeStat.uid !== process.getuid() || (homeStat.mode & 0o077) !== 0) {
   throw new Error("The native app needs a private task-owned HOME (mktemp -d under RUNNER_TEMP)");
 }
-const nativeControlSocket = path.join(appHome, ".openclaw-catalogproof", "mac-control.sock");
+const nativeControlSocket = path.join(appHome, ".openclaw", "mac-control.sock");
 if (Buffer.byteLength(nativeControlSocket) >= 104) {
   throw new Error("Native mac-control.sock would exceed Darwin sun_path; choose a shorter private HOME");
 }
@@ -116,7 +116,7 @@ await gateway("gateway-remote", input.remotePort, remoteToken, remote);
 
 const appEnvironment = await environment("app");
 appEnvironment.HOME = appEnvironment.CFFIXED_USER_HOME = appHome;
-appEnvironment.OPENCLAW_PROFILE = "catalogproof";
+appEnvironment.OPENCLAW_PROFILE = "default";
 appEnvironment.CODEX_HOME = mac[0].root;
 appEnvironment.CLAUDE_CONFIG_DIR = mac.find(row => row.catalogId === "claude").root;
 if (implicitMacHome) {

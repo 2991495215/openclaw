@@ -44,4 +44,26 @@ extension XCTestCase {
                 return true
             }
     }
+
+    @MainActor
+    func openProofWindowFromStatusItem(
+        _ app: XCUIApplication,
+        captureFailure: () -> Void) async throws
+    {
+        let items = app.descendants(matching: .statusItem)
+        let status = items.firstMatch
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"), object: status)
+        let result = await XCTWaiter.fulfillment(of: [expectation], timeout: 10)
+        guard result == .completed, items.count == 1 else {
+            captureFailure()
+            throw NSError(
+                domain: "NativeProofLaunch", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unique status item is not ready"])
+        }
+        // This public entry exists after credential startup and opens the selected
+        // Gateway window. The caller keeps its existing primary-route selection.
+        status.click()
+        app.activate()
+    }
 }

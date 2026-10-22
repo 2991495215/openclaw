@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import plistlib
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -45,6 +46,10 @@ base_env = {key: os.environ[key] for key in ("PATH", "DEVELOPER_DIR", "HOME", "U
 base_env.update({"TMPDIR": str(scratch / "tmp"),
                  "CI": "true", "GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "github-hosted",
                  "RUNNER_OS": "macOS", "RUNNER_TEMP": str(runner_temp)})
+reused_bundle = Path(os.environ["REUSED_MAIN_BUNDLE"]).resolve(strict=True)
+if not reused_bundle.is_relative_to(runner_temp) or reused_bundle == runner_temp:
+    raise SystemExit("Reused bundle escaped the disposable runner")
+base_env["REUSED_MAIN_BUNDLE"] = str(reused_bundle)
 steps = []
 loopback = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 controller = None
@@ -84,7 +89,42 @@ def run(args, log, env=None, check=True, timeout=None, cwd=None):
 
 def native_environment(home, state):
     return {**base_env, "HOME": str(home), "CFFIXED_USER_HOME": str(home),
-            "OPENCLAW_PROFILE": "catalogproof", "OPENCLAW_STATE_DIR": str(state)}
+            "OPENCLAW_PROFILE": "default", "OPENCLAW_STATE_DIR": str(state)}
+
+def prepare_keychain(app_home, directory):
+    # Security's legacy preferences writer does not create this parent directory.
+    (app_home / "Library/Preferences").mkdir(parents=True, exist_ok=True, mode=0o700)
+    keychains = app_home / "Library/Keychains"
+    keychains.mkdir(parents=True, exist_ok=True, mode=0o700)
+    keychain = keychains / "catalog-proof.keychain-db"
+    environment = {**base_env, "HOME": str(app_home), "CFFIXED_USER_HOME": str(app_home)}
+    commands = [["create-keychain", "-p", "", str(keychain)], ["unlock-keychain", "-p", "", str(keychain)],
+                ["set-keychain-settings", str(keychain)], ["list-keychains", "-d", "user", "-s", str(keychain)],
+                ["default-keychain", "-d", "user", "-s", str(keychain)]]
+    for index, args in enumerate(commands):
+        run(["/usr/bin/security", *args], directory / f"keychain-{index}.log", env=environment)
+    for query in ("default-keychain", "list-keychains"):
+        log = directory / f"keychain-{query}-readback.log"
+        run(["/usr/bin/security", query, "-d", "user"], log, env=environment)
+        found = [Path(value).resolve(strict=True) for value in shlex.split(log.read_text())]
+        if found != [keychain.resolve(strict=True)]:
+            raise RuntimeError("A fresh Security process did not read back the isolated keychain")
+    service = "ai.openclaw.proof.keychain-canary"
+    account = "synthetic-preflight"
+    value = "synthetic-value-no-credential"
+    run(["/usr/bin/security", "add-generic-password", "-a", account, "-s", service, "-w", value],
+        directory / "keychain-canary-add.log", env=environment)
+    try:
+        readback = directory / "keychain-canary-read.log"
+        run(["/usr/bin/security", "find-generic-password", "-a", account, "-s", service, "-w"],
+            readback, env=environment)
+        if readback.read_text().strip() != value:
+            raise RuntimeError("Isolated default keychain did not persist the synthetic canary")
+    finally:
+        run(["/usr/bin/security", "delete-generic-password", "-a", account, "-s", service],
+            directory / "keychain-canary-delete.log", env=environment)
+    return keychain, environment
+
 
 def start_custody(source):
     global custody, custody_file, custody_stop, custody_thread, custody_error
@@ -269,10 +309,11 @@ try:
                  "-resultBundlePath", output / "desktop.xcresult"], output / "desktop.log", env=ui_env)
     run(["/bin/bash", helpers / "build-catalog-app.sh", source, MAIN, output / "build", seed_output / "seed.json"], output / "package-wrapper.log")
     app = source / "dist/OpenClawCatalogProof.app"
-    run(["ditto", "-c", "-k", "--keepParent", app, bundle_output / "main-app.zip"], output / "bundle-archive.log")
+    write_json(bundle_output / "main-bundle-reference.json", {"runId": 39833929614, "artifactId": 12452308201,
+               "artifactSHA256": "2be735384558987d132b48d28131ab4f886d920d974e3a7eec8652fabd74bb62",
+               "mainAppSHA256": (reused_bundle / "main-app.sha256").read_text().strip()})
     shutil.copy2(output / "build/source.txt", bundle_output / "source.txt")
     shutil.copy2(output / "build/executable-hashes.txt", bundle_output / "executable-hashes.txt")
-    (bundle_output / "main-app.sha256").write_text(file_hash(bundle_output / "main-app.zip") + "\n")
     results = []
     for label, home, mac_owner, local_owner in cases:
         current_case = output / label
@@ -290,17 +331,9 @@ try:
         run(["node", helpers / "prepare-case.mjs", case_input], current_case / "prepare.log")
         launch_file = Path(values["caseRoot"]) / "launch.json"
         launch = json.loads(launch_file.read_text())
-        keychains = app_home / "Library/Keychains"
-        keychains.mkdir(parents=True)
-        keychain = keychains / "catalog-proof.keychain-db"
-        security_env = {**base_env, "HOME": str(app_home), "CFFIXED_USER_HOME": str(app_home)}
-        security_args = [["create-keychain", "-p", "", str(keychain)], ["unlock-keychain", "-p", "", str(keychain)],
-                         ["set-keychain-settings", str(keychain)], ["list-keychains", "-d", "user", "-s", str(keychain)],
-                         ["default-keychain", "-d", "user", "-s", str(keychain)]]
-        for index, args in enumerate(security_args):
-            run(["/usr/bin/security", *args], current_case / f"keychain-{index}.log", env=security_env)
+        keychain, security_env = prepare_keychain(app_home, current_case)
         for key, kind, value in (("openclaw.onboardingSeen", "-bool", "true"), ("openclaw.onboardingVersion", "-int", "8")):
-            run(["defaults", "write", "ai.openclaw.mac.profile.catalogproof", key, kind, value], current_case / f"defaults-{key}.log", env=security_env)
+            run(["defaults", "write", "ai.openclaw.mac.catalog-proof.debug", key, kind, value], current_case / f"defaults-{key}.log", env=security_env)
         control_spec = Path(launch["controlSpec"])
         control_values = json.loads(control_spec.read_text())
         control_values["processCustody"] = str(custody_file)

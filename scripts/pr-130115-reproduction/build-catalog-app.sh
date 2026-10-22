@@ -46,18 +46,24 @@ if (!fs.realpathSync(seed.executable).startsWith(root + path.sep) ||
 }
 JS
 
-# A hand-assembled .app omits the private worker runtime. That would remove the
-# producer under investigation and could look like a successful catalog repair.
-corepack prepare "$(node -p 'require("./package.json").packageManager')" --activate
-pnpm install --frozen-lockfile --prefer-offline > "$output/install.log" 2>&1
-BUILD_CONFIG=debug BUILD_ARCHS="$(uname -m)" \
-  BUNDLE_ID=ai.openclaw.mac.catalog-proof.debug \
-  SIGN_IDENTITY=- ALLOW_ADHOC_SIGNING=1 \
-  OPENCLAW_SKIP_MLX_TTS=1 SKIP_PNPM_INSTALL=1 \
-  OPENCLAW_PACKAGE_APP_ROOT="$source_root/dist/OpenClawCatalogProof.app" \
-  /bin/bash scripts/package-mac-app.sh > "$output/package.log" 2>&1
-
+# Reuse the exact official package preserved by the preceding main-only run.
+# The source pin, archive digest, native hashes and signature are checked again.
+reused_bundle="$(cd "$REUSED_MAIN_BUNDLE" && pwd -P)"
+case "$reused_bundle" in "$runner_temp"/*) ;; *) echo 'Reused bundle escaped RUNNER_TEMP.' >&2; exit 2 ;; esac
+[[ $(sed -n '1p' "$reused_bundle/source.txt") == "$expected_sha" ]]
+[[ $(sed -n '2p' "$reused_bundle/source.txt") == "$expected_tree" ]]
+archive_hash="$(cat "$reused_bundle/main-app.sha256")"
+[[ $archive_hash =~ ^[a-f0-9]{64}$ ]]
+printf '%s  %s\n' "$archive_hash" "$reused_bundle/main-app.zip" | shasum -a 256 -c
+mkdir -p "$source_root/dist"
+ditto -x -k "$reused_bundle/main-app.zip" "$source_root/dist"
 app="$source_root/dist/OpenClawCatalogProof.app"
+[[ $(wc -l < "$reused_bundle/executable-hashes.txt" | tr -d ' ') == 2 ]]
+expected_native_hash="$(sed -n '1s/ .*//p' "$reused_bundle/executable-hashes.txt")"
+expected_bun_hash="$(sed -n '2s/ .*//p' "$reused_bundle/executable-hashes.txt")"
+[[ $expected_native_hash =~ ^[a-f0-9]{64}$ && $expected_bun_hash =~ ^[a-f0-9]{64}$ ]]
+printf '%s  %s\n' "$expected_native_hash" "$app/Contents/MacOS/OpenClaw" \
+  "$expected_bun_hash" "$app/Contents/Resources/runtime/bin/bun" | shasum -a 256 -c
 runtime="$app/Contents/Resources/runtime"
 [[ -x "$app/Contents/MacOS/OpenClaw" && -x "$runtime/bin/bun" ]]
 [[ -f "$runtime/lib/node_modules/openclaw/openclaw.mjs" ]]
@@ -71,4 +77,4 @@ git diff --cached --exit-code
 shasum -a 256 "$app/Contents/MacOS/OpenClaw" "$runtime/bin/bun" > "$output/executable-hashes.txt"
 printf '%s\n%s\n' "$expected_sha" "$expected_tree" > "$output/source.txt"
 printf '%s\n' "$app" > "$output/app-path.txt"
-printf '%s\n' 'Packaged inputs verified; runtime connection and catalog proof have not run.' > "$output/build-status.txt"
+printf '%s\n' 'Reused official package verified; runtime connection and catalog proof have not run.' > "$output/build-status.txt"
