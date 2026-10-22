@@ -28,6 +28,7 @@ import { BEAM_MAX_ITEMS, parseBeamUpload } from "./types.js";
 
 let fixture: ReturnType<typeof beamMirrorTestFixture>;
 beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(beamTestNow);
   fixture = beamMirrorTestFixture();
 });
 
@@ -365,7 +366,7 @@ describe("createBeamMirrorRunner", () => {
   });
 
   it("keeps one catalog and upload path active across missed scheduler periods", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ now: beamTestNow });
     const list = beamTestBarrier();
     const read = vi.fn();
     const { sent } = fixture;
@@ -390,7 +391,7 @@ describe("createBeamMirrorRunner", () => {
   });
 
   it("waits for guarded response cleanup after lifecycle abort without warning", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ now: beamTestNow });
     const fetchStarted = createDeferred<void>();
     const cleanup = beamTestBarrier();
     const cancel = vi.fn();
@@ -447,7 +448,7 @@ describe("createBeamMirrorRunner", () => {
   });
 
   it("aborts a stalled loopback transport on stop", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ now: beamTestNow });
     const requestStarted = createDeferred<void>();
     const requestClosed = createDeferred<void>();
     await withServer(
@@ -458,14 +459,15 @@ describe("createBeamMirrorRunner", () => {
       async (origin) => {
         const { warnings, logger } = fixture;
         let signal: AbortSignal | undefined;
+        const realFetch = fetch;
         const fetchFn = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
           signal = init?.signal ?? undefined;
-          return fetch(input, init);
+          return realFetch(input, init);
         }) as unknown as typeof fetch;
+        vi.stubGlobal("fetch", fetchFn);
         const runner = createScheduledBeamTestRunner({
           endpoint: `${origin}/beam`,
           logger,
-          fetchFn,
         });
 
         try {
@@ -521,13 +523,11 @@ describe("createBeamMirrorRunner", () => {
     const { sent } = fixture;
     const recency = beamTestNow - 60_000;
     let clock = beamTestNow;
-    const runner = fixture.runner(
-      {
-        hostCursor: "older-sessions",
-        sessions: [{ threadId: "t1", name: "Fix flow", recencyAt: recency }],
-      },
-      { now: () => clock },
-    );
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const runner = fixture.runner({
+      hostCursor: "older-sessions",
+      sessions: [{ threadId: "t1", name: "Fix flow", recencyAt: recency }],
+    });
     await runner.tick();
     expect(sent).toHaveLength(1);
     expect(sent[0]?.payload.completed).toBe(false);
@@ -561,7 +561,7 @@ describe("createBeamMirrorService", () => {
   it.each(["list", "read"] as const)(
     "stops before a paused %s settles without resuming work",
     async (stage) => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ now: beamTestNow });
       const context = beamTestServiceContext(),
         pause = beamTestBarrier();
       const list = stage === "list" ? pause.run : vi.fn();

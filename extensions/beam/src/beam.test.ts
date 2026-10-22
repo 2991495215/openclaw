@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import http from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { memoryStore, sampleUpload } from "./beam-store.test-support.js";
 import {
   createBeamTestCatalog,
@@ -336,9 +336,9 @@ it("retries a rejected terminal upload through the real loopback receiver", asyn
     },
     items: () => [{ type: "agentMessage", text: `Receiver-boundary proof ${readCount}.` }],
   });
+  vi.spyOn(Date, "now").mockImplementation(() => clock);
   const runner = createBeamTestRunner({
     endpoint,
-    now: () => clock,
     listCatalogs: () => [catalog],
   });
 
