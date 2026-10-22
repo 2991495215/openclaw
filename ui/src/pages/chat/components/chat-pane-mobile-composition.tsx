@@ -31,7 +31,7 @@ import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { isSessionTitlePending } from "../../../lib/session-display.ts";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import type { MobileHostDestination } from "../chat-mobile-host.ts";
-import { companionClearAction } from "../chat-pane-embedded-view.tsx";
+import { companionClearAction } from "../chat-pane-panel-header-actions.tsx";
 import { usePanePresentation } from "../chat-pane-presentation.ts";
 import { chatPaneLayoutModel, ChatPaneLayoutHeaderActions } from "./chat-header-panel-actions.tsx";
 import type { HeaderSessionMenuPage } from "./chat-header-session-menu-mobile.tsx";

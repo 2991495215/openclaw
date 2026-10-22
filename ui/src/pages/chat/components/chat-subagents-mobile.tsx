@@ -8,7 +8,7 @@ import { formatUiError } from "../../../lib/format-error.ts";
 import { elementRef } from "../../../lib/reactive/element-ref.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import "./chat-subagents-mobile.css";
-import { SubagentDesktopAvatar } from "./chat-subagents-panel-desktop.tsx";
+import { SubagentDesktopAvatar } from "./chat-subagent-desktop-avatar.tsx";
 import type { SubagentStopControl } from "./chat-subagents-presentation.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
