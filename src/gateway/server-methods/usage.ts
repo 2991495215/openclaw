@@ -319,7 +319,6 @@ export const usageHandlers: GatewayRequestHandlers = {
                 specificKey,
                 groupingMode,
                 startMs,
-                endMs,
                 visibilityFilter,
               }),
             () => [],
