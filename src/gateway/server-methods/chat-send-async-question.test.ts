@@ -1,9 +1,20 @@
+import assert from "node:assert/strict";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { beforeEach, expect, it, vi } from "vitest";
 import {
   appendTranscriptMessage,
   listSessionPendingInputs,
+  stageSessionPendingInput,
 } from "../../config/sessions/session-accessor.js";
+import {
+  resolveSqliteScope,
+  toDatabaseOptions,
+} from "../../config/sessions/session-accessor.sqlite-scope.js";
+import { discardSessionPendingInput } from "../../config/sessions/session-pending-input-withdrawal.js";
+import {
+  closeOpenClawAgentDatabaseByPathAsync,
+  resolveOpenClawAgentSqlitePath,
+} from "../../state/openclaw-agent-db.js";
 import { useUserProfileCatalogForTest } from "../../test-utils/user-profile-catalog.js";
 import { installGatewayTestHooks } from "../test-helpers.js";
 import { useBrowserFollowupFixture } from "./chat-send-pending-inputs.test-support.js";
@@ -14,21 +25,91 @@ const createFixture = useBrowserFollowupFixture();
 const prepareProfiles = useUserProfileCatalogForTest();
 beforeEach(() => prepareProfiles());
 
+async function appendAudienceQuestion(
+  scope: Parameters<typeof appendTranscriptMessage>[0],
+  itemId = "audience",
+  eventId?: string,
+) {
+  const source = await appendTranscriptMessage(scope, {
+    eventId,
+    message: {
+      role: "assistant",
+      content: "Which audience?",
+      timestamp: 2,
+      openclawAsyncDelivery: { itemId, questions: [{ title: "Which audience?" }] },
+    },
+  });
+  assert(source, "Expected a persisted question");
+  return source;
+}
+
+// These answer bytes were captured from openclaw@2026.10.6's published storage
+// producer (fe06181dc5ecc01cf8904abbfc26925925efefbc). No async answer ID existed.
+// The separate release rehearsal migrates its real v25 database through Doctor's
+// current maintenance owner; this bounded regression keeps that legacy JSON contract.
+it.each(["queued", "saved"] as const)(
+  "keeps legacy %s answer bytes authoritative after SQLite reopens",
+  async (kind) => {
+    await using fixture = await createFixture({ preserveContent: true });
+    const questionId = "legacy-question-" + kind;
+    await appendAudienceQuestion(fixture.scope, "legacy-" + kind, questionId);
+    const runId = "legacy-answer-" + kind;
+    const message = {
+      role: "user" as const,
+      content: "> Which audience?\n\nEngineers",
+      timestamp: 3,
+      idempotencyKey: runId + ":user",
+      __openclaw: { replyToId: questionId },
+    };
+    if (kind === "queued") {
+      const receipt = await stageSessionPendingInput(fixture.scope, {
+        runId,
+        message,
+        assertCurrent() {},
+      });
+      assert(receipt, "Expected accepted legacy custody");
+      receipt.finish("interrupted");
+      await receipt.settled?.();
+    } else {
+      await appendTranscriptMessage(fixture.scope, { message });
+    }
+    const original = fixture.readTranscript();
+    await closeOpenClawAgentDatabaseByPathAsync(
+      resolveOpenClawAgentSqlitePath(toDatabaseOptions(resolveSqliteScope(fixture.scope))),
+      fixture.scope.agentId,
+    );
+    const params = {
+      ...fixture.params,
+      idempotencyKey: "legacy-duplicate",
+      message: "> Which audience?\n\nEveryone",
+      replyToId: questionId,
+      asyncQuestionItemId: "legacy-" + kind,
+    };
+    const duplicate = await fixture.send(vi.fn<RespondFn>(), undefined, params);
+    expect(duplicate.mock.calls[0]?.[2]).toMatchObject({
+      details: { reason: "async-question-already-answered" },
+    });
+    expect(fixture.readTranscript()).toEqual(original);
+    if (kind === "queued") {
+      expect((await listSessionPendingInputs(fixture.scope)).items[0]?.message).toEqual(message);
+      expect(await discardSessionPendingInput(fixture.scope, runId, () => {})).toBe(true);
+      const replacement = await fixture.send(vi.fn<RespondFn>(), undefined, {
+        ...params,
+        idempotencyKey: "legacy-replacement",
+      });
+      expect(replacement.mock.calls[0]?.[0]).toBe(true);
+    }
+  },
+);
+
 it.each(["cancelled", "interrupted"] as const)(
   "releases only cancelled question custody (%s)",
   async (disposition) => {
     await using fixture = await createFixture({ preserveContent: true });
-    const source = await appendTranscriptMessage(fixture.scope, {
-      message: {
-        role: "assistant",
-        content: "Which audience?",
-        timestamp: 2,
-        openclawAsyncDelivery: { itemId: "audience", questions: [{ title: "Which audience?" }] },
-      },
-    });
+    const source = await appendAudienceQuestion(fixture.scope);
     const params = {
       ...fixture.params,
-      replyToId: source!.messageId,
+      replyToId: source.messageId,
       asyncQuestionItemId: "audience",
       message: "Engineers",
     };
@@ -55,20 +136,13 @@ it.each(["cancelled", "interrupted"] as const)(
 
 it("atomically accepts only one of two concurrent viewer answers", async () => {
   await using fixture = await createFixture({ preserveContent: true });
-  const source = await appendTranscriptMessage(fixture.scope, {
-    message: {
-      role: "assistant",
-      content: "Which audience?",
-      timestamp: 2,
-      openclawAsyncDelivery: { itemId: "audience", questions: [{ title: "Which audience?" }] },
-    },
-  });
+  const source = await appendAudienceQuestion(fixture.scope);
   const replies = await Promise.all(
     ["Engineers", "Everyone"].map((answer, index) =>
       fixture.send(vi.fn<RespondFn>(), undefined, {
         ...fixture.params,
         idempotencyKey: "concurrent-" + index,
-        replyToId: source!.messageId,
+        replyToId: source.messageId,
         asyncQuestionItemId: "audience",
         message: answer,
       }),
@@ -83,18 +157,10 @@ it("atomically accepts only one of two concurrent viewer answers", async () => {
 
 it.each([true, false])("admits one answer across stale viewers (queued=%s)", async (active) => {
   await using fixture = await createFixture({ active, preserveContent: true });
-  const source = await appendTranscriptMessage(fixture.scope, {
-    message: {
-      role: "assistant",
-      content: "Which audience?",
-      timestamp: 2,
-      openclawAsyncDelivery: { itemId: "audience", questions: [{ title: "Which audience?" }] },
-    },
-  });
-  expect(source?.messageId).toBeTruthy();
+  const source = await appendAudienceQuestion(fixture.scope);
   const first = {
     ...fixture.params,
-    replyToId: source!.messageId,
+    replyToId: source.messageId,
     asyncQuestionItemId: "audience",
     message: "> Which audience?\n\nEngineers",
   };
@@ -148,17 +214,10 @@ it.each([true, false])("admits one answer across stale viewers (queued=%s)", asy
     message: "Actually, use Everyone.",
   });
   expect(correction.mock.calls[0]?.[0]).toBe(true);
-  const nextSource = await appendTranscriptMessage(fixture.scope, {
-    message: {
-      role: "assistant",
-      content: "Which audience?",
-      timestamp: 3,
-      openclawAsyncDelivery: { itemId: "next-audience", questions: [{ title: "Which audience?" }] },
-    },
-  });
+  const nextSource = await appendAudienceQuestion(fixture.scope, "next-audience");
   const next = await fixture.send(vi.fn<RespondFn>(), undefined, {
     ...first,
-    replyToId: nextSource!.messageId,
+    replyToId: nextSource.messageId,
     asyncQuestionItemId: "next-audience",
     idempotencyKey: "new-question-answer",
   });
