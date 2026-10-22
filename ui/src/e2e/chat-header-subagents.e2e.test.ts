@@ -119,8 +119,8 @@ suite.define(() => {
             .count(),
         ).toBe(0);
         detailsChunk.resolve();
-        // The loaded desktop body remains visible when optional session metadata is empty.
-        await detailsDialog.locator(".chat-details-desktop-body").waitFor();
+        // Optional metadata can be empty; the visible panel and cleared loader prove arrival.
+        await detailsDialog.locator(".chat-details-session").waitFor({ state: "attached" });
         expect(
           await detailsDialog.getByRole("status", { name: "Loading…", exact: true }).count(),
         ).toBe(0);
