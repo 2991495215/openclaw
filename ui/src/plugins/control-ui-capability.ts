@@ -1,16 +1,14 @@
-import type { PluginControlUiDiagnostic } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import type {
   ControlUiAction,
   ControlUiAccessory,
-  ControlUiDisposer,
   ControlUiHost,
   ControlUiNavigationItem,
   ControlUiPage,
   ControlUiPanel,
   ControlUiReplacement,
-  ControlUiSurface,
   ControlUiWidget,
 } from "../../../src/plugin-sdk/control-ui.js";
+import type { ControlUiPluginRuntime } from "./control-ui-runtime.ts";
 
 export type ControlUiRegistration<T> = {
   key: `${string}/${string}`;
@@ -30,43 +28,20 @@ export type ControlUiContributions = {
   replacements: ControlUiReplacement;
 };
 
-// Application consumers use the registry contract; construction and activation
-// ownership stay in the runtime without a dependency back through app context.
-export type ControlUiPluginCapability = {
-  loadSettingsView: {
-    (
-      placement: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiSettingsView["placement"],
-      signal: AbortSignal,
-    ): Promise<{
-      view: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiSettingsView;
-      signal: AbortSignal;
-      dispose: () => void;
-    }>;
-    (
-      placement: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiChannelSettingsView["placement"],
-      signal: AbortSignal,
-    ): Promise<{
-      view: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiChannelSettingsView;
-      signal: AbortSignal;
-      dispose: () => void;
-    }>;
-  };
-  readonly errors: readonly PluginControlUiDiagnostic[];
-  readonly hasPlugins: boolean;
-  /** Advances before notifications, including plugin-owned presentation mutations. */
-  readonly revision: number;
-  readonly registryStatus: "pending" | "complete" | "failed";
-  readonly canReload: boolean;
-  isLoading: (pluginId: string) => boolean;
-  reload: () => Promise<void>;
-  refresh: () => Promise<void>;
-  subscribe: (listener: () => void) => ControlUiDisposer;
-  registrations: <K extends keyof ControlUiContributions>(
-    kind: K,
-  ) => ControlUiRegistration<ControlUiContributions[K]>[];
-  selectedReplacement: (
-    surface: ControlUiSurface,
-  ) => ControlUiRegistration<ControlUiReplacement> | undefined;
-  selectReplacement: (surface: ControlUiSurface, key: string | null) => void;
-  reportError: (pluginId: string, error: unknown) => void;
-};
+// Keep activation and lifecycle operations private to the runtime.
+export type ControlUiPluginCapability = Pick<
+  ControlUiPluginRuntime,
+  | "loadSettingsView"
+  | "errors"
+  | "hasPlugins"
+  | "revision"
+  | "registryStatus"
+  | "canReload"
+  | "isLoading"
+  | "reload"
+  | "subscribe"
+  | "registrations"
+  | "selectedReplacement"
+  | "selectReplacement"
+  | "reportError"
+> & { refresh: () => Promise<void> };

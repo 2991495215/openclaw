@@ -14,7 +14,7 @@ import { captureBootRoster } from "./session-boot-roster.ts";
 import { createSessionBootSnapshot } from "./session-boot-snapshot.ts";
 import {
   createSessionState,
-  type SessionCapability,
+  type SessionCapabilityContract,
   type SessionGateway,
   type SessionState,
 } from "./session-capability.ts";
@@ -75,9 +75,9 @@ export function createSessionCapability(
     bootRecord?: BootRecord | null;
     connectionBootstrap?: ConnectionBootstrapCoordinator;
   } = {},
-): SessionCapability {
+) {
   let state = createSessionState(cacheOptions.bootRecord);
-  let presentation: SessionCapability["presentation"] = { result: null, agentId: null };
+  let presentation: SessionCapabilityContract["presentation"] = { result: null, agentId: null };
   let reconnectListRevision: number | null = null;
   let presentationProfileId =
     gateway.snapshot.phase === "connected"
@@ -633,7 +633,7 @@ export function createSessionCapability(
     get eventSubscriptionError() {
       return sessionEventSubscriptionError;
     },
-    get presentation() {
+    get presentation(): typeof presentation {
       return presentation.result
         ? presentation
         : (roster.selectionPresentation(agentSelection.state.selectedId) ?? presentation);
@@ -745,5 +745,5 @@ export function createSessionCapability(
       createdListeners.clear();
       listeners.clear();
     },
-  };
+  } satisfies SessionCapabilityContract & Record<string, unknown>;
 }

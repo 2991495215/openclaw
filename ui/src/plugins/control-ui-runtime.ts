@@ -30,11 +30,7 @@ import {
   controlUiPluginDistribution,
   ControlUiPluginAssetPreloads,
 } from "./control-ui-assets.ts";
-import type {
-  ControlUiContributions,
-  ControlUiPluginCapability,
-  ControlUiRegistration,
-} from "./control-ui-capability.ts";
+import type { ControlUiContributions, ControlUiRegistration } from "./control-ui-capability.ts";
 
 export type ControlUiPluginOwner = {
   descriptor: PluginControlUiModule;
@@ -68,7 +64,7 @@ const UI_CAPABILITY_BY_CONTRIBUTION = {
 const CONTRIBUTION_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const ACTIVATION_TIMEOUT_MS = 15_000;
 
-export class ControlUiPluginRuntime implements ControlUiPluginCapability {
+export class ControlUiPluginRuntime {
   private readonly owners = new Map<string, ControlUiPluginOwner>();
   private readonly preloads = new ControlUiPluginAssetPreloads();
   private readonly selected = new Map<ControlUiSurface, { key: string; signal: AbortSignal }>();
