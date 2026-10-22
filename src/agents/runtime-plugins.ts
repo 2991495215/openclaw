@@ -13,7 +13,7 @@ import {
   captureRuntimeChannelSource,
 } from "../plugins/channel-registry-adoption.js";
 import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
-import { ensureGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import { ensureGlobalHookRunner } from "../plugins/hook-runner-global-internal.js";
 import { extractPluginInstallRecordsFromInstalledPluginIndex } from "../plugins/installed-plugin-index-install-records.js";
 import {
   acquirePluginRegistryForInspection,

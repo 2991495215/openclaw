@@ -3,10 +3,8 @@
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginHookGatewayContext, PluginHookGatewayStopEvent } from "./hook-gateway.types.js";
 import type { GlobalHookRunnerRegistry } from "./hook-registry.types.js";
-import {
-  createLiveHookRegistryFacade,
-  hookRunnerGlobalState as state,
-} from "./hook-runner-global-state.js";
+import { ensureGlobalHookRunner } from "./hook-runner-global-internal.js";
+import { hookRunnerGlobalState as state } from "./hook-runner-global-state.js";
 import type { PluginHookHandlerMap, PluginHookName } from "./hook-types.js";
 import { createHookRunner, type HookRunner } from "./hooks.js";
 
@@ -25,26 +23,6 @@ export function initializeGlobalHookRunner(registry: GlobalHookRunnerRegistry): 
       `hook runner initialized with ${hookCount} registered hooks`,
     );
   }
-}
-
-/**
- * Create the global hook runner without claiming a registry. Its live facade reads
- * the scoped registry of the current run, so a host that never activated a process
- * root (a headless `agent exec` run) still dispatches that run's hooks.
- */
-export function ensureGlobalHookRunner(): HookRunner {
-  if (!state.hookRunner) {
-    state.hookRunner = createHookRunner(createLiveHookRegistryFacade(state), {
-      logger: createSubsystemLogger("plugins"),
-      catchErrors: true,
-      failurePolicyByHook: {
-        before_agent_run: "fail-closed",
-        before_install: "fail-closed",
-        before_tool_call: "fail-closed",
-      },
-    });
-  }
-  return state.hookRunner;
 }
 
 /**

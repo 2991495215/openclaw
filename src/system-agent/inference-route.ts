@@ -11,6 +11,7 @@ import {
   cliBackendAcceptsAuthProfileForwarding,
   resolveCliExecutionAuthProfileId,
 } from "../agents/cli-execution-auth.js";
+import { resolveConfiguredRouteModelLabel } from "../agents/model-route-label.js";
 import { resolveConfiguredSetupModelForAgent } from "../agents/utility-model.js";
 import { copyConfigResolutionFacts } from "../config/resolution-facts.js";
 import { createRuntimeConfigReader } from "../config/runtime-snapshot.js";
@@ -182,7 +183,7 @@ export async function resolveSystemAgentConfiguredRouteFromConfig(
     : undefined;
   const authProfileId = allowCliAuthProfileForwarding ? cliAuthProfileId : selection.profileId;
   const executionConfig = projectSystemAgentExecutionConfig(preparedConfig, modelOwnerAgentId);
-  const modelLabel = modelSelection.resolveConfiguredRouteModelLabel({
+  const modelLabel = resolveConfiguredRouteModelLabel({
     configuredRef: configuredSelection.modelRef,
     resolved: { provider: selection.provider, model: selection.modelId },
     ...(selection.profileId ? { profileId: selection.profileId } : {}),

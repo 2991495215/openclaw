@@ -10,10 +10,8 @@ import {
   resolveCodexCliHomePath,
 } from "../agents/cli-credentials.js";
 import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
-import {
-  resolveConfiguredRouteModelLabel,
-  resolveDefaultModelForAgent,
-} from "../agents/model-selection.js";
+import { resolveConfiguredRouteModelLabel } from "../agents/model-route-label.js";
+import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { tryResolveLegacyCompatibilityAgentId } from "../config/legacy.default-agent-owner.js";
 import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
