@@ -268,13 +268,14 @@ describe("chat attachment reading", () => {
         await Promise.resolve();
         const failed = renderChatView(props);
         expect(failed.querySelectorAll(".chat-attachment-thumb")).toHaveLength(0);
-        expect(failed.querySelector(".chat-attachment-failures")).toBeNull();
+        expect(failed.querySelector(".chat-attachment-failure")?.textContent).toContain(
+          "proof.png",
+        );
+        expect(failed.querySelector(".chat-attachment-failure")?.textContent).toContain(
+          "uploads are disabled",
+        );
         expect(getComposerTextarea(failed).value).toBe(props.draft);
-        expect(notify).toHaveBeenCalledExactlyOnceWith({
-          message: "File and image uploads are disabled.",
-          placement: "top-center",
-          severity: "error",
-        });
+        expect(notify).not.toHaveBeenCalled();
       }
       expect(reads.pendingReads).toBe(0);
       expect(reads.project([])).toHaveLength(0);

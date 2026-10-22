@@ -464,7 +464,12 @@ export function renderChatComposerView(
               {props.sessionAdmitted === false ? undefined : (
                 <McpAppContextStrip sessionKey={props.sessionKey} agentId={props.currentAgentId} />
               )}
-              <AttachmentPreview {...props} readRevision={context().attachmentReadRevision} />
+              <AttachmentPreview
+                {...props}
+                readRevision={context().attachmentReadRevision}
+                onChooseFiles={() => inputHandle.open("file")}
+                getFocusFallback={() => state.composerTextarea}
+              />
               <AttachmentReadStatus
                 pendingReads={
                   props.getPendingAttachmentReads?.() ?? props.pendingAttachmentReads ?? 0

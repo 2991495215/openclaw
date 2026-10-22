@@ -41,6 +41,8 @@ export class ChatAttachmentReadLifecycle {
   pendingReads = 0;
   revision = 0;
   failureCount = 0;
+  // Failure notices belong to this draft lifetime, never to payload storage.
+  failures: readonly { id: string; fileName: string; message: string }[] = [];
   private controller = new AbortController();
   private entries: ChatAttachmentRead[] = [];
 
@@ -152,11 +154,33 @@ export class ChatAttachmentReadLifecycle {
     this.notify();
   }
 
-  fail(entry: ChatAttachmentRead): boolean {
+  reject(fileName: string | undefined, message: string): void {
+    this.failureCount += 1;
+    this.failures = [
+      ...this.failures,
+      {
+        id: generateAttachmentId(),
+        fileName: fileName?.trim() ? fileName : t("chat.attachments.attachedFile"),
+        message,
+      },
+    ];
+    this.notify();
+  }
+
+  dismissFailure(id: string): void {
+    this.failures = this.failures.filter((failure) => failure.id !== id);
+    this.notify();
+  }
+
+  fail(entry: ChatAttachmentRead, message?: string): boolean {
     if (!this.entries.includes(entry)) {
       return false;
     }
-    this.failureCount += 1;
+    if (message) {
+      this.reject(entry.attachment.fileName, message);
+    } else {
+      this.failureCount += 1;
+    }
     this.remove(entry);
     return true;
   }
@@ -180,6 +204,7 @@ export class ChatAttachmentReadLifecycle {
     const controller = this.controller;
     this.controller = new AbortController();
     this.entries = [];
+    this.failures = [];
     this.pendingReads = 0;
     controller.abort();
     this.notify();
@@ -195,6 +220,7 @@ export function readChatAttachmentFile(
     readSignal?: AbortSignal;
     attachmentLimits?: ChatAttachmentLimits;
     uploadConfig?: ApplicationConfigCapability;
+    attachmentReads?: ChatAttachmentReadLifecycle;
   },
 ): void {
   const signal = props.readSignal ?? reads.readSignal;
@@ -229,8 +255,12 @@ export function readChatAttachmentFile(
     signal.removeEventListener("abort", abort);
     entry.cancel = undefined;
     entry.compress = undefined;
+    const retainedFailure = Boolean(props.attachmentReads) && !entry.preparation;
     if (outcome === "ready" && !uploadsEnabled(props.uploadConfig)) {
-      if (reads.fail(entry)) {
+      if (
+        reads.fail(entry, retainedFailure ? uploadsDisabledMessage() : undefined) &&
+        !retainedFailure
+      ) {
         showToast({
           message: uploadsDisabledMessage(),
           placement: "top-center",
@@ -255,8 +285,15 @@ export function readChatAttachmentFile(
       reads.complete(entry);
     } else if (outcome === "aborted" || signal.aborted) {
       reads.remove(entry);
-    } else if (reads.fail(entry)) {
-      showToast({ message: t(failureMessage), placement: "top-center", severity: "error" });
+    } else {
+      const message = t(
+        failureMessage === "chat.attachments.readFailed"
+          ? "chat.attachments.readFailedReselect"
+          : failureMessage,
+      );
+      if (reads.fail(entry, retainedFailure ? message : undefined) && !retainedFailure) {
+        showToast({ message: t(failureMessage), placement: "top-center", severity: "error" });
+      }
     }
     entry.destination.onPendingReadsChange?.(-1);
   };

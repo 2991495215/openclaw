@@ -242,17 +242,6 @@ describe("chat attachment read failures", () => {
     vi.unstubAllGlobals();
   });
 
-  async function expectAttachmentToast(message = "File too large. Try a smaller file.") {
-    await toastHost.updateComplete;
-    await vi.dynamicImportSettled();
-    await waitForSolid(() => {
-      expect(toastHost.querySelectorAll(".app-toast")).toHaveLength(1);
-      expect(toastHost.querySelector(".app-toast__message")).toMatchObject({
-        textContent: message,
-      });
-    });
-  }
-
   it.each([false, true])(
     "retains published payload custody when remaining reads abort (presented=%s)",
     async (presented) => {
@@ -298,7 +287,7 @@ describe("chat attachment read failures", () => {
   );
 
   it.each(["error", "timeout"])(
-    "removes a failed read %s and reports it in a toast",
+    "releases a failed read %s and keeps its named recovery notice",
     async (failure) => {
       const files =
         failure === "error"
@@ -334,8 +323,27 @@ describe("chat attachment read failures", () => {
           expect(container.querySelector(".chat-attachment-thumb")).toBeNull(),
         );
       }
-      expect(container.querySelector(".chat-attachment-failures")).toBeNull();
-      await expectAttachmentToast("Could not attach file. Try again.");
+      const name = failure === "error" ? "bad.png" : "stalled.png";
+      const notice = expectDefined(
+        container.querySelector(".chat-attachment-failure"),
+        "failure notice",
+      );
+      expect(notice.textContent).toContain(name);
+      expect(notice.textContent).toContain("Choose it again");
+      expect(reads.pendingBytes(undefined)).toBe(0);
+      expect(reads.failureCount).toBe(1);
+      expect(reads.failures).toEqual([
+        {
+          id: expect.any(String),
+          fileName: name,
+          message: "Could not read this file. Choose it again or try another file.",
+        },
+      ]);
+      expect(toastHost.querySelector(".app-toast")).toBeNull();
+      notice.querySelector<HTMLButtonElement>("button")?.click();
+      flush();
+      expect(container.querySelector(".chat-attachment-failure")).toBeNull();
+      expect(reads.failureCount).toBe(1);
     },
   );
 
@@ -387,8 +395,15 @@ describe("chat attachment read failures", () => {
     }
     expect(h.names()).toEqual(names);
     expect(read.mock.calls.map(([file]) => file.name)).not.toContain(rejected);
-    await expectAttachmentToast();
-    expect(notify).toHaveBeenCalledOnce();
+    expect(h.reads.failures.map(({ fileName }) => fileName)).toEqual(
+      batches
+        .flat()
+        .map((file) => file.name)
+        .filter((name) => !names.includes(name)),
+    );
+    expect(notify).not.toHaveBeenCalled();
+    h.reads.abortReads();
+    expect(h.reads.failures).toEqual([]);
   });
 
   it("reserves the image ceiling for an oversized PNG while admitting following text files", async () => {
@@ -405,7 +420,7 @@ describe("chat attachment read failures", () => {
       ]),
     ).toBe(1);
     expect(h.names()).toEqual(["large.png", "first.txt", "fits.txt"]);
-    await expectAttachmentToast();
+    expect(h.reads.failures).toMatchObject([{ fileName: "overflow.txt" }]);
   });
 
   it.each<[string, File[], string, number | undefined, string[]?, number?]>([

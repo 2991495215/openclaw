@@ -2668,6 +2668,13 @@ export const en: TranslationMap & {
       htmlPreviewUnavailable:
         "Could not preview this HTML file. HTML previews require UTF-8 files up to 2 MiB. Download it to read the full file.",
       readFailed: "Could not attach file. Try again.",
+      readFailedReselect: "Could not read this file. Choose it again or try another file.",
+      emptyFile: "This file is empty. Choose a file with content.",
+      batchTooLarge:
+        "These attachments exceed the message limit. Remove a file or choose a smaller one.",
+      chooseAgain: "Choose files again",
+      dismissError: "Dismiss error for {name}",
+      notAttached: "Not attached",
       imagesOnly: "Side chat accepts image attachments only.",
       tooLarge: "Too large to send: {names}{more}",
       tooLargeToast: "File too large. Try a smaller file.",

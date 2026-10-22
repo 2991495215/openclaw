@@ -110,12 +110,8 @@ it.each(["owner", "tile"] as const)(
     readers[1]?.dispatchEvent(new ProgressEvent("error"));
     await waitForFast(() => expect(attachmentDraft.reads.pendingReads).toBe(0));
     expect([...container.querySelectorAll(".chat-attachment-thumb")]).toEqual([tiles[0], tiles[2]]);
-    expect(container.querySelector(".chat-attachment-error")).toBeNull();
-    expect(notify).toHaveBeenCalledExactlyOnceWith({
-      message: "Could not attach file. Try again.",
-      placement: "top-center",
-      severity: "error",
-    });
+    expect(container.querySelector(".chat-attachment-failure")?.textContent).toContain("bad.txt");
+    expect(notify).not.toHaveBeenCalled();
     expect(status()?.textContent?.trim()).toBe("");
 
     composer.dispatchEvent(createDragEvent("drop", [new File(["held"], "held.txt")]));
@@ -125,6 +121,7 @@ it.each(["owner", "tile"] as const)(
     } else {
       container.querySelector<HTMLButtonElement>('button[aria-label="Remove held.txt"]')?.click();
     }
+    expect(attachmentDraft.reads.failures).toHaveLength(cancellation === "owner" ? 0 : 1);
     expect(submitBusy()).toBe("false");
     expect(status()?.textContent?.trim()).toBe("");
     load(3, "aGVsZA==");

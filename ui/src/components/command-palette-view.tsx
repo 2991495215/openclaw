@@ -525,7 +525,11 @@ export function CommandPaletteView(props: { readProps: () => CommandPaletteProps
               />
             </div>
           </Show>
-          <PaletteSessionAttachments draft={current().draft} revision={current()} />
+          <PaletteSessionAttachments
+            draft={current().draft}
+            revision={current()}
+            getFocusFallback={() => current().mentionHost.getTextarea()}
+          />
           <HumanMentionMenuView args={[current().mentionMenu, current().mentionHost]} />
           <span
             id={mentionAnnouncementId()}

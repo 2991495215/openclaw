@@ -814,13 +814,13 @@ suite.define(() => {
       ]);
 
       await page
-        .locator(".app-toast")
-        .filter({ hasText: "File too large. Try a smaller file." })
+        .locator(".chat-attachment-failure")
+        .filter({ hasText: "These attachments exceed the message limit." })
         .waitFor();
       await expect
         .poll(() => page.locator('.chat-attachment-thumb[aria-busy="false"]').count())
         .toBe(1);
-      expect(await page.locator(".chat-attachment-failures").count()).toBe(0);
+      expect(await page.locator(".chat-attachment-failure").count()).toBe(1);
       expect(
         await page.getByRole("button", { name: "Remove second.txt", exact: true }).count(),
       ).toBe(0);
@@ -983,10 +983,12 @@ suite.define(() => {
       // Advance virtual clock past the 15-second read timeout
       await page.clock.runFor(15_001);
 
-      // Failed reads leave the composer and report through the shared toast.
+      // Failed payloads retire, but their named recovery notice stays with the draft.
       await page
-        .locator(".app-toast")
-        .getByText("Could not attach file. Try again.", { exact: true })
+        .locator(".chat-attachment-failure")
+        .getByText("Could not read this file. Choose it again or try another file.", {
+          exact: true,
+        })
         .waitFor();
       await expect.poll(() => send.isEnabled()).toBe(true);
       await page.screenshot({
@@ -995,7 +997,7 @@ suite.define(() => {
 
       await expect.poll(() => page.locator(".chat-attachment-thumb").count()).toBe(0);
       expect(await composer.inputValue()).toBe(draftText);
-      expect(await page.locator(".chat-attachment-failures").count()).toBe(0);
+      expect(await page.locator(".chat-attachment-failure").count()).toBe(1);
 
       // The preserved draft remains sendable after the failed read retires.
       await send.click();

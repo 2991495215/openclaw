@@ -1427,6 +1427,49 @@
   }
 }
 
+.chat-attachment-failures {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.chat-attachment-failures__list {
+  display: grid;
+  gap: 8px;
+  margin: 8px var(--chat-composer-editor-inset-inline);
+  padding: 0;
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.chat-attachment-failure {
+  display: flex;
+  align-items: start;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-accent);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chat-attachment-failure > div {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-attachment-failure > button {
+  flex-shrink: 0;
+}
+
+.chat-attachment-failures__choose {
+  margin: 0 var(--chat-composer-editor-inset-inline) 8px;
+}
+
 .chat-attachments-preview {
   /* Ease across most of a thumbnail and clear the frame before clipping, so a
      partially visible image does not read as a hard vertical border. */

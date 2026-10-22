@@ -103,7 +103,13 @@ export function appendChatAttachmentFiles(
     ? candidates.filter((file) => !file.type.startsWith("image/"))
     : [];
   if (unsupported.length) {
-    showToast({ message: t("chat.attachments.imagesOnly") });
+    if (props.attachmentReads) {
+      for (const file of unsupported) {
+        props.attachmentReads.reject(file.name, t("chat.attachments.imagesOnly"));
+      }
+    } else {
+      showToast({ message: t("chat.attachments.imagesOnly") });
+    }
   }
   const reads = props.attachmentReads ?? new ChatAttachmentReadLifecycle(() => {});
   const stagedBytes = stagedAttachmentBytes(props);
@@ -114,6 +120,9 @@ export function appendChatAttachmentFiles(
     {
       resizeImages: true,
       compressVideos: true,
+      onRejected: props.attachmentReads
+        ? (file, message) => reads.reject(file.name, message)
+        : undefined,
     },
   );
   if (files.length === 0) {
@@ -180,8 +189,14 @@ export function handleChatAttachmentPaste(
     e.preventDefault();
     const file = new File([text], `pasted-text-${Date.now()}.txt`, { type: "text/plain" });
     const stagedBytes = stagedAttachmentBytes(props);
-    if (admitAttachmentFiles([file], props.attachmentLimits, stagedBytes).length === 0) {
-      // The rejection toast named the file; the clipboard still holds the text.
+    if (
+      admitAttachmentFiles([file], props.attachmentLimits, stagedBytes, {
+        onRejected: props.attachmentReads
+          ? (rejected, message) => props.attachmentReads?.reject(rejected.name, message)
+          : undefined,
+      }).length === 0
+    ) {
+      // The clipboard still holds the text; leave the existing draft untouched.
       return;
     }
     const attachment = chatAttachmentFromFile(file, encodeTextAsDataUrl(text), "paste");
@@ -194,7 +209,13 @@ export function handleChatAttachmentPaste(
     (!props.attachmentLimits || pasted.file.size <= props.attachmentLimits.maxImageBytes)
   ) {
     const stagedBytes = stagedAttachmentBytes(props);
-    if (admitAttachmentFiles([pasted.file], props.attachmentLimits, stagedBytes).length === 0) {
+    if (
+      admitAttachmentFiles([pasted.file], props.attachmentLimits, stagedBytes, {
+        onRejected: props.attachmentReads
+          ? (rejected, message) => props.attachmentReads?.reject(rejected.name, message)
+          : undefined,
+      }).length === 0
+    ) {
       return;
     }
     props.onAttachmentsChange([

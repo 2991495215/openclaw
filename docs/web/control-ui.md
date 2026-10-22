@@ -332,6 +332,18 @@ Text files with unsaved editor changes attach the current edited text without
 saving the file. Existing upload permissions and attachment size limits apply.
 Switching the file or session cancels a pending read.
 
+## Attachment errors in chat
+
+In Chat and New Session, an empty, oversized, or unreadable file leaves a named
+error beside the composer. Your text and successfully attached files stay intact.
+Choose **Choose files again** to reselect a file, or **Dismiss** to clear its error.
+If the message attachment limit is reached, remove another attachment or select a
+smaller file. Failed files are not sent and do not keep the send button busy.
+
+These notices remain until dismissed or the composer is reset; they are not
+saved across a page reload. Reselecting uses the normal attachment checks rather
+than retaining a failed file payload.
+
 ## Take a photo in chat
 
 Choose **Add attachment → Take photo** in chat or New Session to open a camera

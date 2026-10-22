@@ -67,6 +67,7 @@ export function admitAttachmentFiles(
     resizeImages?: boolean;
     compressVideos?: boolean;
     notify?: boolean;
+    onRejected?: (file: File, message: string) => void;
   } = {},
 ): File[] {
   const admitted: File[] = [];
@@ -83,6 +84,7 @@ export function admitAttachmentFiles(
     );
     if (file.size === 0) {
       empty.push(file);
+      options.onRejected?.(file, t("chat.attachments.emptyFile"));
     } else if (
       limits &&
       (reservation <= 0 ||
@@ -92,12 +94,20 @@ export function admitAttachmentFiles(
         total + reservation > limits.maxBatchBytes)
     ) {
       oversized.push(file);
+      options.onRejected?.(
+        file,
+        t(
+          total + reservation > limits.maxBatchBytes
+            ? "chat.attachments.batchTooLarge"
+            : "chat.attachments.tooLargeToast",
+        ),
+      );
     } else {
       admitted.push(file);
       total += reservation;
     }
   }
-  if (options.notify !== false) {
+  if (options.notify !== false && !options.onRejected) {
     skippedFilesToast(
       oversized.length ? "chat.attachments.tooLarge" : "chat.attachments.readFailed",
       oversized.length ? oversized : empty,

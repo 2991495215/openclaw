@@ -15,7 +15,9 @@ export function PaletteSessionControls(props: DraftProps) {
   return <Show when={view()}>{(settings) => <PaletteSessionSettingsView {...settings()} />}</Show>;
 }
 
-export function PaletteSessionAttachments(props: DraftProps) {
+export function PaletteSessionAttachments(
+  props: DraftProps & { getFocusFallback?: () => HTMLTextAreaElement | null | undefined },
+) {
   const preview = createMemo(() => {
     void props.revision;
     const attachments = props.draft.attachmentProps();
@@ -23,14 +25,19 @@ export function PaletteSessionAttachments(props: DraftProps) {
       return undefined;
     }
     const current = attachments.attachments ?? [];
-    return (attachments.attachmentReads?.project(current).length ?? current.length)
+    return (attachments.attachmentReads?.project(current).length ?? current.length) ||
+      attachments.attachmentReads?.failures.length
       ? attachments
       : undefined;
   });
   return (
     <Show when={preview()}>
       <div class="cmd-palette__attachments">
-        <AttachmentPreview {...preview()!} readRevision={props.revision} />
+        <AttachmentPreview
+          {...preview()!}
+          readRevision={props.revision}
+          getFocusFallback={() => props.getFocusFallback?.()}
+        />
       </div>
     </Show>
   );

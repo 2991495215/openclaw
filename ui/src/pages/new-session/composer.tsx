@@ -505,7 +505,12 @@ export function NewSessionComposer(props: {
           onRemove={() => options().onInput(options().message, [])}
           avatarUrls={textarea.mentionMenu.selectedAvatarUrls}
         />
-        <AttachmentPreview {...frame().attachmentProps} readRevision={frame()} />
+        <AttachmentPreview
+          {...frame().attachmentProps}
+          readRevision={frame()}
+          onChooseFiles={() => inputHandle.open("file")}
+          getFocusFallback={() => input}
+        />
         <AttachmentReadStatus pendingReads={options().attachmentDraft.reads.pendingReads} />
         <div class="agent-chat__composer-lede">{options().dictationStatus}</div>
         <div class="agent-chat__composer-input-row">
@@ -521,10 +526,7 @@ export function NewSessionComposer(props: {
               <SkillMenu menu={textarea.skillMenu} host={frame().skillMenuHost} />
             </Show>
             <textarea
-              ref={(element) => {
-                input = element;
-                messageValue(element);
-              }}
+              ref={[(element) => (input = element), messageValue]}
               class="new-session-page__message"
               rows="1"
               autofocus={globalThis.matchMedia?.("(max-width: 560px)")?.matches ?? false}

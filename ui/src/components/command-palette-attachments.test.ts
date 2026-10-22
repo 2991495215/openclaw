@@ -210,19 +210,22 @@ describe("command palette paste-only images", () => {
     },
   );
 
-  it("removes failed reads, reports an error toast, and permits repaste", async () => {
+  it("releases failed reads, retains named errors, and permits repaste", async () => {
     const { palette, input, create, start, query, queryAll, expectSubmit } = await mount();
     setInputValue(input, "Keep my draft");
     paste(input, [image("unreadable.png")]);
     readers[0]!.dispatchEvent(new ProgressEvent("error"));
     await palette.updateComplete;
     await waitForSolid(() => expect(queryAll(".chat-attachment-thumb")).toHaveLength(0));
-    expect(query(".chat-attachment-failures")).toBeNull();
-    expect(toast.showToast).toHaveBeenCalledExactlyOnceWith({
-      message: "Could not attach file. Try again.",
-      placement: "top-center",
-      severity: "error",
-    });
+    expect(query(".chat-attachment-failure")?.textContent).toContain("unreadable.png");
+    expect(toast.showToast).not.toHaveBeenCalled();
+    const dismiss = query<HTMLButtonElement>(
+      'button[aria-label="Dismiss error for unreadable.png"]',
+    )!;
+    dismiss.focus();
+    dismiss.click();
+    await palette.updateComplete;
+    expect(document.activeElement).toBe(input);
     expect(input.value).toBe("Keep my draft");
     expect(start().disabled).toBe(false);
     expect(create).not.toHaveBeenCalled();
@@ -351,13 +354,9 @@ describe("command palette paste-only images", () => {
       // cold submit must not silently drop a rejected clipboard image.
       await vi.waitFor(() => expect(start().disabled).toBe(false));
       expect(queryAll(".chat-attachment-thumb")).toHaveLength(outcome === "partial" ? 1 : 0);
-      expect(query(".chat-attachment-failures")).toBeNull();
+      expect(query(".chat-attachment-failure")?.textContent).toContain("oversized.gif");
       expect(replacement.value).toBe("Keep every image");
-      expect(toast.showToast).toHaveBeenCalledExactlyOnceWith({
-        message: "File too large. Try a smaller file.",
-        placement: "top-center",
-        severity: "error",
-      });
+      expect(toast.showToast).not.toHaveBeenCalled();
     }
     if (outcome === "ready" || delayedPolicy) {
       const submitted = { message: textOnly ? "Keep every image" : "" };
