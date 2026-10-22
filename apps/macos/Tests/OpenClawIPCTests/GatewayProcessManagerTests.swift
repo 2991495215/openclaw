@@ -11,13 +11,17 @@ struct GatewayReadinessDeadlinePolicyTests {
     private let epoch = ContinuousClock.now
 
     @Test(arguments: [
-        (true, false, false),
-        (false, true, false),
-        (false, false, true),
+        (true, false, false, false),
+        (false, true, false, false),
+        (false, false, false, true),
+        (true, false, true, true),
+        (false, true, true, true),
+        (false, false, true, true),
     ])
-    func `migration extension requires fresh proof only without progress or prior grace`(
+    func `migration extension always reproves reused launchd PIDs despite progress or prior grace`(
         responsiveProgress: Bool,
         priorGrace: Bool,
+        reusedLaunchdPID: Bool,
         requiresLaunchdProof: Bool) throws
     {
         let policy = GatewayProcessManager.GatewayReadinessDeadlinePolicy.migration(window: 6, tolerance: 120)
@@ -25,7 +29,8 @@ struct GatewayReadinessDeadlinePolicyTests {
             deadline: self.epoch.advanced(by: .seconds(6)),
             finalProbeDeadline: self.epoch.advanced(by: .seconds(120)),
             responsiveStartupProgressObserved: responsiveProgress,
-            freshInstallGraceAuthorized: priorGrace))
+            freshInstallGraceAuthorized: priorGrace,
+            reusedLaunchdPID: reusedLaunchdPID))
 
         #expect(decision.deadline == self.epoch.advanced(by: .seconds(12)))
         #expect(decision.requiresLaunchdProof == requiresLaunchdProof)
@@ -37,7 +42,8 @@ struct GatewayReadinessDeadlinePolicyTests {
             deadline: self.epoch.advanced(by: .seconds(116)),
             finalProbeDeadline: self.epoch.advanced(by: .seconds(120)),
             responsiveStartupProgressObserved: true,
-            freshInstallGraceAuthorized: false))
+            freshInstallGraceAuthorized: false,
+            reusedLaunchdPID: false))
 
         #expect(decision.deadline == self.epoch.advanced(by: .seconds(120)))
     }
@@ -49,7 +55,8 @@ struct GatewayReadinessDeadlinePolicyTests {
             deadline: self.epoch.advanced(by: .seconds(deadline)),
             finalProbeDeadline: self.epoch.advanced(by: .seconds(120)),
             responsiveStartupProgressObserved: true,
-            freshInstallGraceAuthorized: true) == nil)
+            freshInstallGraceAuthorized: true,
+            reusedLaunchdPID: false) == nil)
     }
 
     @Test func `fixed readiness policy refuses migration extensions`() {
@@ -58,7 +65,8 @@ struct GatewayReadinessDeadlinePolicyTests {
             deadline: self.epoch.advanced(by: .seconds(6)),
             finalProbeDeadline: self.epoch.advanced(by: .seconds(120)),
             responsiveStartupProgressObserved: true,
-            freshInstallGraceAuthorized: true) == nil)
+            freshInstallGraceAuthorized: true,
+            reusedLaunchdPID: false) == nil)
     }
 }
 

@@ -100,17 +100,18 @@ final class GatewayProcessManager {
             deadline: Instant,
             finalProbeDeadline: Instant,
             responsiveStartupProgressObserved: Bool,
-            freshInstallGraceAuthorized: Bool) -> (deadline: Instant, requiresLaunchdProof: Bool)?
+            freshInstallGraceAuthorized: Bool,
+            reusedLaunchdPID: Bool) -> (deadline: Instant, requiresLaunchdProof: Bool)?
             where Instant.Duration == Duration
         {
             guard case let .migration(window, _) = self,
                   deadline < finalProbeDeadline
             else { return nil }
             // Advance the previous deadline, not the current time, so delayed authorization
-            // cannot restart the budget. Progress or prior grace avoids repeated launchd proof.
+            // cannot restart the budget. A reused PID is re-proven even after startup progress.
             return (
                 min(deadline.advanced(by: .seconds(window)), finalProbeDeadline),
-                !responsiveStartupProgressObserved && !freshInstallGraceAuthorized)
+                reusedLaunchdPID || (!responsiveStartupProgressObserved && !freshInstallGraceAuthorized))
         }
     }
 
@@ -924,7 +925,9 @@ extension GatewayProcessManager {
                     deadline: deadline,
                     finalProbeDeadline: finalProbeDeadline,
                     responsiveStartupProgressObserved: responsiveStartupProgressObserved,
-                    freshInstallGraceAuthorized: freshInstallGraceAuthorized)
+                    freshInstallGraceAuthorized: freshInstallGraceAuthorized,
+                    reusedLaunchdPID: context.purpose == .launchd &&
+                        self.launchAgentFreshInstallGeneration != context.generation && readinessPID != nil)
                 else { break readinessLoop }
                 let extensionAuthorization = await self.authorizeReadinessExtension(
                     context: context,
