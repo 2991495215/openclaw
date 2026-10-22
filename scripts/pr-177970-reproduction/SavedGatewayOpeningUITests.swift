@@ -225,7 +225,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
     private func savedOpenButton(_ app: XCUIApplication) throws -> XCUIElement {
         let settings = app.windows["com_apple_SwiftUI_Settings_window"]
         let names = settings.staticTexts.matching(NSPredicate(format: "value == %@", "Reproduction server"))
-        let addresses = settings.staticTexts.matching(NSPredicate(format: "value == %@", "ws://127.0.0.1:19878"))
+        let addresses = settings.staticTexts.matching(NSPredicate(format: "value == %@", "ws://127.0.0.1:19878/"))
         let name = names.firstMatch
         let address = addresses.firstMatch
         try self.require(
