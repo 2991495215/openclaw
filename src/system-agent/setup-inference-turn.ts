@@ -58,7 +58,6 @@ import {
   type SetupTurnSuccess,
 } from "./setup-inference-probe-work.js";
 import { resolveSetupInferenceProfileError } from "./setup-inference-profile.js";
-import { createSystemAgentUserTurnRecorder } from "./user-turn-transcript.js";
 import {
   captureSystemAgentOwnerPluginArtifacts,
   createSystemAgentVerifiedInferenceBinding,
@@ -120,7 +119,6 @@ export async function runSetupInferenceTurn(params: {
     "system-agent.setup-inference",
   );
   let successfulAuth: AgentExecutionAuthBinding | undefined;
-  const prompt = params.prompt ?? SETUP_INFERENCE_TEST_PROMPT;
   const shared = {
     preparedRunAdmission,
     sessionId: runId,
@@ -132,8 +130,7 @@ export async function runSetupInferenceTurn(params: {
     workspaceDir,
     agentDir: route.agentDir,
     config: route.runConfig,
-    prompt,
-    userTurnTranscriptRecorder: createSystemAgentUserTurnRecorder(prompt),
+    prompt: params.prompt ?? SETUP_INFERENCE_TEST_PROMPT,
     provider: route.provider,
     model: route.model,
     timeoutMs,

@@ -1,6 +1,5 @@
 import { resolve, sep } from "node:path";
 import type { CopilotClient, CopilotClientOptions } from "@github/copilot-sdk";
-import type { AgentHarnessRuntimeArtifactBinding } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { toStringifiedError as toCopilotRuntimeError } from "openclaw/plugin-sdk/error-runtime";
 import { loadCopilotSdk } from "./sdk-loader.js";
 
@@ -15,7 +14,6 @@ export interface PoolKey {
   readonly authProfileVersion?: string;
   /** Distinguishes hardened empty-mode clients from normal Copilot CLI clients. */
   readonly clientMode?: CopilotClientOptions["mode"];
-  readonly runtimeArtifactFingerprint?: string;
 }
 
 export interface ClientCreateOptions extends Omit<
@@ -30,7 +28,6 @@ export interface ClientCreateOptions extends Omit<
 export interface PooledClient {
   readonly key: PoolKey;
   readonly client: CopilotClient;
-  readonly runtimeArtifact?: AgentHarnessRuntimeArtifactBinding;
 }
 
 export interface CopilotClientPoolOptions {
@@ -141,28 +138,12 @@ export function createCopilotClientPool(options: CopilotClientPoolOptions = {}) 
     };
   };
 
-  const createEntry = (
-    key: PoolKey,
-    cacheKey: string,
-    clientOptions: CopilotClientOptions,
-    runtimeArtifact?: AgentHarnessRuntimeArtifactBinding,
-  ) => {
+  const createEntry = (key: PoolKey, cacheKey: string, clientOptions: CopilotClientOptions) => {
     // Register the entry before invoking a factory that may throw synchronously.
     const createPromise = Promise.resolve().then(async () => {
       try {
         const client = await sdkFactory(clientOptions);
-        if (runtimeArtifact) {
-          try {
-            await client.start();
-            const { validateCopilotRuntimeArtifact } = await import("./runtime-artifact.js");
-            if (!(await validateCopilotRuntimeArtifact(runtimeArtifact))) {
-              throw new Error("[copilot] runtime changed while starting; retry setup verification");
-            }
-          } catch (error) {
-            await client.stop().catch(() => undefined);
-            throw error;
-          }
-        }
+        entry.state = { kind: "ready", client };
         return client;
       } catch (error: unknown) {
         entry.state = { kind: "stopped" };
@@ -186,49 +167,25 @@ export function createCopilotClientPool(options: CopilotClientPoolOptions = {}) 
   const acquire = async (
     inputKey: PoolKey,
     optionsForCreate: ClientCreateOptions,
-    runtimeArtifactRequest?: { expected?: AgentHarnessRuntimeArtifactBinding },
   ): Promise<PooledClient> => {
-    if (runtimeArtifactRequest && optionsForCreate.connection) {
-      throw new Error("[copilot] runtime verification requires the packaged stdio runtime");
-    }
-    const capture = runtimeArtifactRequest
-      ? await (
-          await import("./runtime-artifact.js")
-        ).captureCopilotRuntimeArtifact(optionsForCreate.env)
-      : undefined;
-    const expected = runtimeArtifactRequest?.expected;
-    if (
-      expected &&
-      (capture?.binding.id !== expected.id || capture.binding.fingerprint !== expected.fingerprint)
-    ) {
-      throw new Error("[copilot] verified runtime changed; rerun setup verification");
-    }
-    const runtimeArtifact = capture?.binding;
-    const key = {
-      ...normalizePoolKey(inputKey, optionsForCreate.copilotHome, optionsForCreate.mode),
-      ...(runtimeArtifact ? { runtimeArtifactFingerprint: runtimeArtifact.fingerprint } : {}),
-    };
+    const key = normalizePoolKey(inputKey, optionsForCreate.copilotHome, optionsForCreate.mode);
     const cacheKey = JSON.stringify(key);
     const clientOptions = normalizeClientCreateOptions(optionsForCreate, key.copilotHome);
-    if (capture) {
-      clientOptions.connection = capture.connection;
-    }
-    const toHandle = (client: CopilotClient): PooledClient => ({
-      key,
-      client,
-      ...(runtimeArtifact ? { runtimeArtifact } : {}),
-    });
 
     while (true) {
       if (disposed) {
         throw createDisposedError();
       }
 
-      const entry =
-        entries.get(cacheKey) ?? createEntry(key, cacheKey, clientOptions, runtimeArtifact);
-      if (entry.stopping) {
-        await entry.stopping;
-        continue;
+      const existing = entries.get(cacheKey);
+      if (!existing) {
+        const created = createEntry(key, cacheKey, clientOptions);
+        const client = await created.createPromise;
+        if (disposed) {
+          await stopEntry(created.entry);
+          throw createDisposedError();
+        }
+        return { key: created.entry.key, client };
       }
 
       switch (existing.state.kind) {
@@ -258,7 +215,6 @@ export function createCopilotClientPool(options: CopilotClientPoolOptions = {}) 
           maybeDeleteEntry(existing);
           continue;
       }
-      return toHandle(client);
     }
   };
 
