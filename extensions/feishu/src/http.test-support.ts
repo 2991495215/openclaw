@@ -51,34 +51,36 @@ export function observeResponseBody(response: Response): {
   return state;
 }
 
+/**
+ * Streams JSON one chunk past `capBytes`, then holds the response open without
+ * ending it. Resolves once the client closes the unfinished response, so a test
+ * awaiting it observes the reader's cancellation; eager runtime buffering (Bun
+ * fetch) cannot race a finite body to EOF first.
+ */
 export function writeOversizedJson(
   res: ServerResponse,
-  totalBytes: number,
+  capBytes: number,
   jsonPrefix: string,
-): void {
+): Promise<void> {
+  const clientClosed = new Promise<void>((resolve) => {
+    res.once("close", () => resolve());
+  });
   const chunk = Buffer.alloc(1024 * 1024, 0x20);
-  let bytesWritten = 0;
-  res.writeHead(200, { "content-type": "application/json" });
   const prefix = Buffer.from(jsonPrefix);
-  bytesWritten += prefix.byteLength;
+  let bytesWritten = prefix.byteLength;
+  res.writeHead(200, { "content-type": "application/json" });
   res.write(prefix);
   const sendChunk = () => {
-    if (res.destroyed) {
+    if (res.destroyed || bytesWritten > capBytes) {
       return;
     }
-    if (bytesWritten >= totalBytes) {
-      res.end('"}');
-      return;
-    }
-    const remaining = totalBytes - bytesWritten;
-    const size = Math.min(chunk.byteLength, remaining);
-    bytesWritten += size;
-    const ok = res.write(chunk.subarray(0, size));
-    if (ok) {
+    bytesWritten += chunk.byteLength;
+    if (res.write(chunk)) {
       setImmediate(sendChunk);
       return;
     }
     res.once("drain", sendChunk);
   };
   setImmediate(sendChunk);
+  return clientClosed;
 }
