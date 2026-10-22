@@ -6,6 +6,7 @@ import importlib.util
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import shlex
 import signal
@@ -232,7 +233,7 @@ try:
     if proof_head != os.environ.get("GITHUB_SHA"):
         raise RuntimeError("Proof checkout differs from the workflow head")
     names = ("run-main.py", "CatalogModeUITests.swift", "NativeProofLaunchSupport.swift", "catalog-control.mjs",
-             "process-custody.py", "catalog-observer.mjs", "prepare-case.mjs", "seed-codex.mjs", "seed-claude-files.mjs", "build-catalog-app.sh")
+             "process-custody.py", "catalog-observer.mjs", "gateway-proof-call.mjs", "prepare-case.mjs", "seed-codex.mjs", "seed-claude-files.mjs", "build-catalog-app.sh")
     write_json(output / "provenance.json", {"productMain": MAIN, "proofHead": proof_head,
                "helperSHA256": {name: file_hash(helpers / name) for name in names},
                "scope": "main only; actual native app and Gateways; no candidate or merge"})
@@ -322,6 +323,20 @@ try:
                "mainAppSHA256": (reused_bundle / "main-app.sha256").read_text().strip()})
     shutil.copy2(output / "build/source.txt", bundle_output / "source.txt")
     shutil.copy2(output / "build/executable-hashes.txt", bundle_output / "executable-hashes.txt")
+    scope_source = source / "apps/shared/OpenClawKit/Sources/OpenClawKit/GatewayChannelSupport.swift"
+    if file_hash(scope_source) != "69fa976eb8dd6547702948341b92dc396a0d4aaa7d48cec0516efb9e348364e1":
+        raise RuntimeError("Native scope source differs from the reviewed pin")
+    scope_block = scope_source.read_text().split("public static let defaultOperatorConnectScopes: [String] = [", 1)[1].split("]", 1)[0]
+    rpc_scopes = re.findall(r'^\s*"(operator\.[a-z]+)",?\s*$', scope_block, re.MULTILINE)
+    if len(rpc_scopes) != 6 or len(set(rpc_scopes)) != 6:
+        raise RuntimeError("Pinned native app scope contract could not be read")
+    write_json(output / "gateway-scope-contract.json", {"main": MAIN, "source": str(scope_source),
+               "sourceSHA256": file_hash(scope_source), "scopes": rpc_scopes, "callerIdentity": "cli",
+               "priorTextCliEvidence": {"runId": 39846976479, "artifactId": 12455278799,
+                                        "result": "catalog read rejected: missing scope operator.write"}})
+    rpc_adapter = scratch / "rpc/gateway-proof-call.mjs"
+    rpc_adapter.parent.mkdir(mode=0o700)
+    shutil.copy2(helpers / rpc_adapter.name, rpc_adapter)
     results = []
     for label, home, mac_owner, local_owner in cases:
         current_case = output / label
@@ -332,6 +347,7 @@ try:
                   "seed": str(seed_output / "seed.json"), "claudeSeed": str(seed_output / "claude-inputs.json"),
                   "caseRoot": str(scratch / f"case-{label}"), "output": str(current_case), "stage": "main",
                   "localPort": 19861, "remotePort": 19862, "controlPort": 19863,
+                  "rpcAdapter": str(rpc_adapter), "rpcScopes": rpc_scopes,
                   "macOwner": mac_owner, "localOwner": local_owner, "remoteOwner": "b"}
         if label == "isolated-home":
             values["implicitMacHome"] = str(app_home)
@@ -339,11 +355,20 @@ try:
         run(["node", helpers / "prepare-case.mjs", case_input], current_case / "prepare.log")
         launch_file = Path(values["caseRoot"]) / "launch.json"
         launch = json.loads(launch_file.read_text())
+        control_spec = Path(launch["controlSpec"])
+        control_values = json.loads(control_spec.read_text())
+        if label == cases[0][0]:
+            target = control_values["local"]
+            run([target["executable"], rpc_adapter, target["entry"], "--check-import", "{}",
+                 target["gatewayUrl"], "45000", json.dumps(rpc_scopes)], current_case / "public-sdk-import.json",
+                env=target["rpcEnvironment"], cwd=target["home"], timeout=60)
+            imported = json.loads((current_case / "public-sdk-import.json").read_text())
+            if imported["scopes"] != rpc_scopes or imported["adapterSHA256"] != file_hash(helpers / rpc_adapter.name):
+                raise RuntimeError("SDK caller differs from the reviewed helper or pinned native scopes")
+            drain(phase="sdk-import-complete")
         keychain, security_env = prepare_keychain(app_home, current_case)
         for key, kind, value in (("openclaw.onboardingSeen", "-bool", "true"), ("openclaw.onboardingVersion", "-int", "8")):
             run(["defaults", "write", "ai.openclaw.mac.catalog-proof.debug", key, kind, value], current_case / f"defaults-{key}.log", env=security_env)
-        control_spec = Path(launch["controlSpec"])
-        control_values = json.loads(control_spec.read_text())
         control_values["processCustody"] = str(custody_file)
         control_values["pythonExecutable"] = sys.executable
         write_json(control_spec, control_values)

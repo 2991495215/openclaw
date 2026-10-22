@@ -15,7 +15,7 @@ const spec = JSON.parse(await readFile(process.argv[2], "utf8"));
 const run = promisify(execFile);
 const runnerRoot = await realpath(process.env.RUNNER_TEMP);
 for (const value of [spec.app, spec.appConfig, spec.output, ...[spec.local, spec.remote].flatMap((target) =>
-  [target.executable, target.entry, target.sqliteLibrary, target.home, target.state, target.config])]) {
+  [target.executable, target.entry, target.rpcAdapter, target.sqliteLibrary, target.home, target.state, target.config])]) {
   if (!(await realpath(value)).startsWith(runnerRoot + path.sep)) throw new Error("Proof path escaped RUNNER_TEMP");
 }
 for (const target of [spec.local, spec.remote]) {
@@ -52,7 +52,8 @@ await writeFile(path.join(spec.output, "process-launch-context.json"), JSON.stri
   gateways: spec.gateways.map(({ label, executable, arguments: args, workingDirectory, environment }) =>
     ({ label, executable, arguments: args, workingDirectory, environment })),
   observerCLI: [spec.local, spec.remote].map(target => ({ executable: target.executable, entry: target.entry,
-    workingDirectory: target.home, environment: cliEnvironment(target) })),
+    adapter: target.rpcAdapter, scopes: target.rpcScopes, clientName: "cli", mode: "cli",
+    workingDirectory: target.home, environment: target.rpcEnvironment })),
 }, null, 2));
 let lifecycleWrites = Promise.resolve();
 const saveLifecycle = () => {
@@ -122,20 +123,12 @@ async function waitForGateway(label) {
   throw new Error(`${label} never answered the real health RPC; attempts were retained`);
 }
 
-function cliEnvironment(target) {
-  return { PATH: `${path.dirname(target.executable)}:/usr/bin:/bin:/usr/sbin:/sbin`,
-    HOME: target.home, CFFIXED_USER_HOME: target.home,
-    OPENCLAW_STATE_DIR: target.state, OPENCLAW_CONFIG_PATH: target.config,
-    OPENCLAW_SQLITE_LIBRARY: target.sqliteLibrary, NO_COLOR: "1" };
-}
-
 async function rpc(target, method, params, directory, name, requestTimeoutMs = 45000) {
   let stdout = "", stderr = "", error;
   try {
-    ({ stdout, stderr } = await ownedRun(target.executable, [target.entry, "gateway", "call", method,
-      "--params", JSON.stringify(params), "--expect-url", target.gatewayUrl,
-      "--timeout", String(requestTimeoutMs), "--json"],
-    { env: cliEnvironment(target), cwd: target.home, timeout: requestTimeoutMs + 15000, maxBuffer: 16 * 1024 * 1024 }));
+    ({ stdout, stderr } = await ownedRun(target.executable, [target.rpcAdapter, target.entry, method,
+      JSON.stringify(params), target.gatewayUrl, String(requestTimeoutMs), JSON.stringify(target.rpcScopes)],
+    { env: target.rpcEnvironment, cwd: target.home, timeout: requestTimeoutMs + 15000, maxBuffer: 16 * 1024 * 1024 }));
   } catch (caught) {
     error = caught; stdout = caught.stdout ?? ""; stderr = caught.stderr ?? "";
   }

@@ -21,10 +21,11 @@ const inside = (value) => {
 };
 const executable = inside(spec.executable);
 const entry = inside(spec.entry);
-const sqliteLibrary = inside(spec.sqliteLibrary);
+const rpcAdapter = inside(spec.rpcAdapter);
+inside(spec.sqliteLibrary);
 const home = inside(spec.home);
-const state = inside(spec.state);
-const config = inside(spec.config);
+inside(spec.state);
+inside(spec.config);
 const outputParent = inside(path.dirname(spec.output));
 const output = path.join(outputParent, path.basename(spec.output));
 if (path.basename(spec.output) === "." || path.basename(spec.output) === "..") throw new Error("Invalid output path");
@@ -41,15 +42,7 @@ for (const fixture of spec.fixtures) {
 }
 mkdirSync(output); // Refuse to overwrite evidence from a previous attempt.
 const binaryHash = createHash("sha256").update(readFileSync(executable)).digest("hex");
-const environment = {
-  PATH: `${path.dirname(executable)}:/usr/bin:/bin:/usr/sbin:/sbin`,
-  HOME: home,
-  CFFIXED_USER_HOME: home,
-  OPENCLAW_STATE_DIR: state,
-  OPENCLAW_CONFIG_PATH: config,
-  OPENCLAW_SQLITE_LIBRARY: sqliteLibrary,
-  NO_COLOR: "1",
-};
+const environment = spec.rpcEnvironment;
 let serial = 0;
 const calls = [];
 const issues = [];
@@ -61,8 +54,7 @@ function call(method, params) {
   const name = `${String(id).padStart(4, "0")}-${method}.json`;
   const startedAt = new Date().toISOString();
   const result = spawnSync(executable, [
-    entry, "gateway", "call", method, "--params", JSON.stringify(params),
-    "--expect-url", spec.gatewayUrl, "--timeout", "45000", "--json",
+    rpcAdapter, entry, method, JSON.stringify(params), spec.gatewayUrl, "45000", JSON.stringify(spec.rpcScopes),
   ], { env: environment, cwd: home, encoding: "utf8", timeout: 60000, maxBuffer: 16 * 1024 * 1024 });
   writeFileSync(path.join(output, name), result.stdout ?? "");
   writeFileSync(path.join(output, name + ".stderr"), result.stderr ?? "");
@@ -147,7 +139,8 @@ try {
   writeFileSync(path.join(output, "observation.json"), JSON.stringify({
     status: collectionError || issues.length ? "incomplete_observation" : "observation_collected",
     proofVerdict: "not_assessed",
-    binaryHash, finalBinaryHash, calls, occurrences, reads, issues, collectionError,
+    binaryHash, finalBinaryHash, rpcAdapter, rpcScopes: spec.rpcScopes, clientName: "cli", mode: "cli",
+    calls, occurrences, reads, issues, collectionError,
     requiredExternalEvidence: ["native-worker-process-and-manifest", "native-ui-interaction-and-pixels", "source-and-seed-identity", "before-after-and-mode-controls"],
   }, null, 2));
 }

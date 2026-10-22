@@ -136,7 +136,9 @@ async function observer(label, gatewayUrl, token, expected) {
   const env = await environment(label);
   await writeJSON(env.OPENCLAW_CONFIG_PATH, { gateway: { mode: "remote", remote: { transport: "direct", url: gatewayUrl, token } } });
   return { executable, entry, sqliteLibrary, home: env.HOME, state: env.OPENCLAW_STATE_DIR, config: env.OPENCLAW_CONFIG_PATH,
-    gatewayUrl, fixtures: expected };
+    gatewayUrl, fixtures: expected, rpcAdapter: input.rpcAdapter, rpcScopes: input.rpcScopes,
+    rpcEnvironment: { ...env, NO_COLOR: "1", GITHUB_ACTIONS: "true", RUNNER_ENVIRONMENT: "github-hosted",
+      RUNNER_TEMP: process.env.RUNNER_TEMP } };
 }
 const control = { app: input.app, appEnvironment, appConfig: appEnvironment.OPENCLAW_CONFIG_PATH, output: input.output,
   controlPort: input.controlPort, gateways,
