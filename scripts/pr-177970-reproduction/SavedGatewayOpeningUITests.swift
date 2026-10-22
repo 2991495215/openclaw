@@ -84,7 +84,9 @@ final class SavedGatewayOpeningUITests: XCTestCase {
         token.typeText("synthetic-saved-gateway-token")
         app.buttons["Connect"].click()
         try self.require(
-            app.staticTexts["Reproduction server"].waitForExistence(timeout: 10),
+            app.windows["com_apple_SwiftUI_Settings_window"].staticTexts
+                .matching(NSPredicate(format: "value == %@", "Reproduction server")).firstMatch
+                .waitForExistence(timeout: 10),
             app: app, message: "Saved profile did not commit")
         // Saving legitimately opens a window. Restart to obtain a cold fleet,
         // keeping only the profile that the real settings UI just persisted.
@@ -118,15 +120,16 @@ final class SavedGatewayOpeningUITests: XCTestCase {
         self.capture(app, name: "\(stage)-\(entry)-pending")
         let observed = try await self.control("observe-cleanup")
         _ = try await self.control("release", method: "POST")
-        let target = native
-            ? app.windows.matching(NSPredicate(
-                format: "label == %@ OR title == %@", "Reproduction server", "Reproduction server")).firstMatch
-            : app.windows.containing(.staticText, identifier: "Saved Gateway ready").firstMatch
+        let savedWindows = app.windows.matching(NSPredicate(format: "title == %@", "Reproduction server"))
+        let target = savedWindows.firstMatch
         let ready = native
             ? target.textViews["chat-message-input"]
-            : target.staticTexts["Saved Gateway ready"]
+            : target.staticTexts.matching(NSPredicate(format: "title == %@", "Saved Gateway ready")).firstMatch
         let opened = await self.waitUntilVisible(ready, timeout: 20)
-        self.capture(app, name: "\(stage)-\(entry)-settled")
+        self.captureDiagnostics(app, name: "\(stage)-\(entry)-settled")
+        if opened {
+            try self.require(savedWindows.count == 1, app: app, message: "Saved window identity is ambiguous")
+        }
         let openingFinished = try await self.control("state")
         var result: [String: Any] = [
             "stage": stage, "entry": entry, "native": native,
@@ -211,14 +214,19 @@ final class SavedGatewayOpeningUITests: XCTestCase {
 
     @MainActor
     private func savedOpenButton(_ app: XCUIApplication) throws -> XCUIElement {
-        let name = app.staticTexts["Reproduction server"]
-        let address = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "127.0.0.1:19878")).firstMatch
-        XCTAssertTrue(name.waitForExistence(timeout: 5) && address.exists)
+        let settings = app.windows["com_apple_SwiftUI_Settings_window"]
+        let names = settings.staticTexts.matching(NSPredicate(format: "value == %@", "Reproduction server"))
+        let addresses = settings.staticTexts.matching(NSPredicate(format: "value == %@", "ws://127.0.0.1:19878"))
+        let name = names.firstMatch
+        let address = addresses.firstMatch
+        try self.require(
+            name.waitForExistence(timeout: 5) && names.count == 1 && addresses.count == 1,
+            app: app, message: "Saved profile name or endpoint is absent or ambiguous")
         // Legacy-primary migration can add a second saved row. Resolve the
         // visible row's button instead of relying on list order or a lone label.
         let top = min(name.frame.minY, address.frame.minY)
         let bottom = max(name.frame.maxY, address.frame.maxY)
-        let buttons = app.buttons.matching(identifier: "Open Window").allElementsBoundByIndex.filter {
+        let buttons = settings.buttons.matching(identifier: "Open Window").allElementsBoundByIndex.filter {
             $0.isHittable && $0.frame.maxY >= top && $0.frame.minY <= bottom
         }
         XCTAssertEqual(buttons.count, 1, "Expected one Open Window button in the synthetic server row")
