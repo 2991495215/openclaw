@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, expect, it, vi } from "vitest";
-import type { NativeLinkMenu } from "../components/native-link-menu.runtime.tsx";
+import type { NativeLinkMenu } from "../components/native-link-menu.runtime.ts";
 import { startNativeLinkRouting } from "./native-link-routing.ts";
 
 const menuLoad = vi.hoisted(() => {
