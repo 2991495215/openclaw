@@ -198,6 +198,7 @@ export function loadSessionWorkspaceArtifacts(
       }
     }
   })();
+  artifacts.readResult = request;
   artifactLoads.set(artifacts, request);
   sessionWorkspaceForHost(state).publish();
   return request;
