@@ -6,10 +6,11 @@ import { fileURLToPath } from "node:url";
 import { packFirstHopUpdateFixture } from "../update-first-hop-package-fixtures.mjs";
 import { runInstalledRecoveryCommand } from "./installed-recovery-command.mjs";
 import {
+  assertPackageTree,
   assertRetirementCut,
+  capturePackageTree,
   fileDigest,
   fileIdentity,
-  packageTreeDigest,
   parseRecoveryCommand,
   readActivation,
   retirementCuts,
@@ -150,7 +151,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     const expected = packedManifest(target);
     assert.notEqual(expected.version, read(path.join(root, "package.json")).version);
     assert.deepEqual(expected.openclaw.schemaVersions, baseline.openclaw.schemaVersions);
-    const originalTree = packageTreeDigest(root);
+    const originalTree = capturePackageTree(root);
     const originalLauncher = launcher();
     const interrupted = await run(
       directory,
@@ -167,6 +168,11 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
       "dead writer changed the captured journal",
     );
     const descriptor = JSON.parse(observed.row.descriptor_json);
+    // This current-writer cell requires full seals, not legacy identity-only
+    // recovery: both owner-covered trees must undergo canonical tightening.
+    for (const selected of [descriptor.previous, descriptor.candidate]) {
+      assert.match(selected.digest, /^[a-f0-9]{64}$/u);
+    }
     const printed = parseRecoveryCommand(`${interrupted.stdout}\n${interrupted.stderr}`);
     assert.deepEqual(printed, { node, helper, anchor, operation: descriptor.operationId });
     assert(
@@ -176,9 +182,13 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     operationIds.add(printed.operation);
     assert.equal(fs.existsSync(root), false, "live package must actually be absent");
     assert.equal(fs.existsSync(bin), false, "installed CLI must actually be unusable");
-    assert.equal(packageTreeDigest(path.join(anchor, "previous")), originalTree);
+    const previousTree = assertPackageTree(
+      originalTree,
+      capturePackageTree(path.join(anchor, "previous")),
+      { tightenPermissions: true },
+    );
     const previousIdentity = fileIdentity(path.join(anchor, "previous"));
-    const candidateTree = packageTreeDigest(path.join(anchor, "candidate"));
+    let candidateTree = capturePackageTree(path.join(anchor, "candidate"));
     assert.equal(read(path.join(anchor, "candidate/package.json")).version, expected.version);
     assert.equal(
       fileDigest(helper),
@@ -206,10 +216,14 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
       return status;
     };
     assert.equal((await recovery("missing-status", "status")).phase, "publishing");
+    assertPackageTree(previousTree, capturePackageTree(path.join(anchor, "previous")));
+    assertPackageTree(candidateTree, capturePackageTree(path.join(anchor, "candidate")));
     for (const name of ["repair", "repeat-repair"]) {
       assert.equal((await recovery(name, "repair")).phase, "publication-complete");
-      assert.equal(packageTreeDigest(root), candidateTree);
-      assert.equal(packageTreeDigest(path.join(anchor, "previous")), originalTree);
+      candidateTree = assertPackageTree(candidateTree, capturePackageTree(root), {
+        tightenPermissions: name === "repair",
+      });
+      assertPackageTree(previousTree, capturePackageTree(path.join(anchor, "previous")));
       assert.equal(fileIdentity(path.join(anchor, "previous")), previousIdentity);
       assert.equal(fileIdentity(helper), helperIdentity);
       assert.equal(fileDigest(helper), helperDigest);
@@ -221,7 +235,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
     const retirement = read(path.join(directory, "retirement.fault.json.observed"));
     assertRetirementCut(cut, retirement, anchor, helper);
     assert.deepEqual(readActivation(journal), retirement.row);
-    assert.equal(packageTreeDigest(root), candidateTree);
+    assertPackageTree(candidateTree, capturePackageTree(root));
     assert.deepEqual(launcher(), selectedLauncher);
     settingsUnchanged();
 
@@ -249,7 +263,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
       JSON.parse(readActivation(archived).descriptor_json).operationId,
       printed.operation,
     );
-    assert.equal(packageTreeDigest(root), candidateTree);
+    assertPackageTree(candidateTree, capturePackageTree(root));
     assert.deepEqual(launcher(), selectedLauncher);
     settingsUnchanged();
     rows.push({
@@ -285,7 +299,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
   assert.deepEqual(printed, { node, helper, anchor, operation: printed.operation });
   assert(!operationIds.has(printed.operation), "real next update must acquire distinct custody");
   assert.deepEqual(read(path.join(root, "package.json")), expected);
-  const installedTree = packageTreeDigest(root);
+  const installedTree = capturePackageTree(root);
   const installedLauncher = launcher();
   const receipt = readActivation(journal);
   const descriptor = JSON.parse(receipt.descriptor_json);
@@ -314,7 +328,7 @@ async function main([artifacts, prefix, tarball, configPath, summary]) {
   assert.deepEqual(readActivation(journal), receipt);
   assert.equal(fs.existsSync(anchor), false);
   assert.equal(fs.existsSync(helper), false);
-  assert.equal(packageTreeDigest(root), installedTree);
+  assertPackageTree(installedTree, capturePackageTree(root));
   assert.deepEqual(launcher(), installedLauncher);
   settingsUnchanged();
   evidence.nextUpdate = {
