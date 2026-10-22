@@ -21,7 +21,6 @@ async function scaffold(options: Partial<Parameters<typeof writeQaDockerHarnessF
   const result = await writeQaDockerHarnessFiles({
     outputDir,
     repoRoot,
-    gatewayToken: "qa-token",
     bindUiDist: true,
     ...options,
   });
