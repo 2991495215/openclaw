@@ -24,7 +24,7 @@ jobs:
       MAIN_SHA: d535d274183d19e2e838c7a7fc96063df676b368
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       # Do not publish until owner 177970 provides and reviews the shared helper.
-      LAUNCH_SUPPORT_SHA256: f8f468e5bf2ac5875b0a705892f5c35b425a69dae15d2d8491b4c6244eaa89f7
+      LAUNCH_SUPPORT_SHA256: 177112c2a6652f5bd815910cff199f04b7b236dbde0c7bcf70899e1c9d397338
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

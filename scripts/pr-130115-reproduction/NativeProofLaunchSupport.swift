@@ -45,6 +45,7 @@ extension XCTestCase {
             }
     }
 
+    @nonobjc
     @MainActor
     func openProofWindowFromStatusItem(
         _ app: XCUIApplication,
