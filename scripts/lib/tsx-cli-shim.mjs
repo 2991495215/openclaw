@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { ensureRepoNodeModulesLink } from "./local-check-runtime.mts";
 import { hasManagedCleanupParent } from "./managed-cleanup-handoff.mts";
+import { resolveConfiguredModulesDir } from "./tooling-dependencies.mjs";
 
 const FORWARDED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 const DEFAULT_FORCE_KILL_DELAY_MS = 5_000;
@@ -21,13 +22,6 @@ const SHIM_CHECKOUT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.u
 // Forward compiler policy without replaying parent loaders, evals, or debuggers.
 export function resolveForwardedNodeCompilerArgs(execArgv = process.execArgv) {
   return execArgv.filter((arg) => FORWARDED_COMPILER_FLAGS.has(arg));
-}
-
-export function resolveConfiguredModulesDir(checkoutRoot) {
-  const modulesDir =
-    (process.env.PNPM_CONFIG_MODULES_DIR ?? process.env.pnpm_config_modules_dir) ||
-    process.env.npm_config_modules_dir;
-  return modulesDir ? path.resolve(checkoutRoot, modulesDir) : undefined;
 }
 
 export function resolveTsxImport(checkoutRoot) {

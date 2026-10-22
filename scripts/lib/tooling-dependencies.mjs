@@ -3,7 +3,13 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import { createRequire, registerHooks } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveConfiguredModulesDir } from "./tsx-cli-shim.mjs";
+
+export function resolveConfiguredModulesDir(checkoutRoot) {
+  const modulesDir =
+    (process.env.PNPM_CONFIG_MODULES_DIR ?? process.env.pnpm_config_modules_dir) ||
+    process.env.npm_config_modules_dir;
+  return modulesDir ? resolve(checkoutRoot, modulesDir) : undefined;
+}
 
 export function isWithin(root, target) {
   const rel = relative(root, target);

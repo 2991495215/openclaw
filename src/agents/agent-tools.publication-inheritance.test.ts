@@ -95,7 +95,7 @@ describe("publication policy inherited by a managed child", () => {
     const childPublishers = child.filter((tool) => tool.name === "github_publish");
     expect(childPublishers).toHaveLength(1);
     expect(childPublishers[0]?.parameters).toMatchObject({
-      properties: { action: { enum: ["publish", "status"] } },
+      properties: { action: { enum: ["publish"] } },
     });
   });
 

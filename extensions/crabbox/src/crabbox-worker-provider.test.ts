@@ -352,14 +352,14 @@ it("uses the enrolled OS and selected class for protected repository setup", asy
     assertCurrent: () => {},
   };
   await expect(
-    provider.runSetupCommand(
+    provider.runSetupCommand!(
       { leaseId: LEASE_ID, profile, machineClass: "standard", os: "linux" },
       command,
     ),
   ).resolves.toMatchObject({ code: 0 });
   expect(calls.map((argv) => argv[1])).toEqual(["egress"]);
   await expect(
-    provider.runSetupCommand(
+    provider.runSetupCommand!(
       { leaseId: LEASE_ID, profile, machineClass: "standard", os: "macos" },
       command,
     ),

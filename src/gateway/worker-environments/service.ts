@@ -32,11 +32,12 @@ import type { WorkerEnvironmentPlacementFacts } from "./placement-read-projectio
 import type { WorkerSessionTurnClaim } from "./placement-record.js";
 import type { WorkerProviderPreparedIntent } from "./preparation-identity.js";
 import { createPreparedWorkerPool } from "./prepared-pool.js";
+import { readWorkerProfileSelection } from "./profile-selection.js";
 import { createWorkerProviderLifecycle } from "./provider-lifecycle.js";
 import type { WorkerEnvironmentAbandonment } from "./provider-lifecycle.types.js";
 import { createWorkerReconcileCancellation } from "./provider-provisioning-cancellation.js";
 import type { WorkerEnvironmentServiceContract } from "./service-contract.js";
-import { readWorkerProfileSelection, requireWorkerProfile } from "./service-validation.js";
+import { requireWorkerProfile } from "./service-validation.js";
 import type {
   WorkerEnvironmentCreateRequest,
   WorkerEnvironmentServiceOptions,

@@ -12,8 +12,8 @@ import type { WorkerEnvironmentPlacementFacts } from "./placement-read-projectio
 import type { WorkerSessionPlacementRecord } from "./placement-record.js";
 import type { WorkerSessionPlacementStore } from "./placement-store.js";
 import { isWorkerEnvironmentAttachedTo } from "./placement-target.js";
+import { readWorkerProfileSelection } from "./profile-selection.js";
 import type { WorkerEnvironmentServiceContract } from "./service-contract.js";
-import { readWorkerProfileSelection } from "./service-validation.js";
 import { boundedWorkerError } from "./worker-error.js";
 
 export type WorkerSessionPlacementReader = Pick<WorkerSessionPlacementStore, "getMany"> &
