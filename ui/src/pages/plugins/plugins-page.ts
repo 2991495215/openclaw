@@ -683,7 +683,12 @@ export function createPluginsPage(options: {
           }
         }
         await refreshCatalog(client);
-        if (isLatest()) {
+        const detailRead = surface === "discovery" && details.catalog.receipt();
+        if (detailRead) {
+          // The inventory refresh starts a separate catalog read. Its heading must exist first.
+          await detailRead.result.catch(() => {});
+        }
+        if (isLatest() && (!detailRead || details.catalog.receipt() === detailRead)) {
           onSettled(() => targets.focusAfterRemoval(trigger));
         }
       },
