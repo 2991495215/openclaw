@@ -66,42 +66,6 @@ describe("update run report", () => {
   });
   it.each([true, false])("keeps runtime guidance within the chat budget (saved=%s)", (saved) => {
     const action = `Keep the candidate installed and do not roll back code alone. ${"🦞".repeat(600)}`;
-    const reason = saved ? "node-runtime-preflight" : "preflight-node-runtime-incompatible";
-    const record = run({
-      status: "failed",
-      reason,
-      steps: [
-        { step: "staging", status: "completed" },
-        {
-          step: "preflight-node-runtime",
-          status: "failed",
-          detail,
-          failureFacts: [{ check: "node-runtime", code: reason, affectedKey: "engines.node" }],
-        },
-      ],
-    });
-    const saved = structuredClone(record);
-    const nextAction = "Run `openclaw --profile work triage` to repair this installation.";
-    const report = renderUpdateRunReport(record, { nextAction });
-
-    expect(report.headline).toBe(
-      "⚠️ OpenClaw could not complete the update. A required system check failed.",
-    );
-    expect(report.lines.slice(0, 4)).toEqual([
-      nextAction,
-      "",
-      "Details:",
-      `Reason code: ${reason}`,
-    ]);
-    expect(report.markdown).toContain(`${report.headline}\n${nextAction}\n\nDetails:`);
-    expect(report.markdown).toContain(`Failed: preflight-node-runtime — ${detail}`);
-    expect(report.markdown).toContain(`Failing check node-runtime (${reason}); key engines.node`);
-    expect(report.markdown).toContain("Phases: staging");
-    expect(record).toEqual(saved);
-  });
-
-  it.each([true, false])("keeps runtime guidance within the chat budget (saved=%s)", (saved) => {
-    const action = `Keep the candidate installed and do not roll back code alone. ${"🦞".repeat(600)}`;
     const record = run({
       status: "failed",
       reason: "node-runtime-preflight",
