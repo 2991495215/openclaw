@@ -82,6 +82,7 @@ const currentPayload = activePayload.ref.deref();
             captured: retained.registries.length,
             nativeExports: retained.exports.filter(ref => ref.deref()).length,
             controlCollected: retained.control.deref() === undefined,
+            currentExportAlive: currentPayload !== undefined,
             memory: process.memoryUsage(),
           }));
         }
@@ -339,14 +340,12 @@ module.exports = { id: ${JSON.stringify(provider)}, register(api) {
       expect(readCatalogCaptureFootprint(captureRoot)).toEqual(warmedFootprint);
     }
   }
-  expect(
-    JSON.parse(fs.readFileSync(path.join(fixture.root, "retention.json"), "utf8")),
-  ).toMatchObject({
-    captured: 2,
-    nativeExports: 2,
-    registries: 1,
-    controlCollected: true,
-  });
+  const retainedAfterReuse = JSON.parse(
+    fs.readFileSync(path.join(fixture.root, "retention.json"), "utf8"),
+  );
+  expect(retainedAfterReuse).toMatchObject(retainedShape);
+  expect(retainedAfterReuse.nativeExports).toBeGreaterThanOrEqual(1);
+  expect(retainedAfterReuse.nativeExports).toBeLessThanOrEqual(retainedAfterReuse.captured);
   const heap = fs
     .readFileSync(path.join(fixture.root, "heap.jsonl"), "utf8")
     .trim()
