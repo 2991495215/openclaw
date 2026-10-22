@@ -1,3 +1,4 @@
+import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
 import { createOpenClawCodingTools } from "../agents/agent-tools.js";
@@ -214,8 +215,8 @@ describe("guest session rename through the agent catalog", () => {
               ["restrictive allow", { allow: ["read"] }, false, false],
               ["explicit deny", { alsoAllow: ["sessions"], deny: ["sessions"] }, false, false],
               ["wildcard deny", { deny: ["sessions*"] }, false, false],
-              ["unrelated addition", { alsoAllow: ["read"] }, canRename, true],
-              ["default", undefined, canRename, true],
+              ["unrelated addition", { alsoAllow: ["read"] }, true, true],
+              ["default", undefined, true, true],
             ];
             for (const [name, policy, available, renameOnly] of policies) {
               const config = {
@@ -289,17 +290,24 @@ describe("guest session rename through the agent catalog", () => {
                 if (!tool) {
                   continue;
                 }
+                expect(tool.parameters).toHaveProperty("properties.label");
+                expect(tool.parameters).toHaveProperty("properties.archived");
+                expect(tool.parameters).toHaveProperty("properties.ownerType");
                 if (!canRename) {
-                  // The definition stays stable across turns; the read-only caller is refused when it runs.
-                  await expect(
-                    tool.execute("denied", { action: "patch", label: "Read only" }),
-                  ).rejects.toThrow("Only assign_owner is available to non-owner callers");
+                  const before = loadSessionEntry({ agentId: "main", sessionKey });
+                  const result = tool.execute("denied", { action: "patch", label: "Read only" });
+                  if (renameOnly) {
+                    // Default-policy declarations survive without a turn-local rename grant.
+                    await expect(result).resolves.toMatchObject({ details: { gated: true } });
+                  } else {
+                    await expect(result).rejects.toThrow(
+                      "Only assign_owner is available to non-owner callers",
+                    );
+                  }
+                  expect(loadSessionEntry({ agentId: "main", sessionKey })).toEqual(before);
                   continue;
                 }
-                expect(tool.parameters).toHaveProperty("properties.label");
                 if (renameOnly) {
-                  expect(tool.parameters).not.toHaveProperty("properties.archived");
-                  expect(tool.parameters).not.toHaveProperty("properties.ownerType");
                   for (const args of [
                     { action: "assign_owner", ownerType: "human", ownerId: profileId },
                     { action: "patch", archived: true },
@@ -311,8 +319,6 @@ describe("guest session rename through the agent catalog", () => {
                       "only permits renaming",
                     );
                   }
-                } else if (scopes[0] === "operator.write") {
-                  expect(tool.parameters).toHaveProperty("properties.archived");
                 }
                 const label = `${scopes[0]} ${name} ${surface}`;
                 const args: Record<string, unknown> = { action: "patch", label };
@@ -345,13 +351,23 @@ describe("guest session rename through the agent catalog", () => {
                     })
                   ).tools,
                 );
-                absent(createOpenClawCodingTools({ ...nativeOptions, senderIsOwner: true }));
-                absent(
+                const before = loadSessionEntry({ agentId: "main", sessionKey });
+                for (const tools of [
+                  createOpenClawCodingTools({ ...nativeOptions, senderIsOwner: true }),
                   createOpenClawCodingTools({
                     ...nativeOptions,
                     conversationCapabilityProfile: defaultsWithoutAdmission,
                   }),
-                );
+                ]) {
+                  const tool = expectDefined(
+                    tools.find((candidate) => candidate.name === "sessions"),
+                    "retained session declaration",
+                  );
+                  await expect(
+                    tool.execute("denied", { action: "patch", label: "Not admitted" }),
+                  ).resolves.toMatchObject({ details: { gated: true } });
+                  expect(loadSessionEntry({ agentId: "main", sessionKey })).toEqual(before);
+                }
                 const unmarked: SandboxToolPolicy = {
                   allow: sandboxConfig.tools.allow,
                   deny: sandboxConfig.tools.deny,
