@@ -59,6 +59,10 @@ export async function updateCommand(
   inputOpts: UpdateCommandOptions,
   executorOptions?: UpdateCommandExecutorOptions,
 ): Promise<void> {
+  const { tryRunImmutableUpdateCommand } = await import("./update-command-immutable.js");
+  if (await tryRunImmutableUpdateCommand(inputOpts)) {
+    return;
+  }
   const { withRetainedUpdateRuntime } = await import("../../infra/update-retained-runtime.js");
   return await withRetainedUpdateRuntime(import.meta.url, (retainRuntime) =>
     updateCommandWithRuntime(inputOpts, retainRuntime, executorOptions),
