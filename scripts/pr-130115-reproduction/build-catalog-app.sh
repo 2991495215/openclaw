@@ -4,15 +4,18 @@ set -euo pipefail
 
 [[ ${CI:-} == true && ${GITHUB_ACTIONS:-} == true && ${RUNNER_OS:-} == macOS ]]
 [[ ${RUNNER_ENVIRONMENT:-} == github-hosted ]]
-[[ $# -eq 4 ]]
+[[ $# -eq 5 ]]
 source_root="$(cd "$1" && pwd -P)"
 expected_sha="$2"
 output="$3"
 seed_receipt="$4"
+app="$5"
 [[ $expected_sha =~ ^[a-f0-9]{40}$ ]]
 runner_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
 case "$source_root" in "$runner_temp"/*) ;; *) echo 'Product checkout must be disposable.' >&2; exit 2 ;; esac
 case "$output" in "$runner_temp"/*) ;; *) echo 'Evidence must be under RUNNER_TEMP.' >&2; exit 2 ;; esac
+case "$app" in "$runner_temp"/*/OpenClawCatalogProof.app) ;; *) echo 'App must have an isolated install path.' >&2; exit 2 ;; esac
+case "$app" in "$source_root"/*) echo 'Installed app must be outside the source checkout.' >&2; exit 2 ;; esac
 [[ -n ${DEVELOPER_DIR:-} && -d "$DEVELOPER_DIR" ]]
 mkdir -p "$output"
 cd "$source_root"
@@ -55,9 +58,9 @@ case "$reused_bundle" in "$runner_temp"/*) ;; *) echo 'Reused bundle escaped RUN
 archive_hash="$(cat "$reused_bundle/main-app.sha256")"
 [[ $archive_hash =~ ^[a-f0-9]{64}$ ]]
 printf '%s  %s\n' "$archive_hash" "$reused_bundle/main-app.zip" | shasum -a 256 -c
-mkdir -p "$source_root/dist"
-ditto -x -k "$reused_bundle/main-app.zip" "$source_root/dist"
-app="$source_root/dist/OpenClawCatalogProof.app"
+mkdir -p "$(dirname "$app")"
+[[ ! -e "$app" ]]
+ditto -x -k "$reused_bundle/main-app.zip" "$(dirname "$app")"
 [[ $(wc -l < "$reused_bundle/executable-hashes.txt" | tr -d ' ') == 2 ]]
 expected_native_hash="$(sed -n '1s/ .*//p' "$reused_bundle/executable-hashes.txt")"
 expected_bun_hash="$(sed -n '2s/ .*//p' "$reused_bundle/executable-hashes.txt")"
@@ -70,6 +73,13 @@ runtime="$app/Contents/Resources/runtime"
 [[ -f "$runtime/lib/libsqlite3.dylib" ]]
 [[ $(/usr/libexec/PlistBuddy -c 'Print :OpenClawGitCommit' "$app/Contents/Info.plist") == "$expected_sha" ]]
 codesign --verify --deep --strict "$app"
+node --input-type=module - "$source_root" "$runtime" <<'JS' > "$output/runtime-portability.json"
+import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+const [, , source, runtime] = process.argv;
+const { auditMacRuntimePortability } = await import(pathToFileURL(path.join(source, 'scripts/lib/mac-runtime-portability.mjs')).href);
+console.log(JSON.stringify({ runtime, nativeFiles: auditMacRuntimePortability(runtime, path.join(runtime, 'bin/bun')), status: 'contained' }));
+JS
 git diff --exit-code
 git diff --cached --exit-code
 [[ $(git rev-parse HEAD^{tree}) == "$expected_tree" ]]

@@ -108,7 +108,7 @@ async function gateway(label, port, token, rows) {
   await mkdir(workspace);
   await writeJSON(env.OPENCLAW_CONFIG_PATH, { gateway: { mode: "local", port, auth: { mode: "token", token } },
     agents: { defaults: { workspace } }, plugins: pluginConfig });
-  gateways.push({ label, executable, arguments: [entry, "gateway", "run", "--bind", "loopback", "--port", String(port)],
+  gateways.push({ label, executable, workingDirectory: workspace, arguments: [entry, "gateway", "run", "--bind", "loopback", "--port", String(port)],
     environment: env, logFile: path.join(input.output, `${label}.log`) });
 }
 await gateway("gateway-local", input.localPort, localToken, local);

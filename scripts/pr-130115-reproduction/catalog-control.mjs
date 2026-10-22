@@ -41,11 +41,18 @@ if (!Array.isArray(spec.gateways) || spec.gateways.length !== 2 ||
   throw new Error("Expected exactly the two task-owned foreground Gateways");
 }
 for (const gateway of spec.gateways) {
-  for (const value of [gateway.executable, gateway.arguments[0], gateway.environment.HOME,
+  for (const value of [gateway.executable, gateway.arguments[0], gateway.workingDirectory, gateway.environment.HOME,
     gateway.environment.OPENCLAW_STATE_DIR, gateway.environment.OPENCLAW_CONFIG_PATH, path.dirname(gateway.logFile)]) {
     if (!(await realpath(value)).startsWith(runnerRoot + path.sep)) throw new Error("Gateway path escaped RUNNER_TEMP");
   }
 }
+await writeFile(path.join(spec.output, "process-launch-context.json"), JSON.stringify({
+  controller: { executable: process.execPath, arguments: process.argv.slice(1), workingDirectory: process.cwd() },
+  gateways: spec.gateways.map(({ label, executable, arguments: args, workingDirectory, environment }) =>
+    ({ label, executable, arguments: args, workingDirectory, environment })),
+  observerCLI: [spec.local, spec.remote].map(target => ({ executable: target.executable, entry: target.entry,
+    workingDirectory: target.home, environment: cliEnvironment(target) })),
+}, null, 2));
 let lifecycleWrites = Promise.resolve();
 const saveLifecycle = () => {
   const bytes = JSON.stringify(lifecycle, null, 2);
@@ -64,7 +71,7 @@ async function startGateway(label) {
   const log = await open(descriptor.logFile, "a");
   if (stopping) { await log.close(); throw new Error("Controller is stopping"); }
   const child = spawn(descriptor.executable, descriptor.arguments, {
-    env: descriptor.environment, detached: true, stdio: ["ignore", log.fd, log.fd],
+    env: descriptor.environment, cwd: descriptor.workingDirectory, detached: true, stdio: ["ignore", log.fd, log.fd],
   });
   const record = { label, pid: child.pid, startedAt: new Date().toISOString(), forced: false };
   lifecycle.push(record);
@@ -127,7 +134,7 @@ async function rpc(target, method, params, directory, name) {
     ({ stdout, stderr } = await ownedRun(target.executable, [target.entry, "gateway", "call", method,
       "--params", JSON.stringify(params), "--expect-url", target.gatewayUrl,
       "--timeout", "45000", "--json"],
-    { env: cliEnvironment(target), timeout: 60000, maxBuffer: 16 * 1024 * 1024 }));
+    { env: cliEnvironment(target), cwd: target.home, timeout: 60000, maxBuffer: 16 * 1024 * 1024 }));
   } catch (caught) {
     error = caught; stdout = caught.stdout ?? ""; stderr = caught.stderr ?? "";
   }
@@ -220,7 +227,7 @@ async function observe(phase) {
   const observationSpec = { ...target, macNodeId: macNode.nodeId, output: path.join(directory, "rpc") };
   const input = path.join(directory, "observer-input.json");
   await writeFile(input, JSON.stringify(observationSpec));
-  await ownedRun(process.execPath, [observer, input], { timeout: 180000, maxBuffer: 1024 * 1024 });
+  await ownedRun(process.execPath, [observer, input], { cwd: target.home, timeout: 180000, maxBuffer: 1024 * 1024 });
   const observation = JSON.parse(await readFile(path.join(directory, "rpc", "observation.json"), "utf8"));
   return { phase, mode, nodeId: macNode.nodeId, description, workerResult, observation };
 }

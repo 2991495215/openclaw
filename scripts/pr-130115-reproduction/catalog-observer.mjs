@@ -63,7 +63,7 @@ function call(method, params) {
   const result = spawnSync(executable, [
     entry, "gateway", "call", method, "--params", JSON.stringify(params),
     "--expect-url", spec.gatewayUrl, "--timeout", "45000", "--json",
-  ], { env: environment, encoding: "utf8", timeout: 60000, maxBuffer: 16 * 1024 * 1024 });
+  ], { env: environment, cwd: home, encoding: "utf8", timeout: 60000, maxBuffer: 16 * 1024 * 1024 });
   writeFileSync(path.join(output, name), result.stdout ?? "");
   writeFileSync(path.join(output, name + ".stderr"), result.stderr ?? "");
   calls.push({ id, method, params, startedAt, finishedAt: new Date().toISOString(),

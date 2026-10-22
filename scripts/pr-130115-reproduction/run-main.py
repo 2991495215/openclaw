@@ -78,7 +78,7 @@ def run(args, log, env=None, check=True, timeout=None, cwd=None):
     log.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     with log.open("wb") as stream:
-        result = subprocess.run([str(a) for a in args], env=env or base_env, cwd=cwd,
+        result = subprocess.run([str(a) for a in args], env=env or base_env, cwd=cwd or scratch,
                                 stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)
     steps.append({"command": [str(a) for a in args], "seconds": round(time.monotonic() - started, 3),
                   "exit": result.returncode, "log": str(log)})
@@ -242,6 +242,14 @@ try:
     version_source = source / "extensions/codex/src/app-server/version.ts"
     if hashlib.sha256(version_source.read_bytes()).hexdigest() != "5e456450f2f5d22f70158ab360fb80c8ebcc55fe6aaf19f5e5a53650deb999c9":
         raise RuntimeError("Product Codex version pin differs from reviewed input")
+    standalone_roots = []
+    for directory in (scratch, home_root):
+        for ancestor in (directory, *directory.parents):
+            for name in ("tsconfig.json", "jsconfig.json", "bunfig.toml", "package.json", "pnpm-workspace.yaml"):
+                if (ancestor / name).exists():
+                    raise RuntimeError(f"Runtime root inherits a project configuration: {ancestor / name}")
+        standalone_roots.append(str(directory))
+    write_json(output / "standalone-runtime-roots.json", {"roots": standalone_roots, "ancestorProjectConfigs": []})
     start_custody(source)
     owned_processes()  # Reject an unreadable census before the first durable child.
     architecture = subprocess.check_output(["uname", "-m"], text=True).strip()
@@ -307,8 +315,8 @@ try:
     ui_env = {**base_env, "TEST_RUNNER_OPENCLAW_PREFLIGHT_APP": str(preflight)}
     run(xcode + ["test-without-building", "-only-testing:CatalogModeProofUITests/CatalogModeUITests/testDesktopPreflight",
                  "-resultBundlePath", output / "desktop.xcresult"], output / "desktop.log", env=ui_env)
-    run(["/bin/bash", helpers / "build-catalog-app.sh", source, MAIN, output / "build", seed_output / "seed.json"], output / "package-wrapper.log")
-    app = source / "dist/OpenClawCatalogProof.app"
+    app = scratch / "installed/OpenClawCatalogProof.app"
+    run(["/bin/bash", helpers / "build-catalog-app.sh", source, MAIN, output / "build", seed_output / "seed.json", app], output / "package-wrapper.log")
     write_json(bundle_output / "main-bundle-reference.json", {"runId": 39833929614, "artifactId": 12452308201,
                "artifactSHA256": "2be735384558987d132b48d28131ab4f886d920d974e3a7eec8652fabd74bb62",
                "mainAppSHA256": (reused_bundle / "main-app.sha256").read_text().strip()})
@@ -341,7 +349,7 @@ try:
         write_json(control_spec, control_values)
         with (current_case / "controller.log").open("wb") as log:
             controller = subprocess.Popen(["node", str(helpers / "catalog-control.mjs"), launch["controlSpec"]],
-                                          env=base_env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                                          env=base_env, cwd=values["caseRoot"], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         for _ in range(30):
             if controller.poll() is not None:
                 raise RuntimeError("Controller exited before admission")
