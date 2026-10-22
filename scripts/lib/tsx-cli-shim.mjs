@@ -75,6 +75,15 @@ function configureToolingTsx() {
 
 export async function registerToolingTsx() {
   configureToolingTsx();
+  const { toolingDependencyOptions } = await import("./tooling-dependencies.mjs");
+  const tooling = toolingDependencyOptions(SHIM_CHECKOUT_ROOT, "tsx", { tsx: true });
+  if (tooling.tsxImport) {
+    // Use the same qualified resolver before loading TSX; never link donor
+    // workspace source into this checkout. fork() replays scripts/tsx.mjs.
+    await import(tooling.execArgv[1]);
+    await import(tooling.tsxImport);
+    return;
+  }
   await import(resolveTsxImport(SHIM_CHECKOUT_ROOT));
 }
 
