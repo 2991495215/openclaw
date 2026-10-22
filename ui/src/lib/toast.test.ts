@@ -100,7 +100,7 @@ describe("shared toast", () => {
     await settleHost(host);
     const [open, setOpen] = createSignal(true);
     const view = mountSolid(() =>
-      createComponent(Show, {
+      createComponent(Show<boolean>, {
         get when() {
           return open();
         },
