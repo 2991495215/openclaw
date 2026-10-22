@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { persistAuthProfileBatch } from "../../../../src/agents/auth-profiles/upsert-with-lock.js";
 import { withFastReplyConfig } from "../../../../src/auto-reply/reply/get-reply-fast-path.test-support.js";
 import {
   clearConfigCache,
@@ -169,8 +170,8 @@ function writeToolCall(
 
 // This complements the mocked-runner authority matrix: real model tool calls,
 // authenticated ingress, detached timer admission, rearm, and durable output.
-// GitHub's real action owner is reached, but no publication/identity is invented:
-// the no-publication verdict below is NOT proof of publication or successful landing.
+// GitHub's real identity owner is reached, but no publication/identity is invented:
+// the unavailable-credential verdict below is NOT proof of publication or successful landing.
 it(
   "continues an authenticated conversation after disconnect and rearms only its original job",
   {
@@ -243,6 +244,20 @@ it(
         setTestEnvValue(key, value);
       }
     }
+    const inferenceProfileId = "mock-openai:authorized-continuation";
+    await persistAuthProfileBatch({
+      stateDir,
+      profiles: [
+        {
+          profileId: inferenceProfileId,
+          credential: {
+            type: "api_key",
+            provider: "mock-openai",
+            key: "synthetic-authorized-continuation-key",
+          },
+        },
+      ],
+    });
     let provider: Awaited<ReturnType<typeof startOpenAiResponsesModelServer>> | undefined;
     try {
       provider = await startOpenAiResponsesModelServer({
@@ -283,7 +298,7 @@ it(
                     payload: {
                       kind: "agentTurn",
                       message: continuation,
-                      toolsAllow: ["sessions", "github_publish", "automations"],
+                      toolsAllow: ["sessions", "github_identity_status", "automations"],
                     },
                     delivery: { mode: "none" },
                   },
@@ -300,14 +315,14 @@ it(
               case 2:
                 expect(creatorDisconnected).toBe(true);
                 expect(JSON.stringify(body.input)).toContain(continuation);
-                writeToolCall(response, "github_publish", "inspect", { action: "inspect" });
+                writeToolCall(response, "github_identity_status", "identity", {});
                 break;
               case 3:
-                // This exact owner verdict follows the current operator-write guard.
+                // This secret-free status follows the current operator-read guard.
                 // A missing tool, schema-only offer, or authorization error cannot pass.
-                expect(toolOutput(body, "inspect")).toContain(
-                  "This session has no completed shared publication.",
-                );
+                expect(JSON.parse(toolOutput(body, "identity"))).toMatchObject({
+                  effective: { credentialState: expect.any(String) },
+                });
                 writeToolCall(response, "sessions", "pin", { action: "patch", pinned: true });
                 break;
               case 4:
@@ -358,10 +373,19 @@ it(
       });
       const config: OpenClawConfig = {
         ...modelConfig,
+        auth: {
+          profiles: {
+            [inferenceProfileId]: { provider: "mock-openai", mode: "api_key" },
+          },
+          order: { "mock-openai": [inferenceProfileId] },
+        },
         agents: {
           ...modelConfig.agents,
           defaults: {
             ...modelConfig.agents?.defaults,
+            model: {
+              primary: `mock-openai/qa-authorized-continuation@${inferenceProfileId}`,
+            },
             workspace: workspaceDir,
             models: {
               "mock-openai/qa-authorized-continuation": {
@@ -373,7 +397,7 @@ it(
           entries: { main: {} },
         },
         tools: {
-          allow: ["automations", "sessions", "github_publish"],
+          allow: ["automations", "sessions", "github_identity_status"],
           toolSearch: { enabled: false },
         },
         gateway: { auth: { mode: "token", token } },
