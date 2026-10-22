@@ -27,6 +27,7 @@ export type SessionWorkspaceArtifacts = {
 };
 
 export type SessionWorkspaceState = {
+  readResult?: Promise<void>;
   catalogNavigation?: SessionWorkspaceNavigation;
   pendingPreview?: { id: string; disposition: "pinned" | "preview" };
   mobileNavigation?: SessionWorkspaceMobileNavigation;
