@@ -499,6 +499,21 @@ describe("FRV continuation preflight", () => {
     },
   );
 
+  it("refuses a consumed producer rerun before mutation and shows authenticated reuse", async () => {
+    const fixture = artifactFixture("npm");
+    fixture.producer.conclusion = "failure";
+    fixture.plan = {
+      ...fixture.plan,
+      candidate: { producer: { runId: "606" } },
+    };
+
+    await expect(continueFailed(fixture.plan, "77", fixture.client)).rejects.toThrow(
+      "artifact:npm producer 81 already supplied the sealed candidate evidence; rerunning cannot preserve those consumed immutable bytes. Dispatch a fresh all-group FRV with reuse_evidence=true to authenticate reuse instead.",
+    );
+    expect(fixture.client.rerunFailed).not.toHaveBeenCalled();
+    expect(fixture.client.rerunParent).not.toHaveBeenCalled();
+  });
+
   it("does not claim recovery for a failed candidate producer with undispatched consumers", async () => {
     const fixture = artifactFixture("candidate");
     fixture.producer.conclusion = "failure";

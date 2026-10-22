@@ -462,6 +462,19 @@ function continuationStatus(children) {
   };
 }
 
+function assertFailedArtifactProducersAreReusable(plan, status) {
+  if (!plan.candidate) {
+    return;
+  }
+  const consumed = status.failed.filter((child) => child.key.startsWith("artifact:"));
+  if (consumed.length === 0) {
+    return;
+  }
+  throw new Error(
+    `${consumed.map((child) => `${child.key} producer ${child.runId}`).join(", ")} already supplied the sealed candidate evidence; rerunning cannot preserve those consumed immutable bytes. Dispatch a fresh all-group FRV with reuse_evidence=true to authenticate reuse instead.`,
+  );
+}
+
 async function recheckArtifactProducers(
   producers,
   status,
@@ -1859,6 +1872,7 @@ export async function continueFailed(plan, rootRunId, reader, options = {}) {
       runKeys.set(producer.runId, `artifact:${producer.request.stage}`);
     }
     status = await inspectRecovery(plan, artifactProducers, client, { operationDeadline });
+    assertFailedArtifactProducersAreReusable(plan, status);
     for (const child of status.children) {
       const expectedAttempt = ownedAttempts.get(child.runId);
       if (expectedAttempt !== undefined) {
