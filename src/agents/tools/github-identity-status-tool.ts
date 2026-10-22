@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import type { ToolsGitHubStatusResult } from "../../../packages/gateway-protocol/src/index.js";
+import { bindAgentToolAvailability } from "../agent-tool-availability.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult } from "./common.js";
 import { getGatewayToolCallerIdentity } from "./gateway-caller-context.js";
@@ -12,10 +13,11 @@ export function createGitHubIdentityStatusTool(
   } = {},
 ): AnyAgentTool {
   const callGateway = options.callGateway ?? callInProcessGatewayTool;
-  return {
+  let githubIdentitySettingsAvailable = options.githubIdentitySettingsAvailable === true;
+  const tool: AnyAgentTool = {
     label: "GitHub Identity Status",
     name: "github_identity_status",
-    description: `Inspect the secret-free effective GitHub account, credential health, Git author, expiry, and scopes for this agent.${options.githubIdentitySettingsAvailable ? " If setup or reconnection is needed, open github_identity_settings so the operator can reconnect in the masked Control UI flow." : ""}`,
+    description: githubIdentityStatusDescription(githubIdentitySettingsAvailable),
     parameters: Type.Object({}, { additionalProperties: false }),
     execute: async () => {
       const caller = getGatewayToolCallerIdentity();
@@ -33,7 +35,7 @@ export function createGitHubIdentityStatusTool(
         ...status,
         ...(reconnect
           ? {
-              nextAction: options.githubIdentitySettingsAvailable
+              nextAction: githubIdentitySettingsAvailable
                 ? "Use screen action github_identity_settings to open the masked operator reconnect flow, then check github_identity_status again."
                 : "Ask the operator to open Settings → Agents → Tools, reconnect GitHub, then check github_identity_status again.",
             }
@@ -41,4 +43,40 @@ export function createGitHubIdentityStatusTool(
       });
     },
   };
+  return bindAgentToolAvailability(tool, {
+    prepare(preparedTool, callableTools) {
+      const screen = callableTools.get("screen");
+      githubIdentitySettingsAvailable =
+        options.githubIdentitySettingsAvailable === true &&
+        screen !== undefined &&
+        schemaIncludesAction(screen.parameters, "github_identity_settings");
+      preparedTool.description = githubIdentityStatusDescription(githubIdentitySettingsAvailable);
+    },
+  });
+}
+
+function githubIdentityStatusDescription(settingsAvailable: boolean): string {
+  return `Inspect the secret-free effective GitHub account, credential health, Git author, expiry, and scopes for this agent.${settingsAvailable ? " If setup or reconnection is needed, open github_identity_settings so the operator can reconnect in the masked Control UI flow." : ""}`;
+}
+
+function schemaIncludesAction(schema: unknown, expected: string): boolean {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return false;
+  }
+  const record = schema as Record<string, unknown>;
+  const properties = record.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    const action = (properties as Record<string, unknown>).action;
+    if (action && typeof action === "object" && !Array.isArray(action)) {
+      const values = (action as Record<string, unknown>).enum;
+      if (Array.isArray(values) && values.includes(expected)) {
+        return true;
+      }
+    }
+  }
+  return [record.anyOf, record.oneOf, record.allOf].some(
+    (variants) =>
+      Array.isArray(variants) &&
+      variants.some((variant) => schemaIncludesAction(variant, expected)),
+  );
 }
