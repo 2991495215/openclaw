@@ -329,9 +329,9 @@ suite.define(() => {
             await saved().waitFor();
             await page.evaluate(
               () =>
-                new Promise<void>((resolve) =>
-                  requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-                ),
+                new Promise<void>((resolve) => {
+                  requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                }),
             );
             await capture("complete");
             const finalRows = await rowKeys();
@@ -369,7 +369,9 @@ suite.define(() => {
               expect(finalRows).not.toContain(liveUpdates!.created);
               expect(finalRows).not.toContain(liveUpdates!.deleted);
               expect(finalRows).not.toContain(parentKey);
-              for (const key of childKeys) expect(finalRows).not.toContain(key);
+              for (const key of childKeys) {
+                expect(finalRows).not.toContain(key);
+              }
             } else {
               expect(finalRows).toEqual(expected);
             }

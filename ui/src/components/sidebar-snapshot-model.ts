@@ -126,7 +126,7 @@ export function restoreSnapshotSession(
 /** A timed-out read has no membership verdict; keep its cached rows until it answers. */
 export function mergeSidebarSnapshotRows(
   cached: readonly SidebarSnapshotSession[],
-  live: SidebarRecentSession[],
+  live: readonly SidebarRecentSession[],
   selected: string,
   rootReady: boolean,
   childReady: (key: string) => boolean,

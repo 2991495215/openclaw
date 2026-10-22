@@ -97,6 +97,13 @@ function fixture(initialAgentId = "main", initialPageScopeId: string | null = nu
   let captured = model;
   const capture = vi.fn(() => captured);
   const foreground = { foregroundReady: true };
+  const release = vi.fn((complete = true) => {
+    host.sidebarSnapshotFallback =
+      !complete && host.sidebarSnapshot
+        ? { model: host.sidebarSnapshot, rootsReady: false, readyParents: new Set() }
+        : null;
+    host.sidebarSnapshot = null;
+  });
   const host: Parameters<typeof createSidebarSnapshot>[0] = {
     sidebarSnapshot: null,
     sidebarSnapshotFallback: null,
@@ -118,13 +125,7 @@ function fixture(initialAgentId = "main", initialPageScopeId: string | null = nu
       host.sidebarSnapshot = value;
       restored.resolve();
     },
-    releaseSidebarSnapshot: vi.fn((complete = true) => {
-      host.sidebarSnapshotFallback =
-        !complete && host.sidebarSnapshot
-          ? { model: host.sidebarSnapshot, rootsReady: false, readyParents: new Set() }
-          : null;
-      host.sidebarSnapshot = null;
-    }),
+    releaseSidebarSnapshot: release,
     clearSidebarSnapshot() {
       host.sidebarSnapshot = null;
       host.sidebarSnapshotFallback = null;
@@ -140,6 +141,7 @@ function fixture(initialAgentId = "main", initialPageScopeId: string | null = nu
     gateway,
     foreground,
     capture,
+    release,
     host,
     snapshotOwner,
     restored: restored.promise,
@@ -485,9 +487,9 @@ describe("sidebar snapshot lifecycle", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(test.host.sidebarSnapshot).toBeNull();
     expect(test.host.sidebarSnapshotFallback?.model).toEqual(model);
-    expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledExactlyOnceWith(false);
+    expect(test.release).toHaveBeenCalledExactlyOnceWith(false);
     test.snapshotOwner.synchronize();
-    expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledTimes(1);
+    expect(test.release).toHaveBeenCalledTimes(1);
     expect(test.capture).not.toHaveBeenCalled();
 
     void test.settle();
@@ -500,7 +502,7 @@ describe("sidebar snapshot lifecycle", () => {
 
     test.snapshotOwner.synchronize();
     await vi.advanceTimersByTimeAsync(1800);
-    expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledTimes(2);
+    expect(test.release).toHaveBeenCalledTimes(2);
   });
 
   it.each(["account", "boot owner"] as const)(
@@ -530,7 +532,7 @@ describe("sidebar snapshot lifecycle", () => {
       await vi.advanceTimersByTimeAsync(1800);
       expect(test.host.sidebarSnapshot).toBeNull();
       expect(test.host.sidebarSnapshotFallback).toBeNull();
-      expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledExactlyOnceWith(false);
+      expect(test.release).toHaveBeenCalledExactlyOnceWith(false);
     },
   );
 
