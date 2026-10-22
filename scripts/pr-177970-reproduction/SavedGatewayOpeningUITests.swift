@@ -106,7 +106,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             app.typeKey(.escape, modifierFlags: [])
         } else {
             try await self.openGatewayMenu(app)
-            let saved = app.menuItems["Reproduction server"]
+            let saved = app.menuBars.menuBarItems["Gateways"].menuItems["Reproduction server"]
             XCTAssertTrue(saved.waitForExistence(timeout: 5))
             saved.click()
             _ = try await self.control("await-held")
@@ -114,7 +114,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
         // AppKit retains closed menu items in its accessibility tree.
         let menuClosed = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "hittable == false"),
-            object: app.menuItems["Manage Gateways…"])
+            object: app.menuBars.menuBarItems["Gateways"].menuItems["Manage Gateways…"])
         let closed = await XCTWaiter.fulfillment(of: [menuClosed], timeout: 5) == .completed
         try self.require(closed, app: app, message: "Gateways menu remains interactive")
         self.capture(app, name: "\(stage)-\(entry)-pending")
@@ -156,7 +156,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             self.capture(app, name: "\(stage)-\(entry)-minimized")
 
             try await self.openGatewayMenu(app)
-            app.menuItems["Reproduction server"].click()
+            app.menuBars.menuBarItems["Gateways"].menuItems["Reproduction server"].click()
             let restored = await self.waitUntilVisible(ready, timeout: 15)
             result["restoredAfterMinimize"] = restored
             if restored {
@@ -168,7 +168,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
                 let closed = try await self.control("observe-cleanup")
                 result["connectionsAfterClose"] = closed["savedConnections"]
                 try await self.openGatewayMenu(app)
-                app.menuItems["Reproduction server"].click()
+                app.menuBars.menuBarItems["Gateways"].menuItems["Reproduction server"].click()
                 let reopened = await self.waitUntilVisible(ready, timeout: 15)
                 result["reopened"] = reopened
                 self.capture(app, name: "\(stage)-\(entry)-reopened")
@@ -258,7 +258,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
     @MainActor
     private func openSavedSettings(_ app: XCUIApplication) async throws {
         try await self.openGatewayMenu(app)
-        let manage = app.menuItems["Manage Gateways…"]
+        let manage = app.menuBars.menuBarItems["Gateways"].menuItems["Manage Gateways…"]
         let ready = await self.waitUntilVisible(manage, timeout: 5)
         try self.require(ready, app: app, message: "Manage Gateways is not hittable")
         manage.click()
