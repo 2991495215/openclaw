@@ -114,7 +114,7 @@ describe("ChannelsPage lifecycle", () => {
         page.querySelector("openclaw-modal-dialog")!.dispatchEvent(new Event("modal-cancel"));
         await waitForSolid(() => expect(page.querySelector(".channels-wizard")).toBeNull());
       }
-      pending.resolve({ done: false, step, error: "Try another token" });
+      pending.resolve({ done: false, step: { ...step }, error: "Try another token" });
       if (outcome === "close") {
         await settle();
         expect(page.querySelector(".channels-wizard")).toBeNull();
@@ -186,6 +186,11 @@ describe("ChannelsPage lifecycle", () => {
     });
     expect(request.mock.calls.filter(([method]) => method === "wizard.start")).toHaveLength(1);
     disposePage(page);
+    await settle();
+    expect(request).toHaveBeenCalledWith("wizard.cancel", {
+      sessionId: "channel-setup",
+      closeInput: true,
+    });
   });
 
   it.each([

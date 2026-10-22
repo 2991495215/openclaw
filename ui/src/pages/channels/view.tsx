@@ -527,29 +527,42 @@ function renderDoneBody(channels: readonly string[], props: ChannelsProps) {
 }
 
 function ChannelWizard(props: ChannelsProps): JSX.Element {
-  const activeWizard = () => {
-    const wizard = props.wizardHost.state();
-    return wizard.phase === "idle" ? undefined : wizard;
-  };
   return (
-    <Show when={activeWizard()}>
-      {(wizard) => <WizardDialog wizard={wizard()} controls={props} />}
+    <Show when={props.wizardHost.state().phase !== "idle"}>
+      <WizardDialog controls={props} />
     </Show>
   );
 }
 
-function WizardDialog(props: {
-  wizard: Exclude<ChannelWizardState, { phase: "idle" }>;
-  controls: ChannelsProps;
-}) {
-  const label = createMemo(() =>
-    props.wizard.channel
-      ? resolveChannelLabel(props.controls, props.wizard.channel)
-      : t("channels.setup.genericTitle"),
-  );
-  const step = () => (props.wizard.phase === "step" ? props.wizard : undefined);
-  const error = () => (props.wizard.phase === "error" ? props.wizard : undefined);
-  const done = () => (props.wizard.phase === "done" ? props.wizard : undefined);
+function WizardDialog(props: { controls: ChannelsProps }) {
+  const wizard = () => props.controls.wizardHost.state();
+  const channel = () => {
+    const current = wizard();
+    return current.phase === "idle" ? null : current.channel;
+  };
+  const label = createMemo(() => {
+    const current = channel();
+    return current
+      ? resolveChannelLabel(props.controls, current)
+      : t("channels.setup.genericTitle");
+  });
+  const step = () => {
+    const current = wizard();
+    return current.phase === "step" ? current : undefined;
+  };
+  // Keep same-ID controls through action settlement and fresh validation replies.
+  const steps = createMemo(() => {
+    const current = step();
+    return current ? [current] : [];
+  });
+  const error = () => {
+    const current = wizard();
+    return current.phase === "error" ? current : undefined;
+  };
+  const done = () => {
+    const current = wizard();
+    return current.phase === "done" ? current : undefined;
+  };
   return (
     <openclaw-modal-dialog
       label={t("channels.setup.dialogLabel", { channel: label() })}
@@ -557,13 +570,13 @@ function WizardDialog(props: {
     >
       <div class="channels-wizard">
         <div class="channels-wizard__header">
-          <Show when={props.wizard.channel}>
-            {(channel) => (
+          <Show when={channel()}>
+            {(channelId) => (
               <ChannelIcon
-                channelId={channel()}
+                channelId={channelId()}
                 label={label()}
                 variant="tile"
-                pluginIconUrl={props.controls.presentation.pluginIconUrls[channel()]}
+                pluginIconUrl={props.controls.presentation.pluginIconUrls[channelId()]}
               />
             )}
           </Show>
@@ -571,10 +584,10 @@ function WizardDialog(props: {
             <h2>{t("channels.setup.title", { channel: label() })}</h2>
             <div class="muted channels-wizard__subtitle">
               <span>{t("channels.setup.subtitle")}</span>{" "}
-              {props.wizard.channel ? (
+              {channel() ? (
                 <a
                   class="channels-wizard__link"
-                  href={channelDocsUrl(props.wizard.channel)}
+                  href={channelDocsUrl(channel()!)}
                   target="_blank"
                   rel="noreferrer noopener"
                 >
@@ -599,7 +612,7 @@ function WizardDialog(props: {
               </div>
             )}
           </Show>
-          <Show when={props.wizard.phase === "starting"}>
+          <Show when={wizard().phase === "starting"}>
             <openclaw-modal-actions class="channels-wizard__footer">
               <WizardBusyButton statusLabel={t("channels.setup.starting")} />
             </openclaw-modal-actions>
@@ -619,7 +632,7 @@ function WizardDialog(props: {
           <Show when={done()}>
             {(completed) => <>{renderDoneBody(completed().channels, props.controls)}</>}
           </Show>
-          <Show when={step()}>
+          <For each={steps()} keyed={(current) => current.step.id}>
             {(current) => (
               <>
                 {current().validationError ? (
@@ -634,7 +647,7 @@ function WizardDialog(props: {
                 <WizardStepBody wizard={current()} controls={props.controls} />
               </>
             )}
-          </Show>
+          </For>
         </div>
       </div>
     </openclaw-modal-dialog>
