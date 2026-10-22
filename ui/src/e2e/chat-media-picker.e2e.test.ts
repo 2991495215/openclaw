@@ -42,11 +42,14 @@ suite.define(() => {
           await editor.fill("Keep this synthetic mixed-media draft.");
           const choose = async () => {
             await page.getByRole("button", { name: "Add attachment", exact: true }).click();
-            expect(
-              await page.getByRole("menuitem", { name: "Photos & videos", exact: true }).count(),
-            ).toBe(1);
+            const mediaAction = page.getByRole("menuitem", {
+              name: "Photos & videos",
+              exact: true,
+            });
+            await mediaAction.waitFor({ state: "visible" });
+            expect(await mediaAction.count()).toBe(1);
             const pending = page.waitForEvent("filechooser");
-            await page.getByRole("menuitem", { name: "Photos & videos", exact: true }).click();
+            await mediaAction.click();
             return pending;
           };
           const chooser = await choose();
