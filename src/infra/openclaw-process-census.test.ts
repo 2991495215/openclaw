@@ -1,5 +1,6 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { ProcSafeError } from "@openclaw/proc-safe/errors";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mockProcessPlatform } from "../test-utils/vitest-spies.js";
 
@@ -142,7 +143,7 @@ type CustodyCase = [
   holder: boolean,
 ];
 const custodyCases: CustodyCase[] = [
-  [["/lib/systemd/systemd", "--user", "--deserialize=x"], { cwd: new Error("denied") }, true],
+  [["/lib/systemd/systemd", "--user", "--deserialize=x"], { cwd: new Error("denied") }, false],
   [["node", "dist/index.js"], { cwd: "/unrelated-app" }, false],
   [["node", "/unrelated-app/dist/index.js"], { cwd: "/unrelated-app" }, false],
   [["node", "dist/index.js"], { cwd: "/app" }, true],
@@ -211,7 +212,6 @@ it.each([
 
 it.each([
   ["node", "worker.js"],
-  ["/bin/sh", "worker.sh"],
   ["/usr/bin/node", "-e", "1"],
 ])("retains unavailable cwd for %j without losing scoped holders", (...argv) => {
   const held = "/tmp/openclaw-update-runtime-Held01";
@@ -597,6 +597,31 @@ function mockDarwinBatch(lsof: { status: number | null; stdout: string; error?: 
   darwinCommand.mockImplementation((pid: number) => ({ argv: rows.get(pid)!.argv }));
 }
 
+it.each([peer, launcher, self])(
+  "continues after an incomplete Darwin environment for PID %s",
+  (incompletePid) => {
+    rows.set(peer, { ppid: 1, argv: ["/bin/sleep", "60"] });
+    rows.set(peer + 1, { ppid: 1, argv: ["node", "/app/dist/index.js"] });
+    mockDarwinBatch({ status: 0, stdout: "" });
+    darwinCommand.mockImplementation((pid: number) => {
+      if (pid === incompletePid) {
+        throw new ProcSafeError("incomplete", "unterminated Darwin environment: private fixture");
+      }
+      return { argv: rows.get(pid)!.argv };
+    });
+    expect(inspectOtherOpenClawProcesses()).toEqual({
+      pids: incompletePid === self ? [peer + 1] : [incompletePid, peer + 1],
+      ...(incompletePid === self
+        ? {}
+        : {
+            warnings: [
+              `Could not verify runtime custody for PID ${incompletePid}: process command is unavailable`,
+            ],
+          }),
+    });
+  },
+);
+
 it("retains Darwin cwd holders from one partial batch without trusting other PID records", () => {
   rows.set(peer, { ppid: 1, argv: ["node", "/vendor/worker.js"] });
   rows.set(peer + 1, { ppid: 1, argv: ["bun", "run", "--silent", "start"] });
@@ -623,10 +648,8 @@ it.each([
         },
   );
   expect(inspectOtherOpenClawProcesses()).toEqual({
-    pids: partial ? [peer] : [1, peer],
-    warnings: (partial ? [peer] : [1, peer]).map((pid) =>
-      expect.stringContaining(`PID ${pid}: working directory is unavailable`),
-    ),
+    pids: [peer],
+    warnings: [expect.stringContaining(`PID ${peer}: working directory is unavailable`)],
   });
 });
 
@@ -662,10 +685,7 @@ it.each([
   });
   rows.get(peer + 1)!.cwd = denied();
   rows.get(peer + 1)!.ppid = 1;
-  expect(inspectOtherOpenClawProcesses()).toEqual({
-    pids: [peer + 1],
-    warnings: [expect.stringContaining(`PID ${peer + 1}: working directory is unavailable`)],
-  });
+  expect(inspectOtherOpenClawProcesses()).toEqual({ pids: [] });
   expect(inspectOtherOpenClawProcesses(handoffRefs)).toEqual({
     matchingPids: [],
     unverifiedPids: [peer + 1],
@@ -673,17 +693,13 @@ it.each([
   });
 });
 
-it.each([0, 1000])("requires foreign ownership to exempt non-runtime cwd (UID %i)", (uid) => {
-  rows.set(peer, { ppid: 1, argv: ["/bin/sh", "worker.sh"], uid, cwd: denied() });
-  expect(inspectOtherOpenClawProcesses()).toEqual(
-    uid === 0
-      ? { pids: [] }
-      : {
-          pids: [peer],
-          warnings: [expect.stringContaining(`PID ${peer}: working directory is unavailable`)],
-        },
-  );
-});
+it.each([0, 1000])(
+  "ignores unrelated non-runtime commands with unavailable cwd (UID %i)",
+  (uid) => {
+    rows.set(peer, { ppid: 1, argv: ["/bin/sh", "worker.sh"], uid, cwd: denied() });
+    expect(inspectOtherOpenClawProcesses()).toEqual({ pids: [] });
+  },
+);
 
 it.each([
   ["node", "--eval", "1"],

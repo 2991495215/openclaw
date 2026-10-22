@@ -73,7 +73,6 @@ function classifyProcessArtifactCustody(
   command: ProcessCommand | undefined,
   pid: number,
   cwd: string | undefined,
-  parentCommand: ProcessCommand | undefined,
 ): ArtifactCustody {
   if (!command) {
     return { kind: "unknown", reason: "process command is unavailable" };
@@ -122,15 +121,13 @@ function classifyProcessArtifactCustody(
       ? identity.reason
       : undefined;
   if (!cwd || !path.isAbsolute(cwd)) {
-    const inspectorUid = process.getuid?.();
+    // Unrelated commands do not own runtimes merely because cwd is unreadable.
+    // Explicit artifact references above still preserve their custody.
     if (
-      cwd === undefined &&
       identity.kind === "other" &&
       typeof position !== "number" &&
       position.kind === "not-runtime" &&
-      (command.owner === "different" ||
-        (command.uid !== undefined && inspectorUid !== undefined && command.uid !== inspectorUid) ||
-        isStandardSystemdLoginProcess(command, parentCommand, inspectorUid))
+      references.length === 0
     ) {
       return { kind: "not-holder" };
     }
@@ -196,7 +193,12 @@ type CensusResult = {
   warnings?: string[];
   error?: string;
 };
-type CensusProcess = { pid: number; state: string; command?: { ppid: number } & ProcessCommand };
+type CensusProcess = {
+  pid: number;
+  ppid?: number;
+  state: string;
+  command?: { ppid: number } & ProcessCommand;
+};
 
 function classifyWindowsHandoffAncestry(
   process: ReturnType<typeof readWindowsProcessCensus>[number],
@@ -277,7 +279,11 @@ export function inspectOtherOpenClawProcesses(references?: HandoffReferences | s
       };
     }) ?? [
       ...readProcessGroupMembers(handoff ? 15_000 : 1_000, {
-        readDarwinCommand: readDarwinProcessCommand,
+        // Handoff matches read argv and cwd only; a launcher needs an argv entrypoint,
+        // so the service marker cannot change the outcome. Skip that environment read.
+        readDarwinCommand: handoff
+          ? (pid, owner) => readDarwinProcessCommand(pid, owner, { serviceMarker: false })
+          : readDarwinProcessCommand,
       }),
     ];
     const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
@@ -285,7 +291,7 @@ export function inspectOtherOpenClawProcesses(references?: HandoffReferences | s
     if (
       !current ||
       (!handoff &&
-        (!current.command ||
+        ((!current.command && process.platform !== "darwin") ||
           (process.platform === "linux" &&
             processes.some((entry) => entry.command && !("argv" in entry.command)))))
     ) {
@@ -297,11 +303,12 @@ export function inspectOtherOpenClawProcesses(references?: HandoffReferences | s
     const launchers = new Set<number>();
     const ancestors = new Set<number>([process.pid]);
     let child = current;
-    let parentPid = current.command?.ppid ?? 0;
+    let parentPid = current.command?.ppid ?? current.ppid ?? 0;
     while (parentPid > 0) {
       const parent = byPid.get(parentPid);
       if (!parent?.command || ancestors.has(parentPid)) {
-        if (handoff) {
+        // An observed process with unavailable argv remains unknown custody below.
+        if (handoff || (parent && !parent.command)) {
           break;
         }
         throw new Error("OpenClaw process ancestry is incomplete.");
@@ -420,12 +427,7 @@ export function inspectOtherOpenClawProcesses(references?: HandoffReferences | s
         }
         continue;
       }
-      const custody = classifyProcessArtifactCustody(
-        command,
-        pid,
-        directories.get(pid),
-        byPid.get(command?.ppid ?? 0)?.command,
-      );
+      const custody = classifyProcessArtifactCustody(command, pid, directories.get(pid));
       if (custody.kind === "not-holder") {
         continue;
       }

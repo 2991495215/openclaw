@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, Errored, For, isPending, latest, Loading, Show } from "solid-js";
 import type { ModelsProbeResult } from "../../api/types.ts";
 import { ShellLayoutBoundary } from "../../app/shell-layout-traits-solid.tsx";
 import { Icon } from "../../components/solid/icon.tsx";
@@ -18,7 +18,7 @@ import {
 } from "../../components/solid/settings-ui.tsx";
 import { SettingsWorkspace } from "../../components/solid/settings-workspace.tsx";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
-import { formatUiExternalText } from "../../lib/format-error.ts";
+import { formatUiError, formatUiExternalText } from "../../lib/format-error.ts";
 import { formatCompactTokenCount, formatCost, formatTimeMs } from "../../lib/format.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import type { JSX } from "../../types/solid-elements.js";
@@ -68,6 +68,7 @@ export type ModelProvidersViewProps = SharedModelProvidersProps & {
   catalogDiscovering: boolean;
   catalogDiscoveryError: string | null;
   providerDetailsReady?: boolean;
+  apiKeySaving?: Record<string, boolean>;
   installedAgents: JSX.Element | typeof undefined;
   providerScope?: JSX.Element;
   accountRecovery?: JSX.Element | typeof undefined;
@@ -204,7 +205,8 @@ function ApiKeyInput(props: {
 }
 
 function KeyEditor(props: ModelProvidersViewProps & { card: ModelProviderCard }) {
-  const busy = () => Boolean(props.busy[`key:${props.card.id}`]);
+  const busy = () =>
+    Boolean(props.apiKeySaving?.[`key:${props.card.id}`] || props.busy[`key:${props.card.id}`]);
   const authModeBlocked = () =>
     props.card.apiKeySupported === false ||
     Boolean(props.card.configAuthMode && props.card.configAuthMode !== "api-key");
@@ -239,7 +241,7 @@ function ProviderActions(props: ModelProvidersViewProps & { card: ModelProviderC
   const authModeBlocked = () =>
     Boolean(props.card.configAuthMode && props.card.configAuthMode !== "api-key");
   const keyDisabled = () =>
-    Boolean(props.busy[`key:${props.card.id}`]) ||
+    Boolean(props.apiKeySaving?.[`key:${props.card.id}`] || props.busy[`key:${props.card.id}`]) ||
     configMutationDisabled(props) ||
     authModeBlocked();
   const keyTitle = () =>
@@ -374,7 +376,7 @@ function ProviderRow(props: ModelProvidersViewProps & { card: ModelProviderCard 
 }
 
 function AddProvider(props: ModelProvidersViewProps) {
-  const busy = () => Boolean(props.busy.add);
+  const busy = () => Boolean(props.apiKeySaving?.add) || Boolean(props.busy.add);
   const disabled = () => configMutationDisabled(props) || busy();
   const provider = () =>
     props.unconfiguredProviders.find((entry) => entry.id === props.addProviderId);
@@ -476,8 +478,14 @@ function renderProviderNoticeRow(text: string) {
 }
 
 export function ModelProviders(props: ModelProvidersViewProps) {
+  const receipt = createMemo(() => props.coreReceipt);
+  // Observe core refreshes without holding edits; initial loading stays router-owned.
+  const coreReady = createMemo(() => receipt()?.promise.then(() => null) ?? null, {
+    loadingValue: null,
+  });
   return (
     <>
+      <Loading fallback={null}>{latest(coreReady)}</Loading>
       <SettingsPage>
         <>
           <Show when={props.connected || !props.loading}>
@@ -502,7 +510,7 @@ export function ModelProviders(props: ModelProvidersViewProps) {
             }
           >
             {props.installedAgents}
-            <ProviderAccess {...props} />
+            <ProviderAccess {...props} refreshing={isPending(coreReady)} />
             {props.providerUsageStalled ? (
               <div class="callout warning" role="status">
                 {t("usage.providerUsage.stalled")}
@@ -516,7 +524,58 @@ export function ModelProviders(props: ModelProvidersViewProps) {
   );
 }
 
-function ProviderAccess(props: ModelProvidersViewProps) {
+function CoreReadFeedback(props: Pick<ModelProvidersViewProps, "coreReceipt" | "error">) {
+  const result = createMemo(() => props.coreReceipt?.promise);
+  const feedback = createMemo(() => {
+    result();
+    if (props.error) {
+      throw new Error(props.error);
+    }
+    return undefined;
+  });
+  return <>{feedback()}</>;
+}
+
+function ProviderReadFeedback(props: ModelProvidersViewProps & { refreshing: boolean }) {
+  // Data rollback can clear an accepted error without starting another core read.
+  const feedback = createMemo(() => ({ receipt: props.coreReceipt, error: props.error }), {
+    equals: (before, after) => before.receipt === after.receipt && before.error === after.error,
+  });
+  return (
+    <Show when={props.scopeError ?? props.error}>
+      <SettingsGroup>
+        <Show
+          when={props.scopeError}
+          fallback={
+            <Show when={feedback()} keyed>
+              {(current) => (
+                <Errored fallback={(error) => renderProviderNoticeRow(formatUiError(error()))}>
+                  <Loading
+                    fallback={current.error ? renderProviderNoticeRow(current.error) : undefined}
+                  >
+                    <CoreReadFeedback coreReceipt={current.receipt} error={current.error} />
+                  </Loading>
+                </Errored>
+              )}
+            </Show>
+          }
+        >
+          {(error) => renderProviderNoticeRow(error())}
+        </Show>
+        <button
+          type="button"
+          class="btn btn--sm"
+          disabled={props.refreshing}
+          onClick={() => props.onRefresh()}
+        >
+          {t("common.retry")}
+        </button>
+      </SettingsGroup>
+    </Show>
+  );
+}
+
+function ProviderAccess(props: ModelProvidersViewProps & { refreshing: boolean }) {
   const query = () => (props.providerQuery ?? "").trim().toLocaleLowerCase();
   const matchingCards = createMemo(() =>
     props.cards.filter((card) =>
@@ -537,19 +596,7 @@ function ProviderAccess(props: ModelProvidersViewProps) {
         />
       </label>
       <div class="model-providers__provider-list">
-        {props.error ? (
-          <SettingsGroup>
-            {renderProviderNoticeRow(props.error)}
-            <button
-              type="button"
-              class="btn btn--sm"
-              disabled={props.refreshing}
-              onClick={() => props.onRefresh()}
-            >
-              {t("common.retry")}
-            </button>
-          </SettingsGroup>
-        ) : undefined}
+        <ProviderReadFeedback {...props} />
         {props.providerUsageFailed ? (
           <SettingsGroup>
             {renderProviderNoticeRow(t("usage.providerUsage.unavailable"))}
