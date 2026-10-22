@@ -26,6 +26,7 @@ import { t } from "../../lib/reactive/i18n.ts";
 import type { McpAppOpenDetail, McpAppPanelRetirement } from "../mcp-app-launch.ts";
 import { McpAppRetirement } from "../mcp-app-retirement.tsx";
 import { McpAppSettingsForm } from "./mcp-app-settings.tsx";
+import { McpOperationOutcome } from "./mcp-operation-outcome.tsx";
 import "../../styles/mcp-app-extensions.css";
 
 registerMcpAppEnglish();
@@ -300,25 +301,7 @@ export function McpAppPanel(props: McpAppPanelProps) {
       <Show when={content.pending}>
         <p role="status">{t("mcpApp.loading")}</p>
       </Show>
-      <Show when={currentOperation()} keyed>
-        {(admitted) => {
-          const outcome = createMemo(() => admitted.result, { loadingValue: null });
-          return (
-            <Errored
-              fallback={(error) => (
-                <>
-                  <p role="alert">{formatUiError(error())}</p>
-                  <button class="btn" onClick={() => void open()}>
-                    {t("mcpApp.retry")}
-                  </button>
-                </>
-              )}
-            >
-              {outcome()}
-            </Errored>
-          );
-        }}
-      </Show>
+      <McpOperationOutcome operation={currentOperation()} onRetry={() => void open()} />
       <Show when={notice()}>
         <p role="status">{notice()}</p>
       </Show>
