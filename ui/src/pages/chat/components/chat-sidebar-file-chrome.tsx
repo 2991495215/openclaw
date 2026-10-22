@@ -241,6 +241,28 @@ export function DesktopFileChrome(props: FileReaderChromeProps) {
       }
     }
   };
+  function FileActionsMenu(menu: { compact?: boolean }) {
+    return (
+      <span
+        class={
+          menu.compact ? "sidebar-file-view__compact-action" : "sidebar-file-view__wide-action"
+        }
+      >
+        <Menu
+          id={`file-${menu.compact ? "overflow" : "actions"}-${id}`}
+          panelClass="sidebar-file-view__menu"
+          ref={(handle) => {
+            searchMenus[menu.compact ? "compact" : "wide"] = handle;
+          }}
+          label={t(`chat.detailPanel.${menu.compact ? "moreFileActions" : "fileActions"}`)}
+          trigger={<Icon name="moreHorizontal" />}
+          triggerClass="session-panel-rail__button sidebar-file-view__action"
+          items={actions(menu.compact === true)}
+          onSelect={(item) => select(item.id)}
+        />
+      </span>
+    );
+  }
   return (
     <div class="sidebar-file-view__path-bar session-panel-rail" data-presentation="desktop">
       <div class="sidebar-file-view__path-field">
@@ -384,34 +406,8 @@ export function DesktopFileChrome(props: FileReaderChromeProps) {
               aria-hidden="true"
             />
           </Show>
-          <span class="sidebar-file-view__wide-action">
-            <Menu
-              id={`file-actions-${id}`}
-              panelClass="sidebar-file-view__menu"
-              ref={(menu) => {
-                searchMenus.wide = menu;
-              }}
-              label={t("chat.detailPanel.fileActions")}
-              trigger={<Icon name="moreHorizontal" />}
-              triggerClass="session-panel-rail__button sidebar-file-view__action"
-              items={actions(false)}
-              onSelect={(item) => select(item.id)}
-            />
-          </span>
-          <span class="sidebar-file-view__compact-action">
-            <Menu
-              id={`file-overflow-${id}`}
-              panelClass="sidebar-file-view__menu"
-              ref={(menu) => {
-                searchMenus.compact = menu;
-              }}
-              label={t("chat.detailPanel.moreFileActions")}
-              trigger={<Icon name="moreHorizontal" />}
-              triggerClass="session-panel-rail__button sidebar-file-view__action"
-              items={actions(true)}
-              onSelect={(item) => select(item.id)}
-            />
-          </span>
+          <FileActionsMenu />
+          <FileActionsMenu compact />
         </div>
       </div>
     </div>
