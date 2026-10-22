@@ -96,8 +96,6 @@ try {
     if (!isUtf8(result.stdout)) fail("unsupported non-UTF-8 Git metadata");
     return result.stdout.toString("utf8");
   }
-  git(["init", "-q"]);
-  git(["remote", "add", "origin", "https://github.com/openclaw/openclaw.git"]);
   const preparedGit = path.join(cwd, ".git");
   const preparedEnv = {
     ...env,
@@ -117,16 +115,37 @@ try {
     git(["merge-base", "--is-ancestor", expected.baseSha, "refs/remotes/origin/main"], {
       env: preparedEnv, statusOnly: true,
     }) === 0;
-  const reuseHistory = reusePreparedBase &&
+  const preparedBorrowsObjects = Boolean(preparedBase) &&
+    (stat(path.join(preparedGit, "objects", "info", "alternates")) ||
+      git(["config", "--get-regexp", "^(extensions\\.partialClone|remote\\..*\\.promisor)$"], {
+        env: preparedEnv, statusOnly: true,
+      }) === 0);
+  const reuseHistory = reusePreparedBase && !preparedBorrowsObjects &&
     git(["rev-parse", "--is-shallow-repository"], { env: preparedEnv }).trim() === "false";
-  // A reused lease can own this exact base through a newer verified ref. Preserve
-  // its complete history; legacy shallow and cold workspaces retain depth 2.
-  // The new private Git directory never keeps an alternate to preparedGit.
-  const baseFetchOptions = reuseHistory ? ["--no-tags"] :
-    reusePreparedBase ? ["--depth=2", "--no-tags"] : ["--depth=2"];
-  git(["fetch", "-q", ...baseFetchOptions,
-    reusePreparedBase ? preparedGit : "origin", expected.baseSha + ":refs/remotes/origin/main"],
-    { phase: "base-fetch" });
+  // Git's local clone owns complete prepared objects independently through hardlinks.
+  // Clear every inherited ref before the existing capsule verification and publication.
+  if (reuseHistory) {
+    const cloneEnv = { ...env };
+    for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) delete cloneEnv[key];
+    git(["clone", "-q", "--bare", "--local", "--no-tags", "--origin", "prepared",
+      preparedGit, gitDir], { env: cloneEnv, phase: "history-clone" });
+    git(["symbolic-ref", "HEAD", "refs/heads/openclaw-import"]);
+    git(["config", "core.bare", "false"]);
+    const inheritedRefs = git(["for-each-ref", "--format=%(refname)"]).trim().split("\n").filter(Boolean);
+    if (inheritedRefs.length) {
+      git(["update-ref", "--stdin"], { input: inheritedRefs.map(ref => "delete " + ref + "\n").join("") });
+    }
+    git(["remote", "remove", "prepared"]);
+    git(["remote", "add", "origin", "https://github.com/openclaw/openclaw.git"]);
+    git(["update-ref", "refs/remotes/origin/main", expected.baseSha]);
+  } else {
+    git(["init", "-q"]);
+    git(["remote", "add", "origin", "https://github.com/openclaw/openclaw.git"]);
+    const baseFetchOptions = reusePreparedBase ? ["--depth=2", "--no-tags"] : ["--depth=2"];
+    git(["fetch", "-q", ...baseFetchOptions,
+      reusePreparedBase ? preparedGit : "origin", expected.baseSha + ":refs/remotes/origin/main"],
+      { phase: "base-fetch" });
+  }
   if (git(["rev-parse", "refs/remotes/origin/main"]).trim() !== expected.baseSha)
     fail("source base mismatch");
   git(["fetch", "-q", bundle, "refs/openclaw/source-capsule:refs/heads/openclaw-source"],

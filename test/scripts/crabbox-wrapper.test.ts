@@ -4922,7 +4922,7 @@ require('node:module').syncBuiltinESMExports();`,
         expect(git(legacy.receiver, ["rev-parse", "HEAD^"])).toBe(base);
         expect(git(legacy.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
         expect(existsSync(path.join(legacy.receiver, ".git/objects/info/alternates"))).toBe(false);
-        for (const condition of ["missing ref", "missing base"] as const) {
+        for (const condition of ["missing ref", "missing base", "borrowed objects"] as const) {
           const fallback = receive(`prepared-${condition.replace(" ", "-")}`, sent, {
             prepareReceiver: (receiver) => {
               if (condition === "missing ref") {
@@ -4930,6 +4930,10 @@ require('node:module').syncBuiltinESMExports();`,
                 return;
               }
               rmSync(receiver, { recursive: true });
+              if (condition === "borrowed objects") {
+                git(root, ["clone", "-q", "--shared", origin, receiver]);
+                return;
+              }
               mkdirSync(receiver);
               git(receiver, ["init", "-q", "-b", "main"]);
               git(receiver, ["commit", "--allow-empty", "-qm", "unrelated prepared source"]);
@@ -4939,6 +4943,9 @@ require('node:module').syncBuiltinESMExports();`,
           expect(fallback.result.status, failureDetail(fallback.result)).toBe(0);
           expect(git(fallback.receiver, ["rev-parse", "origin/main"])).toBe(base);
           expect(git(fallback.receiver, ["rev-parse", "--is-shallow-repository"])).toBe("true");
+          expect(existsSync(path.join(fallback.receiver, ".git/objects/info/alternates"))).toBe(
+            false,
+          );
         }
         return;
       }
@@ -5609,6 +5616,15 @@ require('node:module').syncBuiltinESMExports();`,
       if (alias) {
         expect(git(imported.receiver, ["rev-parse", alias])).toBe(base);
       }
+      expect(git(imported.receiver, ["for-each-ref", "--format=%(refname)"])).toBe(
+        [
+          "refs/heads/openclaw-source",
+          "refs/remotes/origin/main",
+          ...(alias ? [`refs/remotes/${alias}`] : []),
+        ]
+          .toSorted()
+          .join("\n"),
+      );
       expectFileBytes(imported.receiver, hiddenPath, hiddenBytes);
       expectFileBytes(imported.receiver, "unchanged.bin", unchanged);
       expectFileText(imported.receiver, "renamed.txt", "base\n");
@@ -5776,6 +5792,11 @@ cp.spawnSync = (command, args, options) => {
           const rejected = receive(`fetch-failure-${index}`, candidate, {
             extraEnv: { NODE_OPTIONS: `--require=${preload}`, TRANSPORT_FIXTURE_ARGV: argvPath },
             prepareReceiver: (receiver) => {
+              if (phase === "base-fetch") {
+                rmSync(receiver, { recursive: true });
+                git(root, ["clone", "-q", "--depth=2", `file://${origin}`, receiver]);
+                writeFileSync(path.join(receiver, "owner.txt"), "native stale bytes\n");
+              }
               priorIndex = readFileSync(path.join(receiver, ".git", "index"));
             },
           });
