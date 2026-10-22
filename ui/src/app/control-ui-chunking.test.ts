@@ -71,7 +71,7 @@ describe("Control UI build chunking", () => {
     const pluginActions = modulePath("../plugins/control-ui-actions.ts");
     const pluginLoader = modulePath("../plugins/control-ui-loader.ts");
     const sharedStyle = modulePath("../styles/chat/text.css");
-    const sidebarStyle = modulePath("../styles/sidebar-reorder.css");
+    const sidebarStyle = modulePath("../styles/select-picker.css");
     const entry = "\0cold-load-fixture";
     const sources = new Map([
       [
