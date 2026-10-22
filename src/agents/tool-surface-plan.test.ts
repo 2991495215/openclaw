@@ -12,10 +12,7 @@ import {
   createToolSearchTools,
   type ToolSearchCatalogToolExecutor,
 } from "./tool-search.js";
-import {
-  applyAgentToolSurfaceCatalog,
-  resolveAgentToolSurfacePlan,
-} from "./tool-surface-plan.js";
+import { applyAgentToolSurfaceCatalog, resolveAgentToolSurfacePlan } from "./tool-surface-plan.js";
 
 // Params type stays module-local in production; derive it so the test cannot
 // keep a public export alive that no production caller needs.
@@ -43,6 +40,7 @@ describe("resolveAgentToolSurfacePlan", () => {
       };
       const params = {
         config,
+        executeTool: async () => ({ content: [], details: {} }),
         modelToolsEnabled: true,
         trigger: "memory" as const,
         forceCodeModeControls: mode === "code",

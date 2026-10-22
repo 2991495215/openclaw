@@ -468,14 +468,14 @@ describe("auth publication generation recovery", () => {
           return {};
         });
       mocks.mutationListener?.({ agentDir: owner.input.agentDir, affectsInheritedStores: false });
-      const reader = prepare(owner.input);
-      const dispatch = loadDispatch();
+      const reader = prepareModelRuntimeSnapshot(owner.input);
+      const dispatch = loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" });
       void reader.catch(() => {});
       void dispatch.catch(() => {});
-      let successor: ReturnType<typeof publish> | undefined;
+      let successor: ReturnType<typeof publishPreparedModelRuntimeSnapshot> | undefined;
       try {
         await withinTest(retryStarted.promise, signal);
-        successor = publish(owner.input, {
+        successor = publishPreparedModelRuntimeSnapshot(owner.input, {
           force: true,
           provenance: "configured",
           catalogMode: "static",
@@ -486,12 +486,16 @@ describe("auth publication generation recovery", () => {
         releaseSuccessor.resolve();
         if (fails) {
           await expect(successor).rejects.toBe(failure);
-          await expect(reader).rejects.toThrow(failure.message);
-          await expect(dispatch).rejects.toThrow(failure.message);
+          await expect(reader).rejects.toBe(failure);
+          await expect(dispatch).rejects.toBeInstanceOf(
+            PreparedModelRuntimePublicationSupersededError,
+          );
         } else {
           const latest = await successor;
           await expect(reader).resolves.toBe(latest);
-          await expect(dispatch).resolves.toMatchObject({ agentId: "default", config });
+          await expect(dispatch).rejects.toBeInstanceOf(
+            PreparedModelRuntimePublicationSupersededError,
+          );
           expect(latest.isCurrent()).toBe(true);
           await listModels(config);
           expect(mocks.warn).not.toHaveBeenCalled();

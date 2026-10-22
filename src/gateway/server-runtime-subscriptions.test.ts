@@ -914,10 +914,10 @@ describe("startGatewayEventSubscriptions", () => {
   it("joins lifecycle publication before subscription shutdown", async () => {
     const entered = createDeferred();
     const release = createDeferred();
-    lifecycleBroadcastHandler.mockImplementationOnce(async () => {
+    lifecycleBroadcastHandler.mockImplementationOnce((async () => {
       entered.resolve();
       await release.promise;
-    });
+    }) as never);
     unsubs = startGatewayEventSubscriptions(createParams());
     emitSessionLifecycleEvent({ sessionKey: "agent:main:finished-child", reason: "created" });
     await entered.promise;

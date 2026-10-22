@@ -7,6 +7,7 @@ import {
   recordUpdateCompatibilityRelease,
   writeUpdateCompatibilityChunks,
 } from "../../scripts/lib/update-compat-chunks.mts";
+import { createDeferred } from "../helpers/promise.js";
 import { createScriptTestHarness } from "./test-helpers.js";
 
 const { createTempDir } = createScriptTestHarness();
@@ -70,7 +71,7 @@ it("keeps the 10.1 updater's pending cleanup ahead of shared-state shutdown afte
   const { retain } = await load("runtime-cleanup-Dowg583v.mjs");
   const { command } = await load("scope.mjs");
   const { entered } = await load("observe.mjs");
-  const pending = Promise.withResolvers<void>();
+  const pending = createDeferred();
   let disposed = false;
   let closed = false;
   retain(

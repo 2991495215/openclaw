@@ -61,7 +61,9 @@ it("retains a computer execution across MCP catalog rebuilds and releases it wit
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
             }),
           act: async () => JSON.stringify({ ok: true }),
-          close: async (reason) => closes.push(reason),
+          close: async (reason) => {
+            closes.push(reason);
+          },
         };
       },
     },
@@ -121,7 +123,7 @@ it("retains a computer execution across MCP catalog rebuilds and releases it wit
         runId: admittedRunContext.operationalRunInstance.runId,
         toolsAllow: ["computer"],
         modelHasVision: true,
-      },
+      } as never,
     });
     const computer = resolved.tools.find((tool) => tool.name === "computer");
     if (!computer) {

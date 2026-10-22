@@ -213,7 +213,7 @@ it.each([
   },
 );
 
-it("keeps a reply that already reports the blocker as the only reply after the check", async () => {
+it("does not replay a reply that preceded a silent completion check", async () => {
   const completionCheck = { unfinishedPlan: false, checked: false };
   const plan = [
     { step: "List files", status: "completed" as const },
@@ -229,7 +229,10 @@ it("keeps a reply that already reports the blocker as the only reply after the c
     },
   });
   const { session } = await createTestSession({ customTools: [progress] });
-  const prepared = prepareCatalogExecutor({ activeSession: session, attempt: { completionCheck } });
+  const prepared = prepareCatalogExecutor([], {
+    activeSession: session,
+    attempt: { completionCheck },
+  });
   streams.push(prepared);
   const answer = "Files: big.log (9 KB), notes.md (1 KB). May I delete big.log?";
   let requests = 0;
@@ -272,10 +275,9 @@ it("keeps a reply that already reports the blocker as the only reply after the c
     answerSegments: prepared.subscription.answerSegments,
     lastAssistant: assistant,
     currentAssistant: assistant ?? null,
-    keptAnswer: prepared.subscription.getKeptAnswer(),
     sessionKey: "agent:main:main",
   });
-  expect(payloads.map((payload) => payload.text)).toEqual([answer]);
+  expect(payloads).toEqual([]);
 });
 
 it.each([

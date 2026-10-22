@@ -17,7 +17,7 @@ type TestDaemonStatus = Omit<DaemonStatus, "service"> & {
 
 function printDaemonStatus(
   status: TestDaemonStatus,
-  options: Parameters<typeof printDaemonStatusRuntime>[1],
+  options: Parameters<typeof printDaemonStatusRuntime>[1] = { json: false },
 ) {
   const loaded =
     status.service.loaded !== undefined
@@ -790,25 +790,24 @@ describe("printDaemonStatus", () => {
   });
 
   it("names a disabled custom Scheduled Task and explains how to re-enable it", () => {
-    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-    try {
-      printDaemonStatus({
-        service: {
-          label: "Scheduled Task",
-          loadedText: "registered",
-          notLoadedText: "not registered",
-          runtime: { status: "stopped", state: "Disabled" },
-          command: {
-            programArguments: [],
-            environment: { OPENCLAW_WINDOWS_TASK_NAME: "OpenClaw Custom Gateway" },
-          },
+    using platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    expect(platform).toBeDefined();
+    printDaemonStatus({
+      extraServices: [],
+      service: {
+        label: "Scheduled Task",
+        loadedText: "registered",
+        notLoadedText: "not registered",
+        loadState: { status: "loaded" },
+        runtime: { status: "stopped", state: "Disabled" },
+        command: {
+          programArguments: [],
+          environment: { OPENCLAW_WINDOWS_TASK_NAME: "OpenClaw Custom Gateway" },
         },
-      });
-    } finally {
-      platform.mockRestore();
-    }
+      },
+    });
 
-    const errors = output(runtime.error);
+    const errors = runtime.error.mock.calls.map(([line]) => line).join("\n");
     expect(errors).toContain("Scheduled Task 'OpenClaw Custom Gateway' is registered but DISABLED");
     expect(errors).toContain("openclaw gateway start");
     expect(errors).toContain("openclaw doctor --fix");

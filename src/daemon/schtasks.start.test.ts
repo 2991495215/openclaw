@@ -9,7 +9,6 @@ import { createDoctorPrompter } from "../commands/doctor-prompter.js";
 import * as serviceRepairPolicy from "../commands/doctor-service-repair-policy.js";
 import * as configPaths from "../config/paths.js";
 import * as sqliteLibrary from "../infra/bun-sqlite-library.js";
-import * as installOwner from "../infra/install-owner.js";
 import * as ports from "../infra/ports-inspect.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { mockProcessPlatform } from "../test-utils/vitest-spies.js";
@@ -152,7 +151,6 @@ it.each(["owned", "foreign", "missing launcher"] as const)(
     vi.spyOn(gatewayService, "resolveGatewayService").mockReturnValue(service);
     vi.spyOn(configPaths, "isDefaultInstallIdentity").mockReturnValue(true);
     vi.spyOn(serviceRepairPolicy, "shouldManageGatewayService").mockResolvedValue(true);
-    vi.spyOn(installOwner, "readInstallOwner").mockResolvedValue(null);
     vi.spyOn(utils, "sleep").mockResolvedValue(undefined);
     vi.spyOn(sqliteLibrary, "ensureSqliteLibrarySelected").mockReturnValue({ source: "runtime" });
     vi.spyOn(ports, "inspectPortUsage").mockResolvedValue({

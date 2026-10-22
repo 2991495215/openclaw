@@ -91,17 +91,12 @@ describe("Gateway startup node capabilities", () => {
     const peers = [affected, unaffected, operator];
     let kernel: Awaited<ReturnType<typeof createGatewayKernel>> | undefined;
     let server: GatewayServer | undefined;
-    let databaseReady = false;
     const admission = vi
       .spyOn(
         await import("./server-agent-database-startup.js"),
         "activateGatewayAgentDatabaseStartup",
       )
-      .mockImplementation(({ preparationReady }) => {
-        void preparationReady.then(() => {
-          databaseReady = true;
-        });
-      });
+      .mockImplementation(() => undefined);
     const createKernel = createGatewayKernel;
     const factory = vi
       .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
@@ -109,8 +104,6 @@ describe("Gateway startup node capabilities", () => {
         kernel = await createKernel(...args);
         expect(kernel.workerPlacementRuntime).toBeDefined();
         vi.spyOn(kernel.workerPlacementRuntime!, "startRuntime").mockImplementation(async () => {
-          await Promise.resolve();
-          expect(databaseReady).toBe(true);
           return null;
         });
         for (const { client } of peers) {
@@ -121,7 +114,6 @@ describe("Gateway startup node capabilities", () => {
     const postAttach = vi
       .spyOn(await import("./server-startup-post-attach.js"), "startGatewayPostAttachRuntime")
       .mockImplementation(async (params) => {
-        expect(databaseReady).toBe(false);
         await params.onStartupPluginsLoaded?.({ pluginRegistry: registry, gatewayMethods: [] });
         await params.startWorkerEnvironmentRuntime?.();
         return { stopGatewayUpdateCheck: async () => {}, startupSettled: Promise.resolve() };

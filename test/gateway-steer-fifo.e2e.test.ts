@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GATEWAY_CLIENT_CAPS } from "../packages/gateway-protocol/src/client-info.js";
+import { INTERNAL_RUNTIME_CONTEXT_BEGIN } from "../src/agents/internal-runtime-context.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import { GatewayClient, type GatewayClientOptions } from "../src/gateway/client.js";
 import { buildMockOpenAiResponsesProvider } from "../src/gateway/test-openai-responses-model.js";
-import { RUNTIME_CONTEXT_HEADER } from "../src/llm/types.js";
 import { GatewayChatClient } from "../src/tui/gateway-chat.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../src/utils/message-channel.js";
 import { writeOpenAiResponsesSse } from "./helpers/openai-responses-sse.js";
@@ -786,7 +786,9 @@ function userInputs(request: ModelRequest | undefined): string[] {
 
 function currentUserInput(request: ModelRequest | undefined): string {
   // Conversation metadata can follow the user message as a separate protected block.
-  return userInputs(request).findLast((text) => !text.startsWith(RUNTIME_CONTEXT_HEADER)) ?? "";
+  return (
+    userInputs(request).findLast((text) => !text.includes(INTERNAL_RUNTIME_CONTEXT_BEGIN)) ?? ""
+  );
 }
 
 describe("Gateway steer FIFO", () => {

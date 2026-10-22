@@ -13,7 +13,7 @@ import type {
   RestartRecoveryTerminalDeliveryEvidenceResult,
   SessionRestartRecoveryState,
 } from "./restart-recovery-types.js";
-import type { SessionEntry } from "./types.js";
+import type { InternalSessionEntry, SessionEntry } from "./types.js";
 
 const MAX_TERMINAL_RUN_IDS = 64;
 
@@ -485,7 +485,7 @@ export function hasRestartRecoveryTerminalRun(
 }
 
 /** Recovery custody survives process loss independently of the last run's outcome. */
-export function hasMainSessionRecoveryClaim(entry: SessionEntry | undefined): boolean {
+export function hasMainSessionRecoveryClaim(entry: InternalSessionEntry | undefined): boolean {
   return Boolean(
     entry?.mainRestartRecovery ||
     entry?.restartRecoveryRuns?.some((run) => !hasRestartRecoveryTerminalRun(entry, run.runId)) ||

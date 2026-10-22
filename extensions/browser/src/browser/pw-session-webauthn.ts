@@ -22,7 +22,7 @@ async function raceWithTimeout<T, F>(
         try {
           resolve(onTimeout());
         } catch (error) {
-          reject(error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         }
       }, timeoutMs);
       if (options.ref === false) {

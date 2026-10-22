@@ -98,7 +98,6 @@ exports.legacyConfigRules = [{
             load: { paths: [pluginDir] },
             entries: { [pluginId]: { enabled: true, config: invalid ? { retired: true } : {} } },
           },
-          meta: { migrations: { webhookListeners: true as const } },
         };
         const configBytes = `${JSON.stringify(config)}\n`;
         await fs.writeFile(configPath, configBytes);

@@ -2,7 +2,43 @@ import { Value } from "typebox/value";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { ChatEventSchema } from "../../packages/gateway-protocol/src/schema/logs-chat.js";
 import { createAgentHarnessAttemptLifecycle } from "../agents/harness/attempt-events.js";
-import { createAgentEventTestHarness } from "./server-chat.agent-events.test-harness.js";
+import { emitAgentEvent, registerChatRun } from "./server-chat.agent-events.test-helpers.js";
+import {
+  createAgentEventHandler,
+  createChatRunState,
+  createSessionEventSubscriberRegistry,
+  createSessionMessageSubscriberRegistry,
+} from "./server-chat.js";
+
+function createAgentEventTestHarness(params: { lifecycleErrorRetryGraceMs: number }) {
+  const broadcast = vi.fn();
+  const broadcastToConnIds = vi.fn();
+  const nodeSendToSession = vi.fn();
+  const chatRunState = createChatRunState();
+  const handler = createAgentEventHandler({
+    broadcast,
+    broadcastToConnIds,
+    nodeSendToSession,
+    nodeHasSessionSubscribers: () => true,
+    agentRunSeq: new Map(),
+    chatRunState,
+    resolveSessionKeyForRun: () => undefined,
+    clearAgentRunContext: vi.fn(),
+    toolEventRecipients: chatRunState.toolEventRecipients,
+    sessionEventSubscribers: createSessionEventSubscriberRegistry(),
+    sessionMessageSubscribers: createSessionMessageSubscriberRegistry(),
+    loadGatewaySessionLifecycleSnapshotForEvent: () => ({ row: null }),
+    persistGatewaySessionLifecycleEventForEvent: vi.fn(async () => undefined),
+    lifecycleErrorRetryGraceMs: params.lifecycleErrorRetryGraceMs,
+  });
+  return {
+    emit: emitAgentEvent.bind(undefined, handler),
+    register: registerChatRun.bind(undefined, chatRunState),
+    chat: () => broadcast.mock.calls.filter(([event]) => event === "chat"),
+    agent: () => broadcast.mock.calls.filter(([event]) => event === "agent"),
+    handler,
+  };
+}
 
 // mock-isolation: Native lifecycle projection must not read an operator's session store.
 vi.mock("./session-utils.js", () => {

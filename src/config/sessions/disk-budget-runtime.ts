@@ -13,7 +13,6 @@ const measurements = resolveGlobalSingleton<{
   () => ({
     pool: new WorkerTaskPool<string, SessionPhysicalDiskUsage>({
       workerUrl: resolveRuntimeProcessEntrypointUrl("sessionDiskBudget"),
-      workerClass: "reader",
       // Share one scan worker so concurrent stores cannot multiply filesystem scan heaps.
       maxWorkers: 1,
     }),

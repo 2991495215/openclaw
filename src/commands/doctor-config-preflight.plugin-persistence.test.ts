@@ -641,6 +641,7 @@ describe("startup plugin persistence", () => {
           beforeStatePreparation: async () => {
             if (persisted) {
               const read = await readConfigPreflightSnapshot({
+                purpose: "startup",
                 allowCurrentPluginMetadata: false,
                 includePluginMetadata: true,
                 preparePluginMetadataSnapshot: true,

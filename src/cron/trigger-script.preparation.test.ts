@@ -145,7 +145,7 @@ describe("cron preparation plugin ownership", () => {
       const input = { config: cfg, workspaceDir: state.workspaceDir };
       const metadata = loadPluginMetadataSnapshot(input);
       setCurrentPluginMetadataSnapshot(metadata, { config: cfg });
-      const registry = await loadAndActivateRootPluginRegistry({
+      const registry = loadAndActivateRootPluginRegistry({
         ...input,
         manifestRegistry: metadata.manifestRegistry,
         discovery: metadata.discovery,

@@ -16,7 +16,6 @@ import {
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./test-runtime-mocks.js";
-import { runInMemoryTestBackgroundContext } from "./background-context.test-support.js";
 import { closeAllMemoryIndexManagers } from "./manager-runtime.js";
 import { MemoryIndexManager } from "./manager.js";
 
@@ -133,7 +132,6 @@ describe("memory legacy migration cleanup", () => {
     const result = await MemoryIndexManager.get({
       cfg,
       agentId: "main",
-      runInBackgroundContext: runInMemoryTestBackgroundContext,
     });
     if (!result) {
       throw new Error("memory manager missing");

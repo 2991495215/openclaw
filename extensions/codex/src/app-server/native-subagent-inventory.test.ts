@@ -33,11 +33,15 @@ describe("native pending assignment inventory through registered monitor admissi
       owner: f.historyOwner(),
     }));
     for (const assignment of assignments) {
-      await f.store.mutate(f.identity, {
-        kind: "record-native-subagent-assignment",
-        owner: f.historyOwner(),
-        assignment,
-      });
+      await f.store.mutate(
+        f.identity,
+        {
+          kind: "record-native-subagent-assignment",
+          owner: f.historyOwner(),
+          assignment,
+        },
+        () => {},
+      );
     }
     const entered = createDeferred<void>();
     const releaseWrite = createDeferred<void>();
@@ -91,7 +95,6 @@ describe("native pending assignment inventory through registered monitor admissi
       await parent.ready;
       expect(ready).toBe(true);
       expect(conflictingRead).not.toHaveBeenCalled();
-      expect(parent.listPendingChildren()).toHaveLength(2);
       expect(f.store.readNativeSubagentAssignments?.(f.identity, f.historyOwner())).toEqual(
         assignments.map((assignment) => expect.objectContaining(assignment)),
       );

@@ -2,6 +2,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import * as configJournal from "../config/config-journal-snapshot.js";
 import * as configAudit from "../config/io.audit.js";
+import {
+  attachRuntimeConfigWriteApplication,
+  createRuntimeConfigWriteApplication,
+} from "../config/runtime-write-application.js";
 import * as pluginLifecycleLease from "../plugins/plugin-lifecycle-lease.js";
 import { getAsyncWorkSignal, trackAsyncWork } from "../shared/async-work-scope.js";
 import {

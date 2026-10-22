@@ -76,8 +76,10 @@ import type {
   PackageRuntimePreflight,
   PreManagedServiceStop,
 } from "./update-command-service-context-types.js";
-import { resolveUpdateServiceHeapEnv } from "./update-command-service-env.js";
-import { resolveServiceRecoveryContext } from "./update-command-service-env.js";
+import {
+  resolveServiceRecoveryContext,
+  resolveUpdateServiceHeapEnv,
+} from "./update-command-service-env.js";
 
 export class GatewayServiceUpdateOwnershipError extends Error {
   readonly failureFacts: UpdateFailureFact[];

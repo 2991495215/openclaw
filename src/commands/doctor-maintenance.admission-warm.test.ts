@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import { createSystemdCommandQuery } from "../daemon/systemd-command-query.js";
 import * as integrity from "../infra/sqlite-integrity.js";
 import * as snapshots from "../infra/sqlite-snapshot-source.js";
+import { UPDATE_RUN_ID_ENV } from "../infra/update-control-plane-sentinel.js";
 import { readUpdateRunDriver } from "../infra/update-run-driver.js";
 import { createUpdateRun, recordUpdateRunRepairContinuation } from "../infra/update-run-ledger.js";
 import { recordOpenClawDatabaseQuarantine } from "../state/openclaw-quarantine-store.js";
@@ -42,7 +43,8 @@ it("admits fast systemd inspection after slow continuation integrity validation"
   recordUpdateRunRepairContinuation(run.runId, run.runId, { env });
   expect(elapsed).toBeGreaterThanOrEqual(6_000);
   await closeOpenClawStateDatabaseAsync();
-  const admitted = resolveDoctorUpdateAdmission(env, run.runId);
+  (env as NodeJS.ProcessEnv)[UPDATE_RUN_ID_ENV] = run.runId;
+  const admitted = resolveDoctorUpdateAdmission(env);
   const binding = stoppedSystemdBinding(() => {});
   const reader = await createSystemdCommandQuery(
     env,
