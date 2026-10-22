@@ -15,6 +15,7 @@ import {
   type OpenClawTestInstance,
 } from "../../../test/helpers/openclaw-test-instance.ts";
 import { runQaGatewayFixture } from "../../../test/helpers/qa-gateway-cleanup.ts";
+import type { ChatHtmlPreviewElement } from "../pages/chat/components/chat-html-preview-element.tsx";
 import { finishElementAnimations } from "../test-helpers/animations.ts";
 import { pairControlUiPage } from "../test-helpers/control-ui-browser-pairing.ts";
 import { waitForControlUiGatewayReady } from "../test-helpers/control-ui-e2e-readiness.ts";
@@ -263,8 +264,32 @@ suite.define(() => {
           .locator('[data-region="side"]')
           .filter({ has: panel })
           .evaluate(finishElementAnimations);
+        const readCounterState = async () => {
+          const [embedSandboxMode, innerSandbox, documentState] = await Promise.all([
+            panel
+              .locator("openclaw-chat-html-preview")
+              .evaluate((element: ChatHtmlPreviewElement) => element.embedSandboxMode),
+            frame.contentFrame().locator("iframe").getAttribute("sandbox"),
+            document.locator("body").evaluate((body) => ({
+              timeOrigin: performance.timeOrigin,
+              readyState: body.ownerDocument.readyState,
+              clickHandler: typeof body.querySelector<HTMLButtonElement>("#count")?.onclick,
+              output: body.querySelector("output")?.textContent ?? null,
+            })),
+          ]);
+          return { embedSandboxMode, innerSandbox, ...documentState };
+        };
+        const beforeClick = await readCounterState();
         await document.getByRole("button", { name: "Count", exact: true }).click();
-        await expect.poll(() => document.locator("output").textContent()).toBe("1");
+        try {
+          await expect.poll(() => document.locator("output").textContent()).toBe("1");
+        } catch (cause) {
+          const afterFailure = await readCounterState().catch(() => null);
+          throw new Error(
+            `HTML preview counter did not advance: ${JSON.stringify({ beforeClick, afterFailure })}`,
+            { cause },
+          );
+        }
         expect(
           await document.locator("body").evaluate(() => {
             let topDenied = false;
