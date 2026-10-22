@@ -3,6 +3,10 @@ import type { ApplicationGateway } from "../app/gateway.ts";
 export type InputDialogOptions = {
   title: string;
   label?: string;
+  /** Set null to omit the default field description. */
+  description?: string | null;
+  /** Multiline fields preserve raw whitespace when submitted. */
+  multiline?: { name: string; rows: number };
   defaultValue?: string;
   submitLabel?: string;
   cancelLabel?: string;
@@ -10,7 +14,7 @@ export type InputDialogOptions = {
   /** Keep the draft editable while Gateway-backed submission is unavailable. */
   gateway?: ApplicationGateway;
   /**
-   * Trims the value and blocks submission while it is empty. Callers that treat
+   * Trims single-line values and blocks blank submission. Callers that treat
    * an empty entry as meaningful (clearing a custom session label) leave this
    * off and keep receiving the raw value.
    */

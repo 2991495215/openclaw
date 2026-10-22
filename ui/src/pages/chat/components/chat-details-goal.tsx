@@ -1,14 +1,6 @@
-import {
-  Errored,
-  Show,
-  action,
-  createMemo,
-  createOptimistic,
-  createSignal,
-  latest,
-  onSettled,
-} from "solid-js";
+import { Errored, Show, createMemo, createSignal, latest, onSettled } from "solid-js";
 import type { SessionGoal } from "../../../api/types.ts";
+import { InputDialogView } from "../../../components/input-dialog-view.tsx";
 import { withPromiseModalHost } from "../../../components/promise-modal-host.ts";
 import { PanelEmptyState } from "../../../components/solid/panel-empty-state.tsx";
 import type {
@@ -44,120 +36,6 @@ export type ChatDetailsGoalProps = {
   /** The sheet's scroll owner attaches its existing observer to this actual scrollport. */
   onScrollPortRef?: (element: HTMLElement) => void | (() => void);
 };
-
-/** The native modal owns focus/dismissal; this form preserves multiline objectives. */
-function GoalEditDialog(props: {
-  objective: string;
-  submit: (objective: string) => Promise<string | null>;
-  finish: () => void;
-  settled: () => boolean;
-}) {
-  const [draft, setDraft] = createSignal(() => props.objective);
-  const [pending, setPending] = createOptimistic(false);
-  const [completion, setCompletion] = createSignal<Promise<string | null>>();
-  const message = createMemo(() => completion() ?? null, { loadingValue: null });
-  const invalid = createMemo(
-    () =>
-      completion()?.then(
-        (value) => Boolean(value),
-        () => false,
-      ) ?? false,
-    { loadingValue: false },
-  );
-  let submitting = false;
-  let input!: HTMLTextAreaElement;
-  const unchanged = () => !draft().trim() || draft() === props.objective;
-  const submit = action(function* (
-    event: SubmitEvent,
-  ): Generator<Promise<string | null>, void, string | null> {
-    event.preventDefault();
-    if (submitting || unchanged()) {
-      return;
-    }
-    submitting = true;
-    setPending(true);
-    const objective = input.value;
-    const submitOwner = props.submit;
-    // Keep owner publications outside the dialog's held transition so navigation can retire it.
-    const result = Promise.resolve().then(() => submitOwner(objective));
-    void setCompletion(result);
-    try {
-      if ((yield result) === null && !props.settled()) {
-        props.finish();
-      }
-    } finally {
-      submitting = false;
-      onSettled(() => {
-        if (!props.settled()) {
-          input.focus();
-        }
-      });
-    }
-  });
-  return (
-    <openclaw-modal-dialog
-      label={t("chat.goals.edit")}
-      prop:initialFocus={() => input}
-      onModal-cancel={(event: Event) => {
-        if (submitting) {
-          event.preventDefault();
-        } else {
-          props.finish();
-        }
-      }}
-    >
-      <form
-        class="exec-approval-card"
-        onSubmit={(event) => {
-          // The outcome slot observes rejection; consume it even if the modal retires.
-          void submit(event).catch(() => undefined);
-        }}
-      >
-        <div class="exec-approval-header">
-          <div class="exec-approval-title">{t("chat.goals.edit")}</div>
-        </div>
-        <label class="field input-dialog__field">
-          <span>{t("chat.goals.objectivePlaceholder")}</span>
-          <textarea
-            ref={(element) => {
-              input = element;
-            }}
-            name="objective"
-            rows={5}
-            value={draft()}
-            disabled={pending()}
-            aria-invalid={!pending() && invalid() ? "true" : undefined}
-            onInput={(event) => setDraft(event.currentTarget.value)}
-            autofocus
-          />
-        </label>
-        <Show when={!pending()}>
-          <Errored
-            fallback={(error) => (
-              <div class="exec-approval-error" role="alert">
-                {formatUiError(error())}
-              </div>
-            )}
-          >
-            <Show when={message()}>
-              <div class="exec-approval-error" role="alert">
-                {message()}
-              </div>
-            </Show>
-          </Errored>
-        </Show>
-        <openclaw-modal-actions class="exec-approval-actions">
-          <button class="btn" type="button" disabled={pending()} onClick={() => props.finish()}>
-            {t("common.cancel")}
-          </button>
-          <button class="btn primary" type="submit" disabled={pending() || unchanged()}>
-            {t("chat.goals.save")}
-          </button>
-        </openclaw-modal-actions>
-      </form>
-    </openclaw-modal-dialog>
-  );
-}
 
 /** Controlled mobile interior. The host owns the state title, navigation and domain facts. */
 export function ChatDetailsGoal(props: ChatDetailsGoalProps) {
@@ -218,9 +96,25 @@ export function ChatDetailsGoal(props: ChatDetailsGoalProps) {
           { signal: controller.signal, value: undefined },
           (modal) => {
             modal.render(() => (
-              <GoalEditDialog
-                objective={goal.objective}
-                submit={submit}
+              <InputDialogView
+                callbackFailureIsInvalid={false}
+                options={{
+                  get title() {
+                    return t("chat.goals.edit");
+                  },
+                  get label() {
+                    return t("chat.goals.objectivePlaceholder");
+                  },
+                  get submitLabel() {
+                    return t("chat.goals.save");
+                  },
+                  description: null,
+                  defaultValue: goal.objective,
+                  multiline: { name: "objective", rows: 5 },
+                  requireValue: true,
+                  requireChange: true,
+                  submit: (objective) => Promise.resolve().then(() => submit(objective)),
+                }}
                 finish={() => modal.finish(undefined)}
                 settled={() => modal.settled}
               />

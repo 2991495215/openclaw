@@ -213,6 +213,16 @@ it("keeps callback failures outside objective validation and retains the form th
     const { modal } = await waitForRenderedModalDialog(document.body);
     const input = modal.querySelector("textarea")!;
     const form = modal.querySelector("form")!;
+    const save = modal.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(input.name).toBe("objective");
+    expect(input.rows).toBe(5);
+    expect(modal.hasAttribute("description")).toBe(false);
+    input.value = " \n ";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    flush();
+    expect(save.disabled).toBe(true);
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    expect(onSubmit).not.toHaveBeenCalled();
     const objective = "Keep this edited objective";
     input.value = objective;
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -236,6 +246,56 @@ it("keeps callback failures outside objective validation and retains the form th
     expect(modal.querySelector('[role="alert"]')).toBeNull();
     retry.resolve(true);
     await waitForSolid(() => expect(document.body.contains(modal)).toBe(false));
+  } finally {
+    view.unmount();
+    restore();
+  }
+});
+
+it("retires a pending edit when its owner publishes a new session before settlement", async () => {
+  const restore = installDialogPolyfill();
+  const pending = createDeferred<boolean>();
+  const [sessionId, setSessionId] = createSignal("session-original");
+  const onSubmit = vi.fn(() => {
+    setSessionId("session-replacement");
+    return pending.promise;
+  });
+  const view = mountSolid(() => (
+    <ChatDetailsGoal
+      goal={goal}
+      sessionId={sessionId()}
+      presented
+      connected
+      canAct
+      onGoalAction={vi.fn()}
+      onGoalSubmit={onSubmit}
+    />
+  ));
+  try {
+    view.getByRole("button", { name: "Edit goal" }).click();
+    const { modal } = await waitForRenderedModalDialog(document.body);
+    const input = modal.querySelector("textarea")!;
+    const form = modal.querySelector("form")!;
+    input.value = "Save this objective before switching sessions";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    flush();
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await waitForSolid(() => expect(document.body.contains(modal)).toBe(false));
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+      action: "edit",
+      sessionId: "session-original",
+      goalId: goal.id,
+      objective: input.value,
+    });
+    view.getByRole("button", { name: "Edit goal" }).click();
+    const { modal: successor } = await waitForRenderedModalDialog(document.body);
+    pending.reject(new Error("Retired session save failed"));
+    await waitForSolid(() => {
+      expect(successor.querySelector("textarea")?.value).toBe(goal.objective);
+      expect(successor.querySelector("textarea")?.disabled).toBe(false);
+      expect(successor.querySelector('[role="alert"]')).toBeNull();
+    });
+    successor.querySelector<HTMLButtonElement>('button[type="button"]')!.click();
   } finally {
     view.unmount();
     restore();

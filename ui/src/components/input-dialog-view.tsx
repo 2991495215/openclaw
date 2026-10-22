@@ -15,13 +15,14 @@ import type { InputDialogOptions } from "./input-dialog-types.ts";
 
 export function InputDialogView(props: {
   options: InputDialogOptions;
+  callbackFailureIsInvalid?: boolean;
   finish(value: string | null): void;
   settled: () => boolean;
 }) {
   // A prompt keeps its submitted request and default for its entire lifetime.
   const initialOptions = untrack(() => props.options);
   const gateway = initialOptions.gateway ? projectGateway(initialOptions.gateway) : undefined;
-  let input!: HTMLInputElement;
+  let input!: HTMLInputElement | HTMLTextAreaElement;
   // Admission stays synchronous; Solid only owns the submission's presentation.
   let submitting = false;
   const [saving, setSaving] = createOptimistic(false);
@@ -31,12 +32,13 @@ export function InputDialogView(props: {
     () =>
       completion()?.then(
         (value) => Boolean(value),
-        () => true,
+        () => props.callbackFailureIsInvalid ?? true,
       ) ?? false,
     { loadingValue: false },
   );
   const [rawValue, setRawValue] = createSignal(initialOptions.defaultValue ?? "");
-  const entryValue = (raw: string) => (initialOptions.requireValue ? raw.trim() : raw);
+  const entryValue = (raw: string) =>
+    initialOptions.requireValue && !initialOptions.multiline ? raw.trim() : raw;
   const submitBlocked = (raw: string) => {
     const value = entryValue(raw);
     const connected = gateway?.read().snapshot.phase === "connected";
@@ -44,7 +46,8 @@ export function InputDialogView(props: {
     return (
       canSubmit === false ||
       (gateway !== undefined && !connected && canSubmit !== true) ||
-      (initialOptions.requireValue === true && !value.length) ||
+      (initialOptions.requireValue === true &&
+        !(initialOptions.multiline ? value.trim() : value).length) ||
       (initialOptions.requireChange === true && value === (initialOptions.defaultValue ?? ""))
     );
   };
@@ -99,7 +102,11 @@ export function InputDialogView(props: {
     <openclaw-modal-dialog
       prop:initialFocus={() => input}
       label={initialOptions.title}
-      description={initialOptions.label ?? initialOptions.title}
+      description={
+        initialOptions.description === null
+          ? undefined
+          : (initialOptions.description ?? initialOptions.label ?? initialOptions.title)
+      }
       onModal-cancel={(event: Event) => {
         if (submitting) {
           event.preventDefault();
@@ -120,20 +127,35 @@ export function InputDialogView(props: {
         </div>
         <label class="field input-dialog__field">
           <span>{initialOptions.label ?? initialOptions.title}</span>
-          <input
-            ref={(element) => {
-              input = element;
-            }}
-            name="value"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            value={rawValue()}
-            disabled={saving()}
-            aria-invalid={!saving() && invalid() ? "true" : undefined}
-            onInput={(event) => setRawValue(event.currentTarget.value)}
-            autofocus
-          />
+          {initialOptions.multiline ? (
+            <textarea
+              ref={(element) => {
+                input = element;
+              }}
+              name={initialOptions.multiline.name}
+              rows={initialOptions.multiline.rows}
+              value={rawValue()}
+              disabled={saving()}
+              aria-invalid={!saving() && invalid() ? "true" : undefined}
+              onInput={(event) => setRawValue(event.currentTarget.value)}
+              autofocus
+            />
+          ) : (
+            <input
+              ref={(element) => {
+                input = element;
+              }}
+              name="value"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              value={rawValue()}
+              disabled={saving()}
+              aria-invalid={!saving() && invalid() ? "true" : undefined}
+              onInput={(event) => setRawValue(event.currentTarget.value)}
+              autofocus
+            />
+          )}
         </label>
         <Show when={!saving()}>
           <Errored
