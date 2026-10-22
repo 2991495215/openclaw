@@ -94,6 +94,10 @@ export function createPositionRail(props: PositionRailParams) {
       return;
     }
     layoutFrame = requestAnimationFrame(() => {
+      if (observationPending) {
+        observationPending = false;
+        observeLayout();
+      }
       layoutFrame = undefined;
       syncLayout();
     });
@@ -104,7 +108,7 @@ export function createPositionRail(props: PositionRailParams) {
     if (!scroller) {
       return;
     }
-    // Observer and scroll delivery supply clean geometry; the frame only publishes it.
+    // Collect geometry before publishing overflow or the frame's layout writes.
     const height = scroller.clientHeight;
     viewportVisible = height > 0;
     if (!viewportVisible) {
@@ -135,12 +139,9 @@ export function createPositionRail(props: PositionRailParams) {
   };
 
   function requestObservation() {
-    if (scrollElement && resizeObserver && !observationPending) {
-      observationPending = true;
-      // Same-size content and programmatic offsets still need a clean measurement.
-      resizeObserver.unobserve(scrollElement);
-      resizeObserver.observe(scrollElement);
-    }
+    // Read once before this frame's writes, including same-size content and offsets.
+    observationPending = true;
+    scheduleLayout();
   }
 
   function revealMarker(id: string) {

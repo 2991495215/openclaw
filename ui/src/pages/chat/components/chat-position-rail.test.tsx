@@ -206,6 +206,10 @@ describe("conversation position rail", () => {
       flushFrame();
       expect(rail.hasAttribute("data-overflow")).toBe(false);
       const resize = (clientHeight: number, scrollHeight: number) => {
+        Object.defineProperties(root, {
+          clientHeight: { configurable: true, value: clientHeight },
+          scrollHeight: { configurable: true, value: scrollHeight },
+        });
         publishTranscriptScroll(root, {
           type: "resize",
           viewport: { clientHeight, scrollHeight, scrollTop: 0 },

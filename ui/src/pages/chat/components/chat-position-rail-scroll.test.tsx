@@ -148,7 +148,6 @@ it("updates rail and end position without pane renders until the virtual range c
     const scrollTo = (offset: number) => {
       container.scrollTop = offset;
       container.dispatchEvent(new Event("scroll"));
-      observeRail();
     };
     scrollTo(50);
     await settleUpdates();
@@ -187,8 +186,8 @@ it("updates rail and end position without pane renders until the virtual range c
     expectNoRailFrameReads();
     renderedAt = host.committedRenders;
 
-    // Programmatic and resize receipts can follow DOM writes. Their readers
-    // must wait for observer delivery rather than moving the forced layout.
+    // Programmatic and resize receipts can follow DOM writes. Coalesce their
+    // geometry reads before the next frame's writes, even without a resize.
     clearRailReads();
     publishTranscriptScroll(container, {
       type: "offset",
@@ -207,8 +206,11 @@ it("updates rail and end position without pane renders until the virtual range c
     container.dispatchEvent(new Event("scroll"));
     // Earlier transcript scroll listeners may have committed a new virtual window.
     expectNoRailFrameReads();
-    observeRail();
     expect(offsets).toEqual([5]);
+    clearRailReads();
+    await settleUpdates(true);
+    expect(readRailHeight).toHaveBeenCalledOnce();
+    expect(readRailOffset).toHaveBeenCalledOnce();
     clearRailReads();
     await settleUpdates(true);
     expectNoRailFrameReads();
