@@ -1,4 +1,3 @@
-import { note } from "../../packages/terminal-core/src/note.js";
 import { resolveAgentWorkspaceDir, tryResolveSoleAgentId } from "../agents/agent-scope.js";
 import { isLegacyParentWritableUpdateDoctorPass } from "../commands/doctor/shared/update-phase.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -29,13 +28,12 @@ export function resolveLegacyParentVersionOverride(ctx: DoctorHealthFlowContext)
   return version ? { lastTouchedVersionOverride: version } : {};
 }
 
-export function noteDoctorRepairResult(result: {
-  changes: readonly string[];
-  notices?: readonly string[];
-  warnings: readonly string[];
-}): void {
-  for (const kind of ["changes", "notices", "warnings"] as const) {
-    if (result[kind]?.length) {
+export function noteDoctorRepairResult(
+  result: { changes: readonly string[]; warnings: readonly string[] },
+  note: typeof import("../../packages/terminal-core/src/note.js").note,
+): void {
+  for (const kind of ["changes", "warnings"] as const) {
+    if (result[kind].length > 0) {
       note(result[kind].join("\n"), `Doctor ${kind}`);
     }
   }

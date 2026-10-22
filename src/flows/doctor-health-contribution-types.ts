@@ -53,7 +53,6 @@ type DoctorConfigResult = {
   stateMigrationStepReceipts?: LegacyStateMigrationStepReceipt[];
   postSessionPluginMigration?: PreparedPostSessionPluginMigration;
   postSessionPluginMigrationPlanBound?: boolean;
-  preflightLegacyStateConfig?: OpenClawConfig;
 };
 
 export type DoctorHealthFlowContext = {

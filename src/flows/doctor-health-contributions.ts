@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
-import { note } from "../../packages/terminal-core/src/note.js";
 // Doctor health contributions preserve the ordered interactive doctor flow while
 // exposing the same checks to structured lint and repair commands.
 import fs from "node:fs";
@@ -28,7 +26,6 @@ import type {
 } from "./doctor-health-contribution-types.js";
 import {
   isUpdateDoctorRun,
-  noteDoctorRepairResult,
   resolveDoctorMode,
   resolveDoctorWorkspaceDir,
 } from "./doctor-health-contribution-utils.js";
@@ -65,6 +62,7 @@ async function reportDeferredLegacyState(ctx: DoctorHealthFlowContext): Promise<
   if (pendingDetails.length === 0) {
     return;
   }
+  const { note } = await import("../../packages/terminal-core/src/note.js");
   const displayedDetails = pendingDetails.slice(0, MAX_DEFERRED_LEGACY_STATE_DETAILS);
   const omittedDetailCount = pendingDetails.length - displayedDetails.length;
   const remediation =
@@ -126,6 +124,7 @@ async function runGatewayAuthHealth(ctx: DoctorHealthFlowContext): Promise<void>
     allowExecSecretRefs: ctx.options.allowExec,
   });
   const { resolveSecretInputRef } = await import("../config/types.secrets.js");
+  const { note } = await import("../../packages/terminal-core/src/note.js");
   const gatewayTokenRef = resolveSecretInputRef({
     value: ctx.cfg.gateway?.auth?.token,
     defaults: ctx.cfg.secrets?.defaults,
@@ -246,55 +245,58 @@ async function runGatewayAuthHealth(ctx: DoctorHealthFlowContext): Promise<void>
 }
 
 async function runLegacyStateHealth(ctx: DoctorHealthFlowContext): Promise<void> {
+  const { detectLegacyStateMigrations, runLegacyStateMigrations } =
+    await import("../infra/state-migrations.doctor.js");
+  const { note } = await import("../../packages/terminal-core/src/note.js");
   // Settle retired-plugin state cleanup (may replace ctx.cfg) before the
   // legacy-state detect/migrate pair reads the config.
   await runCoreContributionHealth(ctx, ["core/doctor/removed-workspaces-state"]);
+  const { prepareLegacySessionSurfaces } = await import("../plugins/legacy-session-surfaces.js");
+  const legacySessionSurfaces = prepareLegacySessionSurfaces({ config: ctx.cfg });
   const doctorOnlyStateMigrations = ctx.options.repair === true || ctx.options.yes === true;
-  if (
-    !doctorOnlyStateMigrations ||
-    !isDeepStrictEqual(ctx.configResult.preflightLegacyStateConfig, ctx.cfg)
-  ) {
-    const { detectLegacyStateMigrations, runLegacyStateMigrations } =
-      await import("../infra/state-migrations.doctor.js");
-    const { prepareLegacySessionSurfaces } = await import("../plugins/legacy-session-surfaces.js");
-    const legacySessionSurfaces = prepareLegacySessionSurfaces({ config: ctx.cfg });
-    const legacyState = await detectLegacyStateMigrations({
-      cfg: ctx.cfg,
-      ...(doctorOnlyStateMigrations ? { doctorOnlyStateMigrations: true } : {}),
-      legacySessionSurfaces,
-    });
-    const prior = ctx.configResult.stateMigrationStepReceipts?.find(
-      (receipt) => receipt.id === "migration-detection",
-    );
-    noteDoctorRepairResult({
-      changes: [],
-      warnings: legacyState.warnings.filter((warning) => !prior?.warnings.includes(warning)),
-      notices: legacyState.notices.filter((notice) => !prior?.notices?.includes(notice)),
-    });
-    if (legacyState.preview.length > 0) {
-      note(legacyState.preview.join("\n"), "Legacy state detected");
-      if (
-        ctx.options.nonInteractive === true ||
-        (await ctx.prompter.confirm({
-          message: "Migrate detected legacy state now?",
-          initialValue: true,
-        }))
-      ) {
-        const migrated = await runLegacyStateMigrations({
-          detected: legacyState,
-          integrityCheck: ctx.options.fullIntegrityCheck ? "full" : "quick",
-          config: ctx.cfg,
-          ...(doctorOnlyStateMigrations ? { doctorOnlyStateMigrations: true } : {}),
-          legacySessionSurfaces,
-        });
-        recordDoctorHealthWarnings(
-          ctx,
-          [],
-          migrated.stepReceipts.flatMap((receipt) =>
-            receipt.outcome === "warning" || receipt.outcome === "deferred" ? receipt.warnings : [],
-          ),
-        );
-        noteDoctorRepairResult(migrated);
+  const legacyState = await detectLegacyStateMigrations({
+    cfg: ctx.cfg,
+    ...(doctorOnlyStateMigrations ? { doctorOnlyStateMigrations: true } : {}),
+    legacySessionSurfaces,
+  });
+  if (legacyState.warnings.length > 0) {
+    note(legacyState.warnings.join("\n"), "Doctor warnings");
+  }
+  if (legacyState.notices.length > 0) {
+    note(legacyState.notices.join("\n"), "Doctor notices");
+  }
+  if (legacyState.preview.length > 0) {
+    note(legacyState.preview.join("\n"), "Legacy state detected");
+    const migrate =
+      ctx.options.nonInteractive === true
+        ? true
+        : await ctx.prompter.confirm({
+            message: "Migrate detected legacy state now?",
+            initialValue: true,
+          });
+    if (migrate) {
+      const migrated = await runLegacyStateMigrations({
+        detected: legacyState,
+        config: ctx.cfg,
+        ...(doctorOnlyStateMigrations ? { doctorOnlyStateMigrations: true } : {}),
+        legacySessionSurfaces,
+      });
+      recordDoctorHealthWarnings(
+        ctx,
+        [],
+        migrated.stepReceipts.flatMap((receipt) =>
+          receipt.outcome === "warning" || receipt.outcome === "deferred" ? receipt.warnings : [],
+        ),
+      );
+      if (migrated.changes.length > 0) {
+        note(migrated.changes.join("\n"), "Doctor changes");
+      }
+      const notices = migrated.notices ?? [];
+      if (notices.length > 0) {
+        note(notices.join("\n"), "Doctor notices");
+      }
+      if (migrated.warnings.length > 0) {
+        note(migrated.warnings.join("\n"), "Doctor warnings");
       }
     }
   }
@@ -344,6 +346,7 @@ async function runSystemdLingerHealth(ctx: DoctorHealthFlowContext): Promise<voi
   }
   const { readGatewayServiceState, resolveGatewayService } = await import("../daemon/service.js");
   const { ensureSystemdUserLingerInteractive } = await import("../commands/systemd-linger.js");
+  const { note } = await import("../../packages/terminal-core/src/note.js");
   const service = resolveGatewayService();
   const state = await readGatewayServiceState(service, { env: process.env });
   if (state.loadState.status !== "loaded") {
@@ -411,6 +414,7 @@ async function runShellCompletionHealth(ctx: DoctorHealthFlowContext): Promise<v
 }
 
 async function runGatewayHealthChecks(ctx: DoctorHealthFlowContext): Promise<void> {
+  const { note } = await import("../../packages/terminal-core/src/note.js");
   const skipReason = ctx.gatewayMaintenanceActive
     ? "Gateway health will be checked after Doctor repair."
     : (await hasActiveGatewayExecCredential(ctx)) && ctx.options.allowExec !== true
@@ -513,6 +517,7 @@ async function runDoctorHealthContributionList(
     ? contributions.filter((contribution) => contribution.updateWork?.kind === "standalone")
     : [];
   if (deferred.length > 0) {
+    const { note } = await import("../../packages/terminal-core/src/note.js");
     note(
       `Omitted during update: ${deferred.map((contribution) => contribution.label).join(", ")}.\nRun \`openclaw doctor\` after the update to inspect these diagnostics.`,
       "Update Doctor scope",

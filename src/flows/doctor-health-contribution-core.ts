@@ -15,11 +15,12 @@ function reportDoctorRepairResult(
   ctx: DoctorHealthFlowContext,
   result: Awaited<ReturnType<typeof import("./doctor-repair-flow.js").runDoctorHealthRepairs>>,
   findings: readonly HealthFinding[],
+  note: typeof import("../../packages/terminal-core/src/note.js").note,
 ): void {
   ctx.cfg = result.config;
   renderStructuredHealthFindings(ctx, findings);
   recordDoctorHealthWarnings(ctx, findings, result.warnings);
-  noteDoctorRepairResult(result);
+  noteDoctorRepairResult(result, note);
 }
 
 function createDoctorHealthCheckContext<T extends object>(ctx: DoctorHealthFlowContext, input: T) {
@@ -45,6 +46,7 @@ export async function runStructuredHealthRepairs(
   const { registerBundledHealthChecks } = await import("./bundled-health-checks.js");
   const { listExtensionHealthChecksForDoctor } = await import("./health-check-registry.js");
   const { runDoctorHealthRepairs } = await import("./doctor-repair-flow.js");
+  const { note } = await import("../../packages/terminal-core/src/note.js");
 
   const workspaceDir = resolveDoctorWorkspaceDir(ctx.cfg, ctx.env);
   const availabilityFindings = registerBundledHealthChecks({
@@ -65,7 +67,12 @@ export async function runStructuredHealthRepairs(
     }),
     { checks },
   );
-  reportDoctorRepairResult(ctx, result, [...availabilityFindings, ...result.remainingFindings]);
+  reportDoctorRepairResult(
+    ctx,
+    result,
+    [...availabilityFindings, ...result.remainingFindings],
+    note,
+  );
 }
 
 export async function runCoreContributionHealth(
@@ -77,6 +84,7 @@ export async function runCoreContributionHealth(
   }
   const { CORE_HEALTH_CHECKS } = await import("./doctor-core-checks.js");
   const { runDoctorHealthRepairs } = await import("./doctor-repair-flow.js");
+  const { note } = await import("../../packages/terminal-core/src/note.js");
 
   const selectedIds = new Set(checkIds);
   const checks = CORE_HEALTH_CHECKS.filter((check) => selectedIds.has(check.id));
@@ -93,7 +101,7 @@ export async function runCoreContributionHealth(
     }),
     { checks, dryRun },
   );
-  reportDoctorRepairResult(ctx, result, dryRun ? result.findings : result.remainingFindings);
+  reportDoctorRepairResult(ctx, result, dryRun ? result.findings : result.remainingFindings, note);
 }
 
 function formatHealthFindings(findings: readonly HealthFinding[]): string {

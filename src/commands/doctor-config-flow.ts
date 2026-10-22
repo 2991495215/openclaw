@@ -118,6 +118,11 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
       preflight.deferredPluginMigrations?.map((pending) => pending.pluginId) ?? [],
   });
   const runWithPluginMetadataSnapshot = pluginMetadataSnapshotScope.run;
+  const invalidatePluginMetadataSnapshot = () => {
+    // Filesystem/install repairs replace the authoritative plugin generation.
+    pluginMetadataSnapshotState.current = undefined;
+    pluginMetadataSnapshotScope.invalidate();
+  };
   const runWithCurrentPluginMetadata = <T>(config: OpenClawConfig, run: () => T): T => {
     const soleAgentId = tryResolveSoleAgentId(config);
     return runWithPluginMetadataSnapshot(
@@ -615,20 +620,13 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     metadataSnapshot: pluginMetadataSnapshotState.current,
     runWithCurrentPluginMetadata,
   });
-  const invalidatePluginMetadataSnapshot = () => {
-    // Filesystem/install repairs replace the authoritative plugin generation.
-    delete configResult.preflightLegacyStateConfig;
-    pluginMetadataSnapshotState.current = undefined;
-    pluginMetadataSnapshotScope.invalidate();
-  };
 
   // Queued repair panels describe candidate mutations; the write runner prints
   // them as "Doctor changes" only after the atomic write commits. A blocked
   // write drops them — its blocking note already states nothing was changed.
   const pendingChangePanels = changesPanelSink.drain();
 
-  const configResult = {
-    [Symbol.asyncDispose]: () => resources.disposeAsync(),
+  return {
     ...finalized,
     ...(shouldWriteConfig && sessionStoreOwnerRecovery.changes.length > 0
       ? {
@@ -669,5 +667,4 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     runWithPluginMetadataSnapshot,
     invalidatePluginMetadataSnapshot,
   };
-  return configResult;
 }
