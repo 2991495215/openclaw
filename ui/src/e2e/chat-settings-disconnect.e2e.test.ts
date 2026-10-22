@@ -26,8 +26,6 @@ suite.define(() => {
         const composer = page.locator(".agent-chat__composer-combobox textarea");
         await composer.fill(prompt);
         await page.evaluate(() => {
-          // Run after the delegated UI click handler has admitted the input, but before
-          // the native MessageChannel handoff. No app promise or socket rejection is mocked.
           const interrupt = (event: MouseEvent) => {
             if (
               !(event.target instanceof Element) ||
@@ -46,10 +44,6 @@ suite.define(() => {
         await gateway.setOnline(true);
         await page.locator(".agent-chat__input--offline").waitFor({ state: "detached" });
         await expectBrowser(composer).toBeEnabled();
-        // The reconnect fixture answers history and roster reads; the unacknowledged
-        // settings request belongs to the retired socket and must already have settled.
-        // An empty composer changes the accessible name to "Write a message to send."
-        // Keep baseline capture reachable when the interrupted row retained the input.
         const send = main.locator("button.chat-send-btn--send");
         await expectBrowser(send).toBeVisible();
         const frame = await takeControlUiScreenshotFrame(page, main, [composer], {

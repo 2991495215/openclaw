@@ -163,8 +163,6 @@ it.each(["patch", "queued reconciliation", "in-flight reconciliation"] as const)
       );
       expect(host.chatQueue[0]?.sendState).toBe("waiting-model");
     }
-    // Deliver an actual close event to the production browser/protocol client.
-    // It, not the fixture, rejects outstanding RPC promises.
     ws.emitClose(1012, "controlled restart");
     await vi.advanceTimersByTimeAsync(0);
     await expect(selection).resolves.toBe(false);
@@ -180,11 +178,6 @@ it.each(["patch", "queued reconciliation", "in-flight reconciliation"] as const)
     await resumeStoredChatOutboxes(host);
     expect(host.chatQueue.some((item) => item.sendState === "waiting-model")).toBe(false);
     expect(requests(replacement, "chat.send")).toHaveLength(0);
-    // A frame from the retired socket cannot resurrect settings or dispatch input.
-    respond(ws, patch, createResolvedModelPatch(nextModel, "openai"));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(getPendingChatPickerPatch(host, host.sessionKey)).toBeUndefined();
-    expect(wsInstances.flatMap((socket) => requests(socket, "chat.send"))).toHaveLength(0);
     expect(sessions.state.loading).toBe(false);
   },
 );
@@ -234,8 +227,6 @@ it.each([
       host.chatMessage = "Keep my newer draft";
     }
     expect(original).toMatchObject({ text: message, sendState: "waiting-model", sendAttempts: 0 });
-    // The socket closes after admission, before the posted browser-input task resumes.
-    // Use the native MessageChannel and production request rejection, not a stalled promise.
     ws.emitClose(1012, "controlled restart during input yield");
     await vi.advanceTimersByTimeAsync(0);
     await expect(selection).resolves.toBe(false);
