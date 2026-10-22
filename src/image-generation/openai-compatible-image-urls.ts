@@ -83,12 +83,14 @@ export async function inlineOpenAiCompatibleImageUrls(
     try {
       // Storage errors can reflect provider credentials without receiving auth headers.
       if (!download.ok) {
+        void download.body?.cancel().catch(() => undefined);
         throw new ProviderHttpError(`${downloadLabel} failed (HTTP ${download.status})`, {
           status: download.status,
         });
       }
       const mimeType = download.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase();
       if (!mimeType || !/^image\/[a-z0-9.+-]+$/.test(mimeType)) {
+        void download.body?.cancel().catch(() => undefined);
         throw new Error(`${downloadLabel}: expected an image Content-Type`);
       }
       const buffer = await readProviderBinaryResponse(download, downloadLabel, "image", {
