@@ -320,6 +320,10 @@ async function alignsNativeHeaders(
     const header = page.locator(".sidebar-panel-header");
     const toggle = header.getByRole("button", { name: "Collapse sidebar" });
     await toggle.waitFor();
+    // The header appears before the sidebar's expansion transition finishes.
+    await expect
+      .poll(() => header.evaluate((element) => element.getBoundingClientRect().width))
+      .toBe(geometry.row.width);
     const panelGeometry = await header.evaluate((element) => {
       const title = element.firstElementChild!.getBoundingClientRect();
       const collapseBounds = element
