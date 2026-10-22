@@ -47,6 +47,7 @@ const css = readStyles(
     "channels",
     "plugins",
     "usage",
+    "apps",
     "chat/startup-layout",
     "chat/layout",
     "chat/text",
@@ -78,15 +79,20 @@ fixture.describe("Control UI forced-colors indicators", () => {
       "plugins-item__detail-button",
       "session-bar-selection",
     ];
+    const pairingClasses = ["device-pair-setup__get-apps", "apps-pair-hint"];
+    const selectors = [
+      ...classes.map((name) => `.${name}`),
+      ...pairingClasses.map((name) => `.${name} button`),
+    ];
     await withBrowserPage(
       fixture.page({ forcedColors: "active", viewport: { width: 900, height: 500 } }),
       async (page) => {
         await page.setContent(
-          `<!doctype html><html data-theme="light"><head><style>${css}</style></head><body><main style="margin:40px;padding:24px"><h1>Keyboard focus in forced colors</h1>${classes.map((name) => `<p><button type="button" class="${name}">${name}</button></p>`).join("")}</main></body></html>`,
+          `<!doctype html><html data-theme="light"><head><style>${css}</style></head><body><main style="margin:40px;padding:24px"><h1>Keyboard focus in forced colors</h1>${classes.map((name) => `<p><button type="button" class="${name}">${name}</button></p>`).join("")}${pairingClasses.map((name) => `<p class="${name}"><button type="button">${name}</button></p>`).join("")}</main></body></html>`,
         );
         const indicators = [];
-        for (const name of classes) {
-          const button = page.locator(`.${name}`);
+        for (const selector of selectors) {
+          const button = page.locator(selector);
           await page.keyboard.press("Tab");
           expect(await button.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
           indicators.push(
@@ -102,10 +108,10 @@ fixture.describe("Control UI forced-colors indicators", () => {
           const frame = await takeControlUiScreenshotFrame(page, page.locator("main"), [button], {
             animations: "disabled",
           });
-          writeFileSync(path.join(artifactDir, `${name}.png`), frame.png);
+          writeFileSync(path.join(artifactDir, `${selector}.png`), frame.png);
         }
         expect(indicators).toEqual(
-          classes.map(() => ({ style: "solid", width: "2px", shadow: "none" })),
+          selectors.map(() => ({ style: "solid", width: "2px", shadow: "none" })),
         );
       },
     );
