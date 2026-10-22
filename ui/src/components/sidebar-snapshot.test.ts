@@ -99,6 +99,7 @@ function fixture(initialAgentId = "main", initialPageScopeId: string | null = nu
   const foreground = { foregroundReady: true };
   const host: Parameters<typeof createSidebarSnapshot>[0] = {
     sidebarSnapshot: null,
+    sidebarSnapshotFallback: null,
     sessionDataContext: {
       gateway,
       connectionBootstrap: foreground,
@@ -111,15 +112,22 @@ function fixture(initialAgentId = "main", initialPageScopeId: string | null = nu
     expandedAgentId: () => selectedAgentId,
     captureSidebarSnapshot: capture,
     sidebarSnapshotSettled: () => settled,
+    canRetainSidebarSnapshot: () => true,
+    synchronizeSidebarSnapshotFallback() {},
     restoreSidebarSnapshot(value) {
       host.sidebarSnapshot = value;
       restored.resolve();
     },
-    releaseSidebarSnapshot() {
+    releaseSidebarSnapshot: vi.fn((complete = true) => {
+      host.sidebarSnapshotFallback =
+        !complete && host.sidebarSnapshot
+          ? { model: host.sidebarSnapshot, rootsReady: false, readyParents: new Set() }
+          : null;
       host.sidebarSnapshot = null;
-    },
+    }),
     clearSidebarSnapshot() {
       host.sidebarSnapshot = null;
+      host.sidebarSnapshotFallback = null;
     },
   };
   const snapshotOwner = createSidebarSnapshot(host);
@@ -456,6 +464,73 @@ describe("sidebar snapshot lifecycle", () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(test.host.sidebarSnapshot).toBeNull();
       expect(test.capture).not.toHaveBeenCalled();
+    },
+  );
+
+  it("hands off partially at the cap and finishes once the roster settles", async () => {
+    const idle = vi.fn<(callback: IdleRequestCallback) => number>().mockReturnValue(1);
+    vi.stubGlobal("requestIdleCallback", idle);
+    vi.stubGlobal("cancelIdleCallback", vi.fn());
+    const test = await warmFixture();
+    await vi.advanceTimersByTimeAsync(1800);
+    expect(test.host.sidebarSnapshot).toEqual(model);
+    expect(test.host.sidebarSnapshotFallback).toBeNull();
+    test.publish();
+
+    await vi.advanceTimersByTimeAsync(1799);
+    expect(test.host.sidebarSnapshot).toEqual(model);
+    expect(test.host.sidebarSnapshotFallback).toBeNull();
+    expect(idle).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(test.host.sidebarSnapshot).toBeNull();
+    expect(test.host.sidebarSnapshotFallback?.model).toEqual(model);
+    expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledExactlyOnceWith(false);
+    test.snapshotOwner.synchronize();
+    expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledTimes(1);
+    expect(test.capture).not.toHaveBeenCalled();
+
+    void test.settle();
+    test.snapshotOwner.synchronize();
+    expect(test.host.sidebarSnapshotFallback?.model).toEqual(model);
+    expect(idle).toHaveBeenCalledOnce();
+    idle.mock.calls[0]![0]({ didTimeout: false, timeRemaining: () => 10 });
+    expect(test.host.sidebarSnapshot).toBeNull();
+    expect(test.host.sidebarSnapshotFallback).toBeNull();
+
+    test.snapshotOwner.synchronize();
+    await vi.advanceTimersByTimeAsync(1800);
+    expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["account", "boot owner"] as const)(
+    "retires a partial handoff and its pending idle callback when the %s changes",
+    async (change) => {
+      const idle = vi.fn<(callback: IdleRequestCallback) => number>().mockReturnValue(1);
+      vi.stubGlobal("requestIdleCallback", idle);
+      vi.stubGlobal("cancelIdleCallback", vi.fn());
+      const test = await warmFixture();
+      test.publish();
+      await vi.advanceTimersByTimeAsync(1800);
+      expect(test.host.sidebarSnapshot).toBeNull();
+      expect(test.host.sidebarSnapshotFallback?.model).toEqual(model);
+
+      void test.settle();
+      test.snapshotOwner.synchronize();
+      expect(idle).toHaveBeenCalledOnce();
+      if (change === "account") {
+        test.publish({ selfUser: { id: "profile-b" } });
+      } else {
+        clearBootRecords(scope.gatewayScope, { recoveryScope: scope.recoveryScope });
+      }
+      expect(test.host.sidebarSnapshot).toBeNull();
+      expect(test.host.sidebarSnapshotFallback).toBeNull();
+
+      idle.mock.calls[0]![0]({ didTimeout: false, timeRemaining: () => 10 });
+      await vi.advanceTimersByTimeAsync(1800);
+      expect(test.host.sidebarSnapshot).toBeNull();
+      expect(test.host.sidebarSnapshotFallback).toBeNull();
+      expect(test.host.releaseSidebarSnapshot).toHaveBeenCalledExactlyOnceWith(false);
     },
   );
 

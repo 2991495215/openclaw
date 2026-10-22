@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, onTestFinished, vi, type MockInstance } from "vitest";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.js";
 import { createDeferred } from "../../../test/helpers/promise.ts";
-import type { GatewaySessionRow } from "../api/types.ts";
+import type { GatewaySessionRow, SessionsListResult } from "../api/types.ts";
 import { createChatSubmissions } from "../app/chat-submissions.ts";
 import type { ApplicationOverlaySnapshot } from "../app/overlays-types.ts";
 import * as sessionDisplay from "../lib/session-display.ts";
@@ -11,6 +11,7 @@ import {
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
   sessionPullRequestsForGateway,
 } from "../lib/session-pull-requests.ts";
+import { childSessionListQuery } from "../lib/sessions/child-session-data.ts";
 import { captureBootRoster } from "../lib/sessions/session-boot-roster.ts";
 import { admitSidebarBootScope } from "../pages/chat/session-snapshot-prewarm.ts";
 import { SessionSnapshotStore } from "../pages/chat/session-snapshot-store.ts";
@@ -133,6 +134,161 @@ async function expectRowRefresh(sidebar: Sidebar, change: (() => void) | Partial
 }
 
 describe("sidebar projection memo", () => {
+  it("never restores completed omissions when another boot child outlives a refresh", async () => {
+    const child = session("removed-child", { spawnedBy: key("parent") });
+    const keptChild = session("kept-child", { spawnedBy: key("parent") });
+    const waitingChild = session("waiting-child", { spawnedBy: key("waiting") });
+    const parent = session("parent", { childSessions: [child.key, keptChild.key] });
+    const waiting = session("waiting", { childSessions: [waitingChild.key] });
+    const removed = session("removed-root");
+    const { sidebar, sessions, row } = await mount([
+      session("parent"),
+      session("waiting"),
+      removed,
+    ]);
+    sidebar.connected = true;
+    const owner = getAppSidebarOwner(sidebar.hostElement)!;
+    const emptyChildren: SessionsListResult = {
+      ...sessions.sessions.state.result!,
+      sessions: [],
+      count: 0,
+      totalCount: 0,
+      hasMore: false,
+    };
+    const waitingResponse = createDeferred<SessionsListResult>();
+    const refreshResponse = createDeferred<SessionsListResult>();
+    const refreshStarted = createDeferred();
+    let refreshing = false;
+    sessions.list.mockImplementation(async (options) => {
+      if (options?.spawnedBy === waiting.key) {
+        return waitingResponse.promise;
+      }
+      if (options?.spawnedBy === parent.key) {
+        if (refreshing) {
+          refreshStarted.resolve();
+          return refreshResponse.promise;
+        }
+        return { ...emptyChildren, sessions: [keptChild], count: 1, totalCount: 1 };
+      }
+      return sessions.sessions.state.result;
+    });
+    sessions.publishList({
+      result: {
+        ...sessions.sessions.state.result!,
+        sessions: [parent, waiting, removed],
+        count: 3,
+      },
+    });
+    const navigation = sidebar.getSessionNavigationState();
+    const cachedParent = (entry: GatewaySessionRow, children: GatewaySessionRow[]) => ({
+      ...navigation.toSidebarSession(entry),
+      children: children.map((value) => navigation.toSidebarSession(value)),
+      childLoadParentKeys: children.length ? [entry.key] : [],
+    });
+    const cachedRows = snapshotSessions(
+      [
+        cachedParent(removed, []),
+        cachedParent(waiting, [waitingChild]),
+        cachedParent(parent, [child, keptChild]),
+      ],
+      () => ({ childrenDisplayMode: "expanded" }),
+    );
+    owner.restoreSidebarSnapshot({
+      ...sidebarBootSnapshot(captureBootRoster(sessions.sessions.state)),
+      mode: "chip",
+      sessions: cachedRows,
+      sections: [
+        {
+          id: "ungrouped",
+          rows: cachedRows,
+          totalRowCount: 3,
+          visibleRowCount: 3,
+          visibleLimit: 10,
+          collapsedVisibleRowCount: 3,
+          renderHeader: false,
+        },
+      ],
+    });
+    sessions.publish({ loading: true });
+    owner.releaseSidebarSnapshot(false);
+    const waitingRead = owner.sessionData.loadChildSessions(waiting.key);
+    try {
+      await owner.sessionData.loadChildSessions(parent.key);
+      sessions.publishList({
+        result: { ...sessions.sessions.state.result!, sessions: [parent, waiting], count: 2 },
+        loading: false,
+        error: null,
+      });
+      owner.invalidate();
+      await waitForSolid(() => {
+        expect(owner.sidebarSnapshotFallback).not.toBeNull();
+        expect(row(removed.key)).toBeNull();
+        expect(row(child.key)).toBeNull();
+        expect(row(waitingChild.key)).not.toBeNull();
+      });
+      const roots = () =>
+        [...sidebar.querySelectorAll(".sidebar-session-content .sidebar-recent-session")]
+          .map((element) => element.getAttribute("data-session-key"))
+          .filter((value) => value === parent.key || value === waiting.key);
+      expect(roots()).toEqual([parent.key, waiting.key]);
+
+      sessions.publish({ loading: true });
+      refreshing = true;
+      const refresh = sessions.sessions
+        .refreshList({ ...childSessionListQuery(parent.key), source: "sidebar", force: true })
+        .catch(() => undefined);
+      await refreshStarted.promise;
+      await settleLitElement(sidebar);
+      expect(owner.sidebarSnapshotFallback).not.toBeNull();
+      expect(row(removed.key)).toBeNull();
+      expect(row(child.key)).toBeNull();
+      expect(row(waitingChild.key)).not.toBeNull();
+      expect(roots()).toEqual([parent.key, waiting.key]);
+
+      refreshResponse.reject(new Error("Synthetic child refresh failed"));
+      await refresh;
+      sessions.publish({ loading: false, error: "Synthetic root refresh failed" });
+      await settleLitElement(sidebar);
+      expect(owner.sidebarSnapshotFallback).not.toBeNull();
+      expect(row(removed.key)).toBeNull();
+      expect(row(child.key)).toBeNull();
+      expect(row(waitingChild.key)).not.toBeNull();
+      expect(roots()).toEqual([parent.key, waiting.key]);
+    } finally {
+      refreshResponse.resolve(emptyChildren);
+      waitingResponse.resolve(emptyChildren);
+      await waitingRead;
+    }
+    await waitForSolid(() => expect(owner.sidebarSnapshotFallback).toBeNull());
+  });
+
+  it.each(["mode", "pages", "online", "automatic owner", "status"] as const)(
+    "retires partial cached rows when the %s scope changes",
+    async (change) => {
+      const { sidebar, sessions } = await mount([session("cached")]);
+      const owner = getAppSidebarOwner(sidebar.hostElement)!;
+      vi.spyOn(owner, "sidebarSnapshotSettled").mockReturnValue(false);
+      sidebar.sidebarAgentsMode = "roster";
+      const snapshot = sidebarBootSnapshot(captureBootRoster(sessions.sessions.state));
+      owner.restoreSidebarSnapshot(snapshot);
+      owner.releaseSidebarSnapshot(false);
+      expect(owner.sidebarSnapshot).toBeNull();
+      expect(owner.sidebarSnapshotFallback?.model).toBe(snapshot);
+
+      if (change === "mode") {
+        sidebar.sidebarAgentsMode = "chip";
+      } else if (change === "automatic owner") {
+        owner.sessionOwnerFilter.set(bob.id, false, { automatic: true });
+      } else if (change === "status") {
+        owner.sessionOrganizer.setSessionsStatusFilter("archived");
+      } else {
+        sidebar.navigationView = change;
+      }
+      owner.snapshot.synchronize();
+      expect(owner.sidebarSnapshotFallback).toBeNull();
+    },
+  );
+
   it.each([10, 30])("keeps newer pagination at %s rows through cached handoff", async (limit) => {
     const sessionsToShow = Array.from({ length: 40 }, (_, index) => session(`row-${index}`));
     const { sidebar, sessions } = await mount(sessionsToShow);

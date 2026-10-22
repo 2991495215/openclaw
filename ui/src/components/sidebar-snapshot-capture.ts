@@ -5,11 +5,12 @@ import { loadSettings } from "../app/settings.ts";
 import type { AuthenticatedUser } from "../app/user-profile.ts";
 import { rosterActivityStore } from "../lib/agents/roster-activity-store.ts";
 import { presenceViewerLastActivity, profilePresenceViewer } from "../lib/presence-users.ts";
+import { isSidebarChildSessionSettled } from "./app-sidebar-child-session-data.ts";
 import { resolveSidebarOnline, sidebarOnlineOrder } from "./app-sidebar-online.tsx";
 import { readSidebarBrandPresentation, type AppSidebarRenderHost } from "./app-sidebar-render.tsx";
 import type { SidebarVisibleSections } from "./app-sidebar-session-projection.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
-import { hasSidebarListFilter } from "./session-data-events.ts";
+import { isSidebarSessionListSettled } from "./session-data-events.ts";
 import { resolveSidebarSessionRowSubtitle } from "./session-row-subtitle.ts";
 import {
   parseSidebarSnapshot,
@@ -44,23 +45,14 @@ export function isSidebarSnapshotSettled(host: AppSidebarRenderHost): boolean {
   ) {
     return false;
   }
-  if (host.sidebarAgentsMode === "roster") {
-    const roster = rosterActivityStore(context).snapshot;
-    return (
-      (roster.membershipReady || roster.error !== null) &&
-      !roster.loading &&
-      roster.involvingMe === host.sidebarSessionOwnerFilter().involvingMe
-    );
-  }
-  if (hasSidebarListFilter(host)) {
-    const query = host.sessionData.sessionListQuery(host.expandedAgentId());
-    const selected = context.sessions.listSnapshot(query);
-    return !selected.loading && (selected.readSucceeded === true || selected.error !== null);
-  }
+  const fallback = host.sidebarSnapshotFallback;
   return (
-    !host.sessionData.sessionsLoading &&
-    (Boolean(host.sessionData.sessionMutationError ?? context.sessions.state.error) ||
-      (Boolean(host.sessionData.sessionsResult) && !context.sessions.presentation.resultCached))
+    (fallback?.rootsReady ?? isSidebarSessionListSettled(host, host.sessionData)) &&
+    [...host.childSessionParents()].every((key) =>
+      fallback
+        ? fallback.readyParents.has(key)
+        : isSidebarChildSessionSettled(host.sessionData, key),
+    )
   );
 }
 
@@ -79,6 +71,7 @@ export function captureSidebarSnapshotModel(
   const roster = rosterActivityStore(context).snapshot;
   if (
     host.sidebarSnapshot ||
+    host.sidebarSnapshotFallback ||
     (host.navigationView === "pages" &&
       host.navigationCatalog.dashboards?.readSucceeded !== true) ||
     host.sessionData.sessionMutationError !== null ||

@@ -3,6 +3,7 @@ import { captureBootRoster } from "../lib/sessions/session-boot-roster.ts";
 import { sessionsResult } from "../lib/sessions/session-capability.test-support.ts";
 import {
   parseSidebarSnapshot,
+  mergeSidebarSnapshotRows,
   restoreSnapshotSession,
   snapshotSections,
   snapshotSessions,
@@ -26,6 +27,35 @@ function displayRow(key: string, label: string, pinned = false) {
     pinned ? key : "",
   );
 }
+
+it("retains unresolved membership at the cap while live rows own updates and completed removals", () => {
+  const child = displayRow("agent:main:child", "Cached child");
+  const parent = {
+    ...displayRow("agent:main:parent", "Cached parent"),
+    children: [child],
+    childLoadParentKeys: ["agent:main:parent"],
+  };
+  const removed = displayRow("agent:main:removed", "Removed root");
+  const cached = snapshotSessions([parent, removed]);
+  const created = displayRow("agent:main:new", "New root");
+  const renamed = { ...parent, label: "Renamed parent", children: [], status: "running" as const };
+  const live = [created, renamed];
+  const pending = mergeSidebarSnapshotRows(cached, live, "", false, () => false);
+  expect(pending.map((row) => row.key)).toEqual([
+    "agent:main:parent",
+    "agent:main:removed",
+    "agent:main:new",
+  ]);
+  expect(pending[0]).toMatchObject({ label: "Renamed parent", status: "running" });
+  expect(pending[0]!.children.map((row) => row.key)).toEqual(["agent:main:child"]);
+  const rootReady = mergeSidebarSnapshotRows(cached, live, "", true, () => false);
+  expect(rootReady.map((row) => row.key)).toEqual(["agent:main:new", "agent:main:parent"]);
+  expect(rootReady[0]).toBe(created);
+  const complete = mergeSidebarSnapshotRows(cached, live, "", true, () => true);
+  expect(complete).toEqual(live);
+  expect(complete[1]).toBe(renamed);
+  expect(complete[1]!.children).toEqual([]);
+});
 it("keeps primary routing and header facts in the display snapshot without private or live authority", () => {
   const stable = {
     key: "agent:main:dashboard:cedar",

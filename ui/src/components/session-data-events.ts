@@ -1,6 +1,7 @@
 import { SIDEBAR_SESSION_ROSTER_LIMIT } from "../../../src/shared/session-list-limits.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import type { AgentCapability } from "../lib/agents/index.ts";
+import { rosterActivityStore } from "../lib/agents/roster-activity-store.ts";
 import { formatUiError } from "../lib/format-error.ts";
 import { canCallGatewayMethod } from "../lib/gateway-methods.ts";
 import { listen } from "../lib/reactive/listener.ts";
@@ -126,6 +127,39 @@ type SidebarSessionQueryOwner = {
 export function hasSidebarListFilter(owner: SidebarSessionQueryOwner): boolean {
   const { ownerId, involvingMe } = owner.sidebarSessionOwnerFilter();
   return owner.sidebarSessionStatusFilter() !== "active" || Boolean(ownerId || involvingMe);
+}
+
+export function isSidebarSessionListSettled(
+  host: SidebarSessionQueryOwner & {
+    readonly sessionDataContext: ApplicationContext;
+    readonly sidebarAgentsMode: "chip" | "roster";
+    expandedAgentId(): string;
+  },
+  owner: Pick<
+    SidebarSessionListOwner,
+    "sessionsLoading" | "sessionsResult" | "sessionMutationError"
+  >,
+): boolean {
+  const context = host.sessionDataContext;
+  if (host.sidebarAgentsMode === "roster") {
+    const roster = rosterActivityStore(context).snapshot;
+    return (
+      (roster.membershipReady || roster.error !== null) &&
+      !roster.loading &&
+      roster.involvingMe === host.sidebarSessionOwnerFilter().involvingMe
+    );
+  }
+  if (hasSidebarListFilter(host)) {
+    const selected = context.sessions.listSnapshot(
+      sidebarSessionListQuery(host, host.expandedAgentId()),
+    );
+    return !selected.loading && (selected.readSucceeded === true || selected.error !== null);
+  }
+  return (
+    !owner.sessionsLoading &&
+    (Boolean(owner.sessionMutationError ?? context.sessions.state.error) ||
+      (Boolean(owner.sessionsResult) && !context.sessions.presentation.resultCached))
+  );
 }
 
 export function sidebarSessionListQuery(owner: SidebarSessionQueryOwner, agentId: string) {

@@ -33,8 +33,10 @@ import {
   SIDEBAR_SESSION_PAGE_SIZE,
   storeSidebarCatalogGrouping,
   type SidebarRecentSession,
+  type SidebarSessionStatusFilter,
   type SidebarToolActivity,
 } from "./app-sidebar-session-types.ts";
+import { isSidebarSessionListSettled } from "./session-data-events.ts";
 import { SessionOrganizer } from "./session-organizer.ts";
 import { SidebarAgentRoster, renderSidebarPinnedSession } from "./sidebar-agent-roster.tsx";
 import type { createSidebarScroll } from "./sidebar-context-controller.ts";
@@ -100,6 +102,11 @@ export class AppSidebarOwner extends AppSidebarSessionNavigationElement implemen
   }
 
   restoreSidebarSnapshot(model: SidebarSnapshotModel): void {
+    this.snapshotOwnerFilter = [
+      model.ownerId,
+      model.involvingMe,
+      this.sidebarSessionStatusFilter(),
+    ];
     this.sidebarSnapshot = model;
     this.navigationView = model.navigationView;
     this.sessionOrganizer.collapsedSessionSections = new Set(model.collapsedSections);
@@ -114,8 +121,45 @@ export class AppSidebarOwner extends AppSidebarSessionNavigationElement implemen
     sidebarOnlineOrder(this).restore(model.onlineUsers, new Map(model.onlineCounts));
   }
 
-  releaseSidebarSnapshot(): void {
-    const snapshot = this.sidebarSnapshot;
+  private snapshotOwnerFilter:
+    | readonly [string | null, boolean, SidebarSessionStatusFilter]
+    | undefined;
+
+  canRetainSidebarSnapshot(model: SidebarSnapshotModel): boolean {
+    const filter = this.sidebarSessionOwnerFilter();
+    return (
+      model.mode === this.sidebarAgentsMode &&
+      model.navigationView === this.navigationView &&
+      this.snapshotOwnerFilter?.[0] === model.ownerId &&
+      this.snapshotOwnerFilter[1] === model.involvingMe &&
+      this.snapshotOwnerFilter[2] === this.sidebarSessionStatusFilter() &&
+      filter.ownerId === model.ownerId &&
+      filter.involvingMe === model.involvingMe
+    );
+  }
+
+  synchronizeSidebarSnapshotFallback(): void {
+    const fallback = this.sidebarSnapshotFallback;
+    if (!fallback) {
+      return;
+    }
+    // Refreshes and collapsed-query retirement cannot revive the boot cache.
+    const rootsReady = fallback.rootsReady || isSidebarSessionListSettled(this, this.sessionData);
+    const addedParents = [...this.sessionData.loadedChildSessionKeys].filter(
+      (key) => !fallback.readyParents.has(key),
+    );
+    if (rootsReady !== fallback.rootsReady || addedParents.length > 0) {
+      this.sidebarSnapshotFallback = {
+        model: fallback.model,
+        rootsReady,
+        readyParents: new Set([...fallback.readyParents, ...addedParents]),
+      };
+    }
+  }
+
+  releaseSidebarSnapshot(complete = true): void {
+    const fallback = this.sidebarSnapshotFallback;
+    const snapshot = this.sidebarSnapshot ?? fallback?.model;
     if (snapshot) {
       this.pinnedSessions.seed(snapshot.pinnedSessions);
       // Newer pagination choices override the saved view, independently per mode.
@@ -131,10 +175,17 @@ export class AppSidebarOwner extends AppSidebarSessionNavigationElement implemen
         ? { entries: snapshot.entries, plugins: snapshot.plugins }
         : null;
     this.sidebarSnapshot = null;
+    this.sidebarSnapshotFallback =
+      !complete && snapshot && this.canRetainSidebarSnapshot(snapshot)
+        ? (fallback ?? { model: snapshot, rootsReady: false, readyParents: new Set() })
+        : null;
+    this.synchronizeSidebarSnapshotFallback();
   }
 
   clearSidebarSnapshot(): void {
     this.sidebarSnapshot = null;
+    this.sidebarSnapshotFallback = null;
+    this.snapshotOwnerFilter = undefined;
     this.sidebarPluginSnapshot = null;
     this.sessionProjection.children.restore([]);
     sidebarOnlineOrder(this).clear();

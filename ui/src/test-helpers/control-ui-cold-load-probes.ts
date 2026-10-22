@@ -286,9 +286,9 @@ function installColdLoadProbes(
       if (sidebarRegistration.matches(host, owner) && owner !== solidSidebarOwner) {
         solidSidebarOwner = owner;
         const release = owner.releaseSidebarSnapshot.bind(owner);
-        owner.releaseSidebarSnapshot = () => {
+        owner.releaseSidebarSnapshot = (complete) => {
           const atMs = performance.now();
-          release();
+          release(complete);
           const handoff: { atMs: number; durationMs: number; frameMs?: number } = {
             atMs,
             durationMs: performance.now() - atMs,

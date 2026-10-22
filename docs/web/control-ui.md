@@ -68,6 +68,8 @@ If the New Session page fails during its initial render, the UI attempts one aut
 
 Reloading a previously visited chat restores the last settled sidebar while the Gateway reconnects. Pinned sessions, plugin rows, roster order, filters, and your display identity keep their places until live data is ready. The footer still reports the current connection status. This browser cache is scoped to the Gateway and profile, expires after 30 days, and excludes incognito sessions. The same snapshot provides the saved session rows and routing defaults for the first chat header. Cached rows never authorize session changes. Sidebar snapshot capture coalesces live updates during idle time and flushes pending changes when the page is hidden or left.
 
+The sidebar waits for expanded child lists before replacing the saved view. If a list is slow, completed updates appear without temporarily removing rows whose membership is still being checked.
+
 A short transcript loads at most one older page automatically when you open or reload a chat. It stops once the visible area is filled, without filling the backscroll buffer. Scroll up or choose **Show earlier** to continue loading older messages, even if the transcript still fits on screen.
 
 The cached transcript also preserves its conversation title when the conversation is outside the saved sidebar page. Live session metadata replaces that display projection when it arrives. Reloading a full-UUID chat link can show that scoped cache while the Gateway confirms the route. Sending and restored queued messages wait for confirmation; a deleted or moved conversation replaces the cached view with the Gateway's result.

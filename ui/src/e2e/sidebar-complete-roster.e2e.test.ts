@@ -1,0 +1,394 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import { asRecord } from "@openclaw/normalization-core/record-coerce";
+import { expect, it } from "vitest";
+import { warmReloadProbe } from "../../../scripts/lib/control-ui-warm-reload-probe.ts";
+import type { GatewaySessionRow } from "../api/types.ts";
+import { CHAT_TRANSCRIPT_LOADING_CHANGED_EVENT } from "../pages/chat/chat-history-events.ts";
+import { evaluateControlUiContext } from "../test-helpers/control-ui-e2e-context.ts";
+import { takeControlUiScreenshotFrame } from "../test-helpers/control-ui-e2e-screenshot.ts";
+import {
+  controlUiBundledGatewayUrl,
+  controlUiBundledSettingsStorageKey,
+  controlUiSessionUrl,
+  installMockGateway,
+  pauseVirtualClock,
+} from "../test-helpers/control-ui-e2e.ts";
+import { createTeamScaleSidebarListOwner } from "../test-helpers/control-ui-sidebar-list-fixture.ts";
+import { createControlUiTeamScaleFixture } from "../test-helpers/control-ui-team-scale-fixture.ts";
+import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+import { chooseSidebarOwner } from "./sidebar-session-menu.test-support.ts";
+
+const suite = createControlUiE2eSuite({ name: "Complete sidebar roster handoff" });
+
+suite.define(() => {
+  it.each([
+    { face: "chat", cap: false },
+    { face: "dashboard", cap: false },
+    { face: "chat", cap: true },
+  ] as const)(
+    "keeps the $face sidebar complete through pending children (cap=$cap)",
+    async ({ face, cap }) => {
+      const fixture = createControlUiTeamScaleFixture({
+        baseUrl: suite.server.baseUrl,
+        sidebarPersistentChildren: true,
+      });
+      const { parentKey, childKeys } = fixture.sidebarPersistentChildren!;
+      const lists = createTeamScaleSidebarListOwner(fixture.sidebarListInput);
+      const requests: Array<{ at: number; returnedAt?: number; params: Record<string, unknown> }> =
+        [];
+      await suite.withPage(
+        { locale: "en-US", serviceWorkers: "block", viewport: { width: 1440, height: 1000 } },
+        async ({ page }) => {
+          if (cap) {
+            await page.clock.install();
+          }
+          await page.route("**/__openclaw__/**", async (route) => {
+            const asset = fixture.assets.get(new URL(route.request().url()).pathname);
+            if (asset) {
+              await route.fulfill({ status: 200, ...asset });
+            } else {
+              await route.fallback();
+            }
+          });
+          await page.addInitScript(
+            ({ settingsKey, ownerKey, entries }) => {
+              localStorage.setItem(
+                settingsKey,
+                JSON.stringify({
+                  sidebarAgentsMode: "chip",
+                  railShortcuts: entries,
+                  navigationByProfile: { "team-person-001": { railShortcuts: entries } },
+                }),
+              );
+              localStorage.setItem(ownerKey, "involving-me");
+            },
+            {
+              settingsKey: controlUiBundledSettingsStorageKey(suite.server.baseUrl),
+              ownerKey: `openclaw.control.sidebarSessionOwnerFilter.v1:${controlUiBundledGatewayUrl(suite.server.baseUrl)}:team-person-001`,
+              entries: fixture.sidebarEntries,
+            },
+          );
+          const gateway = await installMockGateway(
+            page,
+            { ...fixture.scenario, heldMethods: ["connect"] },
+            {
+              requestHandlers: {
+                "sessions.list": async (value) => {
+                  const params = asRecord(value);
+                  if (!params) {
+                    throw new Error("sessions.list requires query parameters");
+                  }
+                  const request = { at: Date.now(), returnedAt: 0, params };
+                  requests.push(request);
+                  request.returnedAt = Date.now();
+                  return lists.list(params).result;
+                },
+                "cron.list": (value) => fixture.listCronJobs(asRecord(value) ?? {}),
+              },
+            },
+          );
+          await page.addInitScript({
+            content: `{ const __name = (fn) => fn; (${warmReloadProbe.toString()})(); }`,
+          });
+          await page.goto(
+            controlUiSessionUrl(suite.server.baseUrl, fixture.selectedSessionKey, face),
+          );
+          await gateway.waitForRequest("connect");
+          await gateway.resolveDeferred("connect");
+          const sidebar = page.locator("aside.sidebar");
+          const capture = async (stage: string) => {
+            const frame = await takeControlUiScreenshotFrame(page, sidebar, [sidebar], {
+              animations: "disabled",
+              elements: [sidebar],
+            });
+            await writeFile(path.join(suite.artifactDir, `${face}-${stage}.png`), frame.png);
+          };
+          const saved = () =>
+            page.locator('aside.sidebar[data-snapshot-state="live"][data-snapshot-saved="true"]');
+          await saved().waitFor();
+          const toggle = sidebar.locator(`[data-child-session-toggle="${parentKey}"]`);
+          await toggle.waitFor();
+          if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+            await toggle.click();
+          }
+          await sidebar.locator(`[data-session-key="${childKeys[0]}"]`).waitFor();
+          const expansion = await page.evaluateHandle(() => {
+            // oxlint-disable-next-line typescript/unbound-method -- preserve the IDB store receiver below.
+            const put = IDBObjectStore.prototype.put;
+            return {
+              done: new Promise<void>((resolve) => {
+                IDBObjectStore.prototype.put = function (this: IDBObjectStore, value, key) {
+                  const request = put.call(this, value, key);
+                  if (
+                    this.name === "sidebarSnapshots" &&
+                    value.model?.sections?.some(
+                      (section: { visibleLimit: number }) => section.visibleLimit > 10,
+                    )
+                  ) {
+                    IDBObjectStore.prototype.put = put;
+                    this.transaction.addEventListener("complete", () => resolve(), { once: true });
+                  }
+                  return request;
+                };
+              }),
+            };
+          });
+          await sidebar
+            .locator(".sidebar-session-content .sidebar-session-pagination__button")
+            .filter({ hasText: "Show more" })
+            .first()
+            .click();
+          await expansion.evaluate((observation) => observation.done);
+          await expansion.dispose();
+          await saved().waitFor();
+          const rowKeys = () =>
+            sidebar
+              .locator(".sidebar-session-content .sidebar-recent-session")
+              .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-key")));
+          const expected = await rowKeys();
+          expect(expected.length).toBeGreaterThan(10);
+
+          await page.reload();
+          await page.locator('aside.sidebar[data-snapshot-state="cached"]').waitFor();
+          await capture("cached");
+          const childMatch = { spawnedBy: parentKey };
+          await gateway.deferNext("sessions.list", childMatch);
+          await gateway.waitForRequest("connect");
+          await gateway.resolveDeferred("connect");
+          const connectedAt = await page.evaluate(() => performance.now());
+          const childRequest = await gateway.waitForRequest("sessions.list", { match: childMatch });
+          const childResult = lists.list(asRecord(childRequest.params)!).result;
+          let childReleased = false;
+          const releaseChildren = async () => {
+            if (!childReleased) {
+              childReleased = true;
+              await gateway.resolveDeferred("sessions.list", childResult, { match: childMatch });
+            }
+          };
+          try {
+            await evaluateControlUiContext(
+              page,
+              (context, eventName) =>
+                new Promise<void>((resolve, reject) => {
+                  const cleanup = () => {
+                    document.removeEventListener(eventName, changed);
+                    window.removeEventListener("pagehide", abandoned);
+                  };
+                  const changed = () => {
+                    // The loading event precedes the committed foreground update.
+                    queueMicrotask(() => {
+                      if (context.connectionBootstrap.foregroundReady) {
+                        cleanup();
+                        resolve();
+                      }
+                    });
+                  };
+                  const abandoned = () => {
+                    cleanup();
+                    reject(new Error("The foreground route was unloaded before readiness"));
+                  };
+                  document.addEventListener(eventName, changed);
+                  window.addEventListener("pagehide", abandoned, { once: true });
+                  changed();
+                }),
+              CHAT_TRANSCRIPT_LOADING_CHANGED_EVENT,
+            );
+            await page.evaluate(
+              () =>
+                new Promise<void>((resolve) => {
+                  requestIdleCallback(() => requestAnimationFrame(() => resolve()));
+                }),
+            );
+            if (cap) {
+              await pauseVirtualClock(page);
+              await page.clock.runFor(1801);
+              await page.clock.resume();
+              await page.locator('aside.sidebar[data-snapshot-state="live"]').waitFor();
+            }
+            // The foreground and root rosters can finish before expanded children.
+            const beforeChildren = {
+              elapsedSinceConnectMs: await page.evaluate(
+                (startedAt) => performance.now() - startedAt,
+                connectedAt,
+              ),
+              state: await sidebar.getAttribute("data-snapshot-state"),
+              rows: await rowKeys(),
+            };
+            await capture("pending-children");
+            expect(
+              await gateway.getRequests("sessions.list", { ownerFirst: true }),
+            ).not.toHaveLength(0);
+
+            const continuityProof = cap
+              ? await page.evaluate(() => Reflect.get(window, "__warmReload").read())
+              : null;
+            let liveUpdates:
+              | {
+                  renamed: string;
+                  created: string;
+                  deleted: string;
+                  selected: string;
+                  ownerId: string;
+                }
+              | undefined;
+            if (cap) {
+              const now = fixture.sidebarListInput.now + 1000;
+              const renamed = {
+                ...fixture.sidebarListInput.rows[1]!,
+                label: "Renamed during reload",
+                displayName: "Renamed during reload",
+                updatedAt: now,
+                snapshotAt: now,
+              };
+              const stopped = {
+                ...fixture.sidebarListInput.rows[2]!,
+                hasActiveRun: false,
+                activeRunIds: [],
+                status: "done",
+                updatedAt: now,
+                snapshotAt: now,
+              } satisfies GatewaySessionRow;
+              const deleted = fixture.sidebarListInput.rows[3]!;
+              const created = {
+                ...fixture.sidebarListInput.rows[4]!,
+                key: "agent:main:chat:00000000-0000-4000-8000-000000009999",
+                sessionId: "created-during-reload",
+                label: "Created during reload",
+                displayName: "Created during reload",
+                owner: fixture.sidebarListInput.rows[0]!.owner,
+                participants: [],
+                hasActiveRun: false,
+                activeRunIds: [],
+                status: "done",
+                updatedAt: now,
+                snapshotAt: now,
+              } satisfies GatewaySessionRow;
+              const renamedRow = sidebar.locator(`[data-session-key="${renamed.key}"]`);
+              const retainedRow = await renamedRow.elementHandle();
+              expect(retainedRow).not.toBeNull();
+              const stoppedRow = sidebar.locator(`[data-session-key="${stopped.key}"]`);
+              expect(await stoppedRow.getAttribute("class")).toContain("session-row-host--running");
+              const refreshBefore = (
+                await gateway.getRequests("sessions.list", { involvingMe: true })
+              ).length;
+              lists.apply({ upsert: [renamed, stopped, created], removeKeys: [deleted.key] });
+              for (const [row, reason] of [
+                [renamed, "patch"],
+                [stopped, "agent.run.finished"],
+                [created, "create"],
+                [deleted, "delete"],
+              ] as const) {
+                await gateway.emitGatewayEvent("sessions.changed", {
+                  sessionKey: row.key,
+                  sessionId: row.sessionId,
+                  agentId: "main",
+                  reason,
+                  ts: now,
+                  ...(reason === "delete" ? {} : { session: row, ancestorSessions: [] }),
+                });
+              }
+              // Advance the list owner's five-second invalidation collection window.
+              await pauseVirtualClock(page);
+              await page.clock.runFor(5001);
+              await page.clock.resume();
+              await gateway.waitForRequest("sessions.list", {
+                match: { involvingMe: true },
+                after: refreshBefore,
+              });
+              await renamedRow.getByText(renamed.label, { exact: true }).waitFor();
+              await sidebar.getByText(created.label, { exact: true }).waitFor();
+              await sidebar
+                .locator(`[data-session-key="${deleted.key}"]`)
+                .waitFor({ state: "detached" });
+              await sidebar
+                .locator(`[data-session-key="${stopped.key}"].session-row-host--running`)
+                .waitFor({ state: "detached" });
+              expect(await retainedRow!.evaluate((element) => element.isConnected)).toBe(true);
+              await retainedRow!.dispose();
+              const ownerId = stopped.owner!.actor.id;
+              await chooseSidebarOwner(page, `owner:${ownerId}`);
+              await gateway.waitForRequest("sessions.list", { match: { ownerId } });
+              await sidebar
+                .locator(`[data-session-key="${parentKey}"]`)
+                .waitFor({ state: "detached" });
+              await sidebar
+                .getByText(created.label, { exact: true })
+                .waitFor({ state: "detached" });
+              await stoppedRow.waitFor();
+              liveUpdates = {
+                renamed: renamed.key,
+                created: created.key,
+                deleted: deleted.key,
+                selected: stopped.key,
+                ownerId,
+              };
+            }
+
+            await releaseChildren();
+            await saved().waitFor();
+            await page.evaluate(
+              () =>
+                new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+                ),
+            );
+            await capture("complete");
+            const finalRows = await rowKeys();
+            const proof =
+              continuityProof ??
+              (await page.evaluate(() => Reflect.get(window, "__warmReload").read()));
+            const first = proof.sidebarFrames.findIndex(
+              (frame: { cached: boolean; rowIds: string[] }) => frame.cached && frame.rowIds.length,
+            );
+            const frames: Array<{ cached: boolean; rowIds: string[]; retained: number }> =
+              proof.sidebarFrames.slice(first);
+            await writeFile(
+              path.join(suite.artifactDir, `${face}-complete-roster.json`),
+              JSON.stringify(
+                {
+                  ...proof,
+                  requests,
+                  childRequest,
+                  beforeChildren,
+                  expected,
+                  finalRows,
+                  liveUpdates,
+                },
+                null,
+                2,
+              ),
+            );
+            if (cap || beforeChildren.elapsedSinceConnectMs < 1800) {
+              expect(beforeChildren.state).toBe(cap ? "live" : "cached");
+            }
+            expect(beforeChildren.rows).toEqual(expected);
+            if (cap) {
+              expect(finalRows).toContain(liveUpdates!.selected);
+              expect(finalRows).not.toContain(liveUpdates!.renamed);
+              expect(finalRows).not.toContain(liveUpdates!.created);
+              expect(finalRows).not.toContain(liveUpdates!.deleted);
+              expect(finalRows).not.toContain(parentKey);
+              for (const key of childKeys) expect(finalRows).not.toContain(key);
+            } else {
+              expect(finalRows).toEqual(expected);
+            }
+            expect(first).toBeGreaterThanOrEqual(0);
+            expect(frames.every((frame) => frame.rowIds.length === expected.length)).toBe(true);
+            expect(
+              frames.every((frame) => frame.rowIds.every((key, index) => key === expected[index])),
+            ).toBe(true);
+            expect(frames.at(-1)?.retained).toBe(expected.length);
+            expect(
+              frames.filter(
+                (frame, index) => index > 0 && frame.cached !== frames[index - 1]!.cached,
+              ),
+            ).toHaveLength(1);
+          } finally {
+            await releaseChildren();
+          }
+        },
+      );
+    },
+  );
+});

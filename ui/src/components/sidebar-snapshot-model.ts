@@ -9,6 +9,12 @@ export {
   type SidebarSnapshotSession,
 } from "./sidebar-snapshot-data.ts";
 
+export type SidebarSnapshotFallback = {
+  readonly model: SidebarSnapshotModel;
+  readonly rootsReady: boolean;
+  readonly readyParents: ReadonlySet<string>;
+};
+
 function containsIncognito(rows: readonly SidebarRecentSession[]): boolean {
   return rows.some(
     (row) => row.incognito || isIncognitoSessionKey(row.key) || containsIncognito(row.children),
@@ -38,6 +44,7 @@ export function snapshotSessions(
         archived: row.archived,
         boardFace: row.boardFace,
         childrenDisplayMode: display?.childrenDisplayMode,
+        childLoadParentKeys: row.childLoadParentKeys?.filter((key) => !isIncognitoSessionKey(key)),
         // Parent attention can summarize private descendants even after their rows are omitted.
         snapshotSubtitle: containsIncognito(row.children) ? undefined : display?.snapshotSubtitle,
         children: snapshotSessions(row.children, presentation),
@@ -107,10 +114,59 @@ export function restoreSnapshotSession(
     unread: false,
     attention: { kind: "none" },
     childSessionKeys: row.children.map((child) => child.key),
+    childLoadParentKeys: row.childLoadParentKeys ?? (row.children.length ? [row.key] : []),
     children: row.children.map((child) => restoreSnapshotSession(child, selected)),
     loadingChildren: false,
     containsActiveDescendant: false,
     runningChildCount: 0,
     failedChildCount: 0,
   };
+}
+
+/** A timed-out read has no membership verdict; keep its cached rows until it answers. */
+export function mergeSidebarSnapshotRows(
+  cached: readonly SidebarSnapshotSession[],
+  live: SidebarRecentSession[],
+  selected: string,
+  rootReady: boolean,
+  childReady: (key: string) => boolean,
+): SidebarRecentSession[] {
+  const liveByKey = new Map(live.map((row) => [row.key, row]));
+  const merged: SidebarRecentSession[] = [];
+  for (const prior of cached) {
+    const current = liveByKey.get(prior.key);
+    if (!current) {
+      if (!rootReady) {
+        merged.push(restoreSnapshotSession(prior, selected));
+      }
+      continue;
+    }
+    liveByKey.delete(prior.key);
+    const complete = (prior.childLoadParentKeys ?? [prior.key]).every(childReady);
+    const children = mergeSidebarSnapshotRows(
+      prior.children,
+      current.children,
+      selected,
+      complete,
+      childReady,
+    );
+    merged.push(
+      children.length === current.children.length &&
+        children.every((child, index) => child === current.children[index])
+        ? current
+        : {
+            ...current,
+            children,
+            childSessionKeys: [
+              ...new Set([...current.childSessionKeys, ...children.map((row) => row.key)]),
+            ],
+          },
+    );
+  }
+  merged.push(...liveByKey.values());
+  if (!rootReady) {
+    return merged;
+  }
+  const mergedByKey = new Map(merged.map((row) => [row.key, row]));
+  return live.map((row) => mergedByKey.get(row.key)!);
 }

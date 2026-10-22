@@ -100,7 +100,11 @@ import {
   sidebarRowsInputs,
   type SidebarProjectionHost,
 } from "./sidebar-projection-memo.ts";
-import { restoreSnapshotSections, restoreSnapshotSession } from "./sidebar-snapshot-model.ts";
+import {
+  mergeSidebarSnapshotRows,
+  restoreSnapshotSections,
+  restoreSnapshotSession,
+} from "./sidebar-snapshot-model.ts";
 import { mountedViewerSessionKeys } from "./solid/viewer-facepile.tsx";
 
 export abstract class AppSidebarSessionNavigationElement extends AppSidebarBase {
@@ -647,7 +651,11 @@ export abstract class AppSidebarSessionNavigationElement extends AppSidebarBase 
       );
     }
     const rows = this.rowsMemo.read(
-      () => [...sidebarRowsInputs(this, navigationState), this.sidebarEntries],
+      () => [
+        ...sidebarRowsInputs(this, navigationState),
+        this.sidebarEntries,
+        this.sidebarSnapshotFallback,
+      ],
       () => {
         const roster = this.rosterSessionSource;
         const selected = this.expandedAgentId();
@@ -663,10 +671,20 @@ export abstract class AppSidebarSessionNavigationElement extends AppSidebarBase 
           compareSessions: createSidebarSessionRowsComparator(this.readSidebarSessionSortOptions),
           resolveAttention: this.resolveSessionAttention,
         });
-        return this.applySessionOwnerFilter(
+        const live = this.applySessionOwnerFilter(
           projectUnpinnedSessionRows(projected),
           this.selectedAgentSessionResult()?.owners,
         );
+        const fallback = this.sidebarSnapshotFallback;
+        return fallback
+          ? mergeSidebarSnapshotRows(
+              fallback.model.sessions,
+              live,
+              this.getRouteSessionKey(),
+              fallback.rootsReady,
+              (key) => fallback.readyParents.has(key),
+            )
+          : live;
       },
     );
     this.attention.scheduleSessionSnoozeWake(

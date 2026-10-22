@@ -19,7 +19,7 @@ import type { NewSessionTarget } from "../pages/new-session/location.ts";
 import type { GatewayStatusProps } from "./gateway-status.ts";
 import type { SessionOwnerFilter } from "./session-owner-filter.ts";
 import { selectSidebarContext, type ContextualSidebar } from "./sidebar-context-state.ts";
-import type { SidebarSnapshotModel } from "./sidebar-snapshot-model.ts";
+import type { SidebarSnapshotFallback, SidebarSnapshotModel } from "./sidebar-snapshot-model.ts";
 
 export type AppSidebarProps = {
   basePath: string;
@@ -172,6 +172,7 @@ export abstract class AppSidebarBase {
   }
 
   sidebarSnapshot: SidebarSnapshotModel | null = null;
+  sidebarSnapshotFallback: SidebarSnapshotFallback | null = null;
   sidebarPluginSnapshot: Pick<SidebarSnapshotModel, "entries" | "plugins"> | null = null;
 
   constructor(
@@ -264,6 +265,7 @@ export abstract class AppSidebarBase {
   abstract readonly sessionOwnerFilter: SessionOwnerFilter;
 
   setSessionOwnerFilter = (ownerId: string | null, involvingMe = false) => {
+    this.sidebarSnapshotFallback = null;
     this.sessionOwnerFilter.set(ownerId, involvingMe);
     if (this.sidebarSnapshot) {
       // Keep the cached rows, but let explicit intent select the replacement query.

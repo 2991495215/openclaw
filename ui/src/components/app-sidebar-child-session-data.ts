@@ -38,6 +38,18 @@ export type SidebarChildSessionQuery = {
   refresh?: Promise<void>;
 };
 
+export function isSidebarChildSessionSettled(
+  owner: {
+    readonly loadedChildSessionKeys: ReadonlySet<string>;
+    readonly loadingChildSessionKeys: ReadonlySet<string>;
+  },
+  parentKey: string,
+): boolean {
+  return (
+    owner.loadedChildSessionKeys.has(parentKey) && !owner.loadingChildSessionKeys.has(parentKey)
+  );
+}
+
 function lineageRowCacheKey(row: GatewaySessionRow, key = row.key): string {
   const agentId = row.agentId?.trim();
   return agentId && !parseAgentSessionKey(normalizeDefaultMainSessionAliasForUi(key))

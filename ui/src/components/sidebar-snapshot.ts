@@ -13,10 +13,15 @@ import {
   type SidebarSnapshotScope,
 } from "../pages/chat/session-snapshot-prewarm.ts";
 import { SessionSnapshotStore } from "../pages/chat/session-snapshot-store.ts";
-import { parseSidebarSnapshot, type SidebarSnapshotModel } from "./sidebar-snapshot-model.ts";
+import {
+  parseSidebarSnapshot,
+  type SidebarSnapshotFallback,
+  type SidebarSnapshotModel,
+} from "./sidebar-snapshot-model.ts";
 
 type SidebarSnapshotHost = {
   sidebarSnapshot: SidebarSnapshotModel | null;
+  sidebarSnapshotFallback: SidebarSnapshotFallback | null;
   readonly sessionDataContext?: {
     gateway: ApplicationGateway;
     agentSelection: { readonly state: { readonly scopeId: string | null } };
@@ -25,8 +30,10 @@ type SidebarSnapshotHost = {
   expandedAgentId(): string;
   captureSidebarSnapshot(): SidebarSnapshotModel | null;
   sidebarSnapshotSettled(): boolean;
+  canRetainSidebarSnapshot(model: SidebarSnapshotModel): boolean;
+  synchronizeSidebarSnapshotFallback(): void;
   restoreSidebarSnapshot(model: SidebarSnapshotModel): void;
-  releaseSidebarSnapshot(): void;
+  releaseSidebarSnapshot(complete?: boolean): void;
   clearSidebarSnapshot(): void;
 };
 
@@ -139,7 +146,12 @@ export function createSidebarSnapshot(host: SidebarSnapshotHost) {
       replaceScope(null);
     }
     const snapshot = gateway.snapshot;
-    if (host.sidebarSnapshot && !matchesAgent(host.sidebarSnapshot)) {
+    const cached = host.sidebarSnapshot ?? host.sidebarSnapshotFallback?.model;
+    const fallback = host.sidebarSnapshotFallback;
+    if (
+      (cached && !matchesAgent(cached)) ||
+      (fallback && !host.canRetainSidebarSnapshot(fallback.model))
+    ) {
       clearDisplay();
     }
     if (pending && host.sidebarSnapshotSettled()) {
@@ -168,12 +180,44 @@ export function createSidebarSnapshot(host: SidebarSnapshotHost) {
         replaceScope(next);
       }
     }
-    if (host.sidebarSnapshot && host.sidebarSnapshotSettled()) {
+    host.synchronizeSidebarSnapshotFallback();
+    if (
+      host.sidebarSnapshot &&
+      snapshot.phase === "connected" &&
+      handoffTimer === undefined &&
+      (host.sidebarSnapshot.navigationView === "sessions" || host.sidebarSnapshotSettled())
+    ) {
+      const current = captureScope();
+      handoffTimer = setTimeout(() => {
+        if (!current()) {
+          return;
+        }
+        handoffReady = true;
+        synchronize();
+        if (host.sidebarSnapshot) {
+          cancelHandoff();
+          host.releaseSidebarSnapshot(false);
+          saved = false;
+          serialized = null;
+        }
+        notify();
+      }, 1800);
+    }
+    if ((host.sidebarSnapshot || host.sidebarSnapshotFallback) && host.sidebarSnapshotSettled()) {
       if (!handoffReady) {
-        handoffTimer ??= setTimeout(releaseWhenReady, 1800);
         if (host.sessionDataContext?.connectionBootstrap.foregroundReady) {
           if (typeof requestIdleCallback === "function") {
-            handoffIdle ??= requestIdleCallback(releaseWhenReady, { timeout: 1800 });
+            if (handoffIdle === undefined) {
+              const current = captureScope();
+              handoffIdle = requestIdleCallback(
+                () => {
+                  if (current()) {
+                    releaseWhenReady();
+                  }
+                },
+                { timeout: 1800 },
+              );
+            }
           } else {
             handoffReady = true;
           }
@@ -233,6 +277,7 @@ export function createSidebarSnapshot(host: SidebarSnapshotHost) {
       !scope ||
       (scope.profileId !== null && gateway?.snapshot.selfUser === undefined) ||
       host.sidebarSnapshot ||
+      host.sidebarSnapshotFallback ||
       !host.sidebarSnapshotSettled()
     ) {
       return;
