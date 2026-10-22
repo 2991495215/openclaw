@@ -35,20 +35,6 @@ export function settingsNavigationLabelForRoute(
 let settingsSearchSegmenterLocale = "";
 let settingsSearchSegmenter: Intl.Segmenter | null = null;
 
-function settingsSearchHasWordPrefix(value: string, query: string): boolean {
-  const locale = i18n.getLocale();
-  if (!settingsSearchSegmenter || settingsSearchSegmenterLocale !== locale) {
-    settingsSearchSegmenterLocale = locale;
-    settingsSearchSegmenter = new Intl.Segmenter(locale, { granularity: "word" });
-  }
-  for (const segment of settingsSearchSegmenter.segment(value)) {
-    if (segment.isWordLike !== false && segment.segment.startsWith(query)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function settingsSearchTextMatches(value: string, query: string): boolean {
   const candidate = normalizeLowercaseStringOrEmpty(value).normalize("NFC");
   const normalizedQuery = normalizeLowercaseStringOrEmpty(query).normalize("NFC");
@@ -58,5 +44,15 @@ export function settingsSearchTextMatches(value: string, query: string): boolean
   if (normalizedQuery.length > 2) {
     return candidate.includes(normalizedQuery);
   }
-  return settingsSearchHasWordPrefix(candidate, normalizedQuery);
+  const locale = i18n.getLocale();
+  if (!settingsSearchSegmenter || settingsSearchSegmenterLocale !== locale) {
+    settingsSearchSegmenterLocale = locale;
+    settingsSearchSegmenter = new Intl.Segmenter(locale, { granularity: "word" });
+  }
+  for (const segment of settingsSearchSegmenter.segment(candidate)) {
+    if (segment.isWordLike !== false && segment.segment.startsWith(normalizedQuery)) {
+      return true;
+    }
+  }
+  return false;
 }

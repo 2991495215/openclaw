@@ -4,14 +4,6 @@ function isContinuationByte(byte: number | undefined): boolean {
   return byte !== undefined && (byte & 0xc0) === 0x80;
 }
 
-function truncateEncodedPrefix(bytes: Buffer, maxBytes: number): string {
-  let end = maxBytes;
-  while (end > 0 && isContinuationByte(bytes[end])) {
-    end -= 1;
-  }
-  return bytes.subarray(0, end).toString("utf8");
-}
-
 /** Keeps the longest UTF-8 prefix that fits within the byte limit. */
 export function truncateUtf8Prefix(value: string, maxBytes: number): string {
   if (maxBytes <= 0) {
@@ -21,7 +13,12 @@ export function truncateUtf8Prefix(value: string, maxBytes: number): string {
     return value;
   }
   // Only this many UTF-16 units can contribute to the retained UTF-8 prefix.
-  return truncateEncodedPrefix(Buffer.from(value.slice(0, maxBytes)), maxBytes);
+  const bytes = Buffer.from(value.slice(0, maxBytes));
+  let end = maxBytes;
+  while (end > 0 && isContinuationByte(bytes[end])) {
+    end -= 1;
+  }
+  return bytes.subarray(0, end).toString("utf8");
 }
 
 /** Keeps the longest UTF-8 suffix that fits within the byte limit. */
