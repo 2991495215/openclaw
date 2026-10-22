@@ -27,6 +27,20 @@ type FixtureOptions = {
 };
 export type RecoveryFixture = Awaited<ReturnType<typeof createRecoveryFixture>>;
 
+export function recoveryCompaction(
+  result: Partial<NonNullable<Awaited<ReturnType<ContextEngine["compact"]>>["result"]>> = {},
+) {
+  return {
+    ok: true as const,
+    compacted: true as const,
+    result: { summary: "successor context", tokensBefore: 4_097, tokensAfter: 3_000, ...result },
+  };
+}
+
+export function unchangedMaintenance() {
+  return { changed: false, rewrittenEntries: 0, bytesFreed: 0 };
+}
+
 // The engine is synthetic; admission, writer claims, safety timeout, recovery,
 // hooks, session state, transcript writes, and reopen reads are composed for real.
 async function createRecoveryFixture(state: OpenClawTestState, options: FixtureOptions) {
@@ -453,6 +467,7 @@ async function createRecoveryFixture(state: OpenClawTestState, options: FixtureO
       expect(onAgentEvent).not.toHaveBeenCalled();
     };
     return {
+      runParams,
       compact,
       maintain,
       target,
