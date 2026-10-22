@@ -1,0 +1,75 @@
+name: Mac catalog main reproduction
+
+on:
+  push:
+    branches: [brzezowski/repro-130115-native]
+    paths:
+      - .github/workflows/pr-130115-native.yml
+      - scripts/pr-130115-reproduction/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-130115-native
+  cancel-in-progress: false
+
+jobs:
+  main:
+    if: github.repository == 'openclaw/openclaw'
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      MAIN_SHA: d535d274183d19e2e838c7a7fc96063df676b368
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      # Do not publish until owner 177970 provides and reviews the shared helper.
+      LAUNCH_SUPPORT_SHA256: 8cff181fa3fa729ee13c39667bd4ca8d93146d3e605c92466f8dec86c647acb8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Select the preinstalled supported Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          for app in /Applications/Xcode_26.4.1.app /Applications/Xcode_26.4.app; do
+            if [[ -d "$app" ]]; then
+              echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo 'Supported preinstalled Xcode is unavailable.' >&2
+          exit 1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: Prepare the maintained external XCTest tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          scripts/install-xcodegen.sh "$RUNNER_TEMP/catalog-tools/bin"
+          echo "$RUNNER_TEMP/catalog-tools/bin" >> "$GITHUB_PATH"
+      - name: Observe main through the real app, worker and Gateways
+        shell: bash
+        run: |
+          python3 scripts/pr-130115-reproduction/run-main.py \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/pr-130115-native-evidence" "$RUNNER_TEMP/pr-130115-main-bundle"
+      - name: Preserve the verified main bundle and pristine synthetic sources
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-130115-main-bundle
+          path: ${{ runner.temp }}/pr-130115-main-bundle
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
+      - name: Preserve native observations and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-130115-native-evidence
+          path: ${{ runner.temp }}/pr-130115-native-evidence
+          if-no-files-found: warn
+          retention-days: 7
