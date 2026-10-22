@@ -646,7 +646,11 @@ suite.define(() => {
       const background = (locator: typeof railUsage) =>
         locator.evaluate((element) => getComputedStyle(element).backgroundColor);
       expect(await iconWidth(railUsage)).toBe(await iconWidth(pagesButton));
-      const pressedBackground = await background(pagesButton);
+      // Keep an intermediate transition color out of the persistent reference.
+      const pressedBackground = await pagesButton.evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished));
+        return getComputedStyle(element).backgroundColor;
+      });
       await railUsage.hover();
       await expect.poll(() => background(railUsage)).toBe(pressedBackground);
       await railUsage.click();
