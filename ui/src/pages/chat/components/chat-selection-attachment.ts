@@ -22,6 +22,12 @@ export function formatChatSelectionAnnotation(annotation: ChatSelectionAnnotatio
             ...(annotation.file.side ? [`Source diff side: ${annotation.file.side}`] : []),
           ]
         : []),
+      ...(annotation.pdf
+        ? [
+            `Source PDF: ${JSON.stringify(annotation.pdf.name)}`,
+            `Source page: ${annotation.pdf.page}`,
+          ]
+        : []),
       `Selected text UTF-16 length: ${annotation.text.length}`,
       `DOM text UTF-16 range: [${annotation.start}, ${annotation.end})`,
     ].join("\n"),

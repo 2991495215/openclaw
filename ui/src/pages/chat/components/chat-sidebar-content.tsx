@@ -442,6 +442,8 @@ export function SidebarPanel(props: SidebarPanelProps) {
                 {(content) => (
                   <div class="sidebar-attachment-preview">
                     <SidebarAttachment
+                      attachmentChat={props.attachmentChat}
+                      active={props.active}
                       content={content()}
                       runtime={props.attachmentRuntime}
                       embedSandboxMode={props.embedSandboxMode ?? "scripts"}

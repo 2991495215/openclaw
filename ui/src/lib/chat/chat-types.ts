@@ -35,6 +35,7 @@ export type ChatFileSelection = {
 
 export type ChatSelectionSource = {
   file?: ChatFileSelection;
+  pdf?: { name: string; page: number };
   text: string;
   messageId?: string;
   entryId?: string;

@@ -1,8 +1,12 @@
-import { createMemo, createSignal, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, Errored, lazy, Loading, onSettled, Show } from "solid-js";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { AttachmentPreviewSkeleton, CompactAttachmentCard } from "./chat-attachment-card-solid.tsx";
 import { safeAttachmentHref } from "./chat-attachment-href.ts";
 import { readResponseBytesWithinLimit } from "./chat-response-bytes.ts";
+
+const PdfDocumentView = lazy(() => import("./chat-pdf-document.tsx"), {
+  export: "PdfDocumentView",
+});
 
 const PDF_PREVIEW_MAX_BYTES = 16 * 1024 * 1024;
 const PDF_PREVIEW_TIMEOUT_MS = 10_000;
@@ -16,6 +20,9 @@ export function isPdfAttachment(rawMimeType: string, filename: string): boolean 
 }
 
 type PdfPreviewProps = {
+  resourceBasePath?: string;
+  attachmentChat?: import("./chat-composer-types.ts").ChatComposerProps;
+  active?: boolean;
   src: string;
   sourceIdentity: string;
   label: string;
@@ -23,7 +30,7 @@ type PdfPreviewProps = {
   sizeBytes?: number;
 };
 
-/** Owns the bounded, browser-native PDF surface for same-origin attachments. */
+/** Owns bounded PDF bytes and ticket revalidation; the lazy reader owns selection. */
 export function ChatPdfPreview(props: PdfPreviewProps) {
   const [preview, setPreview] = createSignal<{
     status: "loading" | "ready" | "error";
@@ -51,7 +58,7 @@ export function ChatPdfPreview(props: PdfPreviewProps) {
   );
   const readPreview = (value: ReturnType<typeof source>) => {
     onSettled(() => {
-      // A renewed ticket for the same attachment must not reset the native reader.
+      // A renewed ticket for the same attachment must not reset the reader.
       if (
         !value.src ||
         !previewUrl ||
@@ -126,6 +133,20 @@ export function ChatPdfPreview(props: PdfPreviewProps) {
     return null;
   };
   onSettled(() => revokePreview);
+  function Unavailable() {
+    return (
+      <div class="sidebar-attachment-preview__unavailable" role="alert">
+        {t("chat.attachments.previewUnavailable")}
+        <CompactAttachmentCard
+          kind="document"
+          label={props.label}
+          mimeType={props.mimeType}
+          sizeBytes={props.sizeBytes}
+          downloadHref={safeAttachmentHref(props.src) ?? undefined}
+        />
+      </div>
+    );
+  }
   return (
     <openclaw-chat-pdf-preview style={{ display: "contents" }}>
       <div class="sidebar-pdf-preview" aria-label={props.label}>
@@ -134,27 +155,22 @@ export function ChatPdfPreview(props: PdfPreviewProps) {
         </Show>
         <div class="sidebar-pdf-preview__surface">
           <Show when={preview().status !== "loading"} fallback={<AttachmentPreviewSkeleton />}>
-            <Show
-              when={preview().status === "ready" && preview().url}
-              fallback={
-                <div class="sidebar-attachment-preview__unavailable" role="alert">
-                  {t("chat.attachments.previewUnavailable")}
-                  <CompactAttachmentCard
-                    kind="document"
-                    label={props.label}
-                    mimeType={props.mimeType}
-                    sizeBytes={props.sizeBytes}
-                    downloadHref={safeAttachmentHref(props.src) ?? undefined}
-                  />
-                </div>
-              }
-            >
-              <iframe
-                class="sidebar-pdf-preview__frame"
-                title={props.label}
-                src={preview().url}
-                referrerpolicy="no-referrer"
-              />
+            <Show when={preview().status === "ready" && preview().url} fallback={<Unavailable />}>
+              <Show when={preview().url} keyed>
+                {(url) => (
+                  <Errored fallback={<Unavailable />}>
+                    <Loading fallback={<AttachmentPreviewSkeleton />}>
+                      <PdfDocumentView
+                        url={url}
+                        resourceBasePath={props.resourceBasePath}
+                        label={props.label}
+                        active={props.active}
+                        attachmentChat={props.attachmentChat}
+                      />
+                    </Loading>
+                  </Errored>
+                )}
+              </Show>
             </Show>
           </Show>
         </div>

@@ -19,12 +19,12 @@ import {
   createFilePresentationState,
   renderFilePanelPresentation,
 } from "./chat-detail-file-presentation.ts";
-import { offerReaderComment } from "./chat-file-comment.ts";
 import {
   createDetailOperationPresentation,
   detailPanelOperationLifetime,
   registerDetailPanelRetirement,
 } from "./chat-detail-panel-operation-lifetime.ts";
+import { offerReaderComment } from "./chat-file-comment.ts";
 import { createFileCopy } from "./chat-file-copy.ts";
 import { captureFileEditorDraft, readFileDraft, setFileDraft } from "./chat-file-drafts.ts";
 import { createFileSessionAttachment } from "./chat-file-session-attachment.ts";

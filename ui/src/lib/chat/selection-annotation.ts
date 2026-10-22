@@ -42,7 +42,22 @@ export function readChatSelectionAnnotation(value: unknown): ChatSelectionAnnota
       ...(source.side === "old" || source.side === "new" ? { side: source.side } : {}),
     };
   }
+  let pdf: ChatSelectionAnnotation["pdf"];
+  if (value.pdf !== undefined) {
+    const source = value.pdf;
+    if (
+      !isRecord(source) ||
+      typeof source.name !== "string" ||
+      typeof source.page !== "number" ||
+      !Number.isSafeInteger(source.page) ||
+      source.page < 1
+    ) {
+      return undefined;
+    }
+    pdf = { name: source.name, page: source.page };
+  }
   return {
+    ...(pdf ? { pdf } : {}),
     ...(file ? { file } : {}),
     text: value.text,
     comment: value.comment,
