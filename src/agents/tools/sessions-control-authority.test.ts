@@ -74,11 +74,11 @@ describe("session control source capability", () => {
 
   it("admits ordinary controls without manufacturing an enrollment grant", () => {
     const { authority } = issueAuthority("control-profile", [
-      "operator.write.no-provider-enrollment",
+      "operator.write.no-credential-enrollment",
     ]);
     expect(hasSessionControlAuthority(authority)).toBe(true);
     const captured = captureSessionControlAuthority(authority);
-    expect(captured?.authority.scopes).toEqual(["operator.write.no-provider-enrollment"]);
+    expect(captured?.authority.scopes).toEqual(["operator.write.no-credential-enrollment"]);
     expect(captured?.allows("operator.write")).toBe(false);
     expect(captured?.allows("operator.admin")).toBe(false);
   });

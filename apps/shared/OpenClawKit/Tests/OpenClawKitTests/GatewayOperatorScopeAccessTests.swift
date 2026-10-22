@@ -4,8 +4,9 @@ import Testing
 struct GatewayOperatorScopeAccessTests {
     @Test(arguments: [
         ("operator.read", true, false),
+        ("operator.read.no-credential-enrollment", true, false),
         ("operator.write", true, true),
-        ("operator.write.no-provider-enrollment", true, true),
+        ("operator.write.no-credential-enrollment", true, true),
         ("operator.admin", true, true),
         ("operator.sessions.write", false, false),
         ("operator.talk", false, false),
@@ -22,6 +23,6 @@ struct GatewayOperatorScopeAccessTests {
             role: "operator",
             requestedScopes: ["operator.write"],
             storedToken: "synthetic-token",
-            storedScopes: ["operator.write.no-provider-enrollment"]))
+            storedScopes: ["operator.write.no-credential-enrollment"]))
     }
 }

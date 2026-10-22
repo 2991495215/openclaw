@@ -189,7 +189,7 @@ export default definePluginEntry({
         const scopes = client?.connect.scopes ?? [];
         const operator =
           scopes.includes("operator.write") ||
-          scopes.includes("operator.write.no-provider-enrollment") ||
+          scopes.includes("operator.write.no-credential-enrollment") ||
           scopes.includes("operator.admin");
         if (params.mode !== undefined && params.mode !== "say" && params.mode !== "guidance") {
           throw new VoiceCallCommandInputError("mode must be say or guidance");

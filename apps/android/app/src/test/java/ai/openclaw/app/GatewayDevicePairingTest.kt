@@ -68,7 +68,7 @@ class GatewayDevicePairingTest {
     assertFalse(
       canApproveGatewayDevicePairing(
         pairingOnly,
-        listOf("operator.pairing", "operator.write.no-provider-enrollment"),
+        listOf("operator.pairing", "operator.write.no-credential-enrollment"),
         pending.copy(scopes = listOf("operator.write")),
       ),
     )

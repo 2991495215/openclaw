@@ -198,7 +198,7 @@ describe("handleWorkboardCommand", () => {
     await expectReply(command(`show ${card.id}`), "archived: yes (excluded from dispatch)");
   });
 
-  it.each(["operator.write", "operator.write.no-provider-enrollment"])(
+  it.each(["operator.write", "operator.write.no-credential-enrollment"])(
     "moves claimed cards for %s on slash-command surfaces",
     async (scope) => {
       store = createWorkboardSqliteTestStore();

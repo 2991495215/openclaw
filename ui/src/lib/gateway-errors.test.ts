@@ -53,11 +53,12 @@ describe("gateway error helpers", () => {
     }
   });
 
-  it("classifies structured read-scope failures without message parsing", () => {
-    expect(
-      isMissingOperatorReadScopeError(missingScope("operator.read", "permission denied")),
-    ).toBe(true);
-  });
+  it.each(["operator.read", "operator.read.no-credential-enrollment"])(
+    "classifies structured %s failures without message parsing",
+    (scope) => {
+      expect(isMissingOperatorReadScopeError(missingScope(scope, "permission denied"))).toBe(true);
+    },
+  );
 
   it("uses the shared client's missing-scope message reader", () => {
     expect(

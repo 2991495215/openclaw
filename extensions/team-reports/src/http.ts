@@ -157,8 +157,9 @@ export function createTeamReportsHttpHandler(options: TeamReportsHttpOptions) {
       !scopes.some(
         (scope) =>
           scope === "operator.read" ||
+          scope === "operator.read.no-credential-enrollment" ||
           scope === "operator.write" ||
-          scope === "operator.write.no-provider-enrollment" ||
+          scope === "operator.write.no-credential-enrollment" ||
           scope === "operator.admin",
       )
     ) {

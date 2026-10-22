@@ -267,11 +267,16 @@ describe("MCP relay Gateway consent and grant ownership", () => {
   });
 
   it("allows non-enrolling writers to pair without granting full write", () => {
-    const restricted = "operator.write.no-provider-enrollment";
+    const restricted = "operator.write.no-credential-enrollment";
     const person = relayCaller(caller([restricted], "person-alice"), TEAM);
     expect(person.canPair).toBe(true);
     expect(person.ceiling).not.toContain("operator.write");
-    expect(consentAuthority(person, undefined).ceiling).toEqual(["operator.read", restricted]);
+    expect(person.ceiling).not.toContain("operator.read");
+    expect(consentAuthority(person, undefined).ceiling).toEqual([
+      "operator.read.no-credential-enrollment",
+      restricted,
+    ]);
+    expect(() => consentAuthority(person, ["operator.read"])).toThrow("Choose access permitted");
     expect(() => consentAuthority(person, ["operator.write"])).toThrow("Choose access permitted");
   });
 

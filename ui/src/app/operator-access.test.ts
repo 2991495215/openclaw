@@ -43,9 +43,9 @@ describe("readGatewayOperatorAccess", () => {
       expected: [true, false, false, false, false],
     },
     {
-      name: "write access without provider enrollment",
+      name: "write access without personal credential enrollment",
       snapshot: {
-        hello: { auth: { role: "operator", scopes: ["operator.write.no-provider-enrollment"] } },
+        hello: { auth: { role: "operator", scopes: ["operator.write.no-credential-enrollment"] } },
       },
       expected: [true, false, false, false, false],
     },
@@ -90,7 +90,13 @@ describe("hasOperatorReadAccess", () => {
     expect(
       hasOperatorReadAccess({
         role: "operator",
-        scopes: ["operator.write.no-provider-enrollment"],
+        scopes: ["operator.read.no-credential-enrollment"],
+      }),
+    ).toBe(true);
+    expect(
+      hasOperatorReadAccess({
+        role: "operator",
+        scopes: ["operator.write.no-credential-enrollment"],
       }),
     ).toBe(true);
     expect(hasOperatorReadAccess({ role: "operator", scopes: ["operator.admin"] })).toBe(true);
@@ -101,16 +107,38 @@ describe("hasOperatorReadAccess", () => {
 
 it("keeps provider enrollment strict while ordinary profile writes accept the restricted grant", () => {
   for (const scopes of [
-    ["operator.write.no-provider-enrollment"],
+    ["operator.write.no-credential-enrollment"],
     ["operator.write"],
     ["operator.admin"],
-    ["operator.write.no-provider-enrollment", "operator.write"],
+    ["operator.write.no-credential-enrollment", "operator.write"],
   ]) {
     const auth = { role: "operator", scopes };
     expect(hasOperatorWriteAccess(auth)).toBe(true);
     for (const method of ["users.authConnect.start", "users.authConnect.answer"]) {
       expect(hasOperatorWriteAccess(auth, method)).toBe(
         scopes.includes("operator.write") || scopes.includes("operator.admin"),
+      );
+    }
+  }
+});
+
+it("separates ordinary reads from GitHub credential enrollment without subtracting legacy grants", () => {
+  for (const scopes of [
+    ["operator.read.no-credential-enrollment"],
+    ["operator.write.no-credential-enrollment"],
+    ["operator.read"],
+    ["operator.write"],
+    ["operator.admin"],
+    ["operator.write.no-credential-enrollment", "operator.read"],
+  ]) {
+    const auth = { role: "operator", scopes };
+    expect(hasOperatorReadAccess(auth, "users.github.status")).toBe(true);
+    expect(hasOperatorReadAccess(auth, "users.github.disconnect")).toBe(true);
+    for (const method of ["users.github.authorize.start", "users.github.authorize.poll"]) {
+      expect(hasOperatorReadAccess(auth, method)).toBe(
+        scopes.some((scope) =>
+          ["operator.read", "operator.write", "operator.admin"].includes(scope),
+        ),
       );
     }
   }

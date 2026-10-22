@@ -55,7 +55,7 @@ function requireWriteAccess(params: {
     scopes
       ? scopes.includes(ADMIN_SCOPE) ||
         scopes.includes(WRITE_SCOPE) ||
-        scopes.includes("operator.write.no-provider-enrollment")
+        scopes.includes("operator.write.no-credential-enrollment")
       : params.senderIsOwner === true
   ) {
     return undefined;

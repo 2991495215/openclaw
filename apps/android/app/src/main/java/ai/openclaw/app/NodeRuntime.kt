@@ -195,7 +195,7 @@ private const val OperatorAdminScope = "operator.admin"
 private const val OperatorPairingScope = "operator.pairing"
 private const val OperatorReadScope = "operator.read"
 private const val OperatorWriteScope = "operator.write"
-private const val OperatorWriteNoProviderEnrollmentScope = "operator.write.no-provider-enrollment"
+private const val OperatorWriteNoCredentialEnrollmentScope = "operator.write.no-credential-enrollment"
 
 private data class GatewayAppearancePreferences(
   val profileId: String?,
@@ -341,12 +341,12 @@ internal fun selectGatewayDevicePairingCapabilities(
 }
 
 internal fun operatorScopesAllowRead(scopes: Collection<String>): Boolean =
-  OperatorReadScope in scopes || operatorScopesAllowWrite(scopes)
+  OperatorReadScope in scopes || "operator.read.no-credential-enrollment" in scopes || operatorScopesAllowWrite(scopes)
 
 // Ordinary operation capability only; enrollment and grant comparisons require the original scopes.
 internal fun operatorScopesAllowWrite(scopes: Collection<String>): Boolean =
   scopes.any { scope ->
-    scope == OperatorWriteScope || scope == OperatorWriteNoProviderEnrollmentScope || scope == OperatorAdminScope
+    scope == OperatorWriteScope || scope == OperatorWriteNoCredentialEnrollmentScope || scope == OperatorAdminScope
   }
 
 internal fun operatorScopesAllowAdmin(scopes: Collection<String>): Boolean = OperatorAdminScope in scopes

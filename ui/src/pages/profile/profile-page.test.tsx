@@ -895,9 +895,13 @@ it("replaces a retired profile read when the same ID gains profile qualification
 
 it.each([
   { scopes: ["operator.read"], summary: "You have permission to view server information." },
+  {
+    scopes: ["operator.read.no-credential-enrollment"],
+    summary: "You have permission to view server information.",
+  },
   { scopes: ["operator.write"], summary: "You have permission to send messages and make changes." },
   {
-    scopes: ["operator.write.no-provider-enrollment"],
+    scopes: ["operator.write.no-credential-enrollment"],
     summary: "You have permission to send messages and make changes.",
   },
   {

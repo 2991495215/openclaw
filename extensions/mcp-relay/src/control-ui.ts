@@ -20,8 +20,9 @@ type Pairing = { code: string; expiresAt: number; mcpUrl: string };
 
 const READ_WRITE = new Set([
   "operator.read",
+  "operator.read.no-credential-enrollment",
   "operator.write",
-  "operator.write.no-provider-enrollment",
+  "operator.write.no-credential-enrollment",
 ]);
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, className?: string) {
@@ -43,7 +44,7 @@ function accessLabel(scopes: readonly string[]) {
     return "Full role access";
   }
   return scopes.includes("operator.write") ||
-    scopes.includes("operator.write.no-provider-enrollment")
+    scopes.includes("operator.write.no-credential-enrollment")
     ? "Read and write"
     : "Read only";
 }
@@ -102,7 +103,7 @@ const mountConnectedApps: ControlUiView = (container, initialContext) => {
         label: accessLabel(basic),
         detail:
           basic.includes("operator.write") ||
-          basic.includes("operator.write.no-provider-enrollment")
+          basic.includes("operator.write.no-credential-enrollment")
             ? "Read conversations and send messages within your access."
             : "Read conversations within your access.",
       },

@@ -10,9 +10,10 @@ type OperatorAuth = {
 } | null;
 type OperatorScope =
   | "operator.read"
+  | "operator.read.no-credential-enrollment"
   | "operator.sessions.read"
   | "operator.write"
-  | "operator.write.no-provider-enrollment"
+  | "operator.write.no-credential-enrollment"
   | "operator.admin"
   | "operator.pairing"
   | "operator.approvals";
@@ -54,8 +55,8 @@ export function hasOperatorWriteAccess(auth: OperatorAuth, method?: string): boo
   return hasOperatorScope(auth, operatorActionScope("operator.write", method), true);
 }
 
-export function hasOperatorReadAccess(auth: OperatorAuth): boolean {
-  return hasOperatorScope(auth, "operator.read", true);
+export function hasOperatorReadAccess(auth: OperatorAuth, method?: string): boolean {
+  return hasOperatorScope(auth, operatorActionScope("operator.read", method), true);
 }
 
 export function hasOperatorAdminAccess(auth: OperatorAuth): boolean {

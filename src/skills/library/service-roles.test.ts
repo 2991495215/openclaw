@@ -8,7 +8,7 @@ import { resolveSkillLibraryActorFromProfile, type SkillLibraryAuthority } from 
 const dirs = useStateDatabaseTempDirs();
 
 it("retains library writes under the non-enrolling connection and role grant", () => {
-  const scopes = ["operator.write.no-provider-enrollment"];
+  const scopes = ["operator.write.no-credential-enrollment"];
   const actor = resolveSkillLibraryActorFromProfile(
     { scopes },
     {
@@ -19,7 +19,7 @@ it("retains library writes under the non-enrolling connection and role grant", (
             writer: {
               sessions: { others: "none" },
               agents: "*",
-              scopes: ["operator.write.no-provider-enrollment"],
+              scopes: ["operator.write.no-credential-enrollment"],
             },
           },
         },

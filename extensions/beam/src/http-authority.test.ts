@@ -38,7 +38,7 @@ it.each(["current", "restricted", "observation", "conflict"] as const)(
   "publishes only with current request authority: %s",
   async (phase) => {
     requestScope.client.connect.scopes = [
-      phase === "restricted" ? "operator.write.no-provider-enrollment" : "operator.write",
+      phase === "restricted" ? "operator.write.no-credential-enrollment" : "operator.write",
     ];
     const { store, res, run } = uploadRequest();
     const entered = createDeferred<void>();

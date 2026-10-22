@@ -33,7 +33,7 @@ describe("resolvePluginRouteRuntimeOperatorScopes", () => {
     },
   );
   it.each([false, true])("preserves a non-enrolling device grant (role ceiling=%s)", (capped) => {
-    const scopes = ["operator.write.no-provider-enrollment"] as const;
+    const scopes = ["operator.write.no-credential-enrollment"] as const;
     expect(
       resolvePluginRouteRuntimeOperatorScopes(createReq(), {
         authMethod: "device-token",

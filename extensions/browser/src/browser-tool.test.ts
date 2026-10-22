@@ -2091,7 +2091,7 @@ describe("browser observation actions and tab previews", () => {
 
 it.each([
   { scopes: ["operator.write"] },
-  { scopes: ["operator.write.no-provider-enrollment"] },
+  { scopes: ["operator.write.no-credential-enrollment"] },
   { scopes: ["operator.sessions.write"] },
 ])("uses isolated admission for a scoped operator $scopes", async ({ scopes }) => {
   gateway.readGatewayToolOperatorScopes.mockReturnValue(scopes);

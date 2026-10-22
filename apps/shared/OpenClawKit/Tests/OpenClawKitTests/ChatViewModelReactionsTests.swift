@@ -229,7 +229,7 @@ struct ChatViewModelReactionsTests {
         }
         #expect(self.access(scopes: ["operator.admin"]).canReact(
             sharingRole: "owner", visibility: nil, archived: false, catalog: false))
-        #expect(self.access(scopes: ["operator.write.no-provider-enrollment"]).canReact(
+        #expect(self.access(scopes: ["operator.write.no-credential-enrollment"]).canReact(
             sharingRole: "owner", visibility: nil, archived: false, catalog: false))
         #expect(!self.access().canReact(sharingRole: nil, visibility: "shared", archived: false, catalog: false))
         #expect(!self.access().canReact(sharingRole: "owner", visibility: "shared", archived: true, catalog: false))

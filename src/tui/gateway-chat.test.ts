@@ -555,7 +555,7 @@ describe("GatewayChatClient", () => {
     );
   });
 
-  it.each(["operator.write", "operator.write.no-provider-enrollment"])(
+  it.each(["operator.write", "operator.write.no-credential-enrollment"])(
     "derives task suggestion actions from negotiated methods and %s",
     (scope) => {
       const client = createClient();

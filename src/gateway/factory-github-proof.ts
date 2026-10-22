@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { resolveGitHubHost, resolveGitHubApiBaseUrl } from "../agents/github-host-runtime.js";
 import { parseEnterpriseGitHubPrincipal } from "../shared/enterprise-github-principal.js";
-import { operatorScopeSatisfied } from "../shared/operator-scope-compat.js";
+import { operatorActionScope, operatorScopeSatisfied } from "../shared/operator-scope-compat.js";
 import { captureResidentUserProfileAccess } from "../state/user-profile-list.js";
 import type { GatewayClient } from "./server-methods/client-types.js";
 
@@ -46,7 +46,7 @@ export function factoryGitHubClientProof(input: {
     if (
       client?.invalidated ||
       client?.connect.role !== "operator" ||
-      !operatorScopeSatisfied("operator.read", client.connect.scopes ?? []) ||
+      !operatorScopeSatisfied(operatorActionScope("operator.read"), client.connect.scopes ?? []) ||
       !client.connId ||
       client.connectionSignal?.aborted ||
       client.internal?.authenticatedOperator !== true ||

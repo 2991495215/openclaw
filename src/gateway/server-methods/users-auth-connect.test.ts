@@ -321,7 +321,7 @@ describe("users model-account connection lifecycle", () => {
       writer.scopes = ["operator.read"];
     }
     if (change === "non-enrolling role") {
-      writer.scopes = ["operator.write.no-provider-enrollment"];
+      writer.scopes = ["operator.write.no-credential-enrollment"];
     }
     if (change === "merge") {
       resolveProfileId.mockImplementation((id) => (id === "profile-1" ? "profile-merged" : id));

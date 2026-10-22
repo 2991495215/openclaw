@@ -126,7 +126,7 @@ test.each([
 });
 
 test("accepts non-enrolling write as an opt-in identity grant and role ceiling", () => {
-  const scopes = ["operator.write.no-provider-enrollment"];
+  const scopes = ["operator.write.no-credential-enrollment"];
   expect(
     OpenClawSchema.safeParse({
       gateway: {

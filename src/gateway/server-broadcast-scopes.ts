@@ -190,9 +190,9 @@ export function hasEventScope(
     (role === "operator" &&
       (required.some(
         (scope) =>
-          operatorScopeSatisfied(scope, scopes) &&
+          operatorScopeSatisfied(operatorActionScope(scope), scopes) &&
           (scope !== SESSION_READ_SCOPE ||
-            operatorScopeSatisfied(READ_SCOPE, scopes) ||
+            operatorScopeSatisfied(operatorActionScope(READ_SCOPE), scopes) ||
             hasSessionReadContext?.() === true),
       ) ||
         (ownRunQuestion && operatorScopeSatisfied("operator.sessions.write", scopes))))

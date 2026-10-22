@@ -19,7 +19,7 @@ beforeEach(() => setActivePluginRegistry(createEmptyPluginRegistry()));
 afterEach(resetPluginRuntimeStateForTest);
 
 it.each([
-  ["operator.write.no-provider-enrollment", true],
+  ["operator.write.no-credential-enrollment", true],
   ["operator.read", false],
 ] as const)("keeps ordinary plugin writes available with %s", async (grant, allowed) => {
   const handler = vi.fn(async () => ({ text: "written" }));

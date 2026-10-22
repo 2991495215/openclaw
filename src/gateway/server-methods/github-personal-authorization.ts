@@ -41,6 +41,7 @@ function currentGitHubClient(
   options: Request,
   scope: "operator.read" | "operator.write" | "operator.sessions.read",
   owner?: string | { profileId: string; role: string | null; githubLogin?: string | null },
+  method?: string,
 ) {
   const { client, context } = options;
   if (
@@ -81,7 +82,7 @@ function currentGitHubClient(
     client.connect.role !== "operator" ||
     !roleScopesAllow({
       role: "operator",
-      requestedScopes: [operatorActionScope(scope)],
+      requestedScopes: [operatorActionScope(scope, method)],
       allowedScopes: scopes,
     })
   ) {
@@ -211,7 +212,10 @@ export async function prepareGitHubPublicationOptionsRead(
   const personal: PersonalEligibility =
     !eligibleClient ||
     !hasCurrentPersonalGatewaySource(options.client, options.context) ||
-    !operatorScopeSatisfied("operator.read", eligibleClient.connect.scopes ?? [])
+    !operatorScopeSatisfied(
+      operatorActionScope("operator.read"),
+      eligibleClient.connect.scopes ?? [],
+    )
       ? { kind: "ineligible" }
       : !profile
         ? { kind: "absent" }
@@ -282,6 +286,7 @@ export async function preparePersonalGitHubActionV2(
   options: Request,
   scope: "operator.read" | "operator.write" = "operator.read",
   callerSignal?: AbortSignal,
+  method?: string,
 ): Promise<PersonalGitHubActionV2> {
   const { client, context } = options;
   const profileReference = client?.authenticatedUserProfile?.profileId;
@@ -317,7 +322,7 @@ export async function preparePersonalGitHubActionV2(
     if (!profile.isCurrent()) {
       throw new Error("My GitHub owner changed; retry from your current profile.");
     }
-    currentGitHubClient(options, scope, profile);
+    currentGitHubClient(options, scope, profile, method);
   };
   assertCurrent();
   return { owner: profile.profileId, signal, assertCurrent };

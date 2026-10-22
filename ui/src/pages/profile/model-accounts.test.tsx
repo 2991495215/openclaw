@@ -313,7 +313,7 @@ it("refreshes accounts and their saved default when another client changes authe
   expect(harness.request).toHaveBeenCalledTimes(2);
 });
 
-it.each(["operator.write", "operator.write.no-provider-enrollment"])(
+it.each(["operator.write", "operator.write.no-credential-enrollment"])(
   "lets %s choose and clear a retained account without enrolling credentials",
   async (scope) => {
     const work = {
@@ -337,7 +337,7 @@ it.each(["operator.write", "operator.write.no-provider-enrollment"])(
       { scopes: [scope], accounts: [connectedAccount, work] },
     );
     const addAccount = button(harness.accounts, ".profile-auth-add-account");
-    expect(addAccount.disabled).toBe(scope === "operator.write.no-provider-enrollment");
+    expect(addAccount.disabled).toBe(scope === "operator.write.no-credential-enrollment");
     if (addAccount.disabled) {
       expect(harness.accounts.textContent).toContain(
         t("profilePage.modelAccounts.unavailable.write"),
@@ -385,7 +385,7 @@ it("retires an enrollment flow on restricted-write reconnect without disabling s
   harness.emit("reconnecting");
   harness.emitSnapshot({
     phase: "connected",
-    hello: gatewayHelloForMethods([], ["operator.write.no-provider-enrollment"]),
+    hello: gatewayHelloForMethods([], ["operator.write.no-credential-enrollment"]),
   });
   await waitForSolid(() =>
     expect(button(harness.accounts, ".profile-auth-link-unlink").disabled).toBe(false),

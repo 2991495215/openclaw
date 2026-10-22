@@ -138,7 +138,10 @@ export async function executeRegisteredPluginCommand(
             !hasAdmin &&
             !scopes.has(scope) &&
             !(
-              (scope === "operator.write" || scope === operatorActionScope("operator.write")) &&
+              (scope === "operator.write" ||
+                scope === operatorActionScope("operator.write") ||
+                scope === "operator.read" ||
+                scope === operatorActionScope("operator.read")) &&
               operatorScopeSatisfied(operatorActionScope(scope), [...scopes])
             ),
         )

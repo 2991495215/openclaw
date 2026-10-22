@@ -72,7 +72,7 @@ function click(label: string) {
   target?.click();
 }
 
-it.each(["operator.write", "operator.write.no-provider-enrollment"])(
+it.each(["operator.write", "operator.write.no-credential-enrollment"])(
   "pairs within %s without a browser-supplied principal",
   async (writeScope) => {
     const scopes = ["operator.read", writeScope];

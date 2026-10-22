@@ -208,7 +208,10 @@ export function resolveProbeAuthSummary(params: {
     capability = "admin_capable";
   } else if (operatorScopeSatisfied(operatorActionScope(WRITE_SCOPE), scopes)) {
     capability = "write_capable";
-  } else if (scopes.includes(READ_SCOPE) || params.verifiedRead === true) {
+  } else if (
+    operatorScopeSatisfied(operatorActionScope(READ_SCOPE), scopes) ||
+    params.verifiedRead === true
+  ) {
     capability = "read_only";
   } else if (params.connectLatencyMs != null && params.authMetadataPresent === true) {
     capability = "connected_no_operator_scope";

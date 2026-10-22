@@ -126,7 +126,7 @@ it.each([
   expect(listed.details).toEqual({ portals: [summary] });
   // Listing a bearer URL requires the authority that can mint it.
   expect(recorded.requestScopes).toEqual([
-    ["portal.list", ["operator.write.no-provider-enrollment"]],
+    ["portal.list", ["operator.write.no-credential-enrollment"]],
   ]);
   expect(closed.details).toEqual({ closed: true });
   for (const result of [opened, listed, closed]) {

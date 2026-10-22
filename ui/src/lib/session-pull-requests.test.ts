@@ -119,13 +119,21 @@ describe("session pull request snapshot store", () => {
     },
   );
 
-  it("hydrates passive receipts and promotes only the active viewer to GitHub reads", async () => {
+  it.each([
+    "operator.read",
+    "operator.read.no-credential-enrollment",
+    "operator.write.no-credential-enrollment",
+  ])("hydrates passive receipts and promotes only the active viewer with %s", async (scope) => {
     const { harness, store, owner } = createStoreHarness();
+    harness.setSnapshot({ ...harness.gateway.snapshot, hello: createHello([scope]) });
     const passiveOwner = {};
     const key = "agent:main:demo";
     store.watch(passiveOwner, [key], { passive: true });
     await flushSync();
     expectSubscription(harness, [], undefined, [key]);
+    emitReadySnapshot(harness, key, [{ number: 42, state: "open" }]);
+    harness.emit({ reason: "profile-identity" }, "sessions.changed");
+    expect(store.get(key)?.pullRequests).toHaveLength(1);
     store.watch(owner, [key], { foreground: true });
     await flushSync();
     expect(harness.request).toHaveBeenCalledTimes(2);

@@ -47,10 +47,36 @@ describe("canCallGatewayMethod", () => {
   ] as const)("projects restricted write authority for %s", (method, allowed) => {
     const restricted = snapshot({
       methods: [method],
-      scopes: ["operator.write.no-provider-enrollment"],
+      scopes: ["operator.write.no-credential-enrollment"],
     });
     expect(canCallGatewayMethod(restricted, method, "operator.write")).toBe(allowed);
     expect(canPresentGatewayMethod(restricted, method, "operator.write")).toBe(allowed);
+  });
+
+  it.each([
+    ["users.self", true],
+    ["users.prefs.get", true],
+    ["users.github.status", true],
+    ["users.github.disconnect", true],
+    ["users.github.authorize.cancel", true],
+    ["users.github.authorize.start", false],
+    ["users.github.authorize.poll", false],
+  ] as const)("projects restricted read authority for %s", (method, allowed) => {
+    for (const scope of [
+      "operator.read.no-credential-enrollment",
+      "operator.write.no-credential-enrollment",
+    ]) {
+      const restricted = snapshot({ methods: [method], scopes: [scope] });
+      expect(canCallGatewayMethod(restricted, method, "operator.read")).toBe(allowed);
+      expect(canPresentGatewayMethod(restricted, method, "operator.read")).toBe(allowed);
+      expect(
+        canCallGatewayMethod(
+          snapshot({ methods: [method], scopes: [scope, "operator.read"] }),
+          method,
+          "operator.read",
+        ),
+      ).toBe(true);
+    }
   });
 
   it.each([

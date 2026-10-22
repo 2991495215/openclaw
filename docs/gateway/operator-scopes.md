@@ -42,29 +42,39 @@ require the `node` role.
 | `operator.talk`           | Creating, steering, and closing Talk sessions without general Gateway write access. `operator.write` also satisfies this scope.                               |
 | `operator.talk.secrets`   | Reading Talk configuration with secrets included.                                                                                                             |
 
-### Write access without provider enrollment
+### Write access without credential enrollment
 
-Grant `operator.write.no-provider-enrollment` instead of `operator.write` to
-retain ordinary write access without allowing personal model-provider credential
-enrollment. This includes the same read, Talk, and session access as write.
-Personal GitHub connection management and publication remain available. Saved
-model accounts can still be selected and used; clearing their new-chat default
-remains available. The scope blocks starting or answering provider sign-in,
-including API keys, tokens, OAuth, and reconnecting an account. Pending sign-in
-cannot save credentials after its full-write authority is withdrawn.
+Grant `operator.write.no-credential-enrollment` instead of `operator.write` to
+retain ordinary writes without enrolling personal credentials. It blocks model
+provider API-key/token/OAuth sign-in and reconnects, and personal GitHub
+publication OAuth start and completion. Saved accounts can still be selected,
+used, or disconnected; unfinished enrollment cannot save credentials after its
+required authority is withdrawn. Shared credential setup remains admin-only.
 
-This is an additive grant, not a deny flag: `operator.write` and
-`operator.admin` retain their existing behavior, including enrollment, even when
-the narrower scope is also present. No existing default grants change. A role
-ceiling can narrow full write to this scope without retaining enrollment.
+Verified GitHub identity and **Git co-author credit** are separate from the
+**Connect My GitHub** publication credential. Supported identity-bearing sign-in
+can still establish attribution, and the profile credit preference remains
+editable. This scope adds no new identity-provider integration; a generic proxy
+username alone does not verify a GitHub account. See
+[GitHub credit](/concepts/user-model#gateway-profile-and-github-credit).
+
+The scope includes `operator.read.no-credential-enrollment`, Talk, and session
+read/write. The narrower read scope exists because legacy `operator.read` also
+grants personal GitHub credential enrollment. It represents ordinary reads when
+a read grant is capped by non-enrolling write; it never grants writes or
+enrollment. Existing `operator.read`, `operator.write`, admin, and default grants
+are unchanged. Scopes remain additive: adding legacy `operator.read` restores
+GitHub enrollment, and adding full write or admin restores all enrollment.
+For restricted users, grant only the non-enrolling scope, not legacy read/write.
 
 For trusted-proxy deployments, device and identity grants are unioned before
 role ceilings are applied. Set device auto-approval scopes explicitly and review
-existing device grants: a full-write device grant restores enrollment unless a
-role ceiling caps it. Update the Gateway before configuring the new scope;
-older versions do not recognize it. This controls Gateway enrollment APIs, not
+existing device grants: legacy read or full write can restore enrollment unless
+a role ceiling caps them. Update the Gateway before configuring the new scopes;
+older versions do not recognize them. This controls Gateway enrollment APIs, not
 credentials entered through unrestricted shell execution, and does not revoke
-already-saved provider credentials or existing session selections.
+already-saved credentials, stop refresh of existing authorizations, or clear
+session account selections.
 
 Personal GitHub connection management is a narrowly self-scoped exception to
 read-only behavior: `users.github.*` requires `operator.read` plus the exact

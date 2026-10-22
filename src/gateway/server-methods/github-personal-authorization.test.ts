@@ -196,8 +196,8 @@ it("prepares the new session store after an in-place config publication", async 
 
 it("allows existing personal GitHub publication under a non-enrolling role ceiling", async () => {
   const request = createRequest();
-  request.client.connect.scopes = ["operator.write.no-provider-enrollment"];
-  mocks.roleScopes = ["operator.write.no-provider-enrollment"];
+  request.client.connect.scopes = ["operator.write.no-credential-enrollment"];
+  mocks.roleScopes = ["operator.write.no-credential-enrollment"];
   const publication = await preparePersonalGitHubSessionActionV2(request, { sessionKey: "main" });
   using _ = { [Symbol.dispose]: publication.release };
   expect(() => publication.action.assertCurrent()).not.toThrow();

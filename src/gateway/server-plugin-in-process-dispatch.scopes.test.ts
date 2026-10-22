@@ -66,7 +66,7 @@ describe("synthetic operator scope attenuation", () => {
   it.each(["minimum", "exact"] as const)(
     "keeps %s synthetic calls within the non-enrolling source",
     async (mode) => {
-      const scope = "operator.write.no-provider-enrollment";
+      const scope = "operator.write.no-credential-enrollment";
       const handler = vi.fn(({ client, respond }: GatewayRequestHandlerOptions) => {
         expect(client?.connect.scopes).toEqual([scope]);
         respond(true, { ok: true });

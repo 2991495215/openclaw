@@ -580,7 +580,7 @@ describe("node surface approvals", () => {
           request.requestId,
           {
             callerScopes: restricted
-              ? ["operator.pairing", "operator.write.no-provider-enrollment"]
+              ? ["operator.pairing", "operator.write.no-credential-enrollment"]
               : scopes,
           },
           baseDir,

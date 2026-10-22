@@ -126,7 +126,7 @@ describe("users model-account control plane", () => {
   );
 
   it("allows saved-account maintenance but rejects provider enrollment for restricted writers", async () => {
-    self.connect.scopes = ["operator.write.no-provider-enrollment"];
+    self.connect.scopes = ["operator.write.no-credential-enrollment"];
     expect(
       await rpc("users.authConnect.start", {
         profileId: "profile-1",
