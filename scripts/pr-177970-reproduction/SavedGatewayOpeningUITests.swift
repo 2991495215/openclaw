@@ -174,11 +174,20 @@ final class SavedGatewayOpeningUITests: XCTestCase {
                 self.capture(app, name: "\(stage)-\(entry)-reopened")
                 if reopened {
                     try await self.openSavedSettings(app)
-                    let remove = app.buttons["Remove Reproduction server"]
+                    let settings = app.windows["com_apple_SwiftUI_Settings_window"]
+                    let remove = settings.buttons["Remove Reproduction server"]
                     XCTAssertTrue(remove.waitForExistence(timeout: 5))
                     remove.click()
-                    let confirmation = app.buttons["Remove"]
-                    XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+                    let sheets = settings.sheets.matching(NSPredicate(format: "label == %@", "alert"))
+                    let sheet = sheets.firstMatch
+                    try self.require(
+                        sheet.waitForExistence(timeout: 5) && sheets.count == 1,
+                        app: app, message: "Unique removal sheet is absent from Settings")
+                    let confirmations = sheet.buttons.matching(NSPredicate(format: "label == %@", "Remove"))
+                    let confirmation = confirmations.firstMatch
+                    try self.require(
+                        confirmation.waitForExistence(timeout: 5) && confirmations.count == 1,
+                        app: app, message: "Unique removal confirmation is absent from Settings sheet")
                     confirmation.click()
                     result["windowClosedAfterRemoval"] = target.waitForNonExistence(timeout: 10)
                     let removed = try await self.control("observe-cleanup")
