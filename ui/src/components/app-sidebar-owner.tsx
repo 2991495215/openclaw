@@ -1,9 +1,11 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo, lazy, onSettled, Show } from "solid-js";
+import { createMemo, Errored, lazy, Loading, onSettled, Show } from "solid-js";
 import type { SessionObserverDigest } from "../../../packages/gateway-protocol/src/schema/sessions.js";
 import { isSessionRouteId } from "../app-route-paths.ts";
 import type { NativeGatewaysSnapshot } from "../app/native-gateways.runtime.ts";
 import { beginNativeWindowDragFromTopInset } from "../app/native-window-drag.ts";
+import { formatUiError } from "../lib/format-error.ts";
+import { t } from "../lib/reactive/i18n.ts";
 import {
   buildCatalogSessionKey,
   catalogSessionKeyFromSearch,
@@ -11,13 +13,12 @@ import {
 import type { CatalogProjectGrouping } from "../lib/sessions/catalog-project-grouping.ts";
 import "./sidebar-attention.tsx";
 import "./tooltip.ts";
-import { renderAppSidebarOnline, sidebarOnlineOrder } from "./app-sidebar-online.tsx";
 import { hidePersonalSidebarCatalog } from "./app-sidebar-personal-navigation.ts";
 import { renderSidebarRail, renderSidebarPages } from "./app-sidebar-rail.tsx";
+import type { SessionCatalogGroupsRenderer } from "./app-sidebar-session-catalog-render.tsx";
 import "../styles/sidebar-reorder.css";
 import "../styles/app-sidebar.css";
 import "../styles/sidebar-rail.css";
-import type { SessionCatalogGroupsRenderer } from "./app-sidebar-session-catalog-render.tsx";
 import type { CatalogSessionMenuRequest } from "./app-sidebar-session-catalogs.ts";
 import { renderSessionListToolbar } from "./app-sidebar-session-filter-summary.tsx";
 import { renderSessionList as SessionList } from "./app-sidebar-session-list-render.tsx";
@@ -37,9 +38,11 @@ import {
 } from "./app-sidebar-session-types.ts";
 import { SessionOrganizer } from "./session-organizer.ts";
 import { SidebarAgentRoster, renderSidebarPinnedSession } from "./sidebar-agent-roster.tsx";
+import { SidebarCollapseToggle } from "./sidebar-collapse-toggle.tsx";
 import type { createSidebarScroll } from "./sidebar-context-controller.ts";
 import { createSidebarMenus } from "./sidebar-menus.tsx";
 import type { SidebarNavigationCatalog } from "./sidebar-navigation-catalog.ts";
+import { sidebarOnlineOrder } from "./sidebar-online-state.ts";
 import { createSidebarPeople, SidebarPeoplePreferences } from "./sidebar-people.ts";
 import { createSidebarRendererLoader } from "./sidebar-renderer-loader.tsx";
 import {
@@ -52,6 +55,10 @@ import { GatewayStatus } from "./solid/gateway-status.tsx";
 import { Icon } from "./solid/icon.tsx";
 import { PanelRefreshStatus } from "./solid/panel-refresh-status.tsx";
 import { SidebarCommunityInvite } from "./solid/sidebar-community-invite.tsx";
+
+const LazyOnline = lazy(() => import("./app-sidebar-online.tsx"), {
+  export: "renderAppSidebarOnline",
+});
 
 export class AppSidebarOwner extends AppSidebarSessionNavigationElement implements SessionListHost {
   private readonly emptyNarrationLines = new Map<string, string>();
@@ -428,7 +435,36 @@ export class AppSidebarOwner extends AppSidebarSessionNavigationElement implemen
       const rail = renderSidebarRail(this);
       const Pages = () => renderSidebarPages(this);
       const toolbar = renderSessionListToolbar(this);
-      const Online = () => renderAppSidebarOnline(this);
+      const Online = () => LazyOnline(this);
+      const OnlineFallback = (props: { error?: unknown; retry?: () => void }) => (
+        <section
+          class="sidebar-online"
+          aria-label={t("presence.usersTitle")}
+          data-session-section="online"
+        >
+          <div class="sidebar-panel-header">
+            <span>{t("presence.usersTitle")}</span>
+            <SidebarCollapseToggle onToggle={() => this.onToggleSidebar?.()} />
+          </div>
+          <div class="sidebar-online__list">
+            <Show
+              when={props.retry}
+              fallback={
+                <span class="sidebar-session-empty-hint" role="status">
+                  {t("common.loading")}
+                </span>
+              }
+            >
+              <span class="sidebar-session-empty-hint" role="alert">
+                {formatUiError(props.error)}
+              </span>
+              <button class="sidebar-online__retry" type="button" onClick={() => props.retry?.()}>
+                {t("common.retry")}
+              </button>
+            </Show>
+          </div>
+        </section>
+      );
       const menus = this.sidebarMenus.render(this);
       const statusVisible = () =>
         this.gatewayStatus?.kind &&
@@ -477,7 +513,15 @@ export class AppSidebarOwner extends AppSidebarSessionNavigationElement implemen
                         </>
                       }
                     >
-                      <Online />
+                      <Errored
+                        fallback={(error, reset) => (
+                          <OnlineFallback error={error()} retry={reset} />
+                        )}
+                      >
+                        <Loading fallback={<OnlineFallback />}>
+                          <Online />
+                        </Loading>
+                      </Errored>
                     </Show>
                   }
                 >

@@ -34,6 +34,7 @@ import {
 } from "../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../test-helpers/gateway-methods.ts";
 import { settleLitElement } from "../test-helpers/lit-settle.ts";
+import { waitForSolid } from "../test-helpers/solid-settle.ts";
 import { getAppSidebarOwner } from "./app-sidebar.tsx";
 import * as personActivity from "./person-activity-link.ts";
 import { SidebarOwnerSessionCounts } from "./sidebar-owner-session-counts.ts";
@@ -198,7 +199,9 @@ describe("sidebar people workload", () => {
     expect(link).not.toHaveBeenCalled();
 
     await selectSidebarView(sidebar, "online");
-    expect(person(sidebar, "ada").getAttribute("href")).toBe("/activity/ada");
+    await waitForSolid(() =>
+      expect(person(sidebar, "ada").getAttribute("href")).toBe("/activity/ada"),
+    );
     expect(link).toHaveBeenCalled();
     await selectSidebarView(sidebar, "sessions");
     link.mockClear();

@@ -58,8 +58,8 @@ const controlUiPerformanceBudgets = {
   newBootJsRequests: 21,
   // Runtime English: 1,416,919 B Chat and 953,531 B New Session.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_471_671,
-  newBootJsGzipBytes: 967_647,
+  chatBootJsGzipBytes: 1_469_969,
+  newBootJsGzipBytes: 965_998,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
