@@ -622,6 +622,10 @@ suite.define(() => {
       await polledVisible(followUp).toBe(true);
       await polledCount(page.locator(".chat-send-btn--stop")).toBe(0);
       await page.setViewportSize({ width: 393, height: 852 });
+      const activeMobileSendBox = await followUp.boundingBox();
+      if (!activeMobileSendBox) {
+        throw new Error("expected the active mobile follow-up action to have a layout box");
+      }
 
       await textarea.fill("");
       const stop = page.getByRole("button", { name: "Stop generating" });
@@ -635,8 +639,8 @@ suite.define(() => {
       ]);
       expect(activeMobileSettingsBox?.width).toBeGreaterThanOrEqual(44);
       expect(activeMobileSettingsBox?.height).toBeGreaterThanOrEqual(44);
-      expect(activeMobileStopBox?.width).toBeCloseTo(32, 2);
-      expect(activeMobileStopBox?.height).toBeCloseTo(32, 2);
+      expect(activeMobileStopBox?.width).toBeCloseTo(activeMobileSendBox.width, 2);
+      expect(activeMobileStopBox?.height).toBeCloseTo(activeMobileSendBox.height, 2);
       expect(await composerShell.locator(".agent-chat__composer-run-status").count()).toBe(0);
       await textarea.press("Escape");
       const abortRequest = await gateway.waitForRequest("chat.abort");
