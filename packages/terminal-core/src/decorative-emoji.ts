@@ -11,8 +11,21 @@ export type DecorativeEmojiOptions = {
 
 const EMOJI_GRAPHEME_PATTERN = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u;
 
-/** Detect terminals with known emoji rendering support. */
-function isKnownEmojiTerminal(env: NodeJS.ProcessEnv): boolean {
+/** Return true when decorative emoji should be emitted for the target terminal. */
+export function supportsDecorativeEmoji(options: DecorativeEmojiOptions = {}): boolean {
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const isTty = options.isTty ?? process.stdout.isTTY;
+
+  if (!isTty || (env.TERM ?? "").toLowerCase() === "dumb") {
+    return false;
+  }
+  const locale = [env.LC_ALL, env.LC_CTYPE, env.LANG].find(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
+  if (locale && !/utf-?8/i.test(locale)) {
+    return false;
+  }
   const termProgram = (env.TERM_PROGRAM ?? "").toLowerCase();
   const term = (env.TERM ?? "").toLowerCase();
   return (
@@ -23,32 +36,9 @@ function isKnownEmojiTerminal(env: NodeJS.ProcessEnv): boolean {
     termProgram.includes("vscode") ||
     term.includes("ghostty") ||
     term.includes("wezterm") ||
-    Boolean(env.WT_SESSION)
+    Boolean(env.WT_SESSION) ||
+    platform === "darwin"
   );
-}
-
-/** Return true when locale variables indicate UTF-8 output support. */
-function hasUtf8Locale(env: NodeJS.ProcessEnv): boolean {
-  const locale = [env.LC_ALL, env.LC_CTYPE, env.LANG].find(
-    (value) => typeof value === "string" && value.trim().length > 0,
-  );
-  if (!locale) {
-    return true;
-  }
-  return /utf-?8/i.test(locale);
-}
-
-/** Return true when decorative emoji should be emitted for the target terminal. */
-export function supportsDecorativeEmoji(options: DecorativeEmojiOptions = {}): boolean {
-  const env = options.env ?? process.env;
-  const platform = options.platform ?? process.platform;
-  const isTty = options.isTty ?? process.stdout.isTTY;
-
-  return isTty
-    ? (env.TERM ?? "").toLowerCase() !== "dumb" &&
-        hasUtf8Locale(env) &&
-        (isKnownEmojiTerminal(env) || platform === "darwin")
-    : false;
 }
 
 /** Return the emoji only when decorative emoji output is supported. */
