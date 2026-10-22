@@ -136,6 +136,31 @@ rejected async reads and render failures. Its `reset` recomputes errored reads;
 it does not repeat an imperative owner request, so the receipt example also
 dispatches the owner's refresh.
 
+### Loading during an error retry
+
+In rc.16, `Errored` retains its error fallback while a reset read is pending.
+An inner `Loading` therefore cannot replace that fallback with a loading
+affordance. When retry must show a spinner or skeleton, put `Loading` outside
+`Errored` and re-arm it for that retry. Plugin consent observes its inspection
+receipt because every inspection should show loading. Catalog discovery
+observes the owner's recorded error clearing, alongside its selection scope:
+retry shows placeholders, while a successful same-selection refresh retains
+the existing cards and their controls. Its separate pagination button observes
+each receipt because the retained cards sit outside that loading boundary.
+Before the first result exists, catalog discovery also observes the browse
+receipt: an initial request can start after the page has already rendered.
+
+Choose `on` from that presentation contract; observing every receipt would
+unnecessarily replace the catalog on an ordinary refresh. Keep the imperative
+owner retry and `reset()` together, and test the held retry before resolving
+it. Eventual success alone misses the retained-error behavior. An outer
+`Errored` remains appropriate when keeping its error visible during retry is
+the intended contract.
+
+Keep accepted content outside `Errored` when failure should add an alert instead
+of replacing that content. Catalog overview shelves are siblings of the readiness
+and error slot inside `Loading`, retaining their card nodes through a failed refresh.
+
 ## Mutate with an optimistic presentation
 
 Use a generator action to retain the transition context across async work.

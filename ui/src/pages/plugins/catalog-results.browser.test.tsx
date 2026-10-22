@@ -79,17 +79,15 @@ afterEach(() => {
 function catalogProps(): PluginCatalogResultsProps {
   return {
     connected: true,
-    loading: false,
     result: { items: [entry] },
+    reads: { browse: null, categories: null, more: null },
     error: null,
     remoteError: null,
     categories: [],
-    categoriesLoading: false,
     categoriesError: null,
     onRetryCategories: vi.fn(),
     featured: [],
     trending: [],
-    loadingMore: false,
     loadMoreError: null,
     intent: "all",
     category: null,
@@ -108,8 +106,9 @@ function catalogProps(): PluginCatalogResultsProps {
   };
 }
 
-function renderCatalog(props: Partial<PluginCatalogResultsProps>) {
+async function renderCatalog(props: Partial<PluginCatalogResultsProps>) {
   render(() => PluginCatalogResults({ ...catalogProps(), ...props }));
+  await nextFrame();
 }
 
 it.each([263, 362])(
@@ -121,7 +120,7 @@ it.each([263, 362])(
       activities: [{ activityId: "dependencies", stage: "dependencies", status: "started" }],
     } satisfies PluginInstallProgress;
     for (const busy of [false, true]) {
-      renderCatalog({
+      await renderCatalog({
         onInstall,
         busy: busy ? { "install:long-title": "install" } : {},
         installProgress: busy ? new Map([["install:long-title", progress]]) : undefined,
@@ -158,9 +157,9 @@ it.each([263, 362])(
   },
 );
 
-it.each([263, 362])("centers installed status dots in a %ipx card header", (width) => {
+it.each([263, 362])("centers installed status dots in a %ipx card header", async (width) => {
   for (const state of ["enabled", "disabled", "needs-setup", "error"] as const) {
-    renderCatalog({
+    await renderCatalog({
       result: { items: [{ ...entry, local: { ...entry.local, installed: true, state } }] },
     });
     find(".plugin-catalog-grid").style.gridTemplateColumns = `${width}px`;
@@ -211,6 +210,7 @@ it.each([
         <PluginCatalogResults {...catalogProps()} result={{ items }} iconUrls={iconUrls()} />
       </>
     ));
+    await nextFrame();
     const images = [...container.querySelectorAll<HTMLImageElement>(".plugins-icon")].filter(
       (image) => image.getAttribute("src") === icon,
     );
@@ -255,7 +255,9 @@ it.each([
 );
 
 it("fills the remaining viewport with card-sized placeholders across resizes", async () => {
-  renderCatalog({ loading: true });
+  await renderCatalog({
+    reads: { browse: Promise.withResolvers<null>().promise, categories: null, more: null },
+  });
   const errors: string[] = [];
   const onError = (event: ErrorEvent) => errors.push(event.message);
   window.addEventListener("error", onError);
