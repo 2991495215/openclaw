@@ -151,6 +151,8 @@ it.each([
   { action: "filter", phase: "pending" },
   { action: "filter", phase: "cooldown" },
 ])("bypasses automatic Activity $phase for an explicit $action", async ({ action, phase }) => {
+  // Midnight rollover has separate coverage from retry/filter invalidation.
+  vi.setSystemTime(dayAt(8, 27, 12));
   const replacement = { ...result, ts: 2 };
   request
     .mockResolvedValueOnce(result)
