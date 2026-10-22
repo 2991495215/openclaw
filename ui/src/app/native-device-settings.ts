@@ -255,6 +255,8 @@ const legacyChromeStatusResultSchema = legacyChromeInstallResultSchema.required(
 
 export type NativeDeviceSettingsCapability = {
   readonly snapshot: NativeDeviceSettingsSnapshot | null;
+  /** First accepted snapshot, or null when this capability retires before one arrives. */
+  readonly initialSnapshot: Promise<NativeDeviceSettingsSnapshot | null>;
   subscribe(listener: (snapshot: NativeDeviceSettingsSnapshot) => void): () => void;
   /** Settles after reply publication or retirement; edit failures use the callback. */
   set(
@@ -306,6 +308,10 @@ export function createNativeDeviceSettingsCapability(): NativeDeviceSettingsCapa
     nativeWindow["__OPENCLAW_NATIVE_DEVICE_SETTINGS__"],
   );
   let snapshot = initial.success ? initial.data : null;
+  const initialSnapshot = Promise.withResolvers<NativeDeviceSettingsSnapshot | null>();
+  if (snapshot) {
+    initialSnapshot.resolve(snapshot);
+  }
   let disposed = false;
   // Retiring the host releases awaiting presenters without publishing another snapshot.
   const pendingRequests = new Set<() => void>();
@@ -316,12 +322,14 @@ export function createNativeDeviceSettingsCapability(): NativeDeviceSettingsCapa
   const listeners = new Set<(snapshot: NativeDeviceSettingsSnapshot) => void>();
   const acceptSnapshot = (next: NativeDeviceSettingsSnapshot) => {
     if (
-      snapshot?.revision !== undefined &&
-      (next.revision === undefined || next.revision <= snapshot.revision)
+      disposed ||
+      (snapshot?.revision !== undefined &&
+        (next.revision === undefined || next.revision <= snapshot.revision))
     ) {
       return false;
     }
     snapshot = next;
+    initialSnapshot.resolve(next);
     return true;
   };
   const onChange = (event: Event) => {
@@ -406,6 +414,7 @@ export function createNativeDeviceSettingsCapability(): NativeDeviceSettingsCapa
     }
   };
   return {
+    initialSnapshot: initialSnapshot.promise,
     get snapshot() {
       return snapshot;
     },
@@ -452,6 +461,7 @@ export function createNativeDeviceSettingsCapability(): NativeDeviceSettingsCapa
     refresh,
     dispose() {
       disposed = true;
+      initialSnapshot.resolve(null);
       pendingRequests.forEach((stop) => stop());
       pendingRequests.clear();
       stops.forEach((stop) => stop());
