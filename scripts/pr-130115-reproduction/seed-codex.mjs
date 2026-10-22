@@ -186,7 +186,19 @@ try {
   } catch (error) { deniedExit = error.code; }
   networkCanaries = { allowedResponse: stdout, deniedExit, deniedHits, allowedEndpoint: `127.0.0.1:${port}` };
   if (stdout !== "loopback-ready" || !Number.isInteger(deniedExit) || deniedExit === 0 || deniedHits !== 0) throw new Error("Network confinement canaries failed");
-  ({ stdout: version } = await run("/usr/bin/sandbox-exec", confined(spec.executable, ["--version"]), { env: environment, timeout: 10000 }));
+  const versionHome = path.join(spec.home, ".codex-version-preflight");
+  await mkdir(versionHome, { mode: 0o700 });
+  let versionStderr;
+  try {
+    ({ stdout: version, stderr: versionStderr } = await run("/usr/bin/sandbox-exec", confined(spec.executable, ["--version"]), {
+      env: { ...environment, CODEX_HOME: versionHome }, timeout: 10000,
+    }));
+  } finally {
+    await writeFile(path.join(spec.output, "version-preflight.json"), JSON.stringify({
+      codexHome: versionHome, createdEntries: (await readdir(versionHome, { recursive: true })).sort(),
+      stdout: version, stderr: versionStderr,
+    }, null, 2));
+  }
   version = version.trim();
   if (version.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/)?.[0] !== spec.expectedVersion) throw new Error("Codex version differs from the product pin");
   const executableHash = createHash("sha256").update(await readFile(spec.executable)).digest("hex");
