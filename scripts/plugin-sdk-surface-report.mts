@@ -334,7 +334,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: maintainer-requested context-engine transcript watermark reader.
       // +1: the shared message-tool source-reply finality resolver, so harnesses apply a run's default.
       // +1: the same awaited web_search policy preparation.
-      2208,
+      // +2: the same shared SystemOne question/response codecs.
+      2210,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

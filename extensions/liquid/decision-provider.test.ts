@@ -194,7 +194,13 @@ describe("Liquid native Decision provider", () => {
     const headers = new Headers(request().init?.headers);
     expect(headers.get("authorization")).toBeNull();
     expect(headers.get("x-auth-fixture")).toBe("synthetic-effective");
-    expect(request().policy).toEqual({});
+    // Disabling private-origin trust keeps only the shared hostname-scoped
+    // fake-IP allowances; it must not enable arbitrary private destinations.
+    expect(request().policy).toEqual({
+      allowIpv6UniqueLocalRange: true,
+      allowRfc2544BenchmarkRange: true,
+      hostnameAllowlist: ["proxy.example.test"],
+    });
     expect(request().dispatcherPolicy).toEqual({
       mode: "env-proxy",
       connect: { ca: "synthetic-ca" },
