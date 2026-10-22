@@ -66,6 +66,19 @@ function withChat(
         chooserCount += 1;
       });
       await page.goto(suite.server.baseUrl + options.route);
+      const mediaInput = page.locator(".agent-chat__media-input").first();
+      await mediaInput.waitFor({ state: "attached" });
+      expect(
+        await mediaInput.evaluate((input) => {
+          const style = getComputedStyle(input);
+          return {
+            display: style.display,
+            position: style.position,
+            opacity: style.opacity,
+            pointerEvents: style.pointerEvents,
+          };
+        }),
+      ).toEqual({ display: "none", position: "fixed", opacity: "0", pointerEvents: "none" });
       await run(page, () => chooserCount);
     },
   );
@@ -85,6 +98,19 @@ async function choose(page: Page, kind: string) {
   expect(await input.getAttribute("accept")).toBe(
     kind === "file" ? null : kind === "media" ? "image/*,video/*" : "image/*",
   );
+  expect(
+    await input.evaluate((element) => {
+      if (!(element instanceof HTMLInputElement)) {
+        throw new Error("Expected the file chooser to belong to an HTML input");
+      }
+      const style = getComputedStyle(element);
+      return {
+        position: style.position,
+        opacity: style.opacity,
+        pointerEvents: style.pointerEvents,
+      };
+    }),
+  ).toEqual({ position: "fixed", opacity: "0", pointerEvents: "none" });
   return chooser;
 }
 
@@ -151,13 +177,10 @@ suite.define(() => {
           widths.push([932, 430]);
         }
         for (const [width, height] of widths) {
-          // Exercise a prior Photo selection before the fallback picker is repositioned.
-          if (cameraFallback && width === 320) {
-            const chooser = await choose(page, "media");
-            await expectPickerAtPlusButton(chooser);
-            await chooser.setFiles([]);
-          }
           await page.setViewportSize({ width, height });
+          const mediaChooser = await choose(page, "media");
+          await expectPickerAtPlusButton(mediaChooser);
+          await mediaChooser.setFiles([]);
           await trigger.click();
           const pending = page.waitForEvent("filechooser");
           if (cameraFallback) {

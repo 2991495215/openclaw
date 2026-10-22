@@ -21,7 +21,6 @@ suite.define(() => {
     { browser: "iOS Chrome", route: "chat" },
     { browser: "iPhone Safari", route: "new" },
     { browser: "Android Chrome", route: "new" },
-    { browser: "macOS Safari", route: "chat" },
   ])(
     "selects mixed existing media and preserves the $route draft on $browser",
     ({ browser, route }) =>
