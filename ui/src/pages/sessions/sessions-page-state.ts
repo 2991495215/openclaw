@@ -460,6 +460,7 @@ export function createSessionsPage(
     if (!binding || binding.sessions !== scope.sessions || !isRequestScopeCurrent(scope)) {
       return;
     }
+    state.error = null;
     await loadSessionList(binding, { force: true });
     if (isRequestScopeCurrent(scope) && listBinding === binding) {
       applyListSnapshot(binding, binding.sessions.listSnapshot(binding.query));
@@ -801,9 +802,7 @@ export function createSessionsPage(
         if (binding) {
           applyListSnapshot(binding, binding.sessions.listSnapshot(binding.query));
         }
-        if (mutationError) {
-          state.error = mutationError;
-        }
+        state.error = mutationError ?? null;
       }
     }
   }
