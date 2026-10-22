@@ -16,7 +16,6 @@ import {
 export function applyReplyTagsToPayload(params: {
   payload: ReplyPayload;
   replyToMode?: ReplyToMode;
-  implicitReplyToId?: string;
   currentMessageId?: string;
   replyThreading?: ReplyThreadingPolicy;
 }): ReplyPayload {
@@ -25,7 +24,6 @@ export function applyReplyTagsToPayload(params: {
         replyToIdExplicit: true,
       })
     : params.payload;
-  const implicitReplyToId = normalizeOptionalString(params.implicitReplyToId);
   const currentMessageId = normalizeOptionalString(params.currentMessageId);
   const allowImplicitReplyToCurrentMessage = resolveImplicitCurrentMessageReplyAllowance(
     params.replyToMode,
@@ -35,12 +33,12 @@ export function applyReplyTagsToPayload(params: {
   let resolved: ReplyPayload =
     payload.replyToId ||
     payload.replyToCurrent === false ||
-    !implicitReplyToId ||
+    !currentMessageId ||
     !allowImplicitReplyToCurrentMessage
       ? payload
       : copyReplyPayloadMetadata(payload, {
           ...payload,
-          replyToId: implicitReplyToId,
+          replyToId: currentMessageId,
         });
 
   // Inline reply tags override implicit threading without losing payload metadata.
@@ -78,13 +76,11 @@ type ReplyThreadingParams = {
 
 export function resolveReplyThreadingPayloads(params: ReplyThreadingParams): ReplyPayload[] {
   const { payloads, replyToMode, currentMessageId, replyThreading } = params;
-  const implicitReplyToId = normalizeOptionalString(currentMessageId);
   return payloads
     .map((payload) =>
       applyReplyTagsToPayload({
         payload,
         replyToMode,
-        implicitReplyToId,
         currentMessageId,
         replyThreading,
       }),
