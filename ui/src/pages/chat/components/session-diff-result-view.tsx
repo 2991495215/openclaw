@@ -2,7 +2,6 @@ import type { JSX } from "@solidjs/web";
 import { createSignal, For, onSettled, Show } from "solid-js";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelEmptyState } from "../../../components/solid/panel-empty-state.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -83,51 +82,21 @@ function createSessionDiffResultViews(
           >
             <MobileSummary result={result()} />
           </Show>
-          <Show
-            when={
-              result().unavailableReason === "not_git" ||
-              result().unavailableReason === "unknown_session"
-            }
-          >
-            <div class="session-diff__note">
-              {t(
-                result().unavailableReason === "not_git"
-                  ? "chat.sessionDiff.notGit"
-                  : "chat.sessionDiff.unknownSession",
-              )}
+
+          <Show when={result().unavailableReason !== "unknown_commit"}>
+            <div
+              class="session-diff__files"
+              aria-description={
+                result().truncated ? t("chat.sessionDiff.truncatedResult") : undefined
+              }
+              title={result().truncated ? t("chat.sessionDiff.truncatedResult") : undefined}
+            >
+              <For each={body.value.views} keyed={(view) => view.source}>
+                {(view) => <File view={view()} result={result()} />}
+              </For>
             </div>
           </Show>
-          <Show when={result().unavailableReason === "workspace_stopped"}>
-            <div class="session-diff__note">{t("chat.sessionDiff.workspaceStopped")}</div>
-          </Show>
-          <Show
-            when={result().unavailableReason === "unknown_commit"}
-            fallback={
-              <div class="session-diff__files">
-                <For
-                  each={body.value.views}
-                  keyed={(view) => view.source}
-                  fallback={
-                    !result().unavailableReason && !result().truncated ? (
-                      <PanelEmptyState
-                        presentation="mobile"
-                        icon={<Icon name="fileDiff" />}
-                        heading={t("chat.sessionDiff.emptyTitle")}
-                        description={t("chat.sessionDiff.mobileEmpty")}
-                      />
-                    ) : null
-                  }
-                >
-                  {(view) => <File view={view()} result={result()} />}
-                </For>
-              </div>
-            }
-          >
-            <div class="session-diff__note">{t("chat.sessionDiff.unknownCommit")}</div>
-          </Show>
-          <Show when={result().truncated}>
-            <div class="session-diff__note">{t("chat.sessionDiff.truncatedResult")}</div>
-          </Show>
+
           <Show when={result().commits?.length}>
             <button
               class="session-diff-mobile__commits"
@@ -175,22 +144,12 @@ function createSessionDiffResultViews(
     return (
       <>
         {result().unavailableReason === "not_git" ||
-        result().unavailableReason === "unknown_session" ? (
-          <div class="session-diff__note">
-            {t(
-              result().unavailableReason === "not_git"
-                ? "chat.sessionDiff.notGit"
-                : "chat.sessionDiff.unknownSession",
-            )}
-          </div>
-        ) : (
+        result().unavailableReason === "unknown_session" ? null : (
           <>
             <Show when={desktop()} fallback={<Summary result={result()} />}>
               <DesktopSummary result={result()} />
             </Show>
-            {result().unavailableReason === "workspace_stopped" && (
-              <div class="session-diff__note">{t("chat.sessionDiff.workspaceStopped")}</div>
-            )}
+
             <button
               class="session-diff__section-title"
               hidden={desktop()}
@@ -252,33 +211,18 @@ function createSessionDiffResultViews(
                   />
                 </aside>
               </Show>
-              <div class="session-diff__files" ref={setReadingViewport}>
-                {result().unavailableReason === "unknown_commit" ? (
-                  <div class="session-diff__note">{t("chat.sessionDiff.unknownCommit")}</div>
-                ) : (
-                  <For
-                    each={body.value.views}
-                    keyed={(view) => view.source}
-                    fallback={
-                      result().unavailableReason !== "workspace_stopped" &&
-                      result().truncated !== true ? (
-                        desktop() ? (
-                          <PanelEmptyState
-                            icon={<Icon name="fileDiff" />}
-                            heading={t("chat.sessionDiff.emptyTitle")}
-                            description={t("chat.sessionDiff.empty")}
-                          />
-                        ) : (
-                          <div class="session-diff__note">{t("chat.sessionDiff.empty")}</div>
-                        )
-                      ) : null
-                    }
-                  >
+              <div
+                class="session-diff__files"
+                ref={setReadingViewport}
+                aria-description={
+                  result().truncated ? t("chat.sessionDiff.truncatedResult") : undefined
+                }
+                title={result().truncated ? t("chat.sessionDiff.truncatedResult") : undefined}
+              >
+                {result().unavailableReason === "unknown_commit" ? null : (
+                  <For each={body.value.views} keyed={(view) => view.source}>
                     {(view) => <File view={view()} result={result()} />}
                   </For>
-                )}
-                {result().truncated === true && (
-                  <div class="session-diff__note">{t("chat.sessionDiff.truncatedResult")}</div>
                 )}
               </div>
             </div>

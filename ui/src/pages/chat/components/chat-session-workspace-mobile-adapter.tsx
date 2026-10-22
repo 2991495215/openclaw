@@ -1,7 +1,6 @@
-import { createSignal, createMemo, Errored, isPending, Loading, Show } from "solid-js";
+import { createSignal, createMemo, isPending, Loading, Show } from "solid-js";
 import type { SessionWorkspaceListResult } from "../../../api/types.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
-import { formatUiError } from "../../../lib/format-error.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { createScrollPosition } from "../../../lib/reactive/scroll-state.ts";
 import { sessionWorkspaceFileKey } from "../../../lib/sessions/workspace.ts";
@@ -30,9 +29,9 @@ type MobileWorkspaceProjection = Pick<
   | "browserPath"
   | "browserSearch"
   | "filter"
+  | "error"
   | "connected"
   | "mobileNavigation"
-  | "onRetry"
 > & { cachedBrowser?: SessionWorkspaceListResult["browser"] };
 
 function projectMobileWorkspace(workspace: MobileWorkspaceProjection): {
@@ -105,37 +104,23 @@ function projectMobileWorkspace(workspace: MobileWorkspaceProjection): {
     }
   }
   let status: SessionWorkspaceMobileStatus;
-  if (workspace.connected === false && !list) {
-    status = {
-      kind: "unavailable",
-      message: t("chat.workspaceFiles.mobile.disconnected"),
-      onRetry: workspace.onRetry,
-    };
-  } else if (!list || (!browser && listed && query)) {
-    status = { kind: "loading" };
-  } else if (
+  if (
     groups.length ||
     (!path &&
       workspace.filter === "all" &&
       hasTranscriptAttachments(workspace.transcriptAttachments, query))
   ) {
     status = { kind: "ready", refreshing: false };
+  } else if (workspace.error) {
+    status = { kind: "error" };
+  } else if (workspace.connected === false && !list) {
+    status = { kind: "unavailable" };
+  } else if (!list || (!browser && listed && query)) {
+    status = { kind: "loading" };
   } else if (!browser && (path || workspace.filter === "all")) {
-    status = {
-      kind: "unavailable",
-      message: t(
-        path ? "chat.workspaceFiles.folderUnavailable" : "chat.workspaceFiles.mobile.unavailable",
-      ),
-      onRetry: workspace.onRetry,
-    };
+    status = { kind: "unavailable" };
   } else {
-    status = {
-      kind: "empty",
-      heading: t("chat.sidePanel.files"),
-      description: t(
-        query ? "chat.workspaceFiles.noSearchResults" : "chat.workspaceFiles.mobile.empty",
-      ),
-    };
+    status = { kind: "empty" };
   }
   return { groups, status };
 }
@@ -150,17 +135,21 @@ export function MobileWorkspaceContents(props: {
   const path = createMemo(() => props.workspace.browserPath);
   const query = createMemo(() => props.workspace.browserSearch);
   const filter = createMemo(() => props.workspace.filter);
+  const error = createMemo(() => props.workspace.error);
   const connected = createMemo(() => props.workspace.connected);
   const cachedBrowser = createMemo(() => props.workspace.directories?.[path()]?.browser);
-  const expanded = {
-    changed: createMemo(() => props.workspace.mobileNavigation?.expandedGroups.changed ?? true),
-    read: createMemo(() => props.workspace.mobileNavigation?.expandedGroups.read ?? false),
-    artifacts: createMemo(
-      () => props.workspace.mobileNavigation?.expandedGroups.artifacts ?? false,
-    ),
-    workspace: createMemo(() => props.workspace.mobileNavigation?.expandedGroups.workspace ?? true),
-  };
-  const onRetry = () => props.workspace.onRetry?.();
+  const changedExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.changed ?? true,
+  );
+  const readExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.read ?? false,
+  );
+  const artifactsExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.artifacts ?? false,
+  );
+  const workspaceExpanded = createMemo(
+    () => props.workspace.mobileNavigation?.expandedGroups.workspace ?? true,
+  );
   const model = createMemo(() =>
     projectMobileWorkspace({
       sessionKey: sessionKey(),
@@ -169,15 +158,15 @@ export function MobileWorkspaceContents(props: {
       browserPath: path(),
       browserSearch: query(),
       filter: filter(),
+      error: error(),
       connected: connected(),
       cachedBrowser: cachedBrowser(),
-      onRetry,
       mobileNavigation: {
         expandedGroups: {
-          changed: expanded.changed(),
-          read: expanded.read(),
-          artifacts: expanded.artifacts(),
-          workspace: expanded.workspace(),
+          changed: changedExpanded(),
+          read: readExpanded(),
+          artifacts: artifactsExpanded(),
+          workspace: workspaceExpanded(),
         },
         scrollTop: 0,
       },
@@ -256,33 +245,17 @@ export function MobileWorkspaceContents(props: {
       onScroll={onScroll}
     />
   );
+  const pendingStatus = (): SessionWorkspaceMobileStatus => {
+    const status = model().status;
+    if (status.kind === "ready") {
+      return { kind: "ready", refreshing: true };
+    }
+    return status.kind === "empty" ? { kind: "loading" } : status;
+  };
   return (
-    <Errored
-      fallback={(error, reset) => (
-        <View
-          status={{
-            kind: "error",
-            message: formatUiError(error()),
-            onRetry: () => {
-              onRetry();
-              reset();
-            },
-          }}
-        />
-      )}
-    >
-      <Loading on={scope()} fallback={<View status={{ kind: "loading" }} />}>
-        {read()}
-        <View
-          status={
-            isPending(read)
-              ? model().status.kind === "ready"
-                ? { kind: "ready", refreshing: true }
-                : { kind: "loading" }
-              : model().status
-          }
-        />
-      </Loading>
-    </Errored>
+    <Loading on={scope()} fallback={<View status={pendingStatus()} />}>
+      {read()}
+      <View status={isPending(read) ? pendingStatus() : model().status} />
+    </Loading>
   );
 }

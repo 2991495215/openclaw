@@ -1,22 +1,12 @@
 import type { JSX } from "@solidjs/web";
-import {
-  createMemo,
-  createSignal,
-  createUniqueId,
-  Errored,
-  For,
-  isPending,
-  latest,
-  Loading,
-  Show,
-} from "solid-js";
+import { createMemo, createSignal, createUniqueId, For, isPending, Loading, Show } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { Menu } from "../../../components/solid/menu.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { StrokeIcon } from "../../../components/solid/stroke-icon.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
-import { formatUiError } from "../../../lib/format-error.ts";
-import { t } from "../../../lib/reactive/i18n.ts";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { createLayoutMeasurement } from "../../../lib/reactive/layout-measurement.ts";
 import { liveValue } from "../../../lib/reactive/live-value.ts";
 import { createPendingFocus } from "../../../lib/reactive/pending-focus.ts";
@@ -42,6 +32,8 @@ import { hasTranscriptAttachments } from "./chat-transcript-attachments.ts";
 import "../../../styles/session-panel-rail.css";
 import "./chat-session-workspace-desktop.css";
 import { FileDisclosure } from "./file-disclosure.tsx";
+
+registerEnglishCatalog(registerChatSessionEnglish);
 
 function WorkspaceFilename(props: { name: string }) {
   const parts = createMemo(() => splitWorkspaceFilename(props.name));
@@ -185,22 +177,9 @@ function DirectoryBranch(props: {
   const active = () =>
     props.workspace.navigation?.treeVisible !== false && !props.workspace.navigation?.searchOpen;
   const [instant, setInstant] = createSignal(true);
-  const directory = createMemo(() => props.workspace.directories?.[path()]);
-  const readResult = createMemo(
-    () => ({ pending: props.workspace.directories?.[path()]?.readResult }),
-    { equals: (previous, next) => previous.pending === next.pending },
-  );
-  const read = createMemo(async () => {
-    const current = directory();
-    const pending = readResult().pending;
-    await pending;
-    if (current?.error != null) {
-      throw new Error(current.error || t("chat.workspaceFiles.folderUnavailable"));
-    }
-    return null;
-  });
+  const directory = () => props.workspace.directories?.[path()];
   const browser = () =>
-    props.workspace.directories?.[path()]?.browser ??
+    directory()?.browser ??
     (!props.workspace.list?.browser?.search && props.workspace.list?.browser?.path === path()
       ? props.workspace.list.browser
       : undefined);
@@ -219,35 +198,11 @@ function DirectoryBranch(props: {
       />
       <Show when={props.row.directory}>
         <FileDisclosure variant="folder" open={expanded()} active={active()} instant={instant()}>
-          <Errored
-            fallback={(error) => (
-              <div class="workspace-desktop__notice" role="alert">
-                {formatUiError(error())}
-              </div>
-            )}
+          <div
+            role="list"
+            aria-description={browser()?.truncated ? t("chat.workspaceFiles.truncated") : undefined}
+            title={browser()?.truncated ? t("chat.workspaceFiles.truncated") : undefined}
           >
-            <Loading
-              on={directory()}
-              fallback={
-                <div class="workspace-desktop__notice" role="status">
-                  {t("chat.workspaceFiles.loading")}
-                </div>
-              }
-            >
-              {latest(read)}
-              <Show when={isPending(read)}>
-                <div class="workspace-desktop__notice" role="status">
-                  {t("chat.workspaceFiles.loading")}
-                </div>
-              </Show>
-            </Loading>
-          </Errored>
-          <Show when={browser()?.truncated}>
-            <div class="workspace-desktop__notice" role="status">
-              {t("chat.workspaceFiles.truncated")}
-            </div>
-          </Show>
-          <div role="list">
             <For each={props.childrenByPath.get(path()) ?? []} keyed={(row) => row.key}>
               {(row) => (
                 <DirectoryBranch
@@ -464,6 +419,8 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
           hidden={!navigation()?.searchOpen}
           role="list"
           aria-label={t("chat.workspaceFiles.searchResults")}
+          aria-description={searchTruncated() ? t("chat.workspaceFiles.truncated") : undefined}
+          title={searchTruncated() ? t("chat.workspaceFiles.truncated") : undefined}
         >
           <For each={searchResults()} keyed={(file) => file.key}>
             {(file) => <RailRow file={file()} workspace={props.workspace} searching />}
@@ -484,11 +441,6 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
                 renderName={(name) => <WorkspaceFilename name={name} />}
               />
             )}
-          </Show>
-          <Show when={searchTruncated()}>
-            <div class="workspace-desktop__notice" role="status">
-              {t("chat.workspaceFiles.truncated")}
-            </div>
           </Show>
           <Show
             when={
@@ -565,7 +517,19 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
                 expanded={expanded().includes(root())}
                 onToggle={() => props.workspace.onToggleDirectory?.(root())}
               >
-                <div role="list">
+                <div
+                  role="list"
+                  aria-description={
+                    directoryBrowser(root())?.truncated
+                      ? t("chat.workspaceFiles.truncated")
+                      : undefined
+                  }
+                  title={
+                    directoryBrowser(root())?.truncated
+                      ? t("chat.workspaceFiles.truncated")
+                      : undefined
+                  }
+                >
                   <For each={childrenByPath().get(root()) ?? []} keyed={(row) => row.key}>
                     {(row) => (
                       <DirectoryBranch
@@ -577,26 +541,7 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
                     )}
                   </For>
                 </div>
-                <Show when={directoryBrowser(root())?.truncated}>
-                  <div class="workspace-desktop__notice" role="status">
-                    {t("chat.workspaceFiles.truncated")}
-                  </div>
-                </Show>
               </WorkspaceGroup>
-            </div>
-          </Show>
-          <Show
-            when={
-              props.workspace.list &&
-              !content.pending &&
-              !sessionFiles().length &&
-              !attachmentsVisible() &&
-              !childrenByPath().get(root())?.length &&
-              expanded().includes(root())
-            }
-          >
-            <div class="workspace-desktop__notice" role="status">
-              {t("chat.workspaceFiles.noBrowserFiles")}
             </div>
           </Show>
         </div>
@@ -674,25 +619,7 @@ export function DesktopWorkspaceContents(props: { workspace: SessionWorkspacePro
         <ActivityMenu workspace={props.workspace} filters={filters()} filter={filter()} />
       </div>
       <Loading on={scope()} fallback={<WorkspaceLoading />}>
-        <Errored
-          fallback={(error, reset) => (
-            <div class="workspace-desktop__notice">
-              <div role="alert">{formatUiError(error())}</div>
-              <button
-                type="button"
-                class="btn btn--sm"
-                onClick={() => {
-                  props.workspace.onRetry();
-                  reset();
-                }}
-              >
-                {t("common.retry")}
-              </button>
-            </div>
-          )}
-        >
-          {read()}
-        </Errored>
+        {read()}
         <Show when={props.workspace.list || !isPending(read)} fallback={<WorkspaceLoading />}>
           <Contents pending={isPending(read)} />
         </Show>

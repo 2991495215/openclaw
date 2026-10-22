@@ -387,8 +387,9 @@ describe("SessionDiffPanel", () => {
     update({ loader: async () => ({ ...result("feature/test"), truncated: true }) });
     await settlePanel(panel);
 
-    expect(panel.textContent).not.toContain("No changes in this session's checkout.");
-    expect(panel.textContent).toContain("Some changes could not be displayed.");
+    expect(
+      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
+    ).not.toBeNull();
     expect(panel.querySelector(".session-diff__file")).toBeNull();
 
     update({
@@ -403,8 +404,10 @@ describe("SessionDiffPanel", () => {
     await settlePanel(panel);
 
     expect(panel.querySelector(".session-diff__filename")?.textContent).toBe("example.txt");
-    expect(panel.textContent).toContain("Diff preview is unavailable.");
-    expect(panel.textContent).toContain("Some changes could not be displayed.");
+    expect(panel.querySelector(".session-diff__file-body")?.textContent?.trim()).toBe("");
+    expect(
+      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
+    ).not.toBeNull();
     expect(panel.textContent).not.toContain("No changes in this session's checkout.");
 
     update({ loader: async () => ({ ...fileResult(SNAPSHOT_PATCH), truncated: true }) });
@@ -413,18 +416,21 @@ describe("SessionDiffPanel", () => {
     expect(panel.querySelector(".session-diff__filename")?.textContent).toBe("example.txt");
     expect(panel.textContent).toContain("snapshot line");
     expect(panel.textContent).not.toContain("Diff preview is unavailable.");
-    expect(panel.textContent).toContain("Some changes could not be displayed.");
+    expect(
+      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
+    ).not.toBeNull();
     expect(panel.textContent).not.toContain("No changes in this session's checkout.");
 
     update({ loader: async () => result("feature/test") });
     await settlePanel(panel);
 
-    expect(panel.textContent).toContain("No changes in this session's checkout.");
-    expect(panel.textContent).not.toContain("Some changes could not be displayed.");
+    expect(
+      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
+    ).toBeNull();
     expect(panel.querySelector(".session-diff__file")).toBeNull();
   });
 
-  it("keeps stopped cloud changes visible with restart guidance and no local checkout action", async () => {
+  it("keeps stopped cloud changes visible without a local checkout action", async () => {
     setNativeGatewayTestState("local");
     const { panel, update } = mountPanel();
     update({
@@ -434,9 +440,7 @@ describe("SessionDiffPanel", () => {
         files: [{ path: "saved.txt", status: "modified", additions: 0, deletions: 0 }],
       }),
     });
-    await waitForSolid(() => expect(panel.textContent).toContain("Saved changed files are shown."));
-    expect(panel.textContent).toContain("saved.txt");
-    expect(panel.textContent).toContain("Start the cloud session to load this diff.");
+    await waitForSolid(() => expect(panel.textContent).toContain("saved.txt"));
     expect(panel.textContent).not.toContain("Diff preview is unavailable.");
     expect(panel.textContent).not.toContain("No changes in this session");
     expect(panel.querySelector(".session-diff__toolbar-button")).toBeNull();

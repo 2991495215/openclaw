@@ -1,3 +1,4 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { createChangeListeners } from "../../../../../src/shared/listeners.js";
 import type { SessionWorkspaceListResult } from "../../../api/types.ts";
 import { showConfirmChoiceDialog } from "../../../components/confirm-dialog.ts";
@@ -5,7 +6,8 @@ import { t } from "../../../i18n/index.ts";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { showToast } from "../../../lib/toast.ts";
 import { readFileDraft, reviewRetainedFileDrafts } from "./chat-file-drafts.ts";
-import { createSessionWorkspaceState, resolvePaneAgent } from "./chat-session-workspace-model.ts";
+import * as workspaceModel from "./chat-session-workspace-model.ts";
+import { createWorkspaceReadRecoveryRegistry } from "./chat-session-workspace-read-recovery.ts";
 import type {
   SessionWorkspaceArtifacts,
   SessionWorkspaceHost,
@@ -69,19 +71,24 @@ export function isCurrentSessionWorkspace(
   return (
     state.sessionWorkspaceState === workspace &&
     workspace.sessionKey === state.sessionKey &&
-    workspace.agentId === resolvePaneAgent(state) &&
+    workspace.agentId === workspaceModel.resolvePaneAgent(state) &&
     workspace.connectionEpoch === state.connectionEpoch
   );
 }
 
 export function getSessionWorkspace(state: SessionWorkspaceHost): SessionWorkspaceState {
   const current = state.sessionWorkspaceState;
-  if (current && isCurrentSessionWorkspace(state, current)) {
+  const currentScope = current && isCurrentSessionWorkspace(state, current);
+  if (current && (!currentScope || !state.connected)) {
+    readRecoveries.dispose(current);
+    current.diffContent?.retireUncommitted?.();
+  }
+  if (currentScope) {
     return current;
   }
   clearSessionCheckoutSidebar(state);
   clearWorkspaceTimer(current);
-  const next = createSessionWorkspaceState(state);
+  const next = workspaceModel.createSessionWorkspaceState(state);
   state.sessionWorkspaceState = next;
   return next;
 }
@@ -101,55 +108,36 @@ export function clearSessionWorkspaceError(workspace: SessionWorkspaceState, own
   }
 }
 
-type ArtifactRole = "all" | "assistant";
 const artifactLoads = new WeakMap<SessionWorkspaceArtifacts, Promise<void>>();
-const artifactDemands = new WeakMap<SessionWorkspaceHost, Map<ArtifactRole, number>>();
+const artifactDemands = new WeakMap<SessionWorkspaceHost, Map<"all" | "assistant", number>>();
 const directoryLoads = new WeakMap<SessionWorkspaceState, Map<string, Promise<void>>>();
-type FileListing = Awaited<ReturnType<SessionWorkspaceHost["sessions"]["listFiles"]>>;
-const fileLoads = new WeakMap<SessionWorkspaceState, Map<string, Promise<FileListing>>>();
 const artifactRefreshPending = new WeakSet<SessionWorkspaceArtifacts>();
 
-function requestWorkspaceFiles(
-  state: SessionWorkspaceHost,
-  workspace: SessionWorkspaceState,
-  path: string,
-  search = "",
-) {
-  let requests = fileLoads.get(workspace);
-  if (!requests) {
-    requests = new Map();
-    fileLoads.set(workspace, requests);
-  }
-  const key = JSON.stringify([path, search]);
-  const pending = requests.get(key);
-  if (pending) {
-    return pending;
-  }
-  const request = state.sessions.listFiles(workspace.sessionKey, {
-    path,
-    search,
-    agentId: workspace.agentId,
-  });
-  requests.set(key, request);
-  void request.finally(() => requests.delete(key)).catch(() => {});
-  return request;
+const readRecoveries = createWorkspaceReadRecoveryRegistry({
+  isCurrent: isCurrentSessionWorkspace,
+  artifactsWanted: (state, role) => (artifactDemands.get(state)?.get(role) ?? 0) > 0,
+  refresh: loadSessionWorkspaceFiles,
+});
+
+function clearWorkspaceDirectories(workspace: SessionWorkspaceState) {
+  workspace.directories = Object.create(null);
+  directoryLoads.delete(workspace);
+  readRecoveries.clearFiles(workspace);
 }
 
+/** Stable per-workspace retention callback for the visible Files catalog. */
+export const sessionWorkspaceReadRetention = (state: SessionWorkspaceHost) =>
+  readRecoveries.for(state, getSessionWorkspace(state)).retainFiles;
+
 /** One owner, separate native query variants: summaries do not expose message role. */
-export function loadSessionWorkspaceArtifacts(
+function loadSessionWorkspaceArtifacts(
   state: SessionWorkspaceHost,
   force = false,
   messageRole?: "assistant",
 ): Promise<void> {
   const workspace = getSessionWorkspace(state);
   const key = messageRole === "assistant" ? "assistantArtifacts" : "artifacts";
-  const artifacts = (workspace[key] ??= {
-    items: [],
-    resolved: false,
-    loaded: false,
-    loading: false,
-    error: null,
-  });
+  const artifacts = (workspace[key] ??= workspaceModel.createWorkspaceArtifacts());
   const pending = artifactLoads.get(artifacts);
   if (pending) {
     if (force) {
@@ -157,11 +145,14 @@ export function loadSessionWorkspaceArtifacts(
     }
     return pending;
   }
-  if (!state.client || !state.connected || (artifacts.loaded && !force)) {
+  const recovery = readRecoveries.for(state, workspace);
+  const retryKey = `artifacts:${messageRole ?? "all"}`;
+  const skipRead = !force && (artifacts.loaded || recovery.pending(retryKey));
+  if (!state.client || !state.connected || skipRead) {
     return Promise.resolve();
   }
+  recovery.begin(retryKey);
   artifacts.loading = true;
-  artifacts.error = null;
   const client = state.client;
   const request = (async () => {
     try {
@@ -176,15 +167,32 @@ export function loadSessionWorkspaceArtifacts(
       if (!isCurrentSessionWorkspace(state, workspace) || artifactRefreshPending.has(artifacts)) {
         return;
       }
+      recovery.success(retryKey);
       artifacts.items = result?.artifacts ?? [];
       artifacts.loaded = true;
       artifacts.resolved = true;
+      artifacts.error = null;
       if (!messageRole && workspace.list) {
         workspace.list = { ...workspace.list, artifacts: artifacts.items };
       }
     } catch (error) {
       if (isCurrentSessionWorkspace(state, workspace) && !artifactRefreshPending.has(artifacts)) {
         artifacts.error = formatUiError(error);
+        if (error instanceof GatewayProtocolRequestError && error.gatewayCode === "FORBIDDEN") {
+          artifacts.items = [];
+          artifacts.loaded = false;
+          if (!messageRole && workspace.list) {
+            workspace.list = { ...workspace.list, artifacts: [] };
+          }
+        }
+        recovery.failed(
+          retryKey,
+          error,
+          "artifacts.list",
+          () => workspace[key] === artifacts,
+          () => recovery.artifactsWanted(messageRole ?? "all"),
+          () => void loadSessionWorkspaceArtifacts(state, true, messageRole),
+        );
       }
     } finally {
       artifacts.loading = false;
@@ -216,8 +224,13 @@ export function retainSessionWorkspaceArtifacts(
   }
   const role = messageRole ?? "all";
   demands.set(role, (demands.get(role) ?? 0) + 1);
+  const recovery = readRecoveries.for(state, getSessionWorkspace(state));
+  recovery.sync();
   void loadSessionWorkspaceArtifacts(state, false, messageRole);
-  return () => demands.set(role, Math.max(0, (demands.get(role) ?? 1) - 1));
+  return () => {
+    demands.set(role, Math.max(0, (demands.get(role) ?? 1) - 1));
+    recovery.sync();
+  };
 }
 
 /** Only an explicitly visited directory is fetched, never its descendants. */
@@ -237,25 +250,41 @@ export function loadSessionWorkspaceDirectory(
   if (pending) {
     return pending;
   }
-  if (!state.connected || !state.client || (directories[path]?.browser && !force)) {
+  const recovery = readRecoveries.for(state, workspace);
+  const retryKey = `directory:${path}`;
+  const skipRead = !force && (directories[path]?.browser || recovery.pending(retryKey));
+  if (!state.connected || !state.client || skipRead) {
     return Promise.resolve();
   }
   const directory = (directories[path] ??= { loading: false, error: null });
+  recovery.begin(retryKey);
   directory.loading = true;
   directory.error = null;
   const request = (async () => {
     try {
-      const result = await requestWorkspaceFiles(state, workspace, path);
+      const result = await readRecoveries.requestFiles(state, workspace, path);
       if (!isCurrentSessionWorkspace(state, workspace) || workspace.directories !== directories) {
         return;
       }
+      recovery.success(retryKey);
       directory.browser = result?.browser;
       if (!result?.browser) {
         directory.error = "";
       }
     } catch (error) {
-      if (isCurrentSessionWorkspace(state, workspace)) {
+      if (isCurrentSessionWorkspace(state, workspace) && workspace.directories === directories) {
         directory.error = formatUiError(error);
+        if (error instanceof GatewayProtocolRequestError && error.gatewayCode === "FORBIDDEN") {
+          delete directory.browser;
+        }
+        recovery.failed(
+          retryKey,
+          error,
+          "sessions.files.list",
+          () => workspace.directories === directories,
+          () => recovery.filesWanted() && Boolean(workspace.tree?.expandedPaths.includes(path)),
+          () => void loadSessionWorkspaceDirectory(state, path, true),
+        );
       }
     } finally {
       directory.loading = false;
@@ -269,26 +298,6 @@ export function loadSessionWorkspaceDirectory(
   requests.set(path, request);
   sessionWorkspaceForHost(state).publish();
   return request;
-}
-
-export function captureSessionWorkspaceNavigation(
-  workspace: SessionWorkspaceState,
-): SessionWorkspaceNavigation {
-  const tree = (workspace.tree ??= {
-    expandedPaths: [""],
-    searchOpen: false,
-    sessionExpanded: true,
-    treeVisible: true,
-    treeScroll: 0,
-    sessionScroll: 0,
-  });
-  return {
-    ...tree,
-    expandedPaths: [...tree.expandedPaths],
-    browserPath: workspace.browserPath,
-    browserSearch: workspace.browserSearch,
-    filter: workspace.filter,
-  };
 }
 
 /** The tabs owner calls this without changing preview identity or reader contents. */
@@ -315,22 +324,32 @@ export function loadSessionWorkspace(
   workspace: SessionWorkspaceState,
   force = false,
 ) {
+  if (loadSessionWorkspaceFiles(state, workspace, force)) {
+    void loadSessionWorkspaceArtifacts(state, force);
+  }
+}
+
+function loadSessionWorkspaceFiles(
+  state: SessionWorkspaceHost,
+  workspace: SessionWorkspaceState,
+  force = false,
+) {
   if (!state.client || !state.connected) {
-    return;
+    return false;
   }
   if (workspace.loading) {
     workspace.pendingReload = true;
-    return;
+    return false;
   }
+  const recovery = readRecoveries.for(state, workspace);
+  recovery.begin("files");
   workspace.loading = true;
   setSessionWorkspaceError(workspace, null);
   workspace.pendingReload = false;
   const { sessionKey, browserPath, browserSearch } = workspace;
   if (force) {
     workspace.list = null;
-    workspace.directories = Object.create(null);
-    directoryLoads.delete(workspace);
-    fileLoads.delete(workspace);
+    clearWorkspaceDirectories(workspace);
   }
   const directories = (workspace.directories ??= Object.create(null));
   const isCurrentListing = () =>
@@ -340,13 +359,16 @@ export function loadSessionWorkspace(
     workspace.browserSearch === browserSearch;
   workspace.readResult = (async () => {
     try {
-      const [files] = await Promise.all([
-        requestWorkspaceFiles(state, workspace, browserSearch ? "" : browserPath, browserSearch),
-        loadSessionWorkspaceArtifacts(state, force),
-      ]);
+      const files = await readRecoveries.requestFiles(
+        state,
+        workspace,
+        browserSearch ? "" : browserPath,
+        browserSearch,
+      );
       if (!isCurrentListing()) {
         return;
       }
+      recovery.success("files");
       workspace.list = {
         ...files,
         sessionKey,
@@ -368,6 +390,18 @@ export function loadSessionWorkspace(
     } catch (error) {
       if (isCurrentListing()) {
         setSessionWorkspaceError(workspace, formatUiError(error));
+        if (error instanceof GatewayProtocolRequestError && error.gatewayCode === "FORBIDDEN") {
+          workspace.list = null;
+          clearWorkspaceDirectories(workspace);
+        }
+        recovery.failed(
+          "files",
+          error,
+          "sessions.files.list",
+          isCurrentListing,
+          recovery.filesWanted,
+          () => loadSessionWorkspaceFiles(state, workspace),
+        );
       }
     } finally {
       if (isCurrentSessionWorkspace(state, workspace)) {
@@ -380,6 +414,7 @@ export function loadSessionWorkspace(
     }
   })();
   sessionWorkspaceForHost(state).publish();
+  return true;
 }
 
 /** Refresh workspace facts after a run, which may have created a git checkout. */
@@ -393,6 +428,7 @@ export function refreshSessionWorkspaceState(
   }
   const diffOpen =
     workspace.diffContent !== undefined && state.sidebarContent === workspace.diffContent;
+  workspace.diffContent?.retireUncommitted?.();
   delete workspace.diffContent;
   for (const role of ["all", "assistant"] as const) {
     const artifacts = role === "all" ? workspace.artifacts : workspace.assistantArtifacts;
@@ -407,9 +443,7 @@ export function refreshSessionWorkspaceState(
       void loadSessionWorkspaceArtifacts(state, true, role === "assistant" ? role : undefined);
     }
   }
-  workspace.directories = Object.create(null);
-  directoryLoads.delete(workspace);
-  fileLoads.delete(workspace);
+  clearWorkspaceDirectories(workspace);
   if (!refreshFiles || workspace.loading) {
     workspace.pendingReload = true;
   } else {
@@ -424,9 +458,11 @@ export function retireSessionWorkspaceCheckout(state: SessionWorkspaceHost) {
   if (!current || current.sessionKey !== state.sessionKey) {
     return;
   }
+  readRecoveries.dispose(current);
+  current.diffContent?.retireUncommitted?.();
   clearSessionCheckoutSidebar(state);
   clearWorkspaceTimer(current);
-  state.sessionWorkspaceState = createSessionWorkspaceState(state);
+  state.sessionWorkspaceState = workspaceModel.createSessionWorkspaceState(state);
   for (const [role, count] of artifactDemands.get(state) ?? []) {
     if (count > 0) {
       void loadSessionWorkspaceArtifacts(state, false, role === "assistant" ? role : undefined);
@@ -452,9 +488,9 @@ export function openSessionWorkspacePreview(
   if (context?.navigation) {
     const previous = workspace.previews.find((entry) => entry.id === workspace.activePreviewId);
     if (previous) {
-      previous.catalogNavigation = captureSessionWorkspaceNavigation(workspace);
+      previous.catalogNavigation = workspaceModel.captureSessionWorkspaceNavigation(workspace);
     } else {
-      workspace.catalogNavigation = captureSessionWorkspaceNavigation(workspace);
+      workspace.catalogNavigation = workspaceModel.captureSessionWorkspaceNavigation(workspace);
     }
   }
   let preview = workspace.previews.find(
@@ -521,9 +557,9 @@ export function selectSessionWorkspacePreview(state: SessionWorkspaceHost, id: s
     if (workspace.activePreviewId !== id) {
       const previous = workspace.previews.find((entry) => entry.id === workspace.activePreviewId);
       if (previous?.catalogNavigation) {
-        previous.catalogNavigation = captureSessionWorkspaceNavigation(workspace);
+        previous.catalogNavigation = workspaceModel.captureSessionWorkspaceNavigation(workspace);
       } else if (workspace.activePreviewId === null && workspace.catalogNavigation) {
-        workspace.catalogNavigation = captureSessionWorkspaceNavigation(workspace);
+        workspace.catalogNavigation = workspaceModel.captureSessionWorkspaceNavigation(workspace);
       }
       const next = workspace.previews.find((entry) => entry.id === id);
       workspace.activePreviewId = id;
@@ -680,7 +716,7 @@ export function browseSessionWorkspacePreviewPath(
   ) {
     return false;
   }
-  const navigation = captureSessionWorkspaceNavigation(workspace);
+  const navigation = workspaceModel.captureSessionWorkspaceNavigation(workspace);
   preview.catalogNavigation = {
     ...navigation,
     browserPath: path,

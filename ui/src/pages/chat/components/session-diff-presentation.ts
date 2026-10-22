@@ -7,6 +7,7 @@ import type {
 import type { SessionDiffGapDirection } from "../../../lib/chat/session-diff-gaps.ts";
 import type { pairSessionDiffLines } from "../../../lib/chat/session-diff-split.ts";
 import type { DiffLine } from "../../../lib/chat/tool-call-diff.ts";
+import { t } from "../../../lib/reactive/i18n.ts";
 import type { DiffPresentation } from "./chat-diff-render.solid.tsx";
 import type { SessionDiffScope, SessionDiffProps } from "./chat-sidebar-content-types.ts";
 import type {
@@ -98,4 +99,32 @@ export function splitPath(filePath: string) {
   return separator < 0
     ? { directory: "", name: normalized }
     : { directory: normalized.slice(0, separator), name: normalized.slice(separator + 1) };
+}
+
+const shellArgument = (value: string) =>
+  /^[A-Za-z0-9_./:@+-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+
+export function sessionDiffSyncData(
+  current: DiffValue | null,
+  owner: SessionDiffProps["owner"],
+): SessionDiffSyncMobileData | null {
+  const { root, branch } = current?.owner === owner ? current.result : {};
+  return root && branch
+    ? {
+        root,
+        branch,
+        command: `git fetch ${shellArgument(root)} ${shellArgument(branch)} && git checkout FETCH_HEAD`,
+      }
+    : null;
+}
+
+export function sessionDiffScopeTitle(currentScope: SessionDiffScope, result?: SessionsDiffResult) {
+  if (currentScope.scope === "uncommitted") {
+    return t("chat.sessionDiff.uncommitted");
+  }
+  if (currentScope.scope === "commit") {
+    const commit = result?.commits?.find((entry) => entry.sha === currentScope.commit);
+    return commit ? `${commit.sha} ${commit.subject}` : currentScope.commit;
+  }
+  return t("chat.sessionDiff.allChanges");
 }

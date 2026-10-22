@@ -17,23 +17,16 @@ it.each([false, true])(
       loading: false,
       error: null,
     };
-    let complete = () => {};
-    const retry = vi.fn(() => {
-      owner.readResult = new Promise<void>((resolve) => {
-        complete = resolve;
-      });
+    const open = vi.fn();
+    const retry = () => {
       owner.loading = true;
       owner.error = null;
       draw();
-    });
+    };
     const read = (): ChatDetailsOutputs => ({
       artifacts: owner.items,
-      artifactRead: owner,
-      artifactsError: owner.error,
       dashboard: null,
-      dashboardError: null,
-      onOpenArtifact() {},
-      onRetryArtifacts: retry,
+      onOpenArtifact: open,
       onViewAll() {},
       renderArtifactIcon: () => null,
       renderViewAllIcon: () => null,
@@ -51,22 +44,21 @@ it.each([false, true])(
     const row = view.getByRole("button", { name: "Report.txt" });
     row.focus();
     retry();
-    await waitForSolid(() => expect(view.getByRole("status").textContent).toContain("Updating"));
+    expect(view.queryByRole("status")).toBeNull();
     owner.loading = false;
     owner.error = "Files refresh failed";
-    complete();
     draw();
-    await waitForSolid(() =>
-      expect(view.getByRole("status").textContent).toContain("Files refresh failed"),
-    );
+    expect(view.queryByRole("status")).toBeNull();
+    expect(view.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(view.getByRole("button", { name: "Report.txt" })).toBe(row);
     expect(document.activeElement).toBe(row);
-    view.getByRole("button", { name: "Retry" }).click();
-    await waitForSolid(() => expect(retry).toHaveBeenCalledTimes(2));
+    row.click();
+    expect(open).toHaveBeenCalledWith("report");
+    retry();
+    expect(view.queryByRole("status")).toBeNull();
     expect(view.getByRole("button", { name: "Report.txt" })).toBe(row);
     expect(document.activeElement).toBe(row);
     owner.loading = false;
-    complete();
     draw();
     await waitForSolid(() => expect(view.queryByRole("status")).toBeNull());
     expect(view.getByRole("button", { name: "Report.txt" })).toBe(row);

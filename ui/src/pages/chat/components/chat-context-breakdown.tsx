@@ -252,11 +252,22 @@ export function ChatContextBreakdown(props: {
     }),
   );
   let manualRefresh: ReturnType<typeof target> | undefined;
-  const requestState = createMemo(() => ({
-    target: target(),
-    used: props.used,
-    revision: revision(),
-  }));
+  const requestState = createMemo(
+    () => ({
+      target: target(),
+      used: props.used,
+      revision: revision(),
+      recovering: recovery().retry.hasPending(),
+    }),
+    {
+      // Automatic usage updates share the pending deadline; manual refresh and
+      // the deadline itself advance revision and admit the next read.
+      equals: (before, after) =>
+        before.target === after.target &&
+        before.revision === after.revision &&
+        (before.used === after.used || after.recovering),
+    },
+  );
   const result = createMemo(async (): Promise<{ report: SessionSystemPromptReport | null }> => {
     const current = requestState().target;
     const pending = recovery();

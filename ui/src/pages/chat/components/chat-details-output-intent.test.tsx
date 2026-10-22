@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { expect, it, onTestFinished, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { ChatDetailsSession } from "./chat-details-session.tsx";
@@ -26,9 +26,7 @@ async function mountOutputs() {
     desktopDisclosures: { expanded: { outputs: true }, onExpandedChange: vi.fn() },
     outputs: {
       artifacts,
-      artifactsError: null,
       dashboard: null,
-      dashboardError: null,
       onOpenArtifact: vi.fn(),
       onViewAll: navigate,
       renderArtifactIcon: () => null,
@@ -40,29 +38,19 @@ async function mountOutputs() {
   await element.updateComplete;
   await waitForSolid(() => expect(element.querySelector(".chat-outputs__view-all")).not.toBeNull());
   const button = element.querySelector<HTMLButtonElement>(".chat-outputs__view-all")!;
-  return { element, button, value, navigate, artifacts };
+  return { element, button, value, navigate };
 }
 
 it("opens Files through the current callback when Outputs refreshes before the visible button settles", async () => {
-  const { element, button, value, navigate, artifacts } = await mountOutputs();
+  const { element, button, value, navigate } = await mountOutputs();
   button.click();
   expect(navigate).toHaveBeenCalledOnce();
   navigate.mockClear();
   const refreshed = vi.fn();
-  const pending = Promise.withResolvers<void>();
-  onTestFinished(() => pending.resolve());
   element.props = {
     ...value,
     outputs: {
       ...value.outputs!,
-      artifactRead: {
-        items: artifacts,
-        resolved: true,
-        loaded: false,
-        loading: true,
-        error: null,
-        readResult: pending.promise,
-      },
       onViewAll: refreshed,
     },
   };

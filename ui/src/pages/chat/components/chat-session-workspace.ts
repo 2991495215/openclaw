@@ -22,9 +22,9 @@ import {
   readWorkspaceFileText,
   unsupportedFileSidebarContent,
 } from "./chat-session-workspace-file-content.ts";
+import { captureSessionWorkspaceNavigation } from "./chat-session-workspace-model.ts";
 import { openWorkspaceItem } from "./chat-session-workspace-preview.ts";
 import {
-  captureSessionWorkspaceNavigation,
   loadSessionWorkspaceDirectory,
   clearWorkspaceTimer,
   getSessionWorkspace,
@@ -32,6 +32,7 @@ import {
   loadSessionWorkspace,
   refreshSessionWorkspaceState,
   sessionWorkspaceForHost,
+  sessionWorkspaceReadRetention,
 } from "./chat-session-workspace-state.ts";
 import type {
   SessionWorkspaceHost,
@@ -41,7 +42,6 @@ import type {
   FileReaderView,
   SessionWorkspaceFilter,
   SessionWorkspaceMobileNavigation,
-  SidebarContent,
   TranscriptAttachments,
 } from "./chat-sidebar-content-types.ts";
 
@@ -527,6 +527,7 @@ export function createSessionWorkspaceProps(
     publish();
   };
   return {
+    retainReads: sessionWorkspaceReadRetention(state),
     presentation: options?.presentation,
     folderView:
       options?.presentation === "desktop" &&
@@ -643,10 +644,6 @@ export function createSessionWorkspaceProps(
       }
       sessionWorkspaceForHost(state).publish();
     },
-    onRetry: () => {
-      clearWorkspaceTimer(workspace);
-      loadSessionWorkspace(state, workspace, true);
-    },
     onBrowsePath: (path: string) => {
       clearWorkspaceTimer(workspace);
       if (mobile) {
@@ -716,9 +713,7 @@ export function createSessionWorkspaceProps(
   };
 }
 
-export function resolveSessionDiffSidebarContent(
-  state: SessionWorkspaceHost,
-): SidebarContent | null {
+export function resolveSessionDiffSidebarContent(state: SessionWorkspaceHost) {
   return resolveSessionWorkspaceDiff(state, (path) =>
     openFile(state, getSessionWorkspace(state), path),
   );

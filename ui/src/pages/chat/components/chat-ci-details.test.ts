@@ -1,11 +1,12 @@
 /* @vitest-environment jsdom */
-import { expect, it, onTestFinished } from "vitest";
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
+import { expect, it, onTestFinished, vi } from "vitest";
 import type { ControlUiSessionPullRequestCheckDetails } from "../../../../../src/gateway/control-ui-contract.js";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { createGatewayHarness } from "../../../lib/session-pull-requests.test-support.ts";
-import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
-import type { ChatCiDetailsElement } from "./chat-ci-details.ts";
-import "./chat-ci-details.ts";
+import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
+import type { ChatCiDetailsElement } from "./chat-ci-details.tsx";
+import "./chat-ci-details.tsx";
 
 const pullRequest = {
   owner: "example",
@@ -48,21 +49,35 @@ function mount(pending: Promise<ControlUiSessionPullRequestCheckDetails>) {
   return { element, request: harness.request };
 }
 
-it("shows a delayed read, its failure, and a successful explicit retry", async () => {
+it("recovers a delayed read failure silently through the existing retry timer", async () => {
   const read = createDeferred<ControlUiSessionPullRequestCheckDetails>();
   const { element, request } = mount(read.promise);
   await waitForSolid(() => {
     expect(element.querySelector(".chat-ci__jobs")?.getAttribute("aria-busy")).toBe("true");
   });
-  read.reject(new Error("CI fixture unavailable"));
-  await waitForSolid(() => {
-    expect(element.querySelector(".chat-ci__notice")?.textContent).toContain(
-      "CI fixture unavailable",
-    );
-    expect(element.querySelector(".chat-ci__jobs")?.getAttribute("aria-busy")).toBe("false");
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
   });
+  read.reject(
+    new GatewayProtocolRequestError({
+      code: "UNAVAILABLE",
+      message: "CI fixture unavailable",
+      retryable: true,
+      details: { method: "controlUi.sessionPullRequests.checks" },
+    }),
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  flush();
+  expect(element.querySelector(".chat-ci__notice")).toBeNull();
+  expect(element.querySelector(".chat-ci__jobs")?.getAttribute("aria-description")).toContain(
+    "CI fixture unavailable",
+  );
+  expect(element.querySelector(".chat-ci__jobs")?.getAttribute("aria-busy")).toBe("false");
   request.mockResolvedValueOnce(details("Recovered check"));
-  element.querySelector<HTMLButtonElement>(".chat-ci__retry")!.click();
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(request).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1);
   await waitForSolid(() => {
     expect(element.querySelector(".chat-ci__job")?.textContent).toContain("Recovered check");
     expect(element.querySelector<HTMLDetailsElement>(".chat-ci__job")?.open).toBe(true);

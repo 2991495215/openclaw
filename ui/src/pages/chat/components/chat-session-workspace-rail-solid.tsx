@@ -1,6 +1,16 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { JSX } from "@solidjs/web";
-import { createMemo, Errored, For, isPending, Loading, Match, Show, Switch } from "solid-js";
+import {
+  createMemo,
+  For,
+  isPending,
+  Loading,
+  Match,
+  Show,
+  Switch,
+  onSettled,
+  useContext,
+} from "solid-js";
 import { shortestFileLabels } from "../../../components/file-kind.ts";
 import { CopyButton } from "../../../components/solid/copy-button.tsx";
 import { Icon, type IconName } from "../../../components/solid/icon.tsx";
@@ -8,12 +18,12 @@ import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-sk
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import "../../../components/tooltip.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
-import { formatUiError } from "../../../lib/format-error.ts";
 import { formatByteSize } from "../../../lib/format.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { liveValue } from "../../../lib/reactive/live-value.ts";
 import { isSessionWorkspaceFileSelected } from "../../../lib/sessions/workspace.ts";
 import { nativeListener } from "../../../lib/solid-native-listener.ts";
+import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import { FileDownloadButton } from "./chat-file-download-button.tsx";
 import { DesktopWorkspaceContents } from "./chat-session-workspace-desktop.tsx";
 import { MobileWorkspaceContents } from "./chat-session-workspace-mobile-adapter.tsx";
@@ -325,7 +335,14 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
                 {t("chat.workspaceFiles.searchResults")}
               </div>
             </Show>
-            <div class="chat-workspace-rail__list chat-workspace-rail__list--browser" role="list">
+            <div
+              class="chat-workspace-rail__list chat-workspace-rail__list--browser"
+              role="list"
+              aria-description={
+                data().browser?.truncated ? t("chat.workspaceFiles.truncated") : undefined
+              }
+              title={data().browser?.truncated ? t("chat.workspaceFiles.truncated") : undefined}
+            >
               <Show when={data().parentPath != null}>
                 <RailRow
                   icon="folder"
@@ -336,15 +353,13 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
                   onOpen={() => props.workspace.onBrowsePath(data().parentPath ?? "")}
                 />
               </Show>
-              <Show when={data().entries.length === 0}>
+              <Show
+                when={
+                  data().entries.length === 0 && !data().unavailableFolder && data().browser?.search
+                }
+              >
                 <div class="chat-workspace-rail__state">
-                  {t(
-                    data().unavailableFolder
-                      ? "chat.workspaceFiles.folderUnavailable"
-                      : data().browser?.search
-                        ? "chat.workspaceFiles.noSearchResults"
-                        : "chat.workspaceFiles.noBrowserFiles",
-                  )}
+                  {t("chat.workspaceFiles.noSearchResults")}
                 </div>
               </Show>
               <For each={data().entries} keyed={(entry) => entry.path}>
@@ -397,9 +412,6 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
                 }}
               </For>
             </div>
-            <Show when={data().browser?.truncated}>
-              <div class="chat-workspace-rail__state">{t("chat.workspaceFiles.truncated")}</div>
-            </Show>
           </WorkspaceGroup>
         </Show>
         <Show
@@ -467,25 +479,7 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
         on={scope()}
         fallback={<PanelLoadingSkeleton variant="files" label={t("chat.workspaceFiles.loading")} />}
       >
-        <Errored
-          fallback={(error, reset) => (
-            <div class="chat-workspace-rail__state chat-workspace-rail__state--error">
-              <div role="alert">{formatUiError(error())}</div>
-              <button
-                type="button"
-                class="btn small"
-                onClick={() => {
-                  props.workspace.onRetry();
-                  reset();
-                }}
-              >
-                {t("common.retry")}
-              </button>
-            </div>
-          )}
-        >
-          {read()}
-        </Errored>
+        {read()}
         <Show
           when={props.workspace.list || !isPending(read)}
           fallback={
@@ -500,18 +494,30 @@ function WorkspaceContents(props: { workspace: SessionWorkspaceProps }) {
 }
 
 export function SessionWorkspaceRail(props: { workspace?: SessionWorkspaceProps }) {
+  const presented = useContext(ContentPresentation);
+  const retain = createMemo(() =>
+    presented() && props.workspace?.connected !== false ? props.workspace?.retainReads : undefined,
+  );
   return (
-    <Show when={props.workspace}>
-      {(workspace) => (
-        <Switch fallback={<WorkspaceContents workspace={workspace()} />}>
-          <Match when={workspace().presentation === "desktop"}>
-            <DesktopWorkspaceContents workspace={workspace()} />
-          </Match>
-          <Match when={workspace().presentation === "mobile"}>
-            <MobileWorkspaceContents workspace={workspace()} />
-          </Match>
-        </Switch>
-      )}
-    </Show>
+    <>
+      <Show when={retain()} keyed>
+        {(read) => {
+          onSettled(read);
+          return null;
+        }}
+      </Show>
+      <Show when={props.workspace}>
+        {(workspace) => (
+          <Switch fallback={<WorkspaceContents workspace={workspace()} />}>
+            <Match when={workspace().presentation === "desktop"}>
+              <DesktopWorkspaceContents workspace={workspace()} />
+            </Match>
+            <Match when={workspace().presentation === "mobile"}>
+              <MobileWorkspaceContents workspace={workspace()} />
+            </Match>
+          </Switch>
+        )}
+      </Show>
+    </>
   );
 }

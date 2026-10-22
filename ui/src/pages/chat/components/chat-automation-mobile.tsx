@@ -5,10 +5,7 @@ import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-sessio
 import { registerCronEnglish } from "../../../i18n/locales/en-cron.ts";
 import { shouldHandleNavigationClick } from "../../../lib/navigation-click.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
-import {
-  SessionAutomationRead,
-  type SessionAutomationInventory,
-} from "./chat-summary-automations.tsx";
+import type { SessionAutomationInventory } from "./chat-summary-automations.tsx";
 import "../../../styles/chat/automation-mobile.css";
 import "../../../styles/chat/summary-automations.css";
 import { sessionAutomationSchedule } from "./session-automation-schedule.ts";
@@ -24,72 +21,12 @@ export type SessionAutomationMobileListProps = {
 };
 export function SessionAutomationMobileList(props: SessionAutomationMobileListProps) {
   const inventory = () => props.inventory;
-  const errorNotice = () => (
-    <div
-      class={[
-        "session-automation-mobile__message",
-        { "session-automation-mobile__empty": inventory().jobs().length === 0 },
-      ]}
-      role="alert"
-    >
-      <span>
-        {t(
-          inventory().loaded()
-            ? "chat.sessionDetails.automationUpdateError"
-            : "chat.sessionDetails.automationError",
-        )}
-      </span>
-      <button
-        type="button"
-        disabled={isPending(inventory().read) || !inventory().connected()}
-        onClick={() => void inventory().refresh()}
-      >
-        {t("common.retry")}
-      </button>
-    </div>
-  );
-  const loadingNotice = () => (
-    <p role="status" class="session-automation-mobile__empty">
-      {t("chat.sessionDetails.automationLoading")}
-    </p>
-  );
   return (
-    <Loading
-      fallback={
-        <div class="session-automation-mobile" aria-busy="true">
-          {loadingNotice()}
-        </div>
-      }
-    >
+    <Loading>
       <div
         class="session-automation-mobile"
         aria-busy={isPending(inventory().read) ? "true" : "false"}
       >
-        {!inventory().connected() && (
-          <p role="status" class="session-automation-mobile__note">
-            {t("chat.sessionDetails.automationOffline")}
-          </p>
-        )}
-        <SessionAutomationRead
-          inventory={inventory()}
-          loading={!inventory().loaded() && loadingNotice()}
-          error={errorNotice()}
-        />
-        {!inventory().available() && (
-          <p role="status" class="session-automation-mobile__empty">
-            {t("chat.sessionDetails.automationUnavailable")}
-          </p>
-        )}
-        {inventory().loaded() &&
-          !inventory().error() &&
-          !isPending(inventory().read) &&
-          inventory().total() === 0 && (
-            <div class="session-automation-mobile__empty">
-              <Icon name="clock" />
-              <strong>{t("chat.sessionDetails.automationEmpty")}</strong>
-              <p>{t("chat.sessionAutomation.emptyHint")}</p>
-            </div>
-          )}
         <div class="session-automation-mobile__group">
           <For each={inventory().jobs()} keyed={(job) => job.id}>
             {(job) => {

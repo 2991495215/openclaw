@@ -2,14 +2,23 @@ import { createDeferred } from "@solidjs/signals";
 import { createMemo } from "solid-js";
 import type { SessionWorkspaceProps } from "./chat-sidebar-view-types.ts";
 
-/** Observe the existing workspace request; rendering never admits another RPC. */
+/** Observe admitted reads without owning requests, errors, or recovery. */
 export function createSessionWorkspaceRead(workspace: () => SessionWorkspaceProps) {
   const owner = createMemo(() => workspace().readState);
-  // Keep the receipt synchronous so a newer read can replace one that is still pending.
-  const result = createMemo(() => ({ pending: workspace().readResult }), {
-    equals: (previous, next) => previous.pending === next.pending,
-  });
-  const error = createMemo(() => workspace().error);
+  // Files and artifacts are admitted independently by the same workspace owner.
+  const result = createMemo(
+    () => ({
+      owner: owner(),
+      files: workspace().readResult,
+      artifacts: workspace().readState?.artifacts?.readResult,
+    }),
+    {
+      equals: (previous, next) =>
+        previous.owner === next.owner &&
+        previous.files === next.files &&
+        previous.artifacts === next.artifacts,
+    },
+  );
   const location = createMemo(() =>
     JSON.stringify([
       workspace().sessionKey,
@@ -19,16 +28,10 @@ export function createSessionWorkspaceRead(workspace: () => SessionWorkspaceProp
     ]),
   );
   const scope = createMemo(() => ({ owner: owner(), location: location() }));
-  // Retain the catalog during refresh without holding independently usable file previews.
+  // Preserve usable catalog rows while the owner records failures and schedules recovery.
   const read = createDeferred(async () => {
-    const state = owner();
-    const pending = result().pending;
-    const previousError = error();
-    await pending;
-    const message = state ? (state.error ?? state.artifacts?.error) : previousError;
-    if (message) {
-      throw new Error(message);
-    }
+    const pending = result();
+    await Promise.all([pending.files, pending.artifacts]);
     return null;
   });
   return { read, scope };

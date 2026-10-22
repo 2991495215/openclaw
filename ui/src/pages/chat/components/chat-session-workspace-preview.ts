@@ -1,9 +1,9 @@
 import { toErrorObject } from "@openclaw/normalization-core";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { readFileDraft } from "./chat-file-drafts.ts";
+import { captureSessionWorkspaceNavigation } from "./chat-session-workspace-model.ts";
 import {
   clearSessionWorkspaceError,
-  captureSessionWorkspaceNavigation,
   setSessionWorkspaceError,
   isCurrentSessionWorkspace,
   openSessionWorkspacePreview,

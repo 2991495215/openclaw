@@ -1,3 +1,4 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { parseAgentSessionKeyParts } from "@openclaw/session-url-contract";
 import {
   Errored,
@@ -12,7 +13,9 @@ import type { CronStatus } from "../../../api/types.ts";
 import type { MenuControls } from "../../../components/solid/menu.tsx";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { createGatewayConnectionLifecycle } from "../../../lib/gateway-connection-lifecycle.ts";
+import { isRetryableGatewayReadError } from "../../../lib/gateway-errors.ts";
 import { canCallGatewayMethod } from "../../../lib/gateway-methods.ts";
+import { createGatewayRetryOwner } from "../../../lib/gateway-retry.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { projectOwner } from "../../../lib/reactive/projection.ts";
 import type {
@@ -26,6 +29,7 @@ import {
   type CiAutomationJobs,
 } from "../../../lib/session-pr-automation.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { showToast } from "../../../lib/toast.ts";
 import { ChatCiAutomationView, type ChatCiAutomationProps } from "./chat-ci-automation.tsx";
 import { createCiDisclosure, type ChatCiDisclosureProps } from "./chat-ci-disclosure.ts";
 
@@ -41,7 +45,6 @@ type AutomationState = {
   jobs: CiAutomationJobs;
   pending: Partial<CiAutomationOptions>;
   schedulerEnabled: boolean | undefined;
-  error: string | null;
 };
 type Inventory = { jobs: CiAutomationJobs; schedulerEnabled: boolean };
 
@@ -50,8 +53,8 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
     jobs: {},
     pending: {},
     schedulerEnabled: undefined,
-    error: null,
   });
+  const retry = createGatewayRetryOwner();
   const connection = createGatewayConnectionLifecycle({ client: null, phase: "stopped" });
   const gatewayProjection = createMemo(() => {
     const source = props.gateway;
@@ -87,6 +90,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       version += 1;
       connection.dispose();
       readController?.abort();
+      retry.reset();
     };
   });
 
@@ -206,6 +210,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
   }
 
   function reset(): void {
+    retry.reset();
     version += 1;
     setPresentationScope({});
     cancelRead();
@@ -216,7 +221,6 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       draft.jobs = {};
       draft.pending = {};
       draft.schedulerEnabled = undefined;
-      draft.error = null;
     });
     void setReceipt(Promise.resolve(undefined));
     refreshPending = true;
@@ -230,9 +234,13 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
 
   function handleVisibility(): void {
     if (!disclosure.visible()) {
+      retry.pause();
       cancelRead();
+      return;
     }
-    invalidate();
+    if (!retry.resume()) {
+      invalidate();
+    }
   }
 
   function capture() {
@@ -255,7 +263,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
   }
 
   function load(): void {
-    if (!disclosure.visible() || readController || writes.size) {
+    if (!disclosure.visible() || readController || writes.size || retry.resume()) {
       return;
     }
     refreshPending = false;
@@ -264,6 +272,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       queueRefresh();
       return;
     }
+    retry.cancel();
     const admitted = owner;
     const controller = new AbortController();
     readController = controller;
@@ -271,7 +280,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
     const current = () => owner.current() && disclosure.visible() && readController === controller;
     const result = request();
     void setReceipt(result);
-    // The boundary owns the visible error; cancellation may retire its reader first.
+    // The boundary consumes read failures, including a read retired before settlement.
     void result.catch(() => {});
 
     async function request(): Promise<Inventory | undefined> {
@@ -281,6 +290,7 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
           admitted.client.request<CronStatus>("cron.status", {}, { signal: controller.signal }),
         ]);
         if (current()) {
+          retry.reset();
           inventoryVersion = version;
           accepted = { jobs, schedulerEnabled: status.enabled };
           setState((draft) => {
@@ -293,11 +303,30 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       } catch (error) {
         if (current()) {
           inventoryVersion = -1;
+          if (error instanceof GatewayProtocolRequestError && error.gatewayCode === "FORBIDDEN") {
+            retry.reset();
+            accepted = undefined;
+            setState((draft) => {
+              draft.jobs = {};
+            });
+          } else if (
+            isRetryableGatewayReadError(error, "cron.list") ||
+            isRetryableGatewayReadError(error, "cron.status")
+          ) {
+            retry.schedule(
+              () => {
+                if (admitted.current() && disclosure.visible()) {
+                  invalidate();
+                }
+              },
+              error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
+            );
+          }
           throw new Error(formatUiError(error, t("chat.pullRequests.automationLoadFailed")), {
             cause: error,
           });
         }
-        return undefined;
+        return accepted;
       } finally {
         if (current()) {
           readController = undefined;
@@ -329,7 +358,6 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
     setState((draft) => {
       // Each option settles independently, including a rejected sibling write.
       draft.pending[option] = enabled;
-      draft.error = null;
     });
     queueRefresh();
     try {
@@ -354,8 +382,10 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
         // A rejected acknowledgement may hide an accepted write. Never mutate again
         // until a complete authoritative inventory has reconciled the actual outcome.
         inventoryVersion = -1;
-        setState((draft) => {
-          draft.error = formatUiError(error, t("chat.pullRequests.automationSaveFailed"));
+        refreshPending = true;
+        showToast({
+          message: formatUiError(error, t("chat.pullRequests.automationSaveFailed")),
+          severity: "error",
         });
       }
     } finally {
@@ -387,20 +417,13 @@ function createCiAutomation(props: Props, host: SolidBridgeElement<Props>) {
       },
       pending: state.pending,
       saving: Object.keys(state.pending).length > 0,
-      jobs: state.jobs,
-      schedulerEnabled: state.schedulerEnabled,
-      error: state.error,
       disabled: Boolean(unavailable),
-      disabledReason: unavailable,
-      retryDisabled: !automationTarget(props) || !canRead(snapshot),
+      disabledReason:
+        unavailable ??
+        (state.schedulerEnabled === false
+          ? t("chat.pullRequests.automationSchedulerDisabled")
+          : undefined),
       onChange: (option, enabled) => void setEnabled(option, enabled),
-      onRetry: () => {
-        setState((draft) => {
-          draft.error = null;
-        });
-        refreshPending = true;
-        load();
-      },
     };
   });
   return {
@@ -418,30 +441,18 @@ export type ChatCiAutomationElement = SolidBridgeElement<Props>;
 
 function ChatCiAutomationContent(props: Props, host: SolidBridgeElement<Props>) {
   const model = createCiAutomation(props, host);
-  const content = (loading = false, error?: () => string, retry?: () => void) => (
+  const content = (loading = false, error?: () => string) => (
     <ChatCiAutomationView
       {...model.view()}
       loading={loading || isPending(model.read)}
-      disabled={loading || Boolean(error) || model.view().disabled || !model.hasInventory()}
-      error={error ? error() : model.view().error}
-      onRetry={retry ?? model.view().onRetry}
+      disabled={loading || error !== undefined || model.view().disabled || !model.hasInventory()}
+      disabledReason={error ? error() : model.view().disabledReason}
       menuPresentation={props.menuPresentation}
       controls={props.controls}
     />
   );
   return (
-    <Errored
-      fallback={(error, reset) =>
-        content(
-          false,
-          () => formatUiError(error()),
-          () => {
-            model.view().onRetry();
-            reset();
-          },
-        )
-      }
-    >
+    <Errored fallback={(error) => content(false, () => formatUiError(error()))}>
       <Loading on={model.scope()} fallback={content(true)}>
         {(latest(model.read), null)}
         {content()}
@@ -450,16 +461,20 @@ function ChatCiAutomationContent(props: Props, host: SolidBridgeElement<Props>) 
   );
 }
 
-defineSolidBridge<Props>("openclaw-chat-ci-automation", ChatCiAutomationContent, {
-  propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
-  properties: {
-    gateway: { default: undefined, attribute: false },
-    pullRequest: { default: undefined, attribute: false },
-    sessionKey: { default: "", attribute: false },
-    sessionId: { default: "", attribute: false },
-    presented: { default: true, type: Boolean },
-    inline: { default: false, attribute: false },
-    menuPresentation: { default: false, attribute: false },
-    controls: { default: undefined, attribute: false },
+export const ChatCiAutomation = defineSolidBridge<Props>(
+  "openclaw-chat-ci-automation",
+  ChatCiAutomationContent,
+  {
+    propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
+    properties: {
+      gateway: { default: undefined, attribute: false },
+      pullRequest: { default: undefined, attribute: false },
+      sessionKey: { default: "", attribute: false },
+      sessionId: { default: "", attribute: false },
+      presented: { default: true, type: Boolean },
+      inline: { default: false, attribute: false },
+      menuPresentation: { default: false, attribute: false },
+      controls: { default: undefined, attribute: false },
+    },
   },
-});
+);

@@ -1,4 +1,4 @@
-import { action, createOptimistic, createSignal, onSettled } from "solid-js";
+import { action, createOptimistic, onSettled } from "solid-js";
 import { copyToClipboard } from "../../../lib/clipboard.ts";
 
 type CopyAttempt = {
@@ -11,9 +11,9 @@ export function createPullRequestCopy(options: {
   url: () => string | undefined;
   presented: () => boolean;
   onCopied: () => void;
+  onFailed: () => void;
 }) {
   const [copying, setCopying] = createOptimistic<CopyAttempt | false>(false);
-  const [failedUrl, setFailedUrl] = createSignal<string>();
   let mounted = false;
   let active: CopyAttempt | undefined;
   const current = (attempt: CopyAttempt) =>
@@ -21,7 +21,6 @@ export function createPullRequestCopy(options: {
   const retire = () => {
     active?.retired.resolve();
     active = undefined;
-    setFailedUrl(undefined);
   };
   onSettled(() => {
     mounted = true;
@@ -41,7 +40,6 @@ export function createPullRequestCopy(options: {
       const attempt = copying();
       return attempt && current(attempt);
     },
-    failed: () => failedUrl() !== undefined && failedUrl() === options.url(),
     retire,
     async copy() {
       const url = options.url();
@@ -51,7 +49,6 @@ export function createPullRequestCopy(options: {
       retire();
       const attempt = { url, retired: Promise.withResolvers<void>() };
       active = attempt;
-      setFailedUrl(undefined);
       // Start before the action and its microtask so browser activation remains intact.
       const completion = copyToClipboard(url, () => current(attempt))
         .then((copied) => {
@@ -61,12 +58,12 @@ export function createPullRequestCopy(options: {
           if (copied) {
             options.onCopied();
           } else {
-            setFailedUrl(url);
+            options.onFailed();
           }
         })
         .catch(() => {
           if (current(attempt)) {
-            setFailedUrl(url);
+            options.onFailed();
           }
         })
         .finally(() => {

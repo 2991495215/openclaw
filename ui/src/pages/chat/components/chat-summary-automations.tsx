@@ -1,13 +1,10 @@
-import type { JSX } from "@solidjs/web";
 import {
-  Errored,
   For,
   Loading,
   Show,
   createMemo,
   createSignal,
   isPending,
-  latest,
   onSettled,
   untrack,
 } from "solid-js";
@@ -34,15 +31,6 @@ import { ChatDetailsDesktopSection } from "./chat-details-desktop-section.tsx";
 import { sessionAutomationSchedule } from "./session-automation-schedule.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
-
-class AutomationReadError extends Error {
-  constructor(
-    message: string,
-    readonly readDenied: boolean,
-  ) {
-    super(message);
-  }
-}
 
 export type SessionAutomationInventoryProps = {
   gateway: ApplicationGateway | undefined;
@@ -84,22 +72,11 @@ export function createSessionAutomationInventory(
     return cron;
   };
   const scope = createMemo(state);
-  // Observe the admitted read, including its trailing refresh. Consumers never send an RPC.
-  // Throw the settled failure in the readiness slot so pending probes can retain the retry UI.
-  const read = createMemo<AutomationReadError | undefined>(() => {
+  // Observe the admitted read without issuing another request.
+  const read = createMemo(() => {
     const current = scope();
     const admitted = receipt();
-    return admitted?.state === current
-      ? admitted.result.then(() => {
-          if (current.cronJobsError) {
-            return new AutomationReadError(
-              current.cronJobsError,
-              current.cronJobsReadDenied === true,
-            );
-          }
-          return undefined;
-        })
-      : Promise.resolve(undefined);
+    return admitted?.state === current ? admitted.result : Promise.resolve();
   });
 
   const readable = () => {
@@ -306,35 +283,6 @@ export function createSessionAutomationInventory(
 
 export type SessionAutomationInventory = ReturnType<typeof createSessionAutomationInventory>;
 
-/** Readiness is separate from rows so refresh errors retain their DOM and focus. */
-export function SessionAutomationRead(props: {
-  inventory: SessionAutomationInventory;
-  loading?: JSX.Element;
-  error: JSX.Element;
-  readDeniedOnly?: boolean;
-}) {
-  const ready = () => {
-    const failure = latest(props.inventory.read);
-    if (failure) {
-      throw failure;
-    }
-    return !props.inventory.loaded() && isPending(props.inventory.read) ? props.loading : null;
-  };
-  return (
-    <Errored
-      fallback={(error) => {
-        const cause = error();
-        return !props.readDeniedOnly ||
-          (cause instanceof AutomationReadError && cause.readDenied) ? (
-          <Loading>{props.error}</Loading>
-        ) : null;
-      }}
-    >
-      <Loading fallback={props.loading}>{ready()}</Loading>
-    </Errored>
-  );
-}
-
 export type ChatSummaryAutomationsProps = SessionAutomationInventoryProps & {
   /** Supplied only by the native desktop Details composition. */
   desktop?: { expanded: boolean; onExpandedChange: (expanded: boolean) => void };
@@ -417,38 +365,6 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
     }
   }
 
-  async function retry(button: HTMLButtonElement) {
-    const key = props.sessionKey;
-    const source = props.gateway;
-    const focused = host.ownerDocument.activeElement === button;
-    await inventory.refresh();
-    if (
-      props.sessionKey !== key ||
-      props.gateway !== source ||
-      inventory.error() ||
-      !props.presented ||
-      !host.isConnected
-    ) {
-      return;
-    }
-    // Only move focus when the successful retry removed the focused control.
-    if (focused) {
-      onSettled(() => {
-        const target = jobLinks.get(inventory.jobs()[0]?.id ?? "");
-        if (
-          props.sessionKey === key &&
-          props.gateway === source &&
-          props.presented &&
-          host.isConnected &&
-          target?.isConnected &&
-          host.ownerDocument.activeElement === host.ownerDocument.body
-        ) {
-          target.focus();
-        }
-      });
-    }
-  }
-
   function jobState(job: CronCompactJob) {
     if (job.autoDisabled) {
       return t("chat.sessionDetails.automationAttention");
@@ -461,26 +377,6 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
     }
     return job.schedule ? sessionAutomationSchedule(job.schedule) : "";
   }
-  const errorNotice = () =>
-    inventory.connected() && (
-      <div class="chat-summary__automation-error">
-        <span role="status">
-          {t(
-            inventory.loaded()
-              ? "chat.sessionDetails.automationUpdateError"
-              : "chat.sessionDetails.automationError",
-          )}
-        </span>
-        <button
-          type="button"
-          class="chat-summary__automation-retry"
-          aria-disabled={isPending(inventory.read) ? "true" : "false"}
-          onClick={(event) => void retry(event.currentTarget)}
-        >
-          {t("common.retry")}
-        </button>
-      </div>
-    );
   const content = () => (
     <div class="chat-summary__automations" aria-busy={isPending(inventory.read) ? "true" : "false"}>
       <For each={jobs()} keyed={(job) => job.id}>
@@ -603,18 +499,6 @@ export function ChatSummaryAutomations(props: ChatSummaryAutomationsProps) {
               )}
             </Show>
           </Show>
-          <SessionAutomationRead
-            inventory={inventory}
-            readDeniedOnly
-            error={
-              <div
-                class="chat-summary__automations"
-                aria-busy={isPending(inventory.read) ? "true" : "false"}
-              >
-                {errorNotice()}
-              </div>
-            }
-          />
         </Show>
       </Loading>
     </openclaw-chat-summary-automations>

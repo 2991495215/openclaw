@@ -43,6 +43,17 @@ export function createWorkspaceTree() {
   };
 }
 
+export function captureSessionWorkspaceNavigation(workspace: SessionWorkspaceState) {
+  const tree = (workspace.tree ??= createWorkspaceTree());
+  return {
+    ...tree,
+    expandedPaths: [...tree.expandedPaths],
+    browserPath: workspace.browserPath,
+    browserSearch: workspace.browserSearch,
+    filter: workspace.filter,
+  };
+}
+
 export function createSessionWorkspaceState(state: SessionWorkspaceHost): SessionWorkspaceState {
   return {
     tree: createWorkspaceTree(),

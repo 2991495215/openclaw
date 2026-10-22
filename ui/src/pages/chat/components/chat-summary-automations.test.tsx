@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { createSignal } from "solid-js";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import type { CronCompactJob, CronJobsListResult } from "../../../api/types.ts";
 import { createApplicationGateway } from "../../../test-helpers/application-context.ts";
@@ -614,7 +614,7 @@ it("shares pending reads, retained rows, and failed refresh recovery with mobile
     );
   });
   await waitForSolid(() => {
-    expect(view.container.textContent).toContain("Loading automations…");
+    expect(view.container.textContent).not.toContain("Loading automations…");
     expect(current.request).toHaveBeenCalledTimes(1);
     expect(
       view.container.querySelector('.chat-details-mobile-root [data-details-group="automations"]'),
@@ -631,18 +631,22 @@ it("shares pending reads, retained rows, and failed refresh recovery with mobile
   );
   expect(current.request).toHaveBeenCalledTimes(2);
   retainedRows.forEach((row, index) => expect(rows()[index]).toBe(row));
-  refresh.reject(new Error("private inventory failure"));
-  await waitForSolid(() => {
-    expect(view.container.querySelector(".chat-summary__automation-error")).toBeNull();
-    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain(
-      "Couldn't update automations.",
-    );
-    expect(view.container.querySelector('[aria-busy="true"]')).toBeNull();
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
   });
+  refresh.reject(new Error("private inventory failure"));
+  await vi.advanceTimersByTimeAsync(0);
+  flush();
+  expect(view.container.querySelector(".chat-summary__automation-error")).toBeNull();
+  expect(view.container.querySelector('[role="alert"]')).toBeNull();
+  expect(view.container.querySelector('[aria-busy="true"]')).toBeNull();
   retainedRows.forEach((row, index) => expect(rows()[index]).toBe(row));
   expect(document.activeElement).toBe(retainedRows[1]);
   expect(view.container.textContent).not.toContain("private inventory failure");
-  view.container.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(current.request).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1);
   await waitForSolid(() =>
     expect(view.container.querySelectorAll('[aria-busy="true"]')).toHaveLength(2),
   );

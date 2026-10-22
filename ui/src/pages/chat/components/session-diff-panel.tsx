@@ -1,19 +1,16 @@
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import {
   createMemo,
   createSignal,
   createStore,
-  Errored,
   isPending,
   latest,
-  Loading,
   onCleanup,
   onSettled,
   Show,
 } from "solid-js";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { nativeGatewaysCapability } from "../../../app/native-gateways.runtime.ts";
-import { Icon } from "../../../components/solid/icon.tsx";
-import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import "../../../styles/chat/session-diff-mobile.css";
 import "../../../styles/session-panel-rail.css";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
@@ -30,7 +27,8 @@ import {
 import { parseSessionDiffPatch } from "../../../lib/chat/session-diff.ts";
 import type { DiffLine } from "../../../lib/chat/tool-call-diff.ts";
 import { openEditor } from "../../../lib/editor-links.ts";
-import { formatUiError } from "../../../lib/format-error.ts";
+import { isRetryableGatewayReadError } from "../../../lib/gateway-errors.ts";
+import { createGatewayRetryOwner } from "../../../lib/gateway-retry.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { useVisiblePoll } from "../../../lib/reactive/visible-poll.ts";
 import type { DiffPresentation } from "./chat-diff-render.solid.tsx";
@@ -47,19 +45,22 @@ import {
   saveSessionDiffPreferences,
   type SessionDiffMode,
 } from "./session-diff-preferences.ts";
-import type { SessionDiffViewBindings } from "./session-diff-presentation.ts";
+import {
+  sessionDiffSyncData,
+  sessionDiffScopeTitle,
+  type SessionDiffViewBindings,
+} from "./session-diff-presentation.ts";
+import { SessionDiffReadBoundary } from "./session-diff-read-recovery.tsx";
 import { createSessionDiffPanelFrame, SessionDiffNativeGaps } from "./session-diff-result-view.tsx";
 import { SessionDiffSyncMobile } from "./session-diff-sync-mobile.tsx";
 import type { DiffValue, FileSource, FileView } from "./session-diff-types.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 
-const shellArgument = (value: string) =>
-  /^[A-Za-z0-9_./:@+-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
-
 export function SessionDiffPanel(props: SessionDiffProps) {
   const desktop = () => props.mobile === false;
   const mobile = () => props.mobile === true;
+  const hidden = () => document.visibilityState === "hidden";
   const preferences = loadSessionDiffPreferences();
   const [value, setValue] = createSignal<DiffValue | null>(null);
   const collapseEntry = createMemo(
@@ -133,13 +134,23 @@ export function SessionDiffPanel(props: SessionDiffProps) {
   const [reload, setReload] = createSignal<{
     target: ReturnType<typeof requestTarget>;
     result?: SessionsDiffResult;
+    retry?: ReturnType<typeof createGatewayRetryOwner>;
   } | null>(null);
-  const request = createMemo(() => ({
-    target: requestTarget(),
-    reload: reload(),
-    result: Promise.withResolvers<{ error: unknown } | null>(),
-    deferred: false,
-  }));
+  const request = createMemo(() => {
+    const target = requestTarget();
+    const requestedReload = reload();
+    return {
+      target,
+      reload: requestedReload,
+      result: Promise.withResolvers<{ error: unknown } | null>(),
+      retry:
+        (requestedReload?.target === target ? requestedReload.retry : undefined) ??
+        createGatewayRetryOwner(),
+      deferred: false,
+      blocked: false,
+      inFlight: false,
+    };
+  });
   const [computing, setComputing] = createSignal(false);
   // The queued plain request can start even while its read parks a commit.
   const readiness = createMemo(() => {
@@ -147,6 +158,9 @@ export function SessionDiffPanel(props: SessionDiffProps) {
     let active = true;
     onCleanup(() => {
       active = false;
+      if (latest(request).retry !== initialRequest.retry) {
+        initialRequest.retry.cancel();
+      }
       initialRequest.result.resolve(null);
     });
     queueMicrotask(() => {
@@ -178,17 +192,7 @@ export function SessionDiffPanel(props: SessionDiffProps) {
   };
   // Observe the same receipt before first paint without suspending the controls.
   const readStatus = createMemo(() => request().result.promise, { loadingValue: undefined });
-  const syncData = createMemo(() => {
-    const current = value();
-    const { root, branch } = current?.owner === props.owner ? current.result : {};
-    return root && branch
-      ? {
-          root,
-          branch,
-          command: `git fetch ${shellArgument(root)} ${shellArgument(branch)} && git checkout FETCH_HEAD`,
-        }
-      : null;
-  });
+  const syncData = createMemo(() => sessionDiffSyncData(value(), props.owner));
   const renderMobileSync = () => <SessionDiffSyncMobile data={syncData()} />;
   const [gapRevision, setGapRevision] = createSignal(0);
   const pairedRows = createMemo(() => {
@@ -211,6 +215,7 @@ export function SessionDiffPanel(props: SessionDiffProps) {
     const unsubscribe = nativeGateways?.subscribe(() => setMenu(null));
     return () => {
       disposed = true;
+      latest(request).retry.cancel();
       unsubscribe?.();
     };
   });
@@ -224,18 +229,25 @@ export function SessionDiffPanel(props: SessionDiffProps) {
     refresh = false,
   ) {
     const isCurrent = () => !disposed && isActive() && initialRequest === latest(request);
-    if (!isCurrent()) {
+    if (!isCurrent() || initialRequest.inFlight) {
       return;
     }
     const { target, reload: requestedReload, result: completion } = initialRequest;
     const { loader, owner, scope: requestedScope } = target;
+    if (latest(() => props.canRead?.()) === false) {
+      // Connectivity/lifetime can block a read without invalidating same-scope data.
+      initialRequest.blocked = true;
+      setComputing(false);
+      completion.resolve(null);
+      return;
+    }
     if (!loader) {
       setComputing(false);
       setValue(null);
       completion.resolve(null);
       return;
     }
-    if (latest(() => props.active) === false || document.visibilityState === "hidden") {
+    if (latest(() => props.active) === false || hidden()) {
       setComputing(true);
       // Deferred background reads must not hold the visible sibling's transition.
       initialRequest.deferred = true;
@@ -247,19 +259,22 @@ export function SessionDiffPanel(props: SessionDiffProps) {
       setReload({ target });
       return;
     }
+    initialRequest.inFlight = true;
+    initialRequest.retry.cancel();
     setComputing(false);
     let result: SessionsDiffResult | undefined;
     try {
       result =
         (requestedReload?.target === target ? requestedReload.result : undefined) ??
         (await (refresh ? loader(target.scope, { refresh: true }) : loader(target.scope)));
-      if (!isCurrent()) {
+      if (!isCurrent() || latest(() => props.canRead?.()) === false) {
         return;
       }
       if (result.computing) {
         setComputing(true);
         return;
       }
+      initialRequest.retry.reset();
       const previous = value();
       const reusable =
         previous?.owner === owner &&
@@ -304,9 +319,27 @@ export function SessionDiffPanel(props: SessionDiffProps) {
       }
     } catch (error) {
       if (isCurrent()) {
+        if (error instanceof GatewayProtocolRequestError && error.gatewayCode === "FORBIDDEN") {
+          initialRequest.retry.reset();
+          setValue(null);
+        }
+        if (isRetryableGatewayReadError(error, "sessions.diff")) {
+          initialRequest.retry.schedule(
+            () => {
+              if (isCurrent() && props.canRead?.() !== false) {
+                setReload({ target, retry: initialRequest.retry });
+              }
+            },
+            error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
+          );
+          if (props.active === false || hidden()) {
+            initialRequest.retry.pause();
+          }
+        }
         completion.resolve({ error });
       }
     } finally {
+      initialRequest.inFlight = false;
       if (isCurrent() && !result?.computing) {
         completion.resolve(null);
       }
@@ -553,17 +586,7 @@ export function SessionDiffPanel(props: SessionDiffProps) {
       expandingGaps.delete(line);
     }
   }
-  function scopeTitle(result?: SessionsDiffResult) {
-    const currentScope = scope();
-    if (currentScope.scope === "uncommitted") {
-      return t("chat.sessionDiff.uncommitted");
-    }
-    if (currentScope.scope === "commit") {
-      const commit = result?.commits?.find((entry) => entry.sha === currentScope.commit);
-      return commit ? `${commit.sha} ${commit.subject}` : currentScope.commit;
-    }
-    return t("chat.sessionDiff.allChanges");
-  }
+  const scopeTitle = (result?: SessionsDiffResult) => sessionDiffScopeTitle(scope(), result);
   function collapseGap(view: FileView, line: DiffLine) {
     const inserted = view.source.expandedGaps?.get(line);
     const source = view.source;
@@ -585,10 +608,11 @@ export function SessionDiffPanel(props: SessionDiffProps) {
   }
   const viewBindings: SessionDiffViewBindings = {
     loading: () =>
-      isPending(readStatus) ||
-      (latest(readStatus) === undefined
-        ? Boolean(props.loader)
-        : latest(readStatus) === null && awaitingDestination()),
+      !latest(request).blocked &&
+      (isPending(readStatus) ||
+        (latest(readStatus) === undefined
+          ? Boolean(props.loader)
+          : latest(readStatus) === null && awaitingDestination())),
     props,
     desktop,
     mobile,
@@ -652,9 +676,6 @@ export function SessionDiffPanel(props: SessionDiffProps) {
     setMotionInstant,
     awaitingDestination,
   );
-  const raiseReadFailure = (error: unknown): never => {
-    throw error;
-  };
   return (
     <openclaw-session-diff>
       <Show when={!desktop()}>
@@ -664,42 +685,19 @@ export function SessionDiffPanel(props: SessionDiffProps) {
         />
       </Show>
       <Panel>
-        <Loading
-          on={latest(presentationScope)}
-          fallback={
-            <Show when={props.loader}>
-              <PanelLoadingSkeleton variant="review" label={t("chat.sessionDiff.loading")} />
-            </Show>
-          }
+        <SessionDiffReadBoundary
+          scope={latest(presentationScope)}
+          available={Boolean(props.loader)}
+          read={readiness}
+          active={props.active !== false}
+          canRead={props.canRead}
+          retry={request().retry}
+          blocked={latest(request).blocked}
+          awaitingDestination={awaitingDestination()}
+          hasValue={Boolean(latest(value))}
         >
-          <Show when={isPending(readiness) ? null : latest(readiness)} fallback={<Result />}>
-            {(failed) => (
-              <Errored
-                fallback={(error, reset) => (
-                  <div class="callout danger">
-                    {formatUiError(error())}
-                    <Show when={mobile()}>
-                      <button
-                        class="btn btn--ghost"
-                        type="button"
-                        disabled={!props.loader}
-                        onClick={() => {
-                          loadDiff();
-                          reset();
-                        }}
-                      >
-                        <Icon name="refresh" />
-                        {t("common.retry")}
-                      </button>
-                    </Show>
-                  </div>
-                )}
-              >
-                {raiseReadFailure(failed().error)}
-              </Errored>
-            )}
-          </Show>
-        </Loading>
+          <Result />
+        </SessionDiffReadBoundary>
       </Panel>
       <Show when={menu()} keyed>
         {(current) => (

@@ -288,7 +288,7 @@ it.each(["refresh", "usage update"])(
 );
 
 it.each([30_000, 600_000])(
-  "preserves the %i ms retry deadline across visibility changes",
+  "preserves the %i ms retry deadline across usage and visibility changes",
   async (delay) => {
     vi.useFakeTimers();
     const request = createGatewayRequestMock()
@@ -309,9 +309,15 @@ it.each([30_000, 600_000])(
       .mockResolvedValue(usage("task"));
     const view = mountRecoveringContext(request);
     await advance();
+    view.setUsed(60000);
+    await advance();
+    expect(request).toHaveBeenCalledTimes(1);
     const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     document.dispatchEvent(new Event("visibilitychange"));
     await advance(delay / 2);
+    view.setUsed(70000);
+    await advance();
+    expect(request).toHaveBeenCalledTimes(1);
     visibility.mockReturnValue("visible");
     document.dispatchEvent(new Event("visibilitychange"));
     await advance(delay / 2 - 1);
