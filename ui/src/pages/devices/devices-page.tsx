@@ -46,6 +46,7 @@ import { projectMutableSource } from "../../lib/reactive/projection.ts";
 import { useVisiblePoll } from "../../lib/reactive/visible-poll.ts";
 import { canReadSystemInfo, readSystemInfo } from "../../lib/system-info.ts";
 import { createDevicesDialogs } from "./devices-dialogs.ts";
+import { createDevicePolicyReads } from "./devices-policy-reads.ts";
 import { DevicesView } from "./view.tsx";
 import type { DevicesProps } from "./view.types.ts";
 
@@ -182,6 +183,12 @@ export function DevicesPage(props: { routeData?: DevicesRouteData }) {
     invalidateRequests,
     onSnapshot: handleGatewaySnapshot,
     ensureInitialData,
+  });
+  const policyReads = createDevicePolicyReads({
+    state: pageData.read,
+    config: () => configProjection.read().state,
+    gateway: gatewayBinding,
+    target: () => `${execApprovalsTarget}:${execApprovalsTargetNodeId ?? ""}`,
   });
   onSettled(() => {
     syncConfigCustody();
@@ -451,7 +458,7 @@ export function DevicesPage(props: { routeData?: DevicesRouteData }) {
       void context.runtimeConfig.refresh();
     }
     if (canAdmin && !pageState.execApprovalsSnapshot && !pageState.execApprovalsLoading) {
-      void runPageTask((current) => loadExecApprovals(current, resolveExecApprovalsTarget()));
+      refreshExecApprovals();
     }
   }
 
@@ -568,12 +575,25 @@ export function DevicesPage(props: { routeData?: DevicesRouteData }) {
       : { kind: "gateway" };
   }
 
+  function refreshExecApprovals() {
+    if (!canAdmin || dataState.execApprovalsLoading) {
+      return;
+    }
+    const state = dataState;
+    const result = runPageTask((current) =>
+      loadExecApprovals(current, resolveExecApprovalsTarget()),
+    );
+    policyReads.observeApprovals(state, result);
+  }
+
   function viewProps(): DevicesProps {
     const devices = pageData.read();
     const config = configProjection.read().state;
     const gatewaySnapshot = gatewayBinding.snapshot ?? context.gateway.snapshot;
     const gatewayVersion = gatewaySnapshot.hello?.server?.version?.trim() || null;
     return {
+      configRead: policyReads.config,
+      execApprovalsRead: policyReads.approvals,
       loading: devices.nodesLoading,
       connected: gatewayBinding.connected,
       nodes: devices.nodes,
@@ -634,8 +654,7 @@ export function DevicesPage(props: { routeData?: DevicesRouteData }) {
       onDeviceRevoke: (deviceId, role) => void dialogs.confirmTokenRevoke(deviceId, role),
       onDeviceRename: (device) => void dialogs.editAlias(device),
       onLoadConfig: () => void context.runtimeConfig.discardDraft({ reloadOnly: true }),
-      onLoadExecApprovals: () =>
-        runAdminTask((pageState) => loadExecApprovals(pageState, resolveExecApprovalsTarget())),
+      onLoadExecApprovals: refreshExecApprovals,
       onBindDefault: (nodeId) => bindNode(nodeId),
       onBindAgent: (agentId, nodeId) => bindNode(nodeId, agentId),
       onSaveBindings: () => {

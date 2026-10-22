@@ -4,12 +4,15 @@ import type {
   DevicesPageDataState,
   InventoryRemovalRequest,
 } from "../../lib/nodes/page-operations.ts";
+import type { DevicePolicyRead } from "./devices-policy-reads.ts";
 
 export type DevicesProps = Omit<
   DevicesPageDataState,
   "client" | "requestGeneration" | "nodesLoading" | "nodesQueuedRefresh" | "devicesQueuedRefresh"
 > & {
   loading: boolean;
+  configRead: DevicePolicyRead;
+  execApprovalsRead: DevicePolicyRead;
   presence: PresenceEntry[];
   gatewayVersion: string | null;
   basePath: string;

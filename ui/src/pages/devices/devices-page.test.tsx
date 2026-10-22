@@ -10,7 +10,10 @@ import { GatewayRequestError, type GatewayBrowserClient } from "../../api/gatewa
 import type { PresenceEntry } from "../../api/types.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context-types.ts";
 import { t } from "../../i18n/index.ts";
-import { invalidateConfigConnection } from "../../lib/config/config-state-model.ts";
+import {
+  beginConfigRead,
+  invalidateConfigConnection,
+} from "../../lib/config/config-state-model.ts";
 import {
   createInitialDevicesState,
   type DevicesPageDataState,
@@ -135,6 +138,8 @@ function mountPage(
   };
   const [currentGateway, setGateway] = createSignal(fixture.source);
   const [presentation, setPresentation] = createSignal({ routeData });
+  const configListeners = new Set<() => void>();
+  const reloadConfig = vi.fn(async () => undefined);
   const context = {
     get gateway() {
       return currentGateway();
@@ -142,7 +147,11 @@ function mountPage(
     basePath: "",
     runtimeConfig: {
       state: { configSnapshot: {}, configForm: {}, configLoading: false, configFormMode: "form" },
-      subscribe: () => () => undefined,
+      subscribe: (listener: () => void) => {
+        configListeners.add(listener);
+        return () => configListeners.delete(listener);
+      },
+      discardDraft: reloadConfig,
     },
   } as unknown as ApplicationContext;
   const container = document.createElement("div");
@@ -170,6 +179,8 @@ function mountPage(
   return {
     container,
     config: context.runtimeConfig.state,
+    reloadConfig,
+    publishConfig: () => configListeners.forEach((listener) => listener()),
     dispose,
     refreshPresentation() {
       setPresentation({ routeData });
@@ -309,6 +320,48 @@ describe("DevicesPage gateway lifecycle", () => {
     expect(
       getQueriesForElement(page.container).getByRole("heading", { level: 1 }).textContent,
     ).toBe("Devices");
+  });
+
+  it("keeps inventory usable and retires a held approval read on Gateway replacement", async () => {
+    const policyMethod = "exec.approvals.get";
+    const pending = createDeferred<unknown>();
+    const { client, request } = clientFor(
+      vi.fn(async (method: string) =>
+        method === policyMethod ? pending.promise : responseFor(method),
+      ),
+    );
+    const page = mountPage(gatewayFixture(gatewaySnapshot(client, true, [], ["operator.admin"])), {
+      nodes: [{ nodeId: "available", displayName: "Available node" }],
+    });
+    expect(page.container.textContent).toContain("Available node");
+    expect(page.container.querySelector('select[aria-label="Mode"]')).toBeNull();
+    expect(button(page.container, t("common.loading")).disabled).toBe(true);
+    expect(request.mock.calls.filter(([method]) => method === policyMethod)).toHaveLength(1);
+
+    const replacement = clientFor();
+    page.replaceGateway(
+      gatewayFixture(gatewaySnapshot(replacement.client, true, [], ["operator.admin"])),
+    );
+    await waitForSolid(() =>
+      expect(page.container.querySelector('select[aria-label="Mode"]')).not.toBeNull(),
+    );
+    pending.reject(new Error("Retired read"));
+    await waitForSolid(() => expect(page.container.textContent).not.toContain("Retired read"));
+  });
+
+  it("surfaces the shared config read failure and retries through its owner", async () => {
+    const { client } = clientFor();
+    const page = mountPage(gatewayFixture(gatewaySnapshot(client, true, [], ["operator.admin"])));
+    const read = beginConfigRead(page.config, client);
+    read.completion.resolve({ ok: false, error: "Config failed" });
+    page.publishConfig();
+    await waitForSolid(() => expect(page.container.textContent).toContain("Config failed"));
+    button(page.container, t("common.retry")).click();
+    expect(page.reloadConfig).toHaveBeenCalledExactlyOnceWith({ reloadOnly: true });
+    const retry = beginConfigRead(page.config, client);
+    retry.completion.resolve({ ok: true, value: undefined });
+    page.publishConfig();
+    await waitForSolid(() => expect(page.container.textContent).not.toContain("Config failed"));
   });
 
   it("preserves matching route data, then clears inventory on provider replacement", async () => {
@@ -762,7 +815,11 @@ describe("DevicesPage gateway lifecycle", () => {
   it.each(["removal", "alias"])(
     "retains a pending %s dialog through reconnect and cancels it on fresh pairing denial",
     async (kind) => {
-      const request = vi.fn(async (method: string) => responseFor(method));
+      const request = vi.fn(async (method: string) =>
+        method === "node.list"
+          ? { nodes: [{ nodeId: "node-1", displayName: "Office Mac" }] }
+          : responseFor(method),
+      );
       const page = mountPaired(request);
       await selectEntryAction(page.container, kind === "alias" ? "editAlias" : "remove");
       await waitForRenderedModalDialog(document.body);
@@ -777,10 +834,10 @@ describe("DevicesPage gateway lifecycle", () => {
       request.mockClear();
       page.fixture.emitSnapshot(gatewaySnapshot(page.client, false));
       expect(document.body.querySelector("openclaw-modal-dialog")).not.toBeNull();
-      expect(dialogButton(label).disabled).toBe(true);
+      await waitForSolid(() => expect(dialogButton(label).disabled).toBe(true));
       expect(request).not.toHaveBeenCalled();
       page.fixture.emitSnapshot(gatewaySnapshot(page.client));
-      expect(dialogButton(label).disabled).toBe(false);
+      await waitForSolid(() => expect(dialogButton(label).disabled).toBe(false));
       if (kind === "alias") {
         expect(document.body.querySelector<HTMLInputElement>('input[name="value"]')?.value).toBe(
           "Draft device alias",
@@ -791,7 +848,7 @@ describe("DevicesPage gateway lifecycle", () => {
       expect(page.container.textContent).not.toContain("MacBook Pro");
       expect(page.container.textContent).toContain("Office Mac");
       page.fixture.emitSnapshot(gatewaySnapshot(page.client, true, [], []));
-      expect(page.container.querySelector(".device-entry")).toBeNull();
+      await waitForSolid(() => expect(page.container.querySelector(".device-entry")).toBeNull());
       expect(request.mock.calls.map(([method]) => method)).not.toContain("device.pair.remove");
       expect(request.mock.calls.map(([method]) => method)).not.toContain("device.pair.rename");
     },
@@ -857,7 +914,9 @@ describe("DevicesPage gateway lifecycle", () => {
         );
       }
       if (transition === "connection resets") {
-        expect(dialogButton(t("devices.inventory.revoke")).disabled).toBe(true);
+        await waitForSolid(() =>
+          expect(dialogButton(t("devices.inventory.revoke")).disabled).toBe(true),
+        );
         dialogButton(t("devices.inventory.revoke")).click();
         expect(document.body.querySelector("openclaw-modal-dialog")).not.toBeNull();
         dialogButton(t("common.cancel")).click();
