@@ -76,7 +76,7 @@ function Content(
   // Polls retain settled samples; a new connection immediately hides them.
   const [epoch, setEpoch] = createSignal(lifecycle.epoch);
   const [sections, setSections] = createStore<Record<string, SectionRead>>({});
-  const [history, setHistory] = createSignal<readonly DebugOverlayStatusSample[]>([]);
+  const [history, setHistory] = createStore<DebugOverlayStatusSample[]>([]);
   const requests = new Map<string, AbortController>();
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -103,7 +103,9 @@ function Content(
   const reset = () => {
     abortRequests();
     setEpoch(lifecycle.epoch);
-    setHistory([]);
+    setHistory((draft) => {
+      draft.length = 0;
+    });
     setSections((draft) => {
       for (const section of DEBUG_OVERLAY_SECTIONS) {
         draft[section.id] = lifecycle.capture() ? undefined : null;
@@ -135,11 +137,12 @@ function Content(
           if (section.id === "status") {
             // SAFETY: The status descriptor is the only producer of this snapshot.
             const sample = value as DebugOverlayStatusSnapshot;
-            setHistory((previous) =>
-              previous.at(-1)?.at === sample.sampledAt
-                ? previous
-                : [...previous.slice(-89), { at: sample.sampledAt, status: sample }],
-            );
+            setHistory((draft) => {
+              if (draft.at(-1)?.at !== sample.sampledAt) {
+                draft.splice(0, Math.max(0, draft.length - 89));
+                draft.push({ at: sample.sampledAt, status: sample });
+              }
+            });
             // Measure the next status interval from the completed sample.
             stopPolling();
             if (document.visibilityState !== "hidden") {
@@ -172,7 +175,9 @@ function Content(
     if (!statusAllowed) {
       requests.get("status")?.abort();
       requests.delete("status");
-      setHistory([]);
+      setHistory((draft) => {
+        draft.length = 0;
+      });
       updateSection("status", null);
     }
     if (
@@ -239,7 +244,7 @@ function Content(
                   // SAFETY: Only the status descriptor produces this read's snapshot.
                   status() as DebugOverlayStatusSnapshot
                 }
-                history={history()}
+                history={history}
               />
             </Loading>
           </Errored>
@@ -257,7 +262,7 @@ function Content(
             <Errored fallback={<SectionFallback section={entry} />}>
               <Loading on={epoch()} fallback={<SectionFallback section={entry} loading />}>
                 <SectionFrame section={entry}>
-                  <entry.render value={value(entry)} history={history()} />
+                  <entry.render value={value(entry)} history={history} />
                 </SectionFrame>
               </Loading>
             </Errored>
