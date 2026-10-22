@@ -125,11 +125,17 @@ it("keeps sharing busy through refresh and retires it for a same-key successor",
   const view = accessFixture(source);
   view.getByRole("button", { name: /Shared/ }).click();
   await waitForSolid(() =>
-    expect(view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled")).toBe(true),
+    expect(
+      view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled"),
+      "sharing: initial busy",
+    ).toBe(true),
   );
   response.resolve({});
   await waitForSolid(() => expect(reads).toBe(2));
-  expect(view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled")).toBe(true);
+  expect(
+    view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled"),
+    "sharing: refresh busy",
+  ).toBe(true);
   expect(view.applied).not.toHaveBeenCalled();
   rows[0] = replacement;
   fixture.emitGatewayEvent("sessions.changed", {
@@ -139,7 +145,9 @@ it("keeps sharing busy through refresh and retires it for a same-key successor",
     reason: "update",
     session: replacement,
   });
-  await waitForSolid(() => expect(source.operationSignal?.aborted).toBe(true));
+  await waitForSolid(() =>
+    expect(source.operationSignal?.aborted, "sharing: successor retirement").toBe(true),
+  );
   pane.syncSelectedSessionSharing(replacement);
   await waitForSolid(() =>
     expect(pane.prepareSessionSharing(replacement)?.state?.loading).toBe(false),
