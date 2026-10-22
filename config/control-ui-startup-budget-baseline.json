@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 312857,
-  "reason": "Defer settings, activity, terminal, and preference English catalogs to their existing lazy owners; retain shared default/browser hints. Measured startup 312857 B versus base315977 B with 7 requests unchanged.",
+  "startupJsGzipBytes": 313115,
+  "reason": "Defer settings, activity, terminal, and preferences English at existing lazy owners. Matched c64eaf54 baseline: startup 316245 B to 313115 B, seven JS requests unchanged; preserve main picker deferrals.",
   "updatedAt": "2026-10-22"
 }
