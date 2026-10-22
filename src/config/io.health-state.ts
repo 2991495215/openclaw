@@ -20,6 +20,7 @@ import type {
   ConfigHealthEntryChanges,
   ConfigHealthState,
   ConfigHealthSnapshot,
+  ConfigHealthUpdateResult,
 } from "./io.health-state.types.js";
 import { setBoundedConfigIoWarningEntry } from "./io.state.js";
 
@@ -172,15 +173,17 @@ export function patchConfigHealthEntryToStore(
   }
 }
 
-type ConfigHealthStateStore = Disposable & {
-  isCurrent(): boolean;
-  captureContinuation(): ConfigHealthStateStore;
-  read(): Promise<ConfigHealthSnapshot | null>;
-  update(changes: ConfigHealthEntryChanges, previous: ConfigHealthSnapshot): Promise<void>;
+type ConfigHealthStateStore = {
+  assertCurrent: () => void;
+  read(): Promise<ConfigHealthSnapshot>;
+  update(
+    changes: ConfigHealthEntryChanges,
+    previous: ConfigHealthSnapshot,
+  ): Promise<ConfigHealthUpdateResult>;
   updateAfterFileCommit(
     changes: ConfigHealthEntryChanges,
     previous: ConfigHealthSnapshot,
-  ): Promise<void>;
+  ): Promise<ConfigHealthUpdateResult>;
 };
 
 /** Bind one asynchronous observation/recovery to its original shared-state owner. */
@@ -327,5 +330,94 @@ export function captureConfigHealthStateStore(
     };
     return store;
   };
-  return captureScope();
+  const store: ConfigHealthStateStore = {
+    assertCurrent,
+    async read(): Promise<ConfigHealthSnapshot> {
+      try {
+        if ("error" in captured) {
+          throw captured.error;
+        }
+        assertCurrent();
+        const context = captured.context;
+        const options = { path: databasePath, env: context.environment };
+        const receipt =
+          !context.maintenanceScope &&
+          !context.existingSchemaPath &&
+          !(await getActiveOpenClawStateDatabaseReadSnapshotAsync(options))
+            ? readConfigHealthReceipt(databasePath)
+            : undefined;
+        const snapshots = healthSnapshots.get(context.admission) ?? new Map();
+        const cached = snapshots.get(context.databaseEngineSelection);
+        if (receipt && cached?.receipt === receipt) {
+          return cached.snapshot;
+        }
+        const reply = await executeExistingOpenClawStateRead(
+          options,
+          { type: "config.health.read", input: undefined },
+          { context: captured.context },
+        );
+        assertCurrent();
+        const snapshot = reply?.snapshot ?? { state: {}, basis: {} };
+        if (receipt) {
+          // A concurrent committed write replaces the receipt, retiring this observation.
+          snapshots.set(context.databaseEngineSelection, { receipt, snapshot });
+          healthSnapshots.set(context.admission, snapshots);
+        }
+        return snapshot;
+      } catch (error) {
+        assertCurrent();
+        const state = handleHealthReadFailure(error);
+        return { state, basis: null };
+      }
+    },
+    async update(changes, previous): Promise<ConfigHealthUpdateResult> {
+      try {
+        const patch = prepareConfigHealthPatch(changes);
+        if (Object.keys(patch).length === 0) {
+          return { status: "applied" };
+        }
+        if ("error" in captured) {
+          throw captured.error;
+        }
+        const prior = previous.basis?.[configPath];
+        const expected = previous.basis === null ? undefined : (prior ?? null);
+        const updatedAtMs = Date.now();
+        const applied = await runOpenClawStateWorkerOperation(
+          captured.context,
+          (scope) =>
+            scope.execute({
+              type: "config.health.patch",
+              input: { configPath, patch, expected, updatedAtMs },
+            }),
+          { assertCurrent },
+        );
+        if (applied) {
+          loggedHealthWriteFailures.delete(databasePath);
+          return { status: "applied" };
+        }
+        // A failed read supplies no comparison basis, not evidence of a CAS miss.
+        return { status: expected === undefined ? "unavailable" : "conflict" };
+      } catch (error) {
+        if (
+          error instanceof OpenClawStateOwnershipError ||
+          findStartupMaintenanceRequiredError(error)
+        ) {
+          throw error;
+        }
+        assertCurrent();
+        handleHealthWriteFailure(deps, databasePath, error);
+        return { status: "unavailable" };
+      }
+    },
+    async updateAfterFileCommit(changes, previous): Promise<ConfigHealthUpdateResult> {
+      try {
+        return await store.update(changes, previous);
+      } catch (error) {
+        // Ownership and maintenance refusals still propagate after the file commits.
+        handleHealthWriteFailure(deps, databasePath, error);
+        return { status: "unavailable" };
+      }
+    },
+  };
+  return store;
 }
