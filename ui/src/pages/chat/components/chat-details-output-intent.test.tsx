@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { expect, it, vi } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { ChatDetailsSession } from "./chat-details-session.tsx";
@@ -7,6 +7,12 @@ import type { ChatDetailsProps } from "./chat-details-types.ts";
 
 async function mountOutputs() {
   const navigate = vi.fn();
+  const artifacts = Array.from({ length: 5 }, (_, id) => ({
+    id: String(id),
+    title: `Demo ${id}.md`,
+    type: "document",
+    download: { mode: "bytes" as const },
+  }));
   const value: ChatDetailsProps = {
     sessionKey: "agent:main:details",
     currentAgentId: "main",
@@ -19,12 +25,7 @@ async function mountOutputs() {
     },
     desktopDisclosures: { expanded: { outputs: true }, onExpandedChange: vi.fn() },
     outputs: {
-      artifacts: Array.from({ length: 5 }, (_, id) => ({
-        id: String(id),
-        title: `Demo ${id}.md`,
-        type: "document",
-        download: { mode: "bytes" as const },
-      })),
+      artifacts,
       artifactsError: null,
       dashboard: null,
       dashboardError: null,
@@ -37,22 +38,33 @@ async function mountOutputs() {
   const view = mountSolid(() => <ChatDetailsSession props={value} presented desktop />);
   const element = view.container.querySelector("openclaw-chat-details-session")!;
   await element.updateComplete;
-  await waitForSolid(() => {
-    expect(element.querySelector(".chat-outputs__view-all")).not.toBeNull();
-  });
+  await waitForSolid(() => expect(element.querySelector(".chat-outputs__view-all")).not.toBeNull());
   const button = element.querySelector<HTMLButtonElement>(".chat-outputs__view-all")!;
-  return { element, button, value, navigate };
+  return { element, button, value, navigate, artifacts };
 }
 
 it("opens Files through the current callback when Outputs refreshes before the visible button settles", async () => {
-  const { element, button, value, navigate } = await mountOutputs();
+  const { element, button, value, navigate, artifacts } = await mountOutputs();
   button.click();
   expect(navigate).toHaveBeenCalledOnce();
   navigate.mockClear();
   const refreshed = vi.fn();
+  const pending = Promise.withResolvers<void>();
+  onTestFinished(() => pending.resolve());
   element.props = {
     ...value,
-    outputs: { ...value.outputs!, onViewAll: refreshed },
+    outputs: {
+      ...value.outputs!,
+      artifactRead: {
+        items: artifacts,
+        resolved: true,
+        loaded: false,
+        loading: true,
+        error: null,
+        readResult: pending.promise,
+      },
+      onViewAll: refreshed,
+    },
   };
   expect(element.querySelector(".chat-outputs__view-all")).toBe(button);
   button.click();

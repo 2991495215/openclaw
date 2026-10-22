@@ -177,7 +177,7 @@ export function renderPluginCatalogDetail(props: PluginCatalogDetailProps): JSX.
   const read = () => source().value();
   return (
     <SettingsPage {...{ wide: true, carapace: true }}>
-      <Loading on={receipt()} fallback={<CatalogDetailLoading />}>
+      <Loading on={props.result?.plugin.id ?? receipt()} fallback={<CatalogDetailLoading />}>
         <Errored
           fallback={(error, reset) => (
             <div class="callout danger oc-banner oc-banner-error" role="alert">
