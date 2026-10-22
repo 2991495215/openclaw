@@ -1,6 +1,7 @@
 import { createMemo, createSignal, type Accessor } from "solid-js";
 import {
   currentConfigConnectionEpoch,
+  currentConfigObject,
   currentConfigRead,
   type RuntimeConfigState,
 } from "../../lib/config/config-state-model.ts";
@@ -75,7 +76,12 @@ export function createDevicePolicyReads(options: {
       return Promise.resolve();
     }
     return Promise.race([read.completion.promise, read.invalidated.promise]).then((result) => {
-      if (!result.ok && currentConfigRead(current.state) === read) {
+      // A failed reload must preserve the editable last-good bindings and draft.
+      if (
+        !result.ok &&
+        currentConfigRead(current.state) === read &&
+        !currentConfigObject(current.state)
+      ) {
         throw new Error(result.error);
       }
     });
