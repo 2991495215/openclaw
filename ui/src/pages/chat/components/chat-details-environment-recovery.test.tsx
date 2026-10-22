@@ -2,6 +2,7 @@
 import { createComponent, createSignal, flush, untrack } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
 import { GatewayRequestError } from "../../../api/gateway.ts";
+import type { GatewayRequestHandler } from "../../../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../../../test-helpers/gateway-methods.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import {
@@ -13,6 +14,28 @@ import { ChatDetailsEnvironment } from "./chat-details-environment.tsx";
 import { resolveSessionWorkspaceDiff } from "./chat-session-workspace-diff.ts";
 import { getSessionWorkspace } from "./chat-session-workspace-state.ts";
 import type { SessionWorkspaceHost } from "./chat-session-workspace-types.ts";
+
+function diffFixture(request: GatewayRequestHandler) {
+  const state: SessionWorkspaceHost = {
+    sessionKey: "agent:main:workspace",
+    connected: true,
+    connectionEpoch: 1,
+    hello: gatewayHelloForMethods(["sessions.diff"]),
+    agentsList: { defaultId: "main", mainKey: "main", scope: "global", agents: [] },
+    client: createGatewayBrowserClientFixture({ request }),
+    sessions: createSessionCapabilityFixture({}),
+    sidebarContent: null,
+    handleOpenSidebar: () => {},
+  };
+  const resolve = () => {
+    const value = resolveSessionWorkspaceDiff(state, () => undefined);
+    if (value?.kind !== "session-diff") {
+      throw new Error("Missing checkout diff");
+    }
+    return value;
+  };
+  return { state, resolve };
+}
 
 it.each([false, true])(
   "Environment preserves recovery across leases and retirement (mobile=%s)",
@@ -42,24 +65,7 @@ it.each([false, true])(
       retryAfterMs: 600_000,
     });
     const request = vi.fn().mockRejectedValueOnce(unavailable).mockResolvedValue(result);
-    const state: SessionWorkspaceHost = {
-      sessionKey: result.sessionKey,
-      connected: true,
-      connectionEpoch: 1,
-      hello: gatewayHelloForMethods(["sessions.diff"]),
-      agentsList: { defaultId: "main", mainKey: "main", scope: "global", agents: [] },
-      client: createGatewayBrowserClientFixture({ request }),
-      sessions: createSessionCapabilityFixture({}),
-      sidebarContent: null,
-      handleOpenSidebar: () => {},
-    };
-    const resolve = () => {
-      const value = resolveSessionWorkspaceDiff(state, () => undefined);
-      if (value?.kind !== "session-diff") {
-        throw new Error("Missing checkout diff");
-      }
-      return value;
-    };
+    const { state, resolve } = diffFixture(request);
     const [content, setContent] = createSignal(resolve());
     const [presented, setPresented] = createSignal(true);
     const [expanded, setExpanded] = createSignal(true);
@@ -213,21 +219,7 @@ it.each(["failure", "computing"] as const)(
       request.mockResolvedValueOnce(computing).mockResolvedValueOnce(computing);
     }
     request.mockResolvedValue(result);
-    const state: SessionWorkspaceHost = {
-      sessionKey: result.sessionKey,
-      connected: true,
-      connectionEpoch: 1,
-      hello: gatewayHelloForMethods(["sessions.diff"]),
-      agentsList: { defaultId: "main", mainKey: "main", scope: "global", agents: [] },
-      client: createGatewayBrowserClientFixture({ request }),
-      sessions: createSessionCapabilityFixture({}),
-      sidebarContent: null,
-      handleOpenSidebar: () => {},
-    };
-    const content = resolveSessionWorkspaceDiff(state, () => undefined);
-    if (content?.kind !== "session-diff") {
-      throw new Error("Missing checkout diff");
-    }
+    const content = diffFixture(request).resolve();
     const release = content.requestUncommitted?.();
     onTestFinished(() => {
       if (release) {

@@ -155,7 +155,7 @@ it("projects native identities and mentions through the People body without send
   expect(mentions.status).toBe("idle");
 });
 
-it("ignores retired activation results and preserves explicit failure and retry outcomes", async () => {
+it("ignores retired activation results and preserves insertion rejection", async () => {
   const old = createDeferred<HumanMentionRead | null>();
   const current = createDeferred<HumanMentionRead | null>();
   const receipt: HumanMentionRead = {
@@ -189,13 +189,6 @@ it("ignores retired activation results and preserves explicit failure and retry 
   expect(mentions.truncated).toBe(true);
   expect(mentions.insert("missing")).toBe(false);
   expect(mentions.status).toBe("insert-rejected");
-  request.mockRejectedValueOnce(new Error("Lookup failed"));
-  await mentions.request("retry");
-  expect(mentions.status).toBe("error");
-  expect(mentions.error).toBe("Lookup failed");
-  request.mockResolvedValueOnce(receipt);
-  await mentions.request();
-  expect(mentions.status).toBe("ready");
   access = undefined;
   expect(mentions.status).toBe("unavailable");
   expect(mentions.read()).toBeNull();
@@ -307,7 +300,7 @@ it("deduplicates reentrant directory admission and retires old activation listen
   await vi.advanceTimersByTimeAsync(0);
   expect(composer.request).toHaveBeenCalledOnce();
   composer.replaceOwner();
-  await mentions.request();
+  await composer.mentionAccess()!.request();
   await vi.advanceTimersByTimeAsync(0);
   old();
   old.setPresented(false);

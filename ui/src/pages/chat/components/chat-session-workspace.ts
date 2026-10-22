@@ -645,10 +645,6 @@ export function createSessionWorkspaceProps(
       }
       sessionWorkspaceForHost(state).publish();
     },
-    onRetry: () => {
-      clearWorkspaceTimer(workspace);
-      loadSessionWorkspace(state, workspace, true);
-    },
     onBrowsePath: (path: string) => {
       clearWorkspaceTimer(workspace);
       if (mobile) {

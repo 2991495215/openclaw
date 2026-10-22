@@ -13,11 +13,8 @@ type ChatOutputsDashboard = {
 type ChatOutputsData = {
   /** The complete artifacts.list({ sessionKey, messageRole: "assistant" }) result. */
   artifacts: readonly ArtifactSummary[] | null;
-  artifactsLoading: boolean;
-  artifactsError: string | null;
   /** undefined: not resolved; null: confirmed absent. Not one entry per widget. */
   dashboard: ChatOutputsDashboard | null | undefined;
-  dashboardError: string | null;
 };
 
 type ChatOutputsProps = ChatOutputsData & {

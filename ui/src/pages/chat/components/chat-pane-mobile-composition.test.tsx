@@ -199,7 +199,7 @@ it("retains the People page and pauses its lookup across native host replacement
   mounted.update({
     mergedChrome: false,
     detailsControl: { ...detailsControl, mobileHost: undefined },
-    mobilePeopleMentions: { ...mentions, status: "error", error: "Retained lookup needs retry" },
+    mobilePeopleMentions: { ...mentions, status: "error" },
   });
   mobileHost.open = true;
   mounted.update({ mergedChrome: true, detailsControl });

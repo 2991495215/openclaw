@@ -5,17 +5,13 @@ import type {
   SessionsListResult,
 } from "../../api/types.ts";
 import { createTestChatPane, type TestChatPane } from "./chat-pane.test-support.ts";
-import type {
-  ChatSessionSharingState,
-  ChatSessionSharingOutcome,
-} from "./components/chat-session-sharing.solid.tsx";
+import type { ChatSessionSharingOutcome } from "./components/chat-session-sharing.solid.tsx";
 
 export type SharingPane = TestChatPane & {
   loadSessionSharing: (row: GatewaySessionRow, force?: boolean) => Promise<void>;
   syncSharingReadRetryPresentation: () => void;
   syncSelectedSessionSharing: (row: GatewaySessionRow | undefined) => void;
   sessionSharingCacheKey: (sessionKey: string) => string;
-  sessionSharingStates: Map<string, ChatSessionSharingState>;
   mutateSessionSharing: (
     row: GatewaySessionRow,
     change: { visibility: SessionVisibility } | { identityId: string; member: boolean },

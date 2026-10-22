@@ -118,8 +118,6 @@ export function projectDetailsOutputs(
     outputs: {
       ...icons,
       artifacts: artifacts?.resolved ? artifacts.items : null,
-      artifactsLoading: artifacts?.loading ?? false,
-      artifactsError: artifacts?.error ?? null,
       dashboard: !board.available
         ? null
         : boardReady && board.provider.hasLoadedSnapshot
@@ -132,7 +130,6 @@ export function projectDetailsOutputs(
               }
             : null
           : undefined,
-      dashboardError: board.provider.loadError$.value,
       onOpenArtifact: binding.onOpenArtifact,
       onViewAll: binding.onViewAll,
     },

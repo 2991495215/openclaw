@@ -32,7 +32,6 @@ type MobileWorkspaceProjection = Pick<
   | "error"
   | "connected"
   | "mobileNavigation"
-  | "onRetry"
 > & { cachedBrowser?: SessionWorkspaceListResult["browser"] };
 
 function projectMobileWorkspace(workspace: MobileWorkspaceProjection): {
@@ -113,33 +112,17 @@ function projectMobileWorkspace(workspace: MobileWorkspaceProjection): {
   ) {
     status = { kind: "ready", refreshing: workspace.loading };
   } else if (workspace.error) {
-    status = { kind: "error", message: workspace.error, onRetry: workspace.onRetry };
+    status = { kind: "error" };
   } else if (workspace.connected === false && !list) {
-    status = {
-      kind: "unavailable",
-      message: t("chat.workspaceFiles.mobile.disconnected"),
-      onRetry: workspace.onRetry,
-    };
+    status = { kind: "unavailable" };
   } else if (!list || (!browser && listed && (workspace.loading || query))) {
     status = { kind: "loading" };
   } else if (workspace.loading) {
     status = { kind: "loading" };
   } else if (!browser && (path || workspace.filter === "all")) {
-    status = {
-      kind: "unavailable",
-      message: t(
-        path ? "chat.workspaceFiles.folderUnavailable" : "chat.workspaceFiles.mobile.unavailable",
-      ),
-      onRetry: workspace.onRetry,
-    };
+    status = { kind: "unavailable" };
   } else {
-    status = {
-      kind: "empty",
-      heading: t("chat.sidePanel.files"),
-      description: t(
-        query ? "chat.workspaceFiles.noSearchResults" : "chat.workspaceFiles.mobile.empty",
-      ),
-    };
+    status = { kind: "empty" };
   }
   return { groups, status };
 }
@@ -169,7 +152,6 @@ export function MobileWorkspaceContents(props: {
   const workspaceExpanded = createMemo(
     () => props.workspace.mobileNavigation?.expandedGroups.workspace ?? true,
   );
-  const onRetry = () => props.workspace.onRetry?.();
   const model = createMemo(() =>
     projectMobileWorkspace({
       sessionKey: sessionKey(),
@@ -182,7 +164,6 @@ export function MobileWorkspaceContents(props: {
       error: error(),
       connected: connected(),
       cachedBrowser: cachedBrowser(),
-      onRetry,
       mobileNavigation: {
         expandedGroups: {
           changed: changedExpanded(),

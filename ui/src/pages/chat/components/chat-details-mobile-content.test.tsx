@@ -109,10 +109,7 @@ it("retains Outputs demand across publications and returns navigation origins wi
   const retain = vi.fn(() => release);
   const output = {
     artifacts: [],
-    artifactsLoading: false,
-    artifactsError: null,
     dashboard: null,
-    dashboardError: null,
     onOpenArtifact: vi.fn(),
     renderArtifactIcon: () => null,
     onViewAll: vi.fn(),
@@ -137,7 +134,10 @@ it("retains Outputs demand across publications and returns navigation origins wi
     { kind: "versions" },
     expect.objectContaining({ kind: "details-root" }),
   );
-  setValue((current) => ({ ...current, outputs: { ...output, artifactsLoading: true } }));
+  setValue((current) => ({
+    ...current,
+    outputs: { ...output, dashboard: { title: "Build report", onOpen() {} } },
+  }));
   flush();
   expect(retain).toHaveBeenCalledOnce();
   expect(release).not.toHaveBeenCalled();
@@ -229,10 +229,8 @@ it("replaces the People activation owner while retaining the mobile host content
   const activateReplacement = vi.fn(() => releaseReplacement);
   const mentions = {
     status: "idle" as const,
-    error: undefined,
     truncated: false,
     read: () => null,
-    request: async () => {},
     insert: () => false,
     activate,
   };

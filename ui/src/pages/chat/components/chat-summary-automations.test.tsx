@@ -399,39 +399,6 @@ it.each(["hidden", "offline", "denied", "unmounted"] as const)(
   },
 );
 
-it("keeps composer focus and its draft while an automatic read recovers", async () => {
-  vi.useFakeTimers();
-  const pending = createDeferred<Page>();
-  const current = component(
-    createGatewayRequestMock()
-      .mockRejectedValueOnce(
-        new GatewayProtocolRequestError({
-          code: "UNAVAILABLE",
-          message: "temporary failure",
-          retryable: true,
-        }),
-      )
-      .mockReturnValueOnce(pending.promise),
-  );
-  const composer = document.createElement("textarea");
-  composer.value = "Keep my draft";
-  document.body.append(composer);
-  composer.focus();
-  await vi.advanceTimersByTimeAsync(30_000);
-  flush();
-  expect(current.request).toHaveBeenCalledTimes(2);
-  expect(document.activeElement).toBe(composer);
-  pending.resolve(page([job()]));
-  await vi.advanceTimersByTimeAsync(0);
-  flush();
-  expect(current.element.textContent).toContain("Check the task");
-  expect(document.activeElement).toBe(composer);
-  expect(composer.value).toBe("Keep my draft");
-  expect(current.queryByRole("button", { name: "Retry" })).toBeNull();
-  current.unmount();
-  vi.useRealTimers();
-});
-
 it("fences late pages on session and same-client reconnect boundaries", async () => {
   const retired = createDeferred<Page>();
   const reconnectRetired = createDeferred<Page>();

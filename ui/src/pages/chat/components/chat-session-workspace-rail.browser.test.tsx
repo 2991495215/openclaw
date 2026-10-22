@@ -52,7 +52,6 @@ it.each([false, true])(
         },
       },
       onBrowsePath: () => {},
-      onRetry: () => {},
       onOpenFile: () => {},
       onSearch: () => {},
       onSearchOpenChange: setSearchOpen,

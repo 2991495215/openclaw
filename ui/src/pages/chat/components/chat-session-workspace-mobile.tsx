@@ -40,9 +40,7 @@ export type SessionWorkspaceMobileLocation =
 
 export type SessionWorkspaceMobileStatus =
   | { kind: "ready"; refreshing: boolean }
-  | { kind: "loading" }
-  | { kind: "empty"; heading: string; description: string }
-  | { kind: "error" | "unavailable"; message: string; onRetry?: () => void };
+  | { kind: "loading" | "empty" | "error" | "unavailable" };
 
 export type SessionWorkspaceMobileProps = {
   onScrollPortRef?: (element: HTMLElement) => void | (() => void);

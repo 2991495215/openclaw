@@ -19,13 +19,10 @@ export type ChatMobilePeopleActivation = (() => void) & {
 
 export type ChatMobilePeopleMentions = {
   readonly status: "idle" | "loading" | "ready" | "unavailable" | "error" | "insert-rejected";
-  readonly error: string | undefined;
   readonly truncated: boolean;
   read: () => HumanMentionRead | null;
   /** Activate only on entry to People; release on leaving that page. */
   activate: (presented?: boolean) => ChatMobilePeopleActivation;
-  /** An explicit search/retry, never a render-time request. */
-  request: (query?: string) => Promise<void>;
   /** Caller closes the page only on true. The native composer owns deferred focus. */
   insert: (profileId: string) => boolean;
 };
@@ -40,7 +37,6 @@ export function createChatMobilePeopleMentions(
     access: HumanMentionAccess | undefined;
     receipt?: HumanMentionRead | null;
     status: ChatMobilePeopleMentions["status"];
-    error?: string;
     request?: object;
     presented: boolean;
     scope?: object;
@@ -62,7 +58,7 @@ export function createChatMobilePeopleMentions(
       void request();
     }
   };
-  const request = async (query = "", automatic = false) => {
+  const request = async (automatic = false) => {
     const page = state.active;
     if (!page || !canRequest(page)) {
       return;
@@ -75,9 +71,8 @@ export function createChatMobilePeopleMentions(
     page.access = access();
     const pending = {};
     page.request = pending;
-    page.receipt = page.access?.read(query);
+    page.receipt = page.access?.read();
     page.status = "loading";
-    page.error = undefined;
     const current = () => {
       if (state.active !== page || page.request !== pending) {
         return false;
@@ -91,7 +86,7 @@ export function createChatMobilePeopleMentions(
     };
 
     try {
-      const response = page.access?.request(query);
+      const response = page.access?.request();
       page.scope = page.access?.scope;
       const result = await response;
       if (!current()) {
@@ -104,14 +99,13 @@ export function createChatMobilePeopleMentions(
       if (!current()) {
         return;
       }
-      page.receipt = page.access?.read(query);
+      page.receipt = page.access?.read();
       page.status = "error";
-      page.error = error instanceof Error ? error.message : String(error);
       if (isRetryableGatewayReadError(error, "users.mentionable")) {
         page.retry.schedule(
           () => {
             if (current()) {
-              void request(query, true);
+              void request(true);
             }
           },
           error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
@@ -130,9 +124,6 @@ export function createChatMobilePeopleMentions(
       }
       return state.active.status;
     },
-    get error() {
-      return state.active?.access === access() ? state.active?.error : undefined;
-    },
     get truncated() {
       return read()?.result.truncated ?? false;
     },
@@ -145,7 +136,6 @@ export function createChatMobilePeopleMentions(
         access: access(),
         receipt: undefined,
         status: "idle",
-        error: undefined,
         request: undefined,
         presented,
         scope: undefined,
@@ -165,7 +155,6 @@ export function createChatMobilePeopleMentions(
         page.retry.reset();
         page.request = undefined;
         page.receipt = undefined;
-        page.error = undefined;
         page.scope = page.access?.scope;
         page.status = page.scope ? "idle" : "unavailable";
         syncPresentation(page);
@@ -190,7 +179,6 @@ export function createChatMobilePeopleMentions(
         },
       );
     },
-    request,
     insert: (profileId) => {
       const inserted = read()?.insert(profileId) ?? false;
       if (!inserted && state.active) {

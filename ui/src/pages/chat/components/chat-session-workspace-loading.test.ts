@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { GatewayRequestError } from "../../../api/gateway.ts";
 import type { SessionWorkspaceListResult } from "../../../api/types.ts";
-import { gatewayHelloForMethods } from "../../../test-helpers/gateway-methods.ts";
 import {
   createGatewayBrowserClientFixture,
   createSessionCapabilityFixture,
@@ -26,7 +25,6 @@ import {
   createSessionWorkspaceProps,
   openSessionWorkspaceFile,
   type SessionWorkspaceHost,
-  resolveSessionDiffSidebarContent,
 } from "./chat-session-workspace.ts";
 
 async function fixture({ loadInitialListing = true } = {}) {
@@ -608,48 +606,6 @@ it.each(["files", "directory", "artifacts"] as const)(
     }
   },
 );
-
-it("retains a server diff retry deadline across document visibility changes", async () => {
-  const { state } = await fixture({ loadInitialListing: false });
-  vi.useFakeTimers();
-  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-  const request = vi
-    .fn()
-    .mockRejectedValueOnce(
-      new GatewayRequestError({
-        code: "UNAVAILABLE",
-        message: "Busy",
-        retryable: true,
-        retryAfterMs: 90_000,
-      }),
-    )
-    .mockResolvedValue({ sessionKey: state.sessionKey, files: [], additions: 0, deletions: 0 });
-  state.client = createGatewayBrowserClientFixture({ request });
-  state.hello = gatewayHelloForMethods(["sessions.diff"]);
-  const content = resolveSessionDiffSidebarContent(state);
-  if (content?.kind !== "session-diff") {
-    throw new Error("Expected diff owner");
-  }
-  const release = content.requestUncommitted?.();
-  try {
-    await vi.advanceTimersByTimeAsync(10_000);
-    visibility.mockReturnValue("hidden");
-    document.dispatchEvent(new Event("visibilitychange"));
-    await vi.advanceTimersByTimeAsync(20_000);
-    visibility.mockReturnValue("visible");
-    document.dispatchEvent(new Event("visibilitychange"));
-    await vi.advanceTimersByTimeAsync(59_999);
-    expect(request).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(content.uncommitted?.files).toEqual([]);
-    await vi.advanceTimersByTimeAsync(300_000);
-    expect(request).toHaveBeenCalledTimes(2);
-  } finally {
-    release?.();
-    visibility.mockRestore();
-  }
-});
 
 it.each(["files", "directory", "artifacts"] as const)(
   "withdraws cached %s data after read access is revoked",
