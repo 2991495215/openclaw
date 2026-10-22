@@ -84,6 +84,9 @@ suite.define(() => {
         }),
       );
       const { palette, input } = await openFromForeground(page, suite.server.baseUrl);
+      await expect
+        .poll(() => page.locator(".sidebar-identity-card__name").textContent())
+        .toBe("Alice");
       await attach(palette.locator(".cmd-palette"), "drop");
       await expect.poll(() => palette.locator(".chat-attachment-thumb").count()).toBe(2);
       await input.fill("Retain this draft for Alice");
@@ -109,7 +112,17 @@ suite.define(() => {
           updatedAt: 1,
         },
       });
+      const profileReads = (await gateway.getRequests("users.self")).length;
+      await gateway.deferNext("users.self");
       await reconnectMockGateway(page, gateway);
+      await gateway.waitForRequest("users.self", { after: profileReads });
+      await page.keyboard.press("ControlOrMeta+K");
+      await input.waitFor({ state: "visible" });
+      await gateway.resolveDeferred("users.self");
+      await input.waitFor({ state: "hidden" });
+      await expect
+        .poll(() => page.locator(".sidebar-identity-card__name").textContent())
+        .toBe("Bob");
       await page.keyboard.press("ControlOrMeta+K");
       await input.waitFor({ state: "visible" });
       await expect.poll(() => input.inputValue()).toBe("");

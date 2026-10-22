@@ -419,6 +419,7 @@ suite.define(() => {
         await person.focus();
         const card = activityCard(page);
         await card.waitFor({ state: "visible" });
+        await link(card, "View activity").waitFor({ state: "visible" });
         await page.keyboard.press("Tab");
         await expect
           .poll(() => card.evaluate((element) => element.contains(document.activeElement)))
