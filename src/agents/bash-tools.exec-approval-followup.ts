@@ -183,16 +183,13 @@ async function isExecApprovalFollowupDirectDeliveryStale(params: {
   }
 }
 
-function formatDirectExecApprovalFollowupText(
-  resultText: string,
-  opts: { allowDenied?: boolean } = {},
-): string | null {
+function formatDirectExecApprovalFollowupText(resultText: string): string | null {
   const parsed = parseExecApprovalResultText(resultText);
   if (parsed.kind === "other" && !parsed.raw) {
     return null;
   }
   if (parsed.kind === "denied") {
-    return opts.allowDenied ? formatExecDeniedUserMessage(parsed.raw) : null;
+    return formatExecDeniedUserMessage(parsed.raw);
   }
 
   const metadata =
@@ -444,9 +441,7 @@ export async function sendExecApprovalFollowup(
     return false;
   }
 
-  const directText = formatDirectExecApprovalFollowupText(resultText, {
-    allowDenied: isDenied || sessionError !== null,
-  });
+  const directText = formatDirectExecApprovalFollowupText(resultText);
   if (deliveryTarget.deliver && directText) {
     const parsed = !isDenied && sessionError ? parseExecApprovalResultText(resultText) : undefined;
     const prefix =
