@@ -26,12 +26,6 @@ export type ActivityEntry = {
   hiddenArgumentCount: number;
 };
 
-const ACTIVITY_STATUS_SUMMARY_LABELS: Record<ActivityStatus, string> = {
-  running: "running",
-  done: "completed",
-  error: "failed",
-};
-
 type ActivityEvent = {
   stream: "tool" | "item";
   runId: string;
@@ -95,32 +89,6 @@ function extractText(value: unknown): string | null {
   return parts.length > 0 ? parts.join("\n") : null;
 }
 
-function stringifyOutput(value: unknown): string | null {
-  const text = extractText(value);
-  if (text !== null) {
-    return text;
-  }
-  if (value === null || value === undefined) {
-    return null;
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return formatUnknownText(value);
-  }
-}
-
-function buildOutputPreview(value: unknown): { text?: string; truncated: boolean } {
-  const raw = stringifyOutput(value);
-  if (!raw) {
-    return { truncated: false };
-  }
-  const truncated = truncateText(raw, ACTIVITY_OUTPUT_PREVIEW_LIMIT);
-  // A sliced preview can retain the whole output after the raw event is evicted.
-  // Copy its characters here so the bounded Activity entry owns only its preview.
-  return { text: Array.from(truncated.text).join(""), truncated: truncated.truncated };
-}
-
 function countArgumentFields(value: unknown): number {
   if (value === null || value === undefined) {
     return 0;
@@ -153,11 +121,6 @@ function resolveStatus(data: Record<string, unknown>): ActivityStatus {
   return Number.isFinite(exitCode) && exitCode !== 0 ? "error" : "done";
 }
 
-function buildSummary(toolName: string, status: ActivityStatus, hiddenArgCount: number): string {
-  const argText = `${hiddenArgCount} argument${hiddenArgCount === 1 ? "" : "s"} hidden`;
-  return `${toolName} ${ACTIVITY_STATUS_SUMMARY_LABELS[status]}; ${argText}`;
-}
-
 export function updateToolActivity(
   entries: ActivityEntry[],
   payload: ActivityEvent,
@@ -188,7 +151,20 @@ export function updateToolActivity(
       : data.phase === "result"
         ? data.result
         : null;
-  const preview = buildOutputPreview(outputValue);
+  let raw = extractText(outputValue);
+  if (raw === null && outputValue !== null && outputValue !== undefined) {
+    try {
+      raw = JSON.stringify(outputValue, null, 2);
+    } catch {
+      raw = formatUnknownText(outputValue);
+    }
+  }
+  const truncated = raw ? truncateText(raw, ACTIVITY_OUTPUT_PREVIEW_LIMIT) : null;
+  // A sliced preview can retain the whole output after the raw event is evicted.
+  // Copy its characters here so the bounded Activity entry owns only its preview.
+  const preview = truncated
+    ? { text: Array.from(truncated.text).join(""), truncated: truncated.truncated }
+    : { truncated: false };
   const hiddenArgCount = answerCandidate
     ? 0
     : data.args !== undefined
@@ -210,7 +186,7 @@ export function updateToolActivity(
     outputTruncated: preview.truncated || existing?.outputTruncated === true,
     summary: answerCandidate
       ? `answer_candidate.${candidateStatus}`
-      : buildSummary(toolName, status, hiddenArgCount),
+      : `${toolName} ${status === "running" ? "running" : status === "done" ? "completed" : "failed"}; ${hiddenArgCount} argument${hiddenArgCount === 1 ? "" : "s"} hidden`,
     hiddenArgumentCount: hiddenArgCount,
     ...(outputPreview ? { outputPreview } : {}),
   };
