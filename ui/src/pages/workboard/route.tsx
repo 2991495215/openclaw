@@ -23,7 +23,6 @@ export const page = definePage({
     resolveWorkboardRouteLocation(location, context.basePath),
   component: () =>
     import("../plugin/plugin-page.tsx").then((module) => ({
-      header: true,
       renderSolid: (props: SolidRouteProps<WorkboardRouteData>) => (
         <module.PluginPage
           pluginId="workboard"

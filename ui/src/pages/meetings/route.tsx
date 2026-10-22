@@ -8,7 +8,6 @@ export const page = definePage({
   loader: (_context, { deps }) => deps,
   component: () =>
     import("./meetings-page.tsx").then((module) => ({
-      header: true,
       renderSolid: (props: SolidRouteProps<string>) => (
         <module.MeetingsPage routeSearch={props.data ?? ""} />
       ),

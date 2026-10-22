@@ -29,6 +29,9 @@ editors, Memory Import selections, Activity history, Dreaming results, approval
 queues, and open board and portal documents in memory. A transport interruption
 does not reset those page-local drafts. The connection indicator at the bottom
 left shows the connection state; retained data may be out of date until reconnect.
+While automatic reconnection is running, the indicator shows **Reconnecting…**
+with the sidebar's standard spinner and without a Retry button. **Retry** remains available when automatic recovery stops.
+A required page refresh keeps its separate refresh action.
 
 If a chat side panel fails to load, its Close control remains available independently of the failed panel. Closing it keeps the conversation and its draft in place without reloading the page. Retry still respects unsaved work that blocks document reloads.
 
@@ -153,6 +156,10 @@ Changing Gateway, losing access, or selecting different content retires the old
 frame and its local state.
 
 Hidden retained chats defer command and model metadata refreshes until you return to them. Returning to a recently opened chat reuses its completed metadata on the same connection until a Gateway change invalidates it. Concurrent readers share the same request. Session events with an unchanged model-selection revision retain the model catalog, and session-only changes retain agent commands. Native sessions without a model-selection revision wait for a 2.5-second quiet period after ordinary patches before refreshing the catalog and session facts. Explicit model, account, and runtime selections refresh promptly. Configuration and command changes refresh commands; catalog and session lifecycle changes refresh affected model choices. Agent-specific catalog changes retain other agents’ cached choices and pending catalog requests. Repeated changes during a request share one trailing refresh instead of issuing overlapping requests.
+
+Deleting a session refreshes the roster and invalidates that session's model choices without reloading metadata for unrelated chats. Session action menus build their contents when opened.
+
+Provider speed observations are tracked separately for each requested tier. Repeated identical responses retain the matching Fast or Ultrafast hint without refreshing every open chat's model choices. Recovery or expiry clears only the affected hint.
 
 Metadata refreshes wait for an in-progress model-runtime replacement to publish. An agent whose model runtime is unavailable does not interrupt commands or model choices for healthy agents; its metadata becomes available when its owner publishes.
 
@@ -321,6 +328,13 @@ Downloads use the session's existing file-read access, including managed reposit
 workspaces. Provider-backed node workspaces whose bridge only supports whole-file
 reads do not yet support downloads. Authorization errors appear in the UI; transfer
 progress and failures appear in your browser's download manager.
+
+To add an open file to your next message, choose **Attach to session** from the
+file toolbar's **⋯** menu. The file appears in the existing message draft; it is
+sent only when you send that message. Clean files use their original bytes.
+Text files with unsaved editor changes attach the current edited text without
+saving the file. Existing upload permissions and attachment size limits apply.
+Switching the file or session cancels a pending read.
 
 ## Take a photo in chat
 
