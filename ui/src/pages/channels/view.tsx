@@ -75,7 +75,11 @@ function ChannelStatusNotices(props: { channels: ChannelsState; error: string | 
           {partialWarnings()}
         </div>
       ) : undefined}
-      {props.error ? <div class="callout danger">{props.error}</div> : undefined}
+      {props.error ? (
+        <div class="callout danger" role="alert">
+          {props.error}
+        </div>
+      ) : undefined}
     </>
   );
 }
@@ -478,6 +482,7 @@ function renderWhatsAppLinking(props: ChannelsProps) {
           renderCloseButton(props, "channels.setup.finish", true)
         ) : (
           <>
+            {renderCloseButton(props, "channels.setup.linkLater")}
             {busy() ? (
               <WizardBusyButton statusLabel={t("channels.setup.whatsappQrLoading")} />
             ) : (
@@ -498,7 +503,6 @@ function renderWhatsAppLinking(props: ChannelsProps) {
                 ) : undefined}
               </>
             )}
-            {renderCloseButton(props, "channels.setup.linkLater")}
           </>
         )}
       </openclaw-modal-actions>
