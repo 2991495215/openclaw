@@ -376,10 +376,10 @@ export function toggleSidebarPanelExpanded(layout: SidebarLayout, panelId?: stri
   ) {
     return setSidebarExpanded(layout, false);
   }
-  const next =
-    panelId === undefined
-      ? ensureSidebarConversation(layout)
-      : activatePanel(ensureSidebarConversation(layout), panelId);
+  const next = ensureSidebarConversation(layout);
+  if (panelId !== undefined && panelId !== next.mainPanelId) {
+    selectPanel(next, next.columns[0]!, panelId);
+  }
   next.open = true;
   next.expanded = true;
   next.expandedSide = true;
