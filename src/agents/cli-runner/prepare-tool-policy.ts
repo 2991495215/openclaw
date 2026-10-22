@@ -125,7 +125,10 @@ export function resolveCliRuntimeToolPolicy(input: {
       );
     }
     const exactWorkspaceTools =
-      workspaceOnly && params.cliToolAvailability && runtimeToolsAllowPolicy === undefined
+      !params.trustedInternalHandoff &&
+      workspaceOnly &&
+      params.cliToolAvailability &&
+      runtimeToolsAllowPolicy === undefined
         ? [
             ...params.cliToolAvailability.openClaw,
             ...(input.projectNativeToolAuthority?.(params.cliToolAvailability.native) ?? []),
