@@ -79,11 +79,13 @@ function retryClock() {
   };
 }
 
-function startHeartbeat(heartbeat: () => Promise<void>, retryDelaysMs?: number[]) {
-  return startQaCredentialLeaseHeartbeat(
-    { source: "convex", kind: "telegram", heartbeatIntervalMs: 50, heartbeat },
-    { intervalMs: 50, retryDelaysMs },
-  );
+function startHeartbeat(heartbeat: () => Promise<void>) {
+  return startQaCredentialLeaseHeartbeat({
+    source: "convex",
+    kind: "telegram",
+    heartbeatIntervalMs: 50,
+    heartbeat,
+  });
 }
 
 function jsonResponse(payload: unknown, status = 200) {
@@ -488,13 +490,13 @@ describe("credential lease runtime", () => {
         new Error("fetch failed | Connect Timeout Error | UND_ERR_CONNECT_TIMEOUT"),
       )
       .mockResolvedValueOnce(undefined);
-    const heartbeat = startHeartbeat(heartbeatRequest, [10]);
+    const heartbeat = startHeartbeat(heartbeatRequest);
 
     await vi.advanceTimersByTimeAsync(50);
     expect(heartbeatRequest).toHaveBeenCalledTimes(1);
     expect(heartbeat.getFailure()).toBeNull();
 
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(heartbeatRequest).toHaveBeenCalledTimes(2);
     expect(heartbeat.getFailure()).toBeNull();
     await heartbeat.stop();
@@ -505,10 +507,10 @@ describe("credential lease runtime", () => {
     const heartbeatRequest = vi.fn(async () => {
       throw new Error("fetch failed | ETIMEDOUT");
     });
-    const heartbeat = startHeartbeat(heartbeatRequest, [10, 20]);
+    const heartbeat = startHeartbeat(heartbeatRequest);
 
-    await vi.advanceTimersByTimeAsync(80);
-    expect(heartbeatRequest).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(50 + 1_000 + 3_000 + 5_000);
+    expect(heartbeatRequest).toHaveBeenCalledTimes(4);
     expect(() => heartbeat.throwIfFailed()).toThrow("ETIMEDOUT");
     await heartbeat.stop();
   });
