@@ -303,8 +303,10 @@ export async function completeSubagentRunAttempt(
       // A delayed abort must not replace a finalized result or reopen a cleaned cancellation.
       return;
     }
-    let requestedEndedAt =
+    const existingEndedAt = entry.execution.endedAt;
+    const observedEndedAt =
       typeof completeParams.endedAt === "number" ? completeParams.endedAt : Date.now();
+    let requestedEndedAt = observedEndedAt;
     if (shouldPreservePublishedExplicitRunTimeout(entry)) {
       return;
     }
@@ -473,7 +475,11 @@ export async function completeSubagentRunAttempt(
     }
     const terminalReply = mergeAgentRunTerminalReplySnapshot(
       entry.completion?.terminalReply,
-      completeParams.terminalReply,
+      entry.completion?.terminalReply &&
+        typeof existingEndedAt === "number" &&
+        observedEndedAt <= existingEndedAt
+        ? undefined
+        : completeParams.terminalReply,
     );
     // Lifecycle events and agent.wait both settle here. A required success
     // needs producer evidence before any transcript fallback can freeze it.
