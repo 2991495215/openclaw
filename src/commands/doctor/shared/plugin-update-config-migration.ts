@@ -7,6 +7,7 @@ import {
   readDeferredPluginMigrationsAsync,
   withDeferredPluginConfigCompletion,
 } from "../../../infra/deferred-plugin-migrations.js";
+import { cleanupRejectedOperation } from "../../../infra/error-graph-internal.js";
 import { withPluginMetadataSnapshotScope } from "../../../plugins/current-plugin-metadata-snapshot.js";
 import {
   applyPluginDoctorCompatibilityMigrations,
@@ -195,15 +196,10 @@ export async function preparePluginUpdateConfigMigration(params: {
       },
     };
   } catch (error) {
-    try {
-      await cache[Symbol.asyncDispose]();
-    } catch (cleanupError) {
-      throw new AggregateError(
-        [error, cleanupError],
-        "Plugin config migration preparation and cleanup failed",
-        { cause: cleanupError },
-      );
-    }
-    throw error;
+    return await cleanupRejectedOperation(
+      error,
+      () => cache[Symbol.asyncDispose](),
+      "Plugin config migration preparation and cleanup failed",
+    );
   }
 }

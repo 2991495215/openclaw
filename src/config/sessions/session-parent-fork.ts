@@ -9,7 +9,7 @@ import type { AgentDatabaseRegistryChange } from "../../state/openclaw-agent-db-
 import { toAgentExecutionConstraints } from "../../state/openclaw-agent-execution-scope.js";
 import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
 import { forkCliSessionBindings } from "./cli-session-binding.js";
-import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import { withSessionEntryWorker } from "./session-accessor.sqlite-replacement-worker.js";
 import {
   formatLegacySqliteSessionMarkerForScope,
@@ -238,15 +238,7 @@ function captureForkWorker(
             }),
           ),
         onCommitted(candidate, published, committedIdentity) {
-          if (published) {
-            publishCommittedSessionIdentity(
-              scope.agentId,
-              committedIdentity,
-              published.previous,
-              published.current,
-              published.prepared,
-            );
-          }
+          publishSettledSessionIdentity(scope.agentId, committedIdentity, published);
           return candidate.result;
         },
       });

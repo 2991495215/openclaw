@@ -22,7 +22,7 @@ import { runOpenClawAgentWorkerWrite } from "../../state/openclaw-agent-write-ad
 import { retainSessionEntryWorkerPublication } from "./session-accessor.sqlite-entry-cache.js";
 import type { SessionEntryReplacementPublication } from "./session-accessor.sqlite-entry-cache.types.js";
 import type { SqliteLifecycleTargetSnapshot } from "./session-accessor.sqlite-entry-equality.js";
-import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import {
   withSessionEntryWorker,
   type SessionEntryWorkerPreparation,
@@ -197,15 +197,7 @@ export async function patchSessionEntryInWorker(params: {
           }
         }
       } finally {
-        if (published) {
-          publishCommittedSessionIdentity(
-            params.agentId,
-            identity,
-            published.previous,
-            published.current,
-            published.prepared,
-          );
-        }
+        publishSettledSessionIdentity(params.agentId, identity, published);
       }
       // This write may change its source; callers authorize subsequent effects separately.
       await releaseSource();

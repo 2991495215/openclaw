@@ -19,7 +19,7 @@ import {
 import { emitArchivedTranscriptUpdates } from "./session-accessor.sqlite-events.js";
 import {
   prepareCommittedSessionEntryRemovals,
-  publishCommittedSessionIdentity,
+  publishSettledSessionIdentity,
 } from "./session-accessor.sqlite-identity.js";
 import {
   applySessionEntryMaintenance,
@@ -191,15 +191,7 @@ export async function purgeDeletedAgentSessionEntries(
               ),
             candidateKind: "session-agent-purge",
             onCommitted(candidate, published, identity) {
-              if (published) {
-                publishCommittedSessionIdentity(
-                  resolved.agentId,
-                  identity,
-                  published.previous,
-                  published.current,
-                  published.prepared,
-                );
-              }
+              publishSettledSessionIdentity(resolved.agentId, identity, published);
               return candidate.result;
             },
           };

@@ -20,7 +20,7 @@ import {
 } from "../../state/openclaw-state-worker-error.js";
 import type { captureNativeSessionWorkerDeletion } from "./session-accessor.sqlite-deletion.js";
 import type { SessionEntryReplacementPublication } from "./session-accessor.sqlite-entry-cache.types.js";
-import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import {
   collectReclamationDeletionEntries,
   prepareReclamationPublication,
@@ -73,15 +73,7 @@ export function deleteSessionWithNativeBindingsInWorker(
         publishSessionLifecycleWorkerEffects(plan, candidate.result);
       } finally {
         if (plan.kind === "lifecycle-projection-commit") {
-          if (published) {
-            publishCommittedSessionIdentity(
-              plan.agentId,
-              identity,
-              published.previous,
-              published.current,
-              published.prepared,
-            );
-          }
+          publishSettledSessionIdentity(plan.agentId, identity, published);
         } else {
           prepareReclamationPublication(plan, identity, candidate.result)?.();
         }

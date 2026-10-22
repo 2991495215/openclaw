@@ -3,6 +3,7 @@ import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import {
   SqliteCoordinatorError,
   throwSqliteLifecycleErrors,
+  throwSqliteSettledErrors,
 } from "../infra/sqlite-lifecycle-errors.js";
 import type { DatabasePathIdentity } from "../infra/sqlite-worker-identity.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
@@ -68,10 +69,7 @@ export function createRetainedReadScope(
         const settled = await Promise.allSettled(
           [...scope.resources].map((resource) => resource.close()),
         );
-        throwSqliteLifecycleErrors(
-          settled.flatMap((result) => (result.status === "rejected" ? [result.reason] : [])),
-          "Shared-state read scope drainage failed",
-        );
+        throwSqliteSettledErrors(settled, "Shared-state read scope drainage failed");
         await cleanup?.();
         scope.active = false;
         unregister?.();

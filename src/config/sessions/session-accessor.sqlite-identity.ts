@@ -11,6 +11,7 @@ import {
   bindPreparedSessionEntryPublication,
   type PreparedSessionEntryChanges,
 } from "./session-accessor.sqlite-entry-cache-publication.js";
+import type { retainSessionEntryWorkerPublication } from "./session-accessor.sqlite-entry-worker-publication.js";
 import type {
   ProjectedLifecycleMutation,
   SessionEntryRemovalPlan,
@@ -166,6 +167,17 @@ export function publishCommittedSessionIdentity(
       previous: { sessionKeys: [] },
       current: toSessionIdentityTarget(currentEntry, [sessionKey]),
     });
+  }
+}
+
+export function publishSettledSessionIdentity(
+  agentId: string,
+  databaseIdentity: string | symbol,
+  published: ReturnType<ReturnType<typeof retainSessionEntryWorkerPublication>["settle"]>,
+): void {
+  if (published) {
+    const { previous, current, prepared } = published;
+    publishCommittedSessionIdentity(agentId, databaseIdentity, previous, current, prepared);
   }
 }
 

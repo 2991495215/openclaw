@@ -33,7 +33,7 @@ import {
   type SessionEntryReplacementPublication,
   type SessionTranscriptInitializationPublication,
 } from "./session-accessor.sqlite-entry-cache.js";
-import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import type {
   SessionEntryReplacementCandidate,
   SessionEntryReplacementCommitted,
@@ -508,15 +508,7 @@ export async function runSessionEntryWorkerMutation<T>(
       } finally {
         // Result adoption precedes observers, but its failure cannot retain publication custody.
         const published = retainedPublication.settle(receipt, unknown);
-        if (published) {
-          publishCommittedSessionIdentity(
-            lifecycle.identityAgentId,
-            identity,
-            published.previous,
-            published.current,
-            published.prepared,
-          );
-        }
+        publishSettledSessionIdentity(lifecycle.identityAgentId, identity, published);
       }
     } catch (error) {
       if (unknown) {
@@ -669,15 +661,7 @@ export async function commitSessionEntryReplacementsInWorker(
           try {
             lifecycle.onLifecycleCommitted?.(candidate.result.pendingArchiveRecovery);
           } finally {
-            if (published) {
-              publishCommittedSessionIdentity(
-                lifecycle.identityAgentId,
-                identity,
-                published.previous,
-                published.current,
-                published.prepared,
-              );
-            }
+            publishSettledSessionIdentity(lifecycle.identityAgentId, identity, published);
           }
           await lifecycle.afterCommitted?.(context);
           return candidate.result;

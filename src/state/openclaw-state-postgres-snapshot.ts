@@ -1,5 +1,5 @@
 import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
-import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteSettledErrors } from "../infra/sqlite-lifecycle-errors.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { createStateReadPool } from "./openclaw-state-read-pool.js";
 import { requestBytes } from "./openclaw-state-read-request.js";
@@ -66,10 +66,7 @@ export async function openPostgresStateReadSnapshot(
     const outcomes = await Promise.allSettled([result]);
     outcomes.push(...(await Promise.allSettled([task.close({ retire: true })])));
     outcomes.push(...(await Promise.allSettled([pool.close()])));
-    throwSqliteLifecycleErrors(
-      outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : [])),
-      "PostgreSQL discovery snapshot cleanup failed",
-    );
+    throwSqliteSettledErrors(outcomes, "PostgreSQL discovery snapshot cleanup failed");
   };
   try {
     return { snapshot: await ready.promise, close };

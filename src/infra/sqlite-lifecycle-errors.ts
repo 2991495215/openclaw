@@ -63,6 +63,16 @@ export function throwSqliteLifecycleErrors(errors: unknown[], message: string): 
   }
 }
 
+export function throwSqliteSettledErrors(
+  results: readonly PromiseSettledResult<unknown>[],
+  message: string,
+): void {
+  throwSqliteLifecycleErrors(
+    results.flatMap((result) => (result.status === "rejected" ? [result.reason] : [])),
+    message,
+  );
+}
+
 /** Settle a synchronous SQLite operation and preserve both operation and cleanup failures. */
 export function runWithSqliteCleanup<T>(
   resource: { release: () => void },

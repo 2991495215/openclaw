@@ -24,6 +24,19 @@ export async function settleWithCleanup<T>(
   return outcome.value;
 }
 
+export async function cleanupRejectedOperation(
+  error: unknown,
+  cleanup: () => unknown,
+  message: string,
+): Promise<never> {
+  try {
+    await cleanup();
+  } catch (cleanupError) {
+    throw new AggregateError([error, cleanupError], message, { cause: cleanupError });
+  }
+  throw error;
+}
+
 export function throwIfSettledRejected(
   results: readonly PromiseSettledResult<unknown>[],
   message: string,

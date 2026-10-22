@@ -1,4 +1,5 @@
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+import { cleanupRejectedOperation } from "../infra/error-graph-internal.js";
 import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
 import { captureRuntimeWorkerSource } from "../infra/runtime-worker-generation.js";
 import { SQLITE_IDLE_HANDLE_TTL_MS } from "../infra/sqlite-handle-lifecycle.js";
@@ -132,16 +133,11 @@ function createSharedStateWorkerOwner() {
     error: unknown,
     stage: "admission" | "binding",
   ): Promise<never> => {
-    try {
-      await retire(entry);
-    } catch (cleanupError) {
-      throw new AggregateError(
-        [error, cleanupError],
-        `Shared-state worker ${stage} and cleanup failed`,
-        { cause: cleanupError },
-      );
-    }
-    throw error;
+    return await cleanupRejectedOperation(
+      error,
+      () => retire(entry),
+      `Shared-state worker ${stage} and cleanup failed`,
+    );
   };
   const retainOperation = (store: Store, onNativeLost?: () => void) => {
     const entry = [...stores].find((candidate) => candidate.store === store);

@@ -5,7 +5,7 @@ import { emitSessionLifecycleEvent } from "../../sessions/session-lifecycle-even
 import type { OpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution-contract.js";
 import { executeOpenClawAgentWorkerPublication } from "../../state/openclaw-agent-worker-store.js";
 import type { SessionEntryLifecycleUpsert } from "./session-accessor.lifecycle-types.js";
-import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import { buildProjectedLifecycleUpserts } from "./session-accessor.sqlite-lifecycle-state.js";
 import type {
   LifecycleRemovalProjectionInput,
@@ -132,15 +132,7 @@ export function commitSessionLifecycleProjectionInWorker(params: {
           reason: "progress-card-reset",
         });
       }
-      if (published) {
-        publishCommittedSessionIdentity(
-          params.input.agentId,
-          identity,
-          published.previous,
-          published.current,
-          published.prepared,
-        );
-      }
+      publishSettledSessionIdentity(params.input.agentId, identity, published);
       await params.afterCommitted?.(context);
       return candidate.result;
     },

@@ -1,6 +1,7 @@
 import type { Readable } from "node:stream";
 import { withTimeout } from "@openclaw/fs-safe/advanced";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { cleanupRejectedOperation } from "../../infra/error-graph-internal.js";
 import { runOutsideCommandProcessScope, waitForCommandSpawn } from "../../process/exec-spawn.js";
 import { isPlainCommandExitFailure, spawnCommand } from "../../process/exec.js";
 import { runWithSpawnBroker } from "../../process/spawn-broker/context.js";
@@ -577,16 +578,11 @@ export function createDockerPersistentExecCapability(params: {
               await launch;
             } catch (error) {
               recordFailure(error);
-              try {
-                await stop();
-              } catch (cleanupError) {
-                throw new AggregateError(
-                  [error, cleanupError],
-                  "Sandbox START failed and container cleanup remains unresolved.",
-                  { cause: cleanupError },
-                );
-              }
-              throw error;
+              await cleanupRejectedOperation(
+                error,
+                stop,
+                "Sandbox START failed and container cleanup remains unresolved.",
+              );
             }
           },
           stop() {

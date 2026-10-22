@@ -2,7 +2,7 @@ import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import type { OpenClawAgentDatabaseOptions } from "../../state/openclaw-agent-db-contract.js";
 import type { OpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution-contract.js";
 import type { retainSessionEntryWorkerPublication } from "./session-accessor.sqlite-entry-worker-publication.js";
-import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import type { captureSessionPendingInputWorkerCustody } from "./session-accessor.sqlite-pending-inputs.js";
 import type { ResolvedTranscriptScope } from "./session-accessor.sqlite-scope.js";
 import { installCommittedTranscriptMessageSequences } from "./session-accessor.sqlite-transcript-sequences.js";
@@ -93,14 +93,6 @@ export function completeSessionTurnPublication(
   identity: string,
   published: ReturnType<ReturnType<typeof retainSessionEntryWorkerPublication>["settle"]>,
 ): SessionTurnCommitted["result"] {
-  if (published) {
-    publishCommittedSessionIdentity(
-      agentId,
-      identity,
-      published.previous,
-      published.current,
-      published.prepared,
-    );
-  }
+  publishSettledSessionIdentity(agentId, identity, published);
   return candidate.result;
 }

@@ -1,5 +1,58 @@
 import { describe, expect, it } from "vitest";
-import { throwIfSettledRejected, throwSettledAggregate } from "./error-graph-internal.js";
+import { createDeferredCore } from "../shared/deferred.js";
+import {
+  cleanupRejectedOperation,
+  throwIfSettledRejected,
+  throwSettledAggregate,
+} from "./error-graph-internal.js";
+
+describe("cleanupRejectedOperation", () => {
+  it.each([new Error("operation failed"), "failure", undefined])(
+    "enters cleanup immediately and retains the original failure until settlement: %s",
+    async (reason) => {
+      const cleanup = createDeferredCore<unknown>();
+      let entered = false;
+      const pending = cleanupRejectedOperation(
+        reason,
+        () => {
+          entered = true;
+          return cleanup.promise;
+        },
+        "Operation and cleanup failed",
+      );
+      expect(entered).toBe(true);
+      let settled = false;
+      const observed = pending.catch((error: unknown) => {
+        settled = true;
+        return { error };
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      cleanup.resolve({ ignored: "cleanup result" });
+      expect((await observed).error).toBe(reason);
+    },
+  );
+
+  it.each(["throw", "reject"])("preserves both failures when cleanup can %s", async (mode) => {
+    const original = new Error("operation failed");
+    const cleanupError = new Error("cleanup failed");
+    const pending = cleanupRejectedOperation(
+      original,
+      () => {
+        if (mode === "throw") {
+          throw cleanupError;
+        }
+        return Promise.reject(cleanupError);
+      },
+      "Operation and cleanup failed",
+    );
+    await expect(pending).rejects.toMatchObject({
+      message: "Operation and cleanup failed",
+      errors: [original, cleanupError],
+      cause: cleanupError,
+    });
+  });
+});
 
 describe("throwIfSettledRejected", () => {
   it("accepts empty or successful work", () => {

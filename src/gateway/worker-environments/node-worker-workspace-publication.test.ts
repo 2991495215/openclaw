@@ -110,8 +110,11 @@ it.each([
       getOwner: () => transferOwner("session"),
     });
     const server = await startNodeWorkspaceTransferTestServer(service);
+    const revoke = vi.spyOn(service, "revoke");
     const receiving = createDeferred();
     const release = createDeferred();
+    const checkpointDiscardStarted = createDeferred();
+    const checkpointDiscard = createDeferred();
     const discardStarted = createDeferred();
     const discardUpload = service.discardUpload.bind(service);
     vi.spyOn(service, "discardUpload").mockImplementation(async (...args) => {
@@ -225,7 +228,16 @@ it.each([
             : payload.stagingRoot;
         expect(cleanupRoot).toBeDefined();
       }
-      return prepared;
+      return cleanupFailure
+        ? {
+            ...prepared,
+            discard: async () => {
+              checkpointDiscardStarted.resolve();
+              await checkpointDiscard.promise;
+              await prepared.discard();
+            },
+          }
+        : prepared;
     };
     const reconcile = () =>
       actions.reconcileWorkspace({
@@ -253,6 +265,18 @@ it.each([
     try {
       await actions.validateRestoredWorkspace();
       first = reconcile();
+      if (cleanupFailure) {
+        await withTestTimeout(
+          checkpointDiscardStarted.promise,
+          5_000,
+          "checkpoint discard did not start",
+        );
+        await setImmediate();
+        expect
+          .soft(revoke, "transfer custody must outlive checkpoint discard")
+          .not.toHaveBeenCalled();
+        checkpointDiscard.resolve();
+      }
       if (receivingUpload) {
         let settled = false;
         const onSettled = () => {
@@ -293,6 +317,7 @@ it.each([
       await accept(reconcile());
     } finally {
       release.resolve();
+      checkpointDiscard.resolve();
       await first?.catch(() => undefined);
       await uploadOutcome;
       await service.closeAll();

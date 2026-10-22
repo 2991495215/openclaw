@@ -1,6 +1,6 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { retainSessionEntryWorkerPublication } from "../../config/sessions/session-accessor.sqlite-entry-cache.js";
-import { publishCommittedSessionIdentity } from "../../config/sessions/session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "../../config/sessions/session-accessor.sqlite-identity.js";
 import { kickSessionEntryMaintenanceAfterWrite } from "../../config/sessions/session-accessor.sqlite-maintenance-kick.js";
 import { withSessionEntryWorker } from "../../config/sessions/session-accessor.sqlite-replacement-worker.js";
 import {
@@ -92,15 +92,7 @@ export async function updateAcpSessionStoreEntry(params: {
           }
           const unknown = admitted.admission.settlement?.kind !== "completed" || !result;
           const published = publication?.settle(result?.publication, unknown);
-          if (published) {
-            publishCommittedSessionIdentity(
-              scope.agentId,
-              identity.physicalIdentity,
-              published.previous,
-              published.current,
-              published.prepared,
-            );
-          }
+          publishSettledSessionIdentity(scope.agentId, identity.physicalIdentity, published);
           if (unknown) {
             throw wrapSqliteWorkerError(
               "ACP entry mutation has no confirmed native settlement",

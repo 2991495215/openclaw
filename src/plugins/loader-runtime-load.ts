@@ -8,6 +8,7 @@ import { resolveModelRuntimePolicy } from "../agents/model-runtime-policy.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection-config.js";
 import { resolveAllowedModelRefCore } from "../agents/model-selection-resolve.js";
 import { resolveProviderIdForAuth } from "../agents/provider-auth-aliases.js";
+import { cleanupRejectedOperation } from "../infra/error-graph-internal.js";
 import { createLazyRuntimeMethod, createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { resolveCompatibleRuntimePluginRegistry } from "./active-runtime-registry.js";
 import { createPluginCapabilityCatalogContext } from "./capability-catalog-context.js";
@@ -259,16 +260,11 @@ async function acquireRegistryResources(
     const registry = await withPluginCache(cache, () => load(resources));
     return { registry, release: () => resources.release() };
   } catch (error) {
-    try {
-      await resources.release();
-    } catch (disposalError) {
-      throw new AggregateError(
-        [error, disposalError],
-        "Plugin inspection failed and its resources could not be disposed",
-        { cause: disposalError },
-      );
-    }
-    throw error;
+    return await cleanupRejectedOperation(
+      error,
+      () => resources.release(),
+      "Plugin inspection failed and its resources could not be disposed",
+    );
   }
 }
 

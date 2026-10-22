@@ -8,7 +8,7 @@ import {
   retainSessionEntryWorkerPublication,
   type SessionEntryReplacementPublication,
 } from "./session-accessor.sqlite-entry-cache.js";
-import { publishCommittedSessionIdentity } from "./session-accessor.sqlite-identity.js";
+import { publishSettledSessionIdentity } from "./session-accessor.sqlite-identity.js";
 import type {
   RestartTombstoneRecoveryParams,
   RestartTombstoneRecoveryResult,
@@ -79,15 +79,7 @@ export async function recoverSessionEntryFromRestartTombstone(
           const unknown =
             admitted.admission.settlement?.kind !== "completed" || (!receipt && !unchanged);
           const published = publication.settle(receipt, unknown);
-          if (published) {
-            publishCommittedSessionIdentity(
-              scope.agentId,
-              databaseIdentity,
-              published.previous,
-              published.current,
-              published.prepared,
-            );
-          }
+          publishSettledSessionIdentity(scope.agentId, databaseIdentity, published);
           if (unknown) {
             throw wrapSqliteWorkerError(
               "Session recovery has no confirmed native completion and commit receipt",

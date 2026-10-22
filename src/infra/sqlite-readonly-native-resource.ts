@@ -5,7 +5,7 @@ import {
   hydrateOpenClawStateWorkerError,
   retainOpenClawStateWorkerErrorPayload,
 } from "../state/openclaw-state-worker-error.js";
-import { throwSqliteLifecycleErrors } from "./sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors, throwSqliteSettledErrors } from "./sqlite-lifecycle-errors.js";
 import { SqliteSnapshotCleanupError } from "./sqlite-readonly-location-cleanup.js";
 import type {
   SqliteNativeOwnerRequest,
@@ -309,17 +309,11 @@ export function createNativeWorkerResource(
           }),
         );
         // Keep creator locks alive when a host reader has not acquired its disk token yet.
-        throwSqliteLifecycleErrors(
-          fences.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : [])),
-          "SQLite snapshot host cleanup admission failed",
-        );
+        throwSqliteSettledErrors(fences, "SQLite snapshot host cleanup admission failed");
         const outcomes = await Promise.allSettled(
           [...sessions].map(([id, session]) => closeSession(id, session)),
         );
-        throwSqliteLifecycleErrors(
-          outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : [])),
-          "SQLite native resource cleanup failed",
-        );
+        throwSqliteSettledErrors(outcomes, "SQLite native resource cleanup failed");
         const failures: unknown[] = [];
         for (const [directory, owned] of directories) {
           try {

@@ -50,13 +50,13 @@ vi.mock("./session-accessor.sqlite-identity.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./session-accessor.sqlite-identity.js")>();
   return {
     ...actual,
-    publishCommittedSessionIdentity: (
-      ...args: Parameters<typeof actual.publishCommittedSessionIdentity>
+    publishSettledSessionIdentity: (
+      ...args: Parameters<typeof actual.publishSettledSessionIdentity>
     ) => {
-      if (failures.publication) {
+      if (failures.publication && args[2]) {
         throw failures.publication;
       }
-      return actual.publishCommittedSessionIdentity(...args);
+      return actual.publishSettledSessionIdentity(...args);
     },
     prepareLifecycleIdentityPublication: (
       ...args: Parameters<typeof actual.prepareLifecycleIdentityPublication>

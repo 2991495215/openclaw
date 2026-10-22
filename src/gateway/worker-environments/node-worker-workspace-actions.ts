@@ -1,4 +1,5 @@
 import fsp from "node:fs/promises";
+import { cleanupRejectedOperation } from "../../infra/error-graph-internal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { DEVICE_FOLDER_MANIFEST_REF } from "../../worker/device-folder.js";
 import {
@@ -330,16 +331,11 @@ export function createNodeWorkerWorkspaceActions(params: {
       }
     } catch (error) {
       // Finalizers can reject before the caller receives the checkpoint's disposer.
-      try {
-        await preparedCheckpoint?.discard();
-      } catch (discardError) {
-        throw new AggregateError(
-          [error, discardError],
-          "Repository checkpoint handoff cleanup failed",
-          { cause: discardError },
-        );
-      }
-      throw error;
+      return await cleanupRejectedOperation(
+        error,
+        () => preparedCheckpoint?.discard(),
+        "Repository checkpoint handoff cleanup failed",
+      );
     } finally {
       await params.workspaceTransfer.revoke(params.environmentId, token);
     }
