@@ -5,6 +5,7 @@ import {
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "../infra/kysely-sync.js";
+import { decodeUtf8HexInput } from "../infra/utf8-input.js";
 import { ensureColumn, tableExists, tableHasColumn } from "./openclaw-state-db-schema-helpers.js";
 import type { DB as OpenClawStateKyselyDatabase } from "./openclaw-state-db.generated.js";
 import {
@@ -60,20 +61,6 @@ export function needsSessionWatchCursorProvenanceMigration(
   );
 }
 
-function decodeLegacyAmbientWatchMarkerKey(markerKey: string): string | undefined {
-  const encoded = markerKey.slice(LEGACY_AMBIENT_GROUP_WATCH_MARKER_PREFIX.length);
-  if (!encoded || encoded.length % 2 !== 0 || !/^[0-9a-f]+$/.test(encoded)) {
-    return undefined;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
-      Buffer.from(encoded, "hex"),
-    );
-  } catch {
-    return undefined;
-  }
-}
-
 export function migrateSessionWatchCursorProvenance(
   db: DatabaseSync,
 ): SessionWatchCursorProvenanceMigrationResult {
@@ -97,7 +84,9 @@ export function migrateSessionWatchCursorProvenance(
   ).rows;
   let migratedAmbientWatches = 0;
   for (const marker of legacyMarkers) {
-    const watcherSessionKey = decodeLegacyAmbientWatchMarkerKey(marker.watcher_session_key);
+    const watcherSessionKey = decodeUtf8HexInput(
+      marker.watcher_session_key.slice(LEGACY_AMBIENT_GROUP_WATCH_MARKER_PREFIX.length),
+    );
     if (watcherSessionKey) {
       // Startup and doctor callers hold BEGIN IMMEDIATE across this migration,
       // so the paired timestamp read and update cannot lose a concurrent write.

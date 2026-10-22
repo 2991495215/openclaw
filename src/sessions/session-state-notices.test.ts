@@ -87,6 +87,8 @@ function receipt(id: string, settled = Promise.resolve(done)) {
 
 it.each([
   ["session-state:efbbbf6167656e743a6d61696e", "\uFEFFagent:main"],
+  ["session-state:00f09fa69e", "\0🦞"],
+  ["session-state:EFBBBF", undefined],
   ["session-state:ff", undefined], // Strict UTF-8 prevents corrupt watcher-cursor collisions.
   ["other:ff", undefined],
   ...["", "abc", "zz"].map((hex) => [`session-state:${hex}`, undefined] as const),

@@ -13,6 +13,7 @@ import {
   peekSystemEventEntries,
   type SystemEvent,
 } from "../infra/system-events.js";
+import { decodeUtf8HexInput } from "../infra/utf8-input.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { channelRouteDedupeKey } from "../plugin-sdk/channel-route.js";
 import { isSubagentSessionKey, parseAgentSessionKey } from "../routing/session-key.js";
@@ -129,20 +130,8 @@ export function decodeSessionStateNoticeContextKey(contextKey: string): string |
   if (!contextKey.startsWith(SESSION_STATE_CONTEXT_PREFIX)) {
     return undefined;
   }
-  const encoded = contextKey.slice(SESSION_STATE_CONTEXT_PREFIX.length);
-  if (!encoded || encoded.length % 2 !== 0 || !/^[0-9a-f]+$/.test(encoded)) {
-    return undefined;
-  }
-  // The notice writer always encodes a valid UTF-8 session key, so a
-  // payload that fails strict UTF-8 decoding is corrupt: fail closed instead of
-  // letting U+FFFD collisions acknowledge an unrelated watcher cursor.
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
-      Buffer.from(encoded, "hex"),
-    );
-  } catch {
-    return undefined;
-  }
+  // Strict decoding prevents corrupt payloads from acknowledging another watcher cursor.
+  return decodeUtf8HexInput(contextKey.slice(SESSION_STATE_CONTEXT_PREFIX.length));
 }
 
 // Terse on purpose: this line lands in model prompts, possibly repeatedly across
