@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 import { expect, it, vi } from "vitest";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
+import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { ChatDetailsSession } from "./chat-details-session.tsx";
 import type { ChatDetailsProps } from "./chat-details-types.ts";
 
@@ -24,7 +25,6 @@ async function mountOutputs() {
         type: "document",
         download: { mode: "bytes" as const },
       })),
-      artifactsLoading: false,
       artifactsError: null,
       dashboard: null,
       dashboardError: null,
@@ -37,8 +37,11 @@ async function mountOutputs() {
   const view = mountSolid(() => <ChatDetailsSession props={value} presented desktop />);
   const element = view.container.querySelector("openclaw-chat-details-session")!;
   await element.updateComplete;
-  const button = element.querySelector<HTMLButtonElement>(".chat-outputs__view-all")!;
-  expect(button).not.toBeNull();
+  const button = await waitForSolid(() => {
+    const current = element.querySelector<HTMLButtonElement>(".chat-outputs__view-all");
+    expect(current).not.toBeNull();
+    return current!;
+  });
   return { element, button, value, navigate };
 }
 
@@ -50,7 +53,7 @@ it("opens Files through the current callback when Outputs refreshes before the v
   const refreshed = vi.fn();
   element.props = {
     ...value,
-    outputs: { ...value.outputs!, artifactsLoading: true, onViewAll: refreshed },
+    outputs: { ...value.outputs!, onViewAll: refreshed },
   };
   expect(element.querySelector(".chat-outputs__view-all")).toBe(button);
   button.click();
