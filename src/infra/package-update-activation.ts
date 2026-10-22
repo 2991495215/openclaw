@@ -94,7 +94,7 @@ export function assertNoPendingPackageActivation(
   );
 }
 
-/** Explicit repair retires untouched preparation under its original installation authority. */
+/** Explicit repair retires untouched preparation or a verified externally published candidate. */
 export async function settlePendingPackageActivation(installKey: string) {
   const anchor = resolvePackageActivationAnchor(installKey);
   if (!fs.lstatSync(resolvePackageActivationJournalPath(anchor), { throwIfNoEntry: false })) {
@@ -104,29 +104,35 @@ export async function settlePendingPackageActivation(installKey: string) {
   const journal = openPackageActivationJournal(anchor);
   const admission = await journal.readForRecovery();
   const initial = admission.record;
+  const liveIdentity = packageActivationIdentity(installKey, true);
   const publicationNotStarted =
     initial.descriptor.authority.installKey === installKey &&
-    packageActivationIdentity(installKey, true) === initial.descriptor.previous.identity &&
+    liveIdentity === initial.descriptor.previous.identity &&
     ((initial.phase === "prepared" &&
       initial.intent === null &&
       initial.publications.length === 0) ||
       initial.phase === "aborted");
-  if (!publicationNotStarted) {
+  const externalPublication =
+    initial.descriptor.authority.installKey === installKey &&
+    liveIdentity === initial.descriptor.candidate.identity &&
+    initial.phase === "prepared";
+  if (!publicationNotStarted && !externalPublication) {
     // Preserve the shipped pending-publication refusal and completed-operation behavior.
     assertNoPendingPackageActivation(installKey);
     return undefined;
   }
-  const assertPrevious = () => {
+  const selected = externalPublication ? "candidate" : "previous";
+  const assertSelected = () => {
     assertManagedUpdateLeaseDatabaseIdentity(initial.descriptor.authority);
-    if (packageActivationIdentity(installKey, true) !== initial.descriptor.previous.identity) {
-      throw new Error("The installed package changed before preparation retirement.");
+    if (packageActivationIdentity(installKey, true) !== initial.descriptor[selected].identity) {
+      throw new Error("The installed package changed before recovery settlement.");
     }
   };
   // Read-only admission rejects altered closure before acquiring the original writer.
   await createPublicationOwner(
     anchor,
     journal,
-    assertPrevious,
+    assertSelected,
     initial,
     admission.assertUnchanged,
   ).preflight(initial.phase === "prepared" ? "repair" : "retire");
@@ -134,7 +140,7 @@ export async function settlePendingPackageActivation(installKey: string) {
     randomUUID(),
     async (executor) => {
       const fence = await executor.enter(initial.descriptor.authority.installKey);
-      assertPrevious();
+      assertSelected();
       admission.admit(fence.assertCurrent);
       journal.assertCurrent(initial);
       const owner = createPublicationOwner(
@@ -142,18 +148,22 @@ export async function settlePendingPackageActivation(installKey: string) {
         journal,
         () => {
           fence.assertCurrent();
-          assertPrevious();
+          assertSelected();
         },
         initial,
       );
-      if (initial.phase === "prepared") {
+      if (externalPublication) {
+        await owner.publish(true);
+      } else if (initial.phase === "prepared") {
         await owner.preflight("repair");
         await owner.disarmRollback();
       }
       await owner.retire();
       return {
         operationId: initial.descriptor.operationId,
-        reason: "publication-not-started",
+        reason: externalPublication
+          ? "publication-settled-external-change"
+          : "publication-not-started",
       };
     },
     { existingAuthority: initial.descriptor.authority },

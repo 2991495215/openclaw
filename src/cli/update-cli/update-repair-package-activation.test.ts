@@ -72,6 +72,28 @@ const repair = () => updateRepairCommand({ json: true, yes: true });
 describe.skipIf(process.platform === "win32")(
   "public repair of untouched package preparation",
   () => {
+    it("settles prepared recovery when the live package already serves the candidate", async () => {
+      const f = await fixtures.prepare();
+      mocks.root.mockResolvedValue(f.packageRoot);
+      const prepared = openPackageActivationJournal(f.anchor).read();
+      fs.renameSync(f.packageRoot, path.join(f.anchor, "previous"));
+      fs.renameSync(path.join(f.anchor, "candidate"), f.packageRoot);
+
+      await repair();
+
+      expect(readPackageActivationReceipt(f.packageRoot)).toMatchObject({ phase: "complete" });
+      expect(() => assertNoPendingPackageActivation(f.packageRoot)).not.toThrow();
+      expect(fs.existsSync(f.anchor)).toBe(false);
+      expect(fs.existsSync(resolvePackageActivationHelper(f.anchor))).toBe(false);
+      expect(packageActivationIdentity(f.packageRoot, true)).toBe(
+        prepared.descriptor.candidate.identity,
+      );
+      expect(defaultRuntime.error).toHaveBeenCalledWith(
+        expect.stringContaining("publication-settled-external-change"),
+      );
+      expect(mocks.finalize).toHaveBeenCalledOnce();
+    });
+
     it.each(["prepared", "aborted"] as const)(
       "retires %s preparation without changing the live package or launcher",
       async (phase) => {
