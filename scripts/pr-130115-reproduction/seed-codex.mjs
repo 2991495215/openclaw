@@ -75,7 +75,7 @@ const model = createServer((request, response) => {
 });
 const port = await listen(model);
 const sandboxFile = path.join(spec.output, "codex-network.sb");
-await writeFile(sandboxFile, `(version 1)\n(allow default)\n(deny network*)\n(allow network-outbound (remote ip "127.0.0.1:${port}"))\n`);
+await writeFile(sandboxFile, `(version 1)\n(allow default)\n(deny network*)\n(allow network-outbound (remote ip "localhost:${port}"))\n`);
 const confined = (executable, args) => ["-f", sandboxFile, executable, ...args];
 let deniedHits = 0;
 const denied = createServer((_request, response) => { deniedHits++; response.end("must-not-be-reached"); });
