@@ -349,7 +349,8 @@ describe("github-copilot plugin", () => {
       baseUrl: "https://api.individual.githubcopilot.com",
     });
     const prepare = (headers?: Record<string, string>) =>
-      provider.prepareRuntimeAuth({
+      provider.prepareRuntimeAuthV2({
+        capability: "chat",
         config: {},
         env: {},
         provider: "github-copilot",
@@ -357,7 +358,7 @@ describe("github-copilot plugin", () => {
         model: { id: "gpt-5.4-mini", provider: "github-copilot", headers },
         apiKey: "github-source-token",
         authMode: "token",
-      } as never);
+      });
 
     // Runtime auth output is sealed and registered for redaction: configured
     // headers stay there, while public identity values must not.

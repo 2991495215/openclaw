@@ -40,6 +40,10 @@ import {
 import { executePreparedDecision } from "./decision-inference.js";
 import * as modelAuth from "./model-auth-provider.js";
 import { resetPreparedModelRuntimeSnapshotsForTest } from "./prepared-model-runtime.test-support.js";
+import {
+  getModelProviderRequestTransport,
+  resolveProviderRequestHeaders,
+} from "./provider-request-config.js";
 
 const roots = useAutoCleanupTempDirTracker(afterEach);
 const traceKey = Symbol.for("openclaw.test.decision-prepared-path");
@@ -49,6 +53,8 @@ type Trace = {
   context?: DecisionProviderContextV2;
   onDispatch?: () => void;
   prepare?: () => Promise<void>;
+  exchange?: () => Promise<void>;
+  exchangeCalls?: number;
   beforeRequest?: (context: DecisionProviderContextV2) => void;
   fetch?: typeof fetch;
   work?: Promise<void>;
@@ -66,6 +72,8 @@ type Trace = {
   modelRequest?: unknown;
   modelApi?: string;
   preparedApi?: string;
+  preparedCapability?: string;
+  preparedModelKeys?: string[];
   evaluate?: DecisionRuntimeV2["evaluateV2"];
 };
 afterEach(async () => {
@@ -90,6 +98,10 @@ it.each([
   "profile",
   "missing",
   "exchange",
+  "exchange-bearer",
+  "exchange-bearer-override",
+  "legacy-exchange",
+  "exchange-deadline",
   "plugin-revoked-context",
   "plugin-revoked-model",
   "plugin-revoked-disabled",
@@ -104,7 +116,20 @@ it.each([
         ? "preparation"
         : authScope === "plugin-physical-deadline"
           ? "provider"
-          : undefined;
+          : authScope === "exchange-deadline"
+            ? "exchange"
+            : undefined;
+    const exchange = authScope.startsWith("exchange");
+    const exchangedRequestAuth =
+      authScope === "exchange-bearer"
+        ? undefined
+        : authScope === "exchange-bearer-override"
+          ? { mode: "authorization-bearer", token: "synthetic-request-bearer" }
+          : {
+              mode: "header",
+              headerName: "x-fixture-auth",
+              value: "synthetic-exchanged-header",
+            };
     const root = roots.make("decision-prepared-integration-");
     const pluginRoot = path.join(root, "plugin");
     const emptyBundled = path.join(root, "bundled");
@@ -131,16 +156,8 @@ it.each([
                 {
                   id: "native",
                   name: "Native fixture",
-                  ...(authScope === "exchange"
-                    ? {
-                        api: "openai-completions",
-                        baseUrl: "https://catalog.fixture.invalid/v1",
-                        contextWindow: 4096,
-                        maxTokens: 256,
-                      }
-                    : {}),
                   inference: {
-                    chat: authScope === "exchange",
+                    chat: false,
                     decision: {
                       protocol: "fixture",
                       billing: {
@@ -172,14 +189,27 @@ it.each([
           (authScope === "profile" || authScope === "missing"
             ? ""
             : 'resolveSyntheticAuth() { return {apiKey: "synthetic-prepared-token", mode: "api-key", source: "synthetic fixture"}; },') +
-          (authScope === "agent" || authScope === "profile" || authScope === "missing"
+          (authScope === "agent" || authScope === "profile" || authScope === "missing" || exchange
             ? 'normalizeTransport() { return { api: "openai-responses" }; },'
             : "") +
-          (authScope === "exchange"
-            ? 'normalizeResolvedModel(context) { return { ...context.model, api: "openai-responses" }; }, prepareRuntimeAuth(context) { trace.preparedApi=context.model.api; return { apiKey: context.apiKey, baseUrl: "https://entitlement.fixture.invalid/v1", request: { headers: { "x-fixture-entitlement": "synthetic-entitlement" }, auth: { mode: "header", headerName: "x-fixture-auth", value: "synthetic-exchanged-header" } } }; },'
-            : "") +
+          (exchange
+            ? "async prepareRuntimeAuthV2(context) { trace.exchangeCalls = (trace.exchangeCalls ?? 0) + 1; trace.preparedApi=context.model.api; trace.preparedCapability=context.capability; trace.preparedModelKeys=Object.keys(context.model); await trace.exchange?.(); return " +
+              JSON.stringify({
+                apiKey: "synthetic-exchanged-token",
+                baseUrl: "https://entitlement.fixture.invalid/v1",
+                request: {
+                  headers: { "x-fixture-entitlement": "synthetic-entitlement" },
+                  auth: exchangedRequestAuth,
+                },
+              }) +
+              "; },"
+            : authScope === "legacy-exchange"
+              ? "prepareRuntimeAuth(context) { trace.exchangeCalls = (trace.exchangeCalls ?? 0) + 1; return { apiKey: context.apiKey }; },"
+              : "") +
           "} ,",
-        'async evaluate(batch, context) { trace.calls++; trace.context=context; trace.profileId=context.auth.profileId; trace.agentId=context.agentId; trace.onDispatch?.(); await trace.work; trace.beforeRequest?.(context); if (!context.isAdmissible()) return { status: "unavailable", reason: "unsupported-input" }; await trace.fetch?.("https://dispatch.fixture.invalid/v1/decisions", { method: "POST" }); trace.authenticated = context.auth.apiKey === "synthetic-prepared-token"; trace.modelKeys = Object.keys(context.model); trace.modelContextWindow = context.model.contextWindow; trace.modelBilling=context.model.inference?.decision?.billing; trace.modelBaseUrl=context.model.baseUrl; trace.modelHeaders=context.model.headers; trace.modelRequest=context.model[Symbol.for("openclaw.modelProviderRequestTransport")]; trace.modelApi=context.model.api; let reads = 0; return { status: "ok", get result() { trace.resultReads = ++reads; if (trace.resultOverride) return trace.resultOverride.value; return { model: context.model.id, answers: { q: reads === 1 ? { type: "boolean", answer: null } : { type: "boolean", probabilityTrue: 0.75 } }, usage: trace.usage }; } }; }',
+        'async evaluate(batch, context) { trace.calls++; trace.context=context; trace.profileId=context.auth.profileId; trace.agentId=context.agentId; trace.onDispatch?.(); await trace.work; trace.beforeRequest?.(context); if (!context.isAdmissible()) return { status: "unavailable", reason: "unsupported-input" }; await trace.fetch?.("https://dispatch.fixture.invalid/v1/decisions", { method: "POST" }); trace.authenticated = context.auth.apiKey === ' +
+          JSON.stringify(exchange ? "synthetic-exchanged-token" : "synthetic-prepared-token") +
+          '; trace.modelKeys = Object.keys(context.model); trace.modelContextWindow = context.model.contextWindow; trace.modelBilling=context.model.inference?.decision?.billing; trace.modelBaseUrl=context.model.baseUrl; trace.modelHeaders=context.model.headers; trace.modelRequest=context.model[Symbol.for("openclaw.modelProviderRequestTransport")]; trace.modelApi=context.model.api; let reads = 0; return { status: "ok", get result() { trace.resultReads = ++reads; if (trace.resultOverride) return trace.resultOverride.value; return { model: context.model.id, answers: { q: reads === 1 ? { type: "boolean", answer: null } : { type: "boolean", probabilityTrue: 0.75 } }, usage: trace.usage }; } }; }',
         "}); trace.evaluate = api.runtime.decisions.evaluateV2; } };",
       ].join("\n"),
     );
@@ -215,14 +245,18 @@ it.each([
                   ...(authScope === "profile" || authScope === "missing"
                     ? {}
                     : { apiKey: "synthetic-prepared-token" }),
-                  headers: { "x-provider": "provider", "X-Precedence": "provider" },
+                  authHeader: true,
+                  headers: {
+                    "x-provider": "provider",
+                    "X-Precedence": "provider",
+                    authorization: "Bearer stale-fixture-token",
+                  },
                   request: { headers: { "x-precedence": "request", "x-request": "request" } },
                   models: [
                     {
                       id: "native",
                       name: "Native fixture",
                       headers: { "x-model": "model", "X-PRECEDENCE": "model" },
-                      ...(authScope === "exchange" ? { contextWindow: 4096 } : {}),
                       maxTokens: 256,
                       reasoning: false,
                       input: ["text"],
@@ -284,6 +318,11 @@ it.each([
         const release = createDeferredCore();
         if (deadlinePhase === "preparation") {
           trace.prepare = async () => {
+            entered.resolve();
+            await release.promise;
+          };
+        } else if (deadlinePhase === "exchange") {
+          trace.exchange = async () => {
             entered.resolve();
             await release.promise;
           };
@@ -507,6 +546,16 @@ it.each([
         expect(usageEvents).toEqual([]);
         return;
       }
+      if (authScope === "legacy-exchange") {
+        expect(outcome).toEqual({ status: "unavailable", reason: "unsupported-input" });
+        expect(trace.calls).toBe(0);
+        expect(trace.exchangeCalls).toBeUndefined();
+        expect(usageEvents).toEqual([]);
+        return;
+      }
+      expect(
+        credentialPreparation.mock.calls.filter(([params]) => params.capability === "decision"),
+      ).toHaveLength(1);
       expect(
         outcome,
         JSON.stringify({
@@ -545,34 +594,53 @@ it.each([
         // API normalization and exchanged endpoints both invalidate catalog-route prices.
         expect(usageEvents[1]).not.toHaveProperty("costUsd");
       }
-      if (authScope === "exchange") {
+      if (exchange) {
+        expect(trace.exchangeCalls).toBe(2);
+        expect(trace.preparedCapability).toBe("decision");
+        for (const key of ["cost", "contextWindow", "maxTokens"]) {
+          expect(trace.preparedModelKeys).not.toContain(key);
+        }
         expect(trace.modelBaseUrl).toBe("https://entitlement.fixture.invalid/v1");
         expect(trace.modelBilling).toBeUndefined();
         expect(trace.preparedApi).toBe("openai-responses");
         expect(trace.modelApi).toBe(trace.preparedApi);
         expect(trace.modelRequest).toMatchObject({
           headers: { "x-fixture-entitlement": "synthetic-entitlement" },
-          auth: {
-            mode: "header",
-            headerName: "x-fixture-auth",
-            value: "synthetic-exchanged-header",
-          },
+          ...(exchangedRequestAuth ? { auth: exchangedRequestAuth } : {}),
         });
         expect(trace.modelHeaders).toMatchObject({
           "x-fixture-entitlement": "synthetic-entitlement",
-          "x-fixture-auth": "synthetic-exchanged-header",
+          ...(exchangedRequestAuth?.mode === "header"
+            ? { "x-fixture-auth": "synthetic-exchanged-header" }
+            : {
+                Authorization:
+                  authScope === "exchange-bearer-override"
+                    ? "Bearer synthetic-request-bearer"
+                    : "Bearer synthetic-exchanged-token",
+              }),
         });
-      } else {
-        expect(trace.modelKeys).not.toContain("cost");
-        expect(trace.modelKeys).not.toContain("maxTokens");
-        expect(trace.modelContextWindow).toBeUndefined();
+        expect(trace.modelHeaders).not.toHaveProperty("authorization");
+        if (exchangedRequestAuth?.mode === "header") {
+          expect(trace.modelHeaders).not.toHaveProperty("Authorization");
+        }
+        expect(
+          resolveProviderRequestHeaders({
+            provider: id,
+            defaultHeaders: trace.modelHeaders,
+            request: getModelProviderRequestTransport(trace.context!.model),
+          }),
+        ).toEqual(trace.modelHeaders);
       }
+      expect(trace.modelKeys).not.toContain("cost");
+      expect(trace.modelKeys).not.toContain("maxTokens");
+      expect(trace.modelContextWindow).toBeUndefined();
       if (authScope === "agent" || authScope === "profile") {
         expect(trace.modelHeaders).toEqual({
           "x-provider": "provider",
           "x-model": "model",
           "x-precedence": "request",
           "x-request": "request",
+          Authorization: "Bearer synthetic-prepared-token",
         });
         expect(trace.modelRequest).toMatchObject({
           headers: { "x-precedence": "request", "x-request": "request" },

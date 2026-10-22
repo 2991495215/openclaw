@@ -7,6 +7,7 @@ import type {
   ProviderAuthMethod,
   ProviderPreparedRuntimeAuth,
   ProviderPrepareRuntimeAuthContext,
+  ProviderPrepareRuntimeAuthContextV2,
 } from "openclaw/plugin-sdk/core";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
@@ -90,7 +91,7 @@ function registerProvider() {
 type FoundryProvider = ReturnType<typeof registerProvider>;
 
 function prepareAuth(provider = registerProvider()) {
-  const prepare = provider.prepareRuntimeAuth;
+  const prepare = provider.prepareRuntimeAuthV2;
   if (!prepare) {
     throw new Error("expected Microsoft Foundry runtime auth hook");
   }
@@ -209,9 +210,10 @@ function entraStore(
   };
 }
 
-function authContext(overrides: Partial<ProviderPrepareRuntimeAuthContext> = {}) {
+function authContext(overrides: Partial<ProviderPrepareRuntimeAuthContextV2> = {}) {
   const modelId = overrides.modelId ?? "custom-deployment";
   return {
+    capability: "chat" as const,
     provider: providerId,
     modelId,
     model: makeModel({ id: modelId }),
@@ -407,12 +409,12 @@ describe("microsoft-foundry plugin", () => {
   });
 
   it("falls back to Entra metadata when a configured Foundry endpoint is malformed", async () => {
-    const prepareRuntimeAuth = prepareAuth();
+    const prepareRuntimeAuthV2 = prepareAuth();
     mockAzureCliToken({ accessToken: "test-token-placeholder", expiresInMs: 60_000 });
     ensureAuthProfileStoreMock.mockReturnValueOnce(entraStore());
 
     const prepared = authResult(
-      await prepareRuntimeAuth(
+      await prepareRuntimeAuthV2(
         authContext({
           model: makeModel({ baseUrl: "not a url" }),
         }),
@@ -431,10 +433,10 @@ describe("microsoft-foundry plugin", () => {
     ["openai-responses", "api-key"],
     ["anthropic-messages", "x-api-key"],
   ] as const)("binds %s API-key auth to the active profile", async (api, headerName) => {
-    const prepareRuntimeAuth = prepareAuth();
+    const prepareRuntimeAuthV2 = prepareAuth();
 
     const prepared = authResult(
-      await prepareRuntimeAuth(
+      await prepareRuntimeAuthV2(
         authContext({
           apiKey: "profile-api-key",
           profileId: "microsoft-foundry:default",
@@ -453,7 +455,7 @@ describe("microsoft-foundry plugin", () => {
   });
 
   it("does not reuse OpenAI Entra tokens for Anthropic Foundry deployments", async () => {
-    const prepareRuntimeAuth = prepareAuth();
+    const prepareRuntimeAuthV2 = prepareAuth();
     mockAzureCliToken({ accessToken: "gpt-token", expiresInMs: 60_000 });
     mockAzureCliToken({ accessToken: "claude-token", expiresInMs: 60_000 });
     ensureAuthProfileStoreMock.mockReturnValue(
@@ -466,7 +468,7 @@ describe("microsoft-foundry plugin", () => {
     );
 
     const gptPrepared = authResult(
-      await prepareRuntimeAuth(
+      await prepareRuntimeAuthV2(
         authContext({
           modelId: "deployment-gpt5",
           model: makeModel({ id: "deployment-gpt5" }),
@@ -474,7 +476,7 @@ describe("microsoft-foundry plugin", () => {
       ),
     );
     const claudePrepared = authResult(
-      await prepareRuntimeAuth(
+      await prepareRuntimeAuthV2(
         authContext({
           modelId: "deployment-fable",
           model: makeModel({
@@ -647,7 +649,7 @@ describe("microsoft-foundry plugin", () => {
   });
 
   it("clears failed refresh state so later concurrent retries succeed", async () => {
-    const prepareRuntimeAuth = prepareAuth();
+    const prepareRuntimeAuthV2 = prepareAuth();
     const failedResponse = createDeferred<void>();
     const recoveryResponse = createDeferred<void>();
     const failedStarted = createDeferred<void>();
@@ -662,7 +664,7 @@ describe("microsoft-foundry plugin", () => {
     ensureAuthProfileStoreMock.mockReturnValue(entraStore());
 
     const runtimeContext = authContext();
-    const pending = [prepareRuntimeAuth(runtimeContext), prepareRuntimeAuth(runtimeContext)];
+    const pending = [prepareRuntimeAuthV2(runtimeContext), prepareRuntimeAuthV2(runtimeContext)];
     let settled = Promise.allSettled(pending);
     try {
       await failedStarted.promise;
@@ -677,7 +679,7 @@ describe("microsoft-foundry plugin", () => {
       }
       expect(execFileMock).toHaveBeenCalledTimes(1);
 
-      const retries = [prepareRuntimeAuth(runtimeContext), prepareRuntimeAuth(runtimeContext)];
+      const retries = [prepareRuntimeAuthV2(runtimeContext), prepareRuntimeAuthV2(runtimeContext)];
       pending.push(...retries);
       settled = Promise.allSettled(pending);
       await recoveryStarted.promise;
@@ -1251,7 +1253,7 @@ describe("microsoft-foundry plugin", () => {
     mockAzureCliToken({ accessToken: "test-token-placeholder", expiresInMs: 60_000 });
     ensureAuthProfileStoreMock.mockReturnValueOnce({ profiles: {} });
 
-    const prepared = await provider.prepareRuntimeAuth?.(
+    const prepared = await provider.prepareRuntimeAuthV2?.(
       authContext({
         modelId: "deployment-gpt5",
         model: makeModel({

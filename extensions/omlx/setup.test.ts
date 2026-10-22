@@ -707,6 +707,7 @@ describe("oMLX setup through the inference catalog", () => {
       maxTokens: 8_192,
     };
     const runtimeContext = {
+      capability: "chat" as const,
       config,
       env: {},
       provider: "omlx",
@@ -717,7 +718,7 @@ describe("oMLX setup through the inference catalog", () => {
       profileId: "omlx:default",
     };
     expect(providerConfig.apiKey).toBe("omlx-local");
-    expect(await provider?.prepareRuntimeAuth?.(runtimeContext)).toEqual({
+    expect(await provider?.prepareRuntimeAuthV2?.(runtimeContext)).toEqual({
       apiKey: CUSTOM_LOCAL_AUTH_MARKER,
     });
     expect(
@@ -732,7 +733,7 @@ describe("oMLX setup through the inference catalog", () => {
       mode: "api-key",
     });
     expect(
-      await provider?.prepareRuntimeAuth?.({
+      await provider?.prepareRuntimeAuthV2?.({
         ...runtimeContext,
         config: {
           models: { providers: { omlx: { ...providerConfig, headers: { Authorization: "   " } } } },
@@ -740,7 +741,7 @@ describe("oMLX setup through the inference catalog", () => {
       }),
     ).toEqual({ apiKey: CUSTOM_LOCAL_AUTH_MARKER });
     expect(
-      await provider?.prepareRuntimeAuth?.({
+      await provider?.prepareRuntimeAuthV2?.({
         ...runtimeContext,
         model: { ...model, headers: { "X-Api-Key": "new-header-key" } },
         config: {
@@ -759,7 +760,7 @@ describe("oMLX setup through the inference catalog", () => {
       }),
     ).toEqual({ apiKey: CUSTOM_LOCAL_AUTH_MARKER });
     expect(
-      await provider?.prepareRuntimeAuth?.({
+      await provider?.prepareRuntimeAuthV2?.({
         ...runtimeContext,
         config: {
           models: { providers: { omlx: { ...providerConfig, apiKey: "new-server-key" } } },
@@ -774,7 +775,7 @@ describe("oMLX setup through the inference catalog", () => {
       },
     ]) {
       expect(
-        await provider?.prepareRuntimeAuth?.({
+        await provider?.prepareRuntimeAuthV2?.({
           ...runtimeContext,
           config: { models: { providers: { omlx: authenticated } } },
         }),
@@ -782,7 +783,7 @@ describe("oMLX setup through the inference catalog", () => {
     }
     const localHeaders = { Authorization: "Bearer local-header-key" };
     expect(
-      await provider?.prepareRuntimeAuth?.({
+      await provider?.prepareRuntimeAuthV2?.({
         ...runtimeContext,
         apiKey: CUSTOM_LOCAL_AUTH_MARKER,
         model: { ...model, baseUrl: "http://127.0.0.1:8000/v1", headers: localHeaders },

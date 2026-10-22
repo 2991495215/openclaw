@@ -1,6 +1,6 @@
 import { bufferToBlobPart } from "openclaw/plugin-sdk/blob-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
-import type { ProviderRuntimeModel } from "openclaw/plugin-sdk/core";
+import type { ProviderRuntimeAuthModel } from "openclaw/plugin-sdk/core";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import type {
   ImageGenerationProvider,
@@ -112,11 +112,11 @@ function resolveConfiguredEndpoint(params: {
   return endpoint;
 }
 
-function buildRuntimeModel(params: {
+function buildRuntimeAuthModel(params: {
   providerConfig: ModelProviderConfig | undefined;
   model: string;
   modelName: string;
-}): ProviderRuntimeModel {
+}): ProviderRuntimeAuthModel {
   const api = isFoundryProviderApi(params.providerConfig?.api)
     ? params.providerConfig.api
     : DEFAULT_API;
@@ -126,11 +126,6 @@ function buildRuntimeModel(params: {
     api,
     provider: PROVIDER_ID,
     baseUrl: params.providerConfig?.baseUrl ?? "",
-    reasoning: false,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 32_000,
-    maxTokens: 0,
   };
 }
 
@@ -163,7 +158,7 @@ async function resolveMaiImageAuth(params: {
     env: process.env,
     provider: PROVIDER_ID,
     modelId: params.model,
-    model: buildRuntimeModel({
+    model: buildRuntimeAuthModel({
       providerConfig: params.providerConfig,
       model: params.model,
       modelName: params.modelName,

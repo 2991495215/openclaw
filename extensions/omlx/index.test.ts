@@ -756,7 +756,8 @@ it.each<{
     )
     .toEqual({ apiKey: "omlx-local", source: "oMLX local server", mode: "api-key" });
   expect(
-    await provider?.prepareRuntimeAuth?.({
+    await provider?.prepareRuntimeAuthV2?.({
+      capability: "chat",
       config,
       env: {},
       provider: "omlx",
@@ -821,7 +822,8 @@ it.each<{
   );
 
   await expect(
-    provider?.prepareRuntimeAuth?.({
+    provider?.prepareRuntimeAuthV2?.({
+      capability: "chat",
       config: { models: { providers: { omlx: providerConfig } } },
       env: {},
       provider: "omlx",
@@ -847,7 +849,8 @@ it("lets custom request auth override a configured profile credential", async ()
   };
 
   await expect(
-    provider?.prepareRuntimeAuth?.({
+    provider?.prepareRuntimeAuthV2?.({
+      capability: "chat",
       config: { models: { providers: { omlx: providerConfig } } },
       env: {},
       provider: "omlx",
@@ -887,7 +890,8 @@ it("keeps configured keys and unoverridden profile credentials authoritative", a
     },
   ]) {
     expect(
-      await provider?.prepareRuntimeAuth?.({
+      await provider?.prepareRuntimeAuthV2?.({
+        capability: "chat",
         config: { models: { providers: { omlx: providerConfig } } },
         env: {},
         provider: "omlx",

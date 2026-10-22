@@ -617,7 +617,7 @@ export default definePluginEntry({
       buildReplayPolicy: buildGithubCopilotReplayPolicy,
       sanitizeReplayHistoryAsync: sanitizeGithubCopilotReplayHistory,
       resolveThinkingProfile,
-      prepareRuntimeAuth: async (ctx) => {
+      prepareRuntimeAuthV2: async (ctx) => {
         const source = parseGithubCopilotApiKey(ctx.apiKey);
         const { resolveCopilotRuntimeAuth } = await loadGithubCopilotRuntime();
         const auth = await resolveCopilotRuntimeAuth({

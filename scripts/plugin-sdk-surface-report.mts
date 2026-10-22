@@ -291,7 +291,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: the shared message-tool source-reply finality resolver.
       // +1: awaited web_search policy preparation for harnesses; the sync resolver stays.
       // +2: shared SystemOne question/response codecs for the approved Liquid provider integration.
-      3812,
+      // +4: capability-aware runtime auth context/model types on core and plugin-entry.
+      3816,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
