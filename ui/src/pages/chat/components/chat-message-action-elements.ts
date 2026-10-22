@@ -1,3 +1,5 @@
+import { getOrCreateWeakOwnerMap } from "../../../../../src/shared/weak-owner-map.js";
+
 export type MessageActionElements = {
   copy?: HTMLButtonElement;
   readAloud?: HTMLButtonElement;
@@ -19,11 +21,7 @@ export function registerMessageActionElements(
   if (!group) {
     return () => {};
   }
-  let owners = groupActions.get(group);
-  if (!owners) {
-    owners = new Map();
-    groupActions.set(group, owners);
-  }
+  const owners = getOrCreateWeakOwnerMap(groupActions, group);
   owners.set(element, { messageKey, elements });
   return () => {
     owners.delete(element);

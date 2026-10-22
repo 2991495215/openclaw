@@ -1,3 +1,5 @@
+import { getOrCreateWeakOwnerMap } from "../../../../src/shared/weak-owner-map.js";
+
 let lastIssuedDraftRevision = 0;
 type DraftHighWater = {
   committed: number;
@@ -73,11 +75,7 @@ export function captureDraftReplacement(
 }
 
 function draftHighWater(storage: object, storageKey: string, storeSessionKey: string) {
-  let byStorageKey = draftHighWaterByOwner.get(storage);
-  if (!byStorageKey) {
-    byStorageKey = new Map();
-    draftHighWaterByOwner.set(storage, byStorageKey);
-  }
+  const byStorageKey = getOrCreateWeakOwnerMap(draftHighWaterByOwner, storage);
   let bySession = byStorageKey.get(storageKey);
   if (!bySession) {
     bySession = new Map();

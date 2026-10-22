@@ -5,6 +5,7 @@ import type {
   SessionsProcessesListResult,
   SessionsProcessesStopResult,
 } from "../../../../packages/gateway-protocol/src/schema/session-processes.js";
+import { getOrCreateWeakOwnerMap } from "../../../../src/shared/weak-owner-map.js";
 import type { ApplicationContext } from "../../app/context.ts";
 import { t } from "../../i18n/index.ts";
 import { registerProcessesEnglish } from "../../i18n/locales/en-processes.ts";
@@ -48,12 +49,7 @@ export class ProcessesPanelData {
     private readonly context: ApplicationContext,
     private readonly changed: () => void,
   ) {
-    let entries = observations.get(context.sessions);
-    if (!entries) {
-      entries = new Map();
-      observations.set(context.sessions, entries);
-    }
-    this.entries = entries;
+    this.entries = getOrCreateWeakOwnerMap(observations, context.sessions);
   }
 
   get snapshot(): ProcessSnapshot {

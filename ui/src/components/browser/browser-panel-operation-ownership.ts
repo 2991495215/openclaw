@@ -1,3 +1,4 @@
+import { getOrCreateWeakOwnerMap } from "../../../../src/shared/weak-owner-map.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import {
   bindBrowserRequestClient,
@@ -224,11 +225,7 @@ export function createBrowserPanelOperations(host: BrowserPanelHost) {
       targetId: string,
       navigate: () => Promise<T>,
     ): Promise<T> {
-      let queues = navigationQueues.get(client);
-      if (!queues) {
-        queues = new Map();
-        navigationQueues.set(client, queues);
-      }
+      const queues = getOrCreateWeakOwnerMap(navigationQueues, client);
       const previous = queues.get(targetId);
       const current = previous ? previous.then(navigate, navigate) : navigate();
       queues.set(targetId, current);

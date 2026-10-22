@@ -1,3 +1,4 @@
+import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import type {
   SessionCatalog,
@@ -116,10 +117,7 @@ export class SessionCatalogLiveState {
       this.resetRetry();
       return null;
     }
-    const serverDelay =
-      typeof error.retryAfterMs === "number" && Number.isFinite(error.retryAfterMs)
-        ? error.retryAfterMs
-        : 0;
+    const serverDelay = asFiniteNumber(error.retryAfterMs) ?? 0;
     const delay = Math.max(serverDelay, 1_000 * 2 ** this.retryAttempts++);
     this.retryAt = Date.now() + delay;
     return delay;

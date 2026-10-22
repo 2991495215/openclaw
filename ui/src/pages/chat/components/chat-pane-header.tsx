@@ -247,14 +247,7 @@ function ChatPaneHeaderChrome(
               >
                 {props.sessionMenu}
                 <Show when={presented()}>
-                  <ChatPaneVersionsMenu
-                    menu={{
-                      catalog: props.catalog,
-                      branches: props.branches,
-                      branchSwitchDisabledReason: props.branchSwitchDisabledReason,
-                      onBranchSelect: props.onBranchSelect,
-                    }}
-                  />
+                  <ChatPaneVersionsMenu menu={props} />
                 </Show>
               </Show>
               <Show when={props.gatewayStatus?.kind}>
@@ -428,14 +421,7 @@ function ChatPaneHeaderChrome(
             </button>
           </Show>
           <Show when={props.mergedChrome && presented()}>
-            <ChatPaneVersionsMenu
-              menu={{
-                catalog: props.catalog,
-                branches: props.branches,
-                branchSwitchDisabledReason: props.branchSwitchDisabledReason,
-                onBranchSelect: props.onBranchSelect,
-              }}
-            />
+            <ChatPaneVersionsMenu menu={props} />
           </Show>
           <div class="chat-pane__actions">
             <Show when={!props.narrow && (props.mergedChrome || !props.detailsControl)}>
