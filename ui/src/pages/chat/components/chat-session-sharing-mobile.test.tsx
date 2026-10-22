@@ -209,6 +209,33 @@ it("returns from Session access only after a confirmed native success", async ()
   }
 });
 
+it("shows a rejected access command and clears it during a retained retry", async () => {
+  const failed = createDeferred<ChatSessionSharingOutcome>();
+  const retry = createDeferred<ChatSessionSharingOutcome>();
+  const change = vi
+    .fn<PreparedChatSessionSharing["onVisibilityChange"]>()
+    .mockReturnValueOnce(failed.promise)
+    .mockReturnValueOnce(retry.promise);
+  const view = accessFixture(prepared({ onVisibilityChange: change }));
+  const button = view.getByRole("button", { name: /Draft/ });
+  button.click();
+  await waitForSolid(() => expect(button.hasAttribute("disabled")).toBe(true));
+  failed.reject(new Error("Access command rejected"));
+  await waitForSolid(() => {
+    expect(view.getByRole("alert").textContent).toContain("Access command rejected");
+    expect(button.hasAttribute("disabled")).toBe(false);
+  });
+  button.click();
+  await waitForSolid(() => {
+    expect(view.queryByRole("alert")).toBeNull();
+    expect(view.getByRole("button", { name: /Draft/ })).toBe(button);
+    expect(button.hasAttribute("disabled")).toBe(true);
+  });
+  retry.resolve({ status: "success" });
+  await waitForSolid(() => expect(view.applied).toHaveBeenCalledOnce());
+  expect(view.getByRole("button", { name: /Draft/ })).toBe(button);
+});
+
 it.each(["destination", "session"] as const)(
   "does not navigate or publish a retired error into a replacement %s",
   async (replacement) => {

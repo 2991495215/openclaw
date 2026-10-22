@@ -38,6 +38,7 @@ import {
   createChatSessionSharingPresentation,
   canManageChatSessionSharing,
   ChatSessionSharingModeIcon,
+  ChatSessionSharingError,
   projectChatSessionSharingRoster,
   chatSessionMembershipLabel,
 } from "./chat-session-sharing-shared.tsx";
@@ -304,10 +305,7 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
   );
   const showPermissions = () =>
     props.membersAvailable !== false &&
-    (!result() ||
-      Boolean(props.state?.read) ||
-      Boolean(props.state?.error ?? presentation.error()) ||
-      people().length > 0);
+    (!result() || Boolean(props.state?.read) || Boolean(props.state?.error) || people().length > 0);
   const permissionItems = () => (showPermissions() ? rosterItems()().map((item) => item()) : []);
   // The observer and its ref share the mounted permissions subtree's lifetime.
   const SharingPermissions = (view: { children: JSX.Element }) => {
@@ -422,13 +420,7 @@ function useDesktopSharing(props: ChatSessionSharingProps, controls: MenuControl
   const errorItem: MenuEntry = {
     kind: "content",
     id: "error",
-    content: (
-      <Show when={props.state?.error ?? presentation.error()}>
-        <div class="chat-pane__sharing-status chat-pane__sharing-status--error" role="alert">
-          {props.state?.error ?? presentation.error()}
-        </div>
-      </Show>
-    ),
+    content: <ChatSessionSharingError operation={presentation} error={props.state?.error} />,
   };
   const overviewItems = createMemo(
     (): readonly MenuEntry[] => [

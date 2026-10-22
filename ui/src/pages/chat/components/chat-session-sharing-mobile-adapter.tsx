@@ -207,6 +207,7 @@ export function createChatSessionSharingMobileAdapter(
       },
     },
     sharing: {
+      operation: presentation,
       get visibility() {
         return visibility();
       },
@@ -216,7 +217,7 @@ export function createChatSessionSharingMobileAdapter(
         return accessReason();
       },
       get error() {
-        return source()?.state?.error ?? presentation.error();
+        return source()?.state?.error;
       },
       get publicLink() {
         return source()?.onPublicShareChange ? publicLink : undefined;
@@ -239,6 +240,7 @@ export function createChatSessionSharingMobileAdapter(
       },
     },
     access: {
+      operation: presentation,
       get visibility() {
         return visibility();
       },
@@ -256,7 +258,7 @@ export function createChatSessionSharingMobileAdapter(
         return accessReason();
       },
       get error() {
-        return source()?.state?.error ?? presentation.error();
+        return source()?.state?.error;
       },
       onVisibilityChange: async (value) => {
         const current = source();
