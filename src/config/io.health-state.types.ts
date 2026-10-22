@@ -41,8 +41,3 @@ export type ConfigHealthSnapshot = {
   /** Null means the read failed; an empty map proves there were no rows. */
   basis: Readonly<Record<string, ConfigHealthEntryBasis>> | null;
 };
-
-/** Unavailable includes missing read basis and writes whose outcome is unknown. */
-export type ConfigHealthUpdateResult = {
-  status: "applied" | "conflict" | "unavailable";
-};

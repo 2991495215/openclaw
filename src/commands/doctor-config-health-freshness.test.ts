@@ -189,47 +189,39 @@ it.each(
                   await closeOpenClawStateDatabaseAsync();
                 }
               }
-            }
-            return store.updateAfterFileCommit(...updateArgs);
-          },
-        };
-      });
-      if (operation === "promotion") {
-        expect(await io.promoteConfigSnapshotToLastKnownGood(target)).toBe(true);
-        expect(raw(".last-good")).toBe(targetRaw);
-      } else {
-        const result = await withEnvAsync(
-          {
-            OPENCLAW_UPDATE_IN_PROGRESS: "1",
-            OPENCLAW_UPDATE_PARENT_SUPPORTS_DOCTOR_CONFIG_WRITE: "1",
-          },
-          () =>
-            runDoctorConfigPreflight({
-              migrateState: false,
-              migrateLegacyConfig: false,
-              repairPrefixedConfig: true,
-              invalidConfigNote: false,
-              observe: false,
-            }),
-        );
-        expect(result.snapshot).toMatchObject({ valid: true, raw: newerRaw });
-        expect(result.snapshot.config.gateway?.port).toBe(19093);
-      }
-      expect(superseded).toBe(true);
-      expect(expectedHealth).toBeDefined();
-      await assertDurableHealth(expectedHealth);
-    }),
-);
-
-it("rejects last-known-good recovery after its captured database admission closes", () =>
-  withFixture(async ({ configPath, io, replace, raw }) => {
-    const rejectedRaw = "{ invalid json";
-    const rejected = await replace(rejectedRaw);
-    const replaceAtomic = fileReplacement.replaceFileAtomic;
-    let closed = false;
-    vi.spyOn(fileReplacement, "replaceFileAtomic").mockImplementation(async (params) => {
-      if (params.filePath === configPath && !closed) {
-        closed = true;
+              await store.updateAfterFileCommit(...updateArgs);
+            },
+          };
+        });
+        if (operation === "promotion") {
+          expect(await io.promoteConfigSnapshotToLastKnownGood(target)).toBe(true);
+          expect(fs.readFileSync(`${configPath}.last-good`, "utf8")).toBe(targetRaw);
+        } else {
+          const result = await withEnvAsync(
+            {
+              OPENCLAW_UPDATE_IN_PROGRESS: "1",
+              OPENCLAW_UPDATE_PARENT_SUPPORTS_DOCTOR_CONFIG_WRITE: "1",
+            },
+            () =>
+              runDoctorConfigPreflight({
+                migrateState: false,
+                migrateLegacyConfig: false,
+                repairPrefixedConfig: true,
+                invalidConfigNote: false,
+                observe: false,
+              }),
+          );
+          expect(result.snapshot.valid).toBe(true);
+          expect(result.snapshot.raw).toBe(newerRaw);
+          expect(result.snapshot.config.gateway?.port).toBe(19093);
+        }
+        expect(superseded).toBe(true);
+        expect(expectedHealth).toBeDefined();
+        expect(fs.readFileSync(configPath, "utf8")).toBe(newerRaw);
+        expect(healthState.readConfigHealthStateFromStore(options)).toEqual(expectedHealth);
+        await closeOpenClawStateDatabaseAsync();
+        expect(healthState.readConfigHealthStateFromStore(options)).toEqual(expectedHealth);
+      } finally {
         await closeOpenClawStateDatabaseAsync();
       }
     });

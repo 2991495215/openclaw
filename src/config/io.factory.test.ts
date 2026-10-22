@@ -54,54 +54,38 @@ describe("config factory writer boundary", () => {
     };
   }
 
-it("reads and records normal observation without importing the writer", async () => {
-  const loadWriter = vi.fn().mockRejectedValue(new Error("read imported the config writer"));
-  // mock-isolation: Fail if the read-only path imports the config writer.
-  vi.doMock("./io.write.js", loadWriter);
-  const { io, configPath, raw, readRaw, health } = await fixture();
-
-  expect(io.loadConfig().gateway?.port).toBe(18789);
-  const snapshot = await io.readBestEffortConfigSnapshot();
-  expect(snapshot.configDiagnostics).toBeNull();
-  expect(snapshot.config.agents?.defaults?.compaction?.mode).toBe("safeguard");
-  expect(snapshot.sourceConfig.agents?.defaults?.compaction).toBeUndefined();
-  expect(await health()).toMatchObject({
-    config_path: configPath,
-    last_known_good_json: expect.any(String),
-  });
-  expect(await readRaw()).toBe(raw);
-  expect(loadWriter).not.toHaveBeenCalled();
-});
-
-it("honors per-call unobserved mutation reads without disabling write auditing", async () => {
-  const { io, env, home, configPath, saved, health } = await fixture();
-  const { listConfigAuditRecordsForTests } = await import("./io.audit.test-support.js");
-  const { transformConfigFileWithRetry } = await import("./mutate.js");
-  const mutate = (transform: Parameters<typeof transformConfigFileWithRetry>[0]["transform"]) =>
-    transformConfigFileWithRetry({ io, writeOptions: { observe: false }, transform });
-  const audit = () => listConfigAuditRecordsForTests({ env, homedir: () => home });
-  await io.readConfigFileSnapshotForWrite();
-  const beforeHealth = await health();
-  const beforeAudit = audit();
-  expect(beforeHealth?.last_known_good_json).toEqual(expect.any(String));
-  await fs.writeFile(configPath, JSON.stringify(gateway(19001)) + "\n");
-
-  const failure = new Error("mutation declined before committing");
-  await expect(
-    mutate(() => {
-      throw failure;
-    }),
-  ).rejects.toBe(failure);
-  expect([await health(), audit()]).toEqual([beforeHealth, beforeAudit]);
-
-  await mutate((config) => ({
-    nextConfig: { ...config, gateway: { ...config.gateway, port: 19002 } },
-  }));
-  const acceptedHealth = await health();
-  expect(acceptedHealth?.last_known_good_json).not.toBe(beforeHealth?.last_known_good_json);
-  expect(acceptedHealth?.last_observed_suspicious_signature).toBeNull();
-  expect(audit()).toContainEqual(
-    expect.objectContaining({ event: "config.write", configPath, result: "rename" }),
+  it.each([undefined, true])(
+    "initializes absent-file catalog privacy while preserving explicit %s",
+    async (enabled) => {
+      const { io, configPath } = await fixture(true);
+      await io.writeConfigFile({
+        gateway: { mode: "local" },
+        ...(enabled !== undefined
+          ? {
+              plugins: {
+                entries: {
+                  codex: { config: { sessionCatalog: { enabled } } },
+                },
+              },
+            }
+          : {}),
+      });
+      const saved = JSON.parse(await fs.readFile(configPath, "utf8"));
+      expect(saved.plugins?.entries?.codex).toEqual({
+        config: { sessionCatalog: { enabled: enabled ?? false } },
+      });
+      expect(saved.plugins?.entries?.anthropic).toEqual({
+        config: { sessionCatalog: { enabled: false } },
+      });
+      expect(saved.plugins?.installs).toBeUndefined();
+      if (enabled !== true) {
+        const snapshot = await io.readConfigFileSnapshot();
+        expect(snapshot.valid).toBe(true);
+        expect(snapshot.warnings).not.toContainEqual(
+          expect.objectContaining({ path: "plugins.entries.codex" }),
+        );
+      }
+    },
   );
 
   it("preserves an existing unversioned configuration's omitted catalog preferences", async () => {

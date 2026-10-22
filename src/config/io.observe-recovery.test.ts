@@ -19,10 +19,10 @@ import {
   patchConfigHealthEntryToStore,
 } from "./io.health-state.js";
 import { createConfigIO } from "./io.js";
-import { promoteConfigSnapshotToLastKnownGoodCore } from "./io.observe-promotion.js";
 import {
   maybeRecoverSuspiciousConfigRead,
   maybeRecoverSuspiciousConfigReadSync,
+  promoteConfigSnapshotToLastKnownGoodCore,
   recoverConfigFromLastKnownGoodCore,
 } from "./io.observe-recovery.js";
 import {
@@ -223,67 +223,6 @@ describe("config observe recovery", () => {
     };
   }
 
-  async function backupCase(config: Record<string, unknown> = recoverableCoreConfig) {
-    const fixture = makeDeps(home);
-    await seedConfigBackup(fixture.configPath, config);
-    const backupRaw = await fsp.readFile(`${fixture.configPath}.bak`, "utf8");
-    const clobbered = await writeClobberedUpdateChannel(fixture.configPath);
-    return {
-      ...fixture,
-      backupRaw,
-      clobbered,
-      input: { ...fixture, ...clobbered, prepareBackup: approveRecoveryCandidate },
-    };
-  }
-
-  async function lastGoodCase() {
-    const fixture = makeDeps(home);
-    const snapshot = await makeSnapshot(fixture.configPath, recoverableCoreConfig);
-    snapshot.raw = `// Preserve authored JSON5 during last-good recovery.
-${snapshot.raw}`;
-    await fsp.writeFile(fixture.configPath, snapshot.raw);
-    expect(await promoteConfigSnapshotToLastKnownGoodCore({ ...fixture, snapshot })).toBe(true);
-    const brokenRaw = "{ gateway: { mode: 123 } }\n";
-    await fsp.writeFile(fixture.configPath, brokenRaw);
-    return {
-      ...fixture,
-      snapshot,
-      brokenRaw,
-      input: {
-        deps: fixture.deps,
-        snapshot: invalidSnapshot(snapshot, brokenRaw),
-        reason: "test-invalid-config",
-        prepareCandidate: approveRecoveryCandidate,
-      },
-    };
-  }
-
-  function withAsyncFs(deps: ObserveRecoveryDeps, overrides: Partial<typeof fsp>) {
-    return { ...deps, fs: { ...deps.fs, promises: { ...deps.fs.promises, ...overrides } } };
-  }
-
-  async function expectArchive(configPath: string, raw: string) {
-    const archived = await listClobberFiles(configPath);
-    expect(archived).toHaveLength(1);
-    await expectRaw(path.join(path.dirname(configPath), archived[0]!), raw);
-  }
-
-  async function recoverBackup(
-    input: Parameters<typeof maybeRecoverSuspiciousConfigRead>[0],
-    mode: "async" | "sync",
-  ) {
-    const work = new AsyncWorkScope();
-    try {
-      return await work.run(() =>
-        mode === "async"
-          ? maybeRecoverSuspiciousConfigRead(input)
-          : maybeRecoverSuspiciousConfigReadSync(input),
-      );
-    } finally {
-      await work.drain();
-    }
-  }
-
   it.each(["async", "sync"] as const)(
     "warns when %s backup restore cannot tighten config permissions",
     async (mode) => {
@@ -378,27 +317,35 @@ ${snapshot.raw}`;
     }
   });
 
-  it.each(["load", "snapshot"] as const)(
-    "%s restores JSON5 backup bytes and clears discarded config env vars",
-    async (method) => {
-      const env: NodeJS.ProcessEnv = {};
-      const { io, configPath } = createTestConfigIO(home, vi.fn(), { env });
-      await seedConfigBackup(configPath, recoverableCoreConfig);
-      const backupRaw = '{ // Authored JSON5 backup\n gateway: { mode: "local", },\n}\n';
-      await fsp.writeFile(`${configPath}.bak`, backupRaw);
-      await writeConfigRaw(configPath, {
-        meta: { lastTouchedVersion: "2026.5.28" },
-        env: { vars: { OPENCLAW_CLOBBER_ONLY: "bad" } },
-      });
-      const config =
-        method === "load"
-          ? io.loadConfig()
-          : (await io.readConfigFileSnapshot({ recoverSuspicious: true })).config;
-      expect(config.gateway?.mode).toBe("local");
-      expect(env.OPENCLAW_CLOBBER_ONLY).toBeUndefined();
-      await expectRaw(configPath, backupRaw);
-    },
-  );
+  it("loadConfig clears env vars from the discarded clobbered config before rereading backup", async () => {
+    const env = {} as NodeJS.ProcessEnv;
+    const { io, configPath } = createTestConfigIO(home, vi.fn(), { env });
+    await seedConfigBackup(configPath, recoverableCoreConfig);
+    await writeConfigRaw(configPath, {
+      meta: { lastTouchedVersion: "2026.5.28" },
+      env: { vars: { OPENCLAW_CLOBBER_ONLY: "bad" } },
+    });
+
+    const config = io.loadConfig();
+
+    expect(config.gateway?.mode).toBe("local");
+    expect(env.OPENCLAW_CLOBBER_ONLY).toBeUndefined();
+  });
+
+  it("read snapshot recovery clears env vars from the discarded clobbered config", async () => {
+    const env = {} as NodeJS.ProcessEnv;
+    const { io, configPath } = createTestConfigIO(home, vi.fn(), { env });
+    await seedConfigBackup(configPath, recoverableCoreConfig);
+    await writeConfigRaw(configPath, {
+      meta: { lastTouchedVersion: "2026.5.28" },
+      env: { vars: { OPENCLAW_CLOBBER_ONLY: "bad" } },
+    });
+
+    const snapshot = await io.readConfigFileSnapshot({ recoverSuspicious: true });
+
+    expect(snapshot.config.gateway?.mode).toBe("local");
+    expect(env.OPENCLAW_CLOBBER_ONLY).toBeUndefined();
+  });
 
   it("does not auto-restore read snapshots when observation is disabled", async () => {
     const { io, configPath } = createTestConfigIO(home, vi.fn(), { observe: false });
@@ -742,21 +689,19 @@ ${snapshot.raw}`;
 
   it("restores the exact backup bytes approved by preparation", async () => {
     const { deps, configPath } = makeDeps(home);
-    const original = await makeSnapshot(configPath, recoverableCoreConfig);
-    expect(await promoteConfigSnapshotToLastKnownGoodCore({ deps, snapshot: original })).toBe(true);
-    const selected = await makeSnapshot(configPath, {
-      ...recoverableCoreConfig,
-      gateway: { ...recoverableCoreConfig.gateway, mode: "remote" },
-    });
-    const replacementRaw = '{"gateway":{"mode":"local","port":18721}}';
-    const racingDeps = withAsyncFs(deps, {
-      stat: (async (...args: Parameters<typeof fsp.stat>) => {
-        const stat = await fsp.stat(...args);
-        if (args[0] === configPath) {
-          await fsp.writeFile(configPath, replacementRaw);
-        }
-        return stat;
-      }) as typeof fsp.stat,
+    await seedConfigBackup(configPath, recoverableTelegramConfig);
+    const backupPath = `${configPath}.bak`;
+    const approvedRaw = await fsp.readFile(backupPath, "utf-8");
+    const replacementRaw = `${JSON.stringify({ gateway: { mode: "remote" } }, null, 2)}\n`;
+    const clobbered = await writeClobberedUpdateChannel(configPath);
+    const input = { deps, configPath, ...clobbered, prepareBackup: approveRecoveryCandidate };
+
+    await maybeRecoverSuspiciousConfigRead({
+      ...input,
+      prepareBackup: (candidate) => {
+        fs.writeFileSync(backupPath, replacementRaw, "utf-8");
+        return { ok: true, candidate };
+      },
     });
 
     await expect(fsp.readFile(backupPath, "utf-8")).resolves.toBe(replacementRaw);

@@ -1,7 +1,8 @@
 import type fs from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { resolveCronJobsStorePathFromConfigAsync } from "../cron/store.js";
+import { err, ok } from "@openclaw/normalization-core/result";
+import { resolveCronJobsStorePathFromConfig } from "../cron/store.js";
 import { isVerbose } from "../global-state.js";
 import {
   readConfigWritePendingMigrations,
@@ -53,11 +54,6 @@ import {
   stampConfigWriteMetadata,
 } from "./io.meta.js";
 import {
-  advanceConfigHealthBaselineForAcceptedWrite,
-  captureConfigHealthBaselineForWrite,
-  restoreConfigHealthBaselineForRolledBackWrite,
-} from "./io.observe.js";
-import {
   containsConfigIncludeDirective,
   hashConfigRaw,
   hashConfigRevision,
@@ -66,10 +62,13 @@ import {
   resolveGatewayMode,
   restoreAuthoredTildePathsForWrite,
 } from "./io.read-helpers.js";
-import {
-  loggedConfigWarningFingerprints,
-  restoreLoggedConfigWarningFingerprint,
-} from "./io.state.js";
+import { loggedConfigWarningFingerprints, setBoundedConfigIoWarningEntry } from "./io.state.js";
+import type {
+  ConfigWriteInputBasis,
+  ConfigWriteOptions,
+  InternalConfigWriteResult,
+  ReadConfigFileSnapshotInternalResult,
+} from "./io.types.js";
 import {
   ConfigRuntimeRefreshError,
   configWriteCommittedSnapshot,
@@ -78,14 +77,15 @@ import {
 import { logConfigWarningsOnce } from "./io.warnings.js";
 import {
   ConfigWritePostCommitError,
+  createConfigWriteSafetyRejectionError,
   createConfigValidationFailedError,
   type ConfigWriteRollbackStatus,
 } from "./io.write-errors.js";
 import { injectExplicitlySetPaths, resolvePersistCandidateForWrite } from "./io.write-prepare.js";
-import { rejectConfigWriteForBlockingReasons } from "./io.write-rejected.js";
 import {
   assertBaseSnapshotStillCurrent,
   createConfigFileWriteGuard,
+  formatConfigArtifactTimestamp,
   resolveConfigSizeBaselineBytes,
   resolveConfigStatMetadata,
   resolveConfigWriteBlockingReasons,
@@ -439,15 +439,30 @@ export async function writeConfigFileFromContext(
     });
   };
   const blockingReasons = resolveConfigWriteBlockingReasons(suspiciousReasons, options);
-  await rejectConfigWriteForBlockingReasons({
-    deps,
-    configPath,
-    json,
-    blockingReasons,
-    allowDestructiveWrite: options.allowDestructiveWrite,
-    assertConfigPathForWrite: options.assertConfigPathForWrite,
-    appendWriteAudit,
-  });
+  if (blockingReasons.length > 0 && options.allowDestructiveWrite !== true) {
+    const rejectedPath = `${configPath}.rejected.${formatConfigArtifactTimestamp(new Date().toISOString())}`;
+    // Only the completed exclusive create proves this payload is available for inspection.
+    options.assertConfigPathForWrite?.();
+    const rejectedSave = await deps.fs.promises
+      .writeFile(rejectedPath, json, { encoding: "utf-8", mode: 0o600, flag: "wx" })
+      .then(ok, err);
+    const saveDetail = rejectedSave.ok
+      ? `Rejected payload saved to ${rejectedPath}.`
+      : `Rejected payload could not be saved to ${rejectedPath}: ${formatErrorMessage(rejectedSave.error)}.`;
+    const diagnosticMessage = `Config write rejected: ${configPath} (${blockingReasons.join(", ")}). ${saveDetail}`;
+    const diagnosticError = Object.assign(new Error(diagnosticMessage), {
+      code: "CONFIG_WRITE_REJECTED",
+      ...(rejectedSave.ok ? { rejectedPath } : {}),
+      reasons: blockingReasons,
+    });
+    const userFacingError = createConfigWriteSafetyRejectionError({
+      reasons: blockingReasons,
+      ...(rejectedSave.ok ? { rejectedPath } : {}),
+    });
+    deps.logger.warn(diagnosticMessage);
+    await appendWriteAudit("rejected", diagnosticError);
+    throw userFacingError;
+  }
 
   const preCommitRuntimePreflight =
     options.preCommitRuntimePreflight ??
@@ -530,21 +545,14 @@ export async function writeConfigFileFromContext(
       onDestinationState: writeGuard.onDestinationState,
     });
     await options.beforeCommit?.();
-    const healthBaselineCapture = databaseAccessAllowed
-      ? await captureConfigHealthBaselineForWrite(deps, configPath)
-      : null;
-    const publish = () => {
-      options.assertBeforePublish?.();
-      const published = preparedFile.publish();
-      publication.phase = "published";
-      return published;
-    };
-    const result = databaseAccessAllowed
-      ? withDeferredPluginMigrationsCurrent(
-          { env: deps.env, configPath, expectedPending: pendingMigrations },
-          publish,
-        )
-      : publish();
+    const result = withDeferredPluginMigrationsCurrent(
+      { env: deps.env, configPath, expectedPending: deferredPluginMigrations },
+      () => {
+        const published = preparedFile.publish();
+        publication.phase = "published";
+        return published;
+      },
+    );
     options.assertConfigPathForWrite?.();
     publication.phase = "accepted";
     recordUpdateDoctorConfigWrite(configPath, previousHash, nextHash, snapshot.parsed, json);
@@ -559,14 +567,6 @@ export async function writeConfigFileFromContext(
       result.method,
       undefined,
       await deps.fs.promises.stat(configPath).catch(() => null),
-    );
-    const healthBaselineCompensation = await withConfigWriteState(acceptedStateSelection, () =>
-      advanceConfigHealthBaselineForAcceptedWrite(deps, healthBaselineCapture, {
-        sourceSnapshot: snapshot,
-        raw: json,
-        parsed: stampedOutputConfig,
-        resolved: sourceConfigForPreflight,
-      }),
     );
     options.assertConfigPathForWrite?.();
     if (
@@ -651,10 +651,15 @@ export async function writeConfigFileFromContext(
             assertCurrent,
           );
           assertCurrent();
-          restoreLoggedConfigWarningFingerprint(configPath, previousWarningFingerprint);
-          await withConfigWriteState(acceptedStateSelection, () =>
-            restoreConfigHealthBaselineForRolledBackWrite(deps, healthBaselineCompensation),
-          );
+          if (previousWarningFingerprint === undefined) {
+            loggedConfigWarningFingerprints.delete(configPath);
+          } else {
+            setBoundedConfigIoWarningEntry(
+              loggedConfigWarningFingerprints,
+              configPath,
+              previousWarningFingerprint,
+            );
+          }
         },
       },
     };
