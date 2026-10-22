@@ -289,9 +289,9 @@ final class CatalogModeUITests: XCTestCase {
         var request = URLRequest(url: try XCTUnwrap(URL(
             string: self.setting("OPENCLAW_CATALOG_CONTROL") + path)))
         request.httpMethod = "POST"
-        // A failed snapshot can add two diagnostic CLI calls (95s + 60s).
+        // A failed snapshot can add two list and two read diagnostics (2 * (95s + 60s)).
         // Reserve that work plus 10s transport margin beyond the original 240s.
-        let diagnosticBudget: TimeInterval = path.hasPrefix("/snapshot/") ? 155 + 10 : 0
+        let diagnosticBudget: TimeInterval = path.hasPrefix("/snapshot/") ? 2 * (95 + 60) + 10 : 0
         request.timeoutInterval = 240 + diagnosticBudget
         let (data, response) = try await URLSession.shared.data(for: request)
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")

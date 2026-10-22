@@ -264,6 +264,32 @@ async function observe(phase) {
       record.finishedAt = new Date().toISOString();
       diagnostics.push(record);
       await writeFile(path.join(directory, "node-catalog-diagnostics.json"), JSON.stringify(diagnostics, null, 2));
+      if (record.response?.ok === true) {
+        const readDiagnostic = record.catalogRead = {
+          method: "sessions.catalog.read", requestTimeoutMs: timeoutMs + 15000,
+          note: "Separate authorized catalog read; never fills or changes the original list observation",
+          startedAt: new Date().toISOString(),
+        };
+        try {
+          const page = typeof record.response.payloadJSON === "string"
+            ? JSON.parse(record.response.payloadJSON) : record.response.payload;
+          const threadId = page?.sessions?.[0]?.threadId;
+          if (typeof threadId !== "string" || !threadId.trim() ||
+              (codex && (typeof page?.sourceHomeId !== "string" || !page.sourceHomeId.trim()))) {
+            readDiagnostic.skipped = "The node response did not provide a complete observed locator";
+          } else {
+            readDiagnostic.params = { catalogId: issue.catalogId, hostId: issue.hostId, threadId, limit: 1,
+              ...(call.params.agentId ? { agentId: call.params.agentId } : {}),
+              ...(codex ? { sourceHomeId: page.sourceHomeId } : {}) };
+            readDiagnostic.response = await rpc(target, readDiagnostic.method, readDiagnostic.params,
+              directory, `node-catalog-read-diagnostic-${issue.catalogId}`, readDiagnostic.requestTimeoutMs);
+          }
+        } catch (error) {
+          readDiagnostic.error = String(error);
+        }
+        readDiagnostic.finishedAt = new Date().toISOString();
+        await writeFile(path.join(directory, "node-catalog-diagnostics.json"), JSON.stringify(diagnostics, null, 2));
+      }
     }
   }
   return { phase, mode, nodeId: macNode.nodeId, description, workerResult, observation };
