@@ -2,6 +2,7 @@ import type { BrowserContextOptions, Locator, Page } from "playwright";
 import { expect, it } from "vitest";
 import { evaluateControlUiContext } from "../test-helpers/control-ui-e2e-context.ts";
 import {
+  controlUiE2eWaitTimeoutMs,
   waitForControlUiGatewayReady,
   waitForControlUiGatewayReconnecting,
 } from "../test-helpers/control-ui-e2e-readiness.ts";
@@ -128,23 +129,28 @@ async function chooseCustomFolder(page: Page, gateway: MockGateway) {
     .toEqual({ repoRoot: TARGET_REPO, includeRepositoryStatus: true });
 }
 
+async function disconnectGateway(page: Page, gateway: MockGateway) {
+  await pauseVirtualClock(page);
+  await gateway.setOnline(false);
+  await expect
+    .poll(() => evaluateControlUiContext(page, ({ gateway: source }) => source.snapshot.phase), {
+      timeout: controlUiE2eWaitTimeoutMs,
+    })
+    .toBe("reconnecting");
+  // The visible offline status follows the Gateway's two-second grace period.
+  await page.clock.fastForward(2_001);
+  await waitForControlUiGatewayReconnecting(page);
+}
+
 async function resumeGatewayOnline(page: Page, gateway: MockGateway) {
   await gateway.setOnline(true);
-  const retryDelay = await evaluateControlUiContext(
-    page,
-    ({ gateway: source }) => (source.snapshot.reconnectAt ?? Number.NaN) - Date.now(),
-  );
-  expect(retryDelay).toBeGreaterThan(0);
-  await page.clock.fastForward(retryDelay);
   await page.clock.resume();
   await waitForControlUiGatewayReady(page);
 }
 
 async function reconnectForBranchRediscovery(page: Page, gateway: MockGateway) {
   const branchRequests = await requestCount(gateway, "worktrees.branches");
-  await pauseVirtualClock(page);
-  await gateway.setOnline(false);
-  await waitForControlUiGatewayReconnecting(page);
+  await disconnectGateway(page, gateway);
   await resumeGatewayOnline(page, gateway);
   await expectRequests(gateway, "worktrees.branches", branchRequests + 1);
 }
@@ -680,9 +686,7 @@ suite.define(() => {
           await expect.poll(() => gateway.getSocketCount()).toBe(socketsBefore + 1);
           await waitForControlUiGatewayReady(page);
         } else {
-          await pauseVirtualClock(page);
-          await gateway.setOnline(false);
-          await waitForControlUiGatewayReconnecting(page);
+          await disconnectGateway(page, gateway);
           // Transport loss keeps the submitted display while execution waits for reconnection.
           expect(await page.getByText(submittedMessage, { exact: true }).isVisible()).toBe(true);
           await expect
@@ -742,9 +746,7 @@ suite.define(() => {
             },
           });
         }
-        await pauseVirtualClock(page);
-        await gateway.setOnline(false);
-        await waitForControlUiGatewayReconnecting(page);
+        await disconnectGateway(page, gateway);
         await resumeGatewayOnline(page, gateway);
         await waitForGatewayRecoveryScope(page);
 
