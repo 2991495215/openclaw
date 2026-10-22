@@ -511,6 +511,7 @@ function buildSelectableDefaultModels(
           supportsServiceTierRecovery: _recovery,
           serviceTiers: _tiers,
           serviceTierObservation: _observation,
+          serviceTierObservations: _observations,
           runtimeChoices: _runtimes,
           ...unscoped
         } = match;
