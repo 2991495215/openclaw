@@ -131,27 +131,26 @@ try {
       preparedUsesPromisor && !preparedPromisor);
   const reuseHistory = reusePreparedBase && !preparedBorrowsObjects &&
     git(["rev-parse", "--is-shallow-repository"], { env: preparedEnv }).trim() === "false";
-  // Pack only locally available history reachable from the prepared base into the new
-  // owner. Promisor metadata keeps intentionally missing blobs lazy; direct object-store
-  // reuse would also expose dangling prior payload objects.
+  // Pack only commit/tree history reachable from the prepared base into the new owner.
+  // Historical blobs remain promised to the fixed origin, matching native hydration;
+  // direct object-store reuse would also expose dangling prior payload objects.
   if (reuseHistory) {
     git(["init", "-q"]);
     git(["remote", "add", "origin", "https://github.com/openclaw/openclaw.git"]);
-    if (preparedPromisor) {
-      git(["config", "remote.origin.promisor", "true"]);
-      git(["config", "remote.origin.partialclonefilter", "blob:none"]);
-    }
-    const historyPack = git(["pack-objects", "--revs",
-      ...(preparedPromisor ? ["--missing=allow-promisor"] : []),
-      "--use-bitmap-index",
+    git(["config", "remote.origin.promisor", "true"]);
+    git(["config", "remote.origin.partialclonefilter", "blob:none"]);
+    const historyPack = git(["pack-objects", "--revs", "--filter=blob:none",
+      "--missing=allow-promisor", "--use-bitmap-index",
       path.join(gitDir, "objects", "pack", "pack")], {
-      env: { ...preparedEnv, ...(preparedPromisor ? { GIT_NO_LAZY_FETCH: "1" } : {}) },
+      env: { ...preparedEnv, GIT_NO_LAZY_FETCH: "1" },
       input: expected.baseSha + "\n", phase: "history-pack",
     }).trim();
     if (!/^[a-f0-9]{40}$/u.test(historyPack)) fail("invalid history pack identity");
-    if (preparedPromisor) fs.writeFileSync(
-      path.join(gitDir, "objects", "pack", "pack-" + historyPack + ".promisor"), "",
-      { flag: "wx", mode: 0o600 });
+    fs.writeFileSync(
+      path.join(gitDir, "objects", "pack", "pack-" + historyPack + ".promisor"),
+      "",
+      { flag: "wx", mode: 0o600 },
+    );
     git(["update-ref", "refs/remotes/origin/main", expected.baseSha]);
   } else {
     git(["init", "-q"]);

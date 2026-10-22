@@ -4905,10 +4905,25 @@ require('node:module').syncBuiltinESMExports();`,
         }
         expect(lstatSync(path.join(reused.receiver, "mode.sh")).mode & 0o100).toBe(0o100);
         expectFileText(deletionReferent, "canary.txt", "private referent\n");
-        expect(git(reused.receiver, ["show", `${restoredCommit}:restored/old.txt`])).toBe(
-          restored.trim(),
-        );
+        expect(git(reused.receiver, ["cat-file", "-t", restoredCommit])).toBe("commit");
+        expect(git(reused.receiver, ["cat-file", "-t", `${restoredCommit}^{tree}`])).toBe("tree");
         expect(git(reused.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
+        expect(git(reused.receiver, ["config", "--get", "remote.origin.promisor"])).toBe("true");
+        expect(git(reused.receiver, ["config", "--get", "remote.origin.partialclonefilter"])).toBe(
+          "blob:none",
+        );
+        expect(
+          readdirSync(path.join(reused.receiver, ".git/objects/pack")).some((file) =>
+            file.endsWith(".promisor"),
+          ),
+        ).toBe(true);
+        const restoredBlobLookup = runCommand("git", ["cat-file", "-e", restoredBlob], {
+          cwd: reused.receiver,
+          env: { ...env, GIT_NO_LAZY_FETCH: "1" },
+          timeout: 10_000,
+        });
+        expect(restoredBlobLookup.error, failureDetail(restoredBlobLookup)).toBeUndefined();
+        expect(restoredBlobLookup.status, failureDetail(restoredBlobLookup)).toBe(1);
         const danglingLookup = runCommand("git", ["cat-file", "-e", dangling], {
           cwd: reused.receiver,
           timeout: 10_000,
@@ -5682,9 +5697,8 @@ require('node:module').syncBuiltinESMExports();`,
         expectFileText(imported.receiver, "newer-private.ignored", "changed private bytes\n");
       }
       expect(git(imported.receiver, ["rev-parse", "HEAD^"])).toBe(base);
-      expect(git(imported.receiver, ["show", `${restoredCommit}:restored/old.txt`])).toBe(
-        restored.trim(),
-      );
+      expect(git(imported.receiver, ["cat-file", "-t", restoredCommit])).toBe("commit");
+      expect(git(imported.receiver, ["cat-file", "-t", `${restoredCommit}^{tree}`])).toBe("tree");
       expect(git(imported.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
       if (alias) {
         expect(git(imported.receiver, ["rev-parse", alias])).toBe(base);
