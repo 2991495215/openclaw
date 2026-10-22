@@ -153,11 +153,11 @@ function ScratchFields(props: {
   function request(content?: string | null) {
     const client = props.scope.gateway.snapshot.client;
     const snapshot = view.snapshot;
-    const saving = content !== undefined;
+    const isSave = content !== undefined;
     if (!client || !props.scope.jobId || pending || !isCurrent()) {
       return undefined;
     }
-    if (saving && (!snapshot || view.conflict)) {
+    if (isSave && (!snapshot || view.conflict)) {
       return undefined;
     }
     if (typeof content === "string" && view.redacted) {
@@ -176,12 +176,12 @@ function ScratchFields(props: {
     // Guard duplicate admission synchronously; signals publish on the next Solid flush.
     pending = true;
     setView((state) => {
-      state.loading = !saving;
+      state.loading = !isSave;
       state.message = "";
     });
     return (async () => {
       try {
-        const result = saving
+        const result = isSave
           ? await client.request<CronScratchSetResult>("cron.scratch.set", {
               id: props.scope.jobId,
               content,
@@ -211,7 +211,7 @@ function ScratchFields(props: {
           state.draft = draft;
           state.redacted = draft !== raw;
           state.conflict = false;
-          state.message = saving
+          state.message = isSave
             ? t(content === null ? "cron.scratch.removed" : "cron.scratch.saved")
             : "";
         });

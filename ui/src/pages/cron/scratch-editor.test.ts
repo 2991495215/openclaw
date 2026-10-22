@@ -51,15 +51,15 @@ async function mount(request: (method: string, params?: unknown) => Promise<unkn
   return {
     editor,
     gateway,
-    setJobId(id: string) {
+    setJobId(this: void, id: string) {
       retire();
       setJobId(id);
     },
-    setGateway(next: ApplicationContext["gateway"] | null) {
+    setGateway(this: void, next: ApplicationContext["gateway"] | null) {
       retire();
       setGateway(next);
     },
-    unmount() {
+    unmount(this: void) {
       retire();
       view.unmount();
     },
