@@ -5,6 +5,8 @@ import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { registerBoardWebsiteEnglish } from "../locales/en-board-website.ts";
 import { registerBoardEnglish } from "../locales/en-board.ts";
 import { registerChatSessionEnglish } from "../locales/en-chat-session.ts";
+import { registerProviderUsageEnglish } from "../locales/en-provider-usage.ts";
+import { registerUsageEnglish } from "../locales/en-usage.ts";
 import { en } from "../locales/en.ts";
 import { loadLazyLocaleTranslation } from "./registry.ts";
 import { captureI18nStateForTesting } from "./translate.test-support.ts";
@@ -113,3 +115,46 @@ it.each([
     }
   },
 );
+
+it("loads optional usage copy without replacing shared labels or retained provider namespaces", async () => {
+  const restoreI18n = captureI18nStateForTesting();
+  const originalUsage = { ...en.usage };
+  const details = en.usage.details;
+  const providerUsage = en.usage.providerUsage;
+  const originalDetails = { ...details };
+  const originalOverview = { ...en.usage.overview };
+  const originalProviderUsage = { ...providerUsage };
+  try {
+    await i18n.setLocale("en");
+    expect(t("usage.details.collapse")).toBe("Collapse");
+    expect(t("usage.common.emptyValue")).toBe("—");
+    expect(t("usage.heatmap.title")).toBe("Token Activity");
+    expect(t("usage.details.noTimeline")).toBe("usage.details.noTimeline");
+    expect(t("usage.providerUsage.remaining")).toBe("usage.providerUsage.remaining");
+
+    registerEnglishCatalog(registerProviderUsageEnglish);
+    expect(t("usage.providerUsage.remaining", { percent: "75" })).toBe("75% left");
+    expect(t("usage.details.noTimeline")).toBe("usage.details.noTimeline");
+
+    registerEnglishCatalog(registerUsageEnglish);
+    expect(t("usage.details.noTimeline")).toBe("No timeline data");
+    expect(t("usage.details.collapse")).toBe("Collapse");
+    expect(en.usage.details).toBe(details);
+    expect(en.usage.providerUsage).toBe(providerUsage);
+  } finally {
+    for (const [target, original] of [
+      [en.usage, originalUsage],
+      [details, originalDetails],
+      [en.usage.overview, originalOverview],
+      [providerUsage, originalProviderUsage],
+    ]) {
+      for (const key of Object.keys(target)) {
+        if (!Object.hasOwn(original, key)) {
+          Reflect.deleteProperty(target, key);
+        }
+      }
+      Object.assign(target, original);
+    }
+    await restoreI18n();
+  }
+});

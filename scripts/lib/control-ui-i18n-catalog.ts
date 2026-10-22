@@ -144,6 +144,7 @@ const sourceFiles = [
   "en-tool-diagnostics.ts",
   "en-transcripts.ts",
   "en-usage.ts",
+  "en-provider-usage.ts",
 ];
 
 export function loadControlUiStartupCatalog(): TranslationMap {

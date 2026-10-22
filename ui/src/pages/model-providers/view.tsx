@@ -13,6 +13,7 @@ import {
   SettingsStatus,
 } from "../../components/solid/settings-ui.tsx";
 import { SettingsWorkspace } from "../../components/solid/settings-workspace.tsx";
+import { registerProviderUsageEnglish } from "../../i18n/locales/en-provider-usage.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { formatTimeMs } from "../../lib/format.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
@@ -37,6 +38,7 @@ import {
 import type { ModelProvidersViewProps } from "./view-types.ts";
 
 registerEnglishCatalog(registerSettingsEnglish);
+registerEnglishCatalog(registerProviderUsageEnglish);
 
 function AddProvider(props: ModelProvidersViewProps) {
   const busy = () => Boolean(props.busy.add);
