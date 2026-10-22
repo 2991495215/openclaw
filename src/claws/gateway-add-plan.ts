@@ -1,6 +1,15 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
-import type { ClawLifecyclePlanResult } from "../../packages/gateway-protocol/src/schema/claws.js";
+import { Value } from "typebox/value";
+import {
+  ClawPluginGrantsByIdSchema,
+  type ClawLifecyclePlanResult,
+  type ClawPluginReview,
+} from "../../packages/gateway-protocol/src/schema/claws.js";
+import {
+  PluginDeclaredSurfaceSchema,
+  PluginOperatorGrantsSchema,
+} from "../../packages/gateway-protocol/src/schema/plugins.js";
 import {
   listAgentIds,
   resolveAgentConfig,
@@ -10,8 +19,10 @@ import { resolveCanonicalWorkspacePath } from "../agents/workspace-state-identit
 import { resolveStateDir } from "../config/paths.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ClawHubFetchOptions } from "../infra/clawhub-client.js";
+import { normalizeClawHubSha256Integrity } from "../infra/clawhub-integrity.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import { isPathInside } from "../infra/path-guards.js";
+import { computeDeclaredSurfaceHash } from "../plugins/capability-summary.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { selectNextClawAgentId } from "./add-agent-id.js";
 import {
@@ -22,7 +33,6 @@ import {
 import { bindClawLifecycleTrust, projectClawAddPlan } from "./gateway-plan-projection.js";
 import { buildClawAddPlan } from "./lifecycle.js";
 import { preflightClawPackage } from "./packages.js";
-import { projectClawPluginCapabilityReviews } from "./plugin-capability-review.js";
 import type { ClawAddPlan, ClawPackagePreflight, ClawReadResult } from "./types.js";
 
 type VerifiedClawSource = Extract<ClawReadResult, { ok: true }>;
@@ -119,7 +129,46 @@ export function projectGatewayClawAddPlan(
   trust: ClawHubClawTrust,
   config: OpenClawConfig,
 ): ClawLifecyclePlanResult {
-  const pluginReviews = projectClawPluginCapabilityReviews(plan);
+  /** Project only facts already bound to the Add plan's integrity digest. */
+  const pluginReviews: ClawPluginReview[] = plan.actions.flatMap((action) => {
+    if (action.kind !== "package" || action.details?.kind !== "plugin" || action.blocked) {
+      return [];
+    }
+    const details = action.details;
+    const integrity =
+      typeof details.integrity === "string"
+        ? normalizeClawHubSha256Integrity(details.integrity)
+        : null;
+    if (
+      typeof details.installId !== "string" ||
+      typeof details.ref !== "string" ||
+      typeof details.version !== "string" ||
+      !integrity ||
+      (details.ownerAction !== "install" && details.ownerAction !== "reuse") ||
+      !Value.Check(PluginDeclaredSurfaceSchema, details.declaredCapabilities) ||
+      !Value.Check(PluginOperatorGrantsSchema, details.capabilityGrants) ||
+      !Value.Check(ClawPluginGrantsByIdSchema, details.capabilityGrantsByPluginId) ||
+      Object.keys(details.capabilityGrantsByPluginId).length === 0
+    ) {
+      throw new Error(`Plugin action ${JSON.stringify(action.id)} has incomplete review evidence.`);
+    }
+    const declaredCapabilities = details.declaredCapabilities;
+    return [
+      {
+        actionId: action.id,
+        pluginId: details.installId,
+        ref: details.ref,
+        version: details.version,
+        ownerAction: details.ownerAction,
+        integrity,
+        declaredCapabilities,
+        capabilityGrants: details.capabilityGrants,
+        capabilityGrantsByPluginId: details.capabilityGrantsByPluginId,
+        reviewToken: computeDeclaredSurfaceHash(declaredCapabilities),
+        ...(typeof details.riskWarning === "string" ? { riskWarning: details.riskWarning } : {}),
+      },
+    ];
+  });
   return bindClawLifecycleTrust(
     projectClawAddPlan(plan, source.source.packageRoot, pluginReviews, config, source),
     trust,

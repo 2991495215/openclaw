@@ -6,9 +6,8 @@ import { GATEWAY_CLIENT_CAPS } from "../../packages/gateway-protocol/src/client-
 import { withinTest } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { applyClawAddPlanStateless } from "../claws/add-stateless.js";
-import { buildGatewayClawAddPlan } from "../claws/gateway-add-plan.js";
+import { buildGatewayClawAddPlan, projectGatewayClawAddPlan } from "../claws/gateway-add-plan.js";
 import { bindClawPluginInstallConsent } from "../claws/gateway-plugin-consent.js";
-import { projectClawPluginCapabilityReviews } from "../claws/plugin-capability-review.js";
 import { readClawManifestFile } from "../claws/reader.js";
 import { clearConfigCache, clearRuntimeConfigSnapshot } from "../config/config.js";
 import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
@@ -174,7 +173,18 @@ it("lets the installed plugin request review and gates its effect on Allow once 
     assert(source.ok, "Expected a valid Claw package");
     const plan = await buildGatewayClawAddPlan(source, { config, sourceMcpServers: {} });
     expect(plan.blockers).toEqual([]);
-    const review = projectClawPluginCapabilityReviews(plan)[0];
+    const review = projectGatewayClawAddPlan(
+      plan,
+      source,
+      {
+        riskAcknowledgementRequired: false,
+        trustRecord: {
+          clawhubTrustDisposition: "clean",
+          clawhubTrustCheckedAt: "2026-09-30T00:00:00.000Z",
+        },
+      },
+      config,
+    ).pluginReviews[0];
     assert(review?.pluginId === "lobster", "Expected an official lobster capability review");
     const pluginConsent = bindClawPluginInstallConsent([review], [review], () => {});
     const added = await applyClawAddPlanStateless(plan, {

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { computeDeclaredSurfaceHash } from "../plugins/capability-summary.js";
 import {
   buildGatewayClawAddPlan,
   projectGatewayClawAddPlan,
@@ -10,6 +11,7 @@ import {
 } from "./gateway-add-plan.js";
 import { plansMatchAcrossSourceRoots } from "./gateway-plan-projection.js";
 import { buildClawAddPlan } from "./lifecycle.js";
+import { emptyPluginCapabilityEvidence, packageInstallPlan } from "./packages.test-support.js";
 import { readClawManifestFile } from "./reader.js";
 import type { ClawReadResult } from "./types.js";
 
@@ -60,6 +62,61 @@ const buildPlan = (
 ) => buildGatewayClawAddPlan(source, { config, agentId, sourceMcpServers: {} });
 
 describe("Gateway Claw Add plan", () => {
+  const pkg = {
+    kind: "plugin" as const,
+    source: "clawhub" as const,
+    ref: "@owner/audit",
+    version: "2.0.1",
+    integrity: `sha256:${"a".repeat(64)}`,
+  };
+
+  it("projects integrity-bound review evidence for Gateway without installing", async () => {
+    const source = await readGatewayPackageFixture();
+    const planned = packageInstallPlan([pkg]);
+    planned.claw = source.source;
+    Object.assign(planned.actions[0]!.details!, { riskWarning: "Review this plugin." });
+
+    expect(projectGatewayClawAddPlan(planned, source, trust, {}).pluginReviews).toEqual([
+      expect.objectContaining({
+        actionId: "plugin:@owner/audit",
+        pluginId: "audit",
+        ref: pkg.ref,
+        version: pkg.version,
+        ownerAction: "install",
+        integrity: `sha256-${Buffer.from("a".repeat(64), "hex").toString("base64")}`,
+        declaredCapabilities: emptyPluginCapabilityEvidence.declared,
+        capabilityGrants: emptyPluginCapabilityEvidence.grants,
+        capabilityGrantsByPluginId: { audit: emptyPluginCapabilityEvidence.grants },
+        reviewToken: computeDeclaredSurfaceHash(emptyPluginCapabilityEvidence.declared),
+        riskWarning: "Review this plugin.",
+      }),
+    ]);
+  });
+
+  it("refuses to project an unblocked plugin without complete capability evidence", async () => {
+    const source = await readGatewayPackageFixture();
+    const planned = packageInstallPlan([pkg]);
+    planned.claw = source.source;
+    Object.assign(planned.actions[0]!.details!, {
+      declaredCapabilities: { tools: ["audit.read"] },
+    });
+
+    expect(() => projectGatewayClawAddPlan(planned, source, trust, {})).toThrow(
+      /incomplete review evidence/u,
+    );
+  });
+
+  it("refuses to project an unblocked plugin without artifact integrity", async () => {
+    const source = await readGatewayPackageFixture();
+    const planned = packageInstallPlan([pkg]);
+    planned.claw = source.source;
+    Object.assign(planned.actions[0]!.details!, { integrity: undefined });
+
+    expect(() => projectGatewayClawAddPlan(planned, source, trust, {})).toThrow(
+      /incomplete review evidence/u,
+    );
+  });
+
   it("compares relocated plan paths without treating sibling paths as source contents", () => {
     const previewRoot = path.resolve("preview-claw");
     const persistedRoot = path.resolve("persisted-claw");
