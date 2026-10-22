@@ -7,6 +7,7 @@ import { readPreparedSessionEntryRecords } from "./session-entry-prepared-source
 import { readSessionEntrySnapshotRequest } from "./session-transcript-hydration-read.worker.js";
 
 const source = vi.hoisted(() => ({ payloads: [] as string[] }));
+// mock-isolation: Feed exact JSON frames without SQLite; real framing, validation, and file I/O stay under test.
 vi.mock("./session-accessor.sqlite-read.js", () => ({
   readTranscriptExportSourceReadOnlySync: (
     _scope: unknown,
