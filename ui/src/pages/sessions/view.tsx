@@ -3,8 +3,16 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
-import { createDeferred } from "@solidjs/signals";
-import { createMemo, Errored, For, isPending, Loading, Repeat, Show } from "solid-js";
+import {
+  createDeferred,
+  createMemo,
+  Errored,
+  For,
+  isPending,
+  Loading,
+  Repeat,
+  Show,
+} from "solid-js";
 import { Icon } from "../../components/solid/icon.tsx";
 import { ContextNewSessionAction } from "../../components/solid/new-session-link.tsx";
 import {
@@ -30,6 +38,7 @@ import "../../styles/sessions.css";
 const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 const SKELETON_ROW_COUNT = 4;
+type RosterOutcome = { ok: true } | { ok: false; error: unknown };
 
 // Initial load renders shimmer rows instead of flashing the empty state
 // before the first sessions.list result arrives.
@@ -121,17 +130,38 @@ export function SessionsView(props: SessionsProps) {
   const rows = createMemo(() => props.result?.sessions ?? []);
   const archivedCount = createMemo(() => rows().filter((row) => row.archived === true).length);
   const transcriptSearch = createMemo(() => props.transcriptSearch);
-  const roster = createMemo(() => props.roster);
-  // Only page-admitted reads disable Refresh; background roster updates retain the control.
-  const pageRefresh = createDeferred(() => props.refresh, { loadingValue: null });
+  const receipt = createMemo(() => ({ promise: props.roster }), {
+    equals: (previous, next) => previous.promise === next.promise,
+  });
+  // Readiness may lag during revalidation; owner rows and controls must keep publishing.
+  const roster = createDeferred<RosterOutcome>(() => {
+    const promise = receipt().promise;
+    return promise
+      ? promise.then<RosterOutcome, RosterOutcome>(
+          () => ({ ok: true }),
+          (error: unknown) => ({ ok: false, error }),
+        )
+      : { ok: true };
+  });
+  const commandError = createMemo(() => {
+    if (props.error) {
+      // oxlint-disable-next-line typescript/only-throw-error -- Relay the owner's original error; the boundary formats it for display.
+      throw props.error;
+    }
+    return null;
+  });
   return (
     <SettingsPage wide>
-      <Show when={props.error}>
-        {(message) => (
-          <div class="sessions-error" role="alert">
-            {message()}
-          </div>
-        )}
+      <Show when={!props.commandPending}>
+        <Errored
+          fallback={(error) => (
+            <div class="sessions-error" role="alert">
+              {formatUiError(error())}
+            </div>
+          )}
+        >
+          {commandError()}
+        </Errored>
       </Show>
       <Errored
         fallback={(error) => (
@@ -140,7 +170,7 @@ export function SessionsView(props: SessionsProps) {
           </div>
         )}
       >
-        <Loading on={[props.roster]} fallback={null}>
+        <Loading fallback={null}>
           <SessionsRosterStatus readRoster={roster} />
         </Loading>
       </Errored>
@@ -163,7 +193,7 @@ export function SessionsView(props: SessionsProps) {
               class="btn btn--xs btn--icon sessions-toolbar__icon sessions-toolbar__refresh"
               type="button"
               aria-label={t("common.refresh")}
-              disabled={isPending(pageRefresh) || props.refreshDisabled}
+              disabled={props.refreshing || props.refreshDisabled}
               onClick={() => props.onRefresh()}
             >
               <Icon name="refresh" />
@@ -190,14 +220,21 @@ export function SessionsView(props: SessionsProps) {
         <Show when={props.transcriptSearch !== null}>
           <TranscriptSearchResults {...props} readSearch={transcriptSearch} />
         </Show>
-        <SessionsTable {...props} />
+        <SessionsTable {...props} readRoster={roster} />
       </SettingsSection>
     </SettingsPage>
   );
 }
 
-function SessionsRosterStatus(props: { readRoster: () => null }) {
-  return <>{props.readRoster()}</>;
+function SessionsRosterStatus(props: { readRoster: () => RosterOutcome }) {
+  const error = createMemo(() => {
+    const outcome = props.readRoster();
+    if (!outcome.ok) {
+      throw outcome.error;
+    }
+    return null;
+  });
+  return <>{error()}</>;
 }
 
 function SortHeader(
@@ -229,7 +266,7 @@ function SortHeader(
   );
 }
 
-function SessionsTable(props: SessionsProps) {
+function SessionsTable(props: SessionsProps & { readRoster: () => RosterOutcome }) {
   const rawRows = createMemo(() => props.result?.sessions ?? []);
   const pageSizeValue = createMemo(() => String(props.pageSize));
   const direction = createMemo(() => (props.sortDir === "asc" ? 1 : -1));
@@ -285,6 +322,35 @@ function SessionsTable(props: SessionsProps) {
   const paginatedKeys = createMemo(() =>
     groups() ? new Set(paginated().map((row) => row.key)) : null,
   );
+  function StatusRows() {
+    return (
+      <>
+        {isPending(props.readRoster) && !props.result ? (
+          <SkeletonRows columnCount={sessionsTableColumnCount(props)} />
+        ) : isPending(props.readRoster) ||
+          !props.readRoster().ok ||
+          props.error ||
+          !props.result ||
+          paginated().length > 0 ? undefined : (
+          <tr>
+            <td colspan={sessionsTableColumnCount(props)} class="data-table-empty-cell">
+              <div class="data-table-empty-state" role="status" aria-live="polite">
+                <div class="data-table-empty-state__message">
+                  <Icon name={emptyBecauseFiltered() ? "search" : "messageSquare"} />
+                  <span>{emptyStateMessage()}</span>
+                </div>
+                {emptyBecauseFiltered() ? (
+                  <button class="btn btn--sm" onClick={() => props.onClearFilters()}>
+                    {t("sessionsView.showAll")}
+                  </button>
+                ) : undefined}
+              </div>
+            </td>
+          </tr>
+        )}
+      </>
+    );
+  }
   return (
     <>
       {props.selectedKeys.size > 0 ? (
@@ -341,27 +407,16 @@ function SessionsTable(props: SessionsProps) {
             </tr>
           </thead>
           <tbody>
-            {props.loading && !props.result ? (
-              <SkeletonRows columnCount={sessionsTableColumnCount(props)} />
-            ) : paginated().length === 0 &&
-              (props.loading || props.error || !props.result) ? undefined : paginated().length ===
-              0 ? (
-              <tr>
-                <td colspan={sessionsTableColumnCount(props)} class="data-table-empty-cell">
-                  <div class="data-table-empty-state" role="status" aria-live="polite">
-                    <div class="data-table-empty-state__message">
-                      <Icon name={emptyBecauseFiltered() ? "search" : "messageSquare"} />
-                      <span>{emptyStateMessage()}</span>
-                    </div>
-                    {emptyBecauseFiltered() ? (
-                      <button class="btn btn--sm" onClick={() => props.onClearFilters()}>
-                        {t("sessionsView.showAll")}
-                      </button>
-                    ) : undefined}
-                  </div>
-                </td>
-              </tr>
-            ) : groups() ? (
+            <Loading
+              fallback={
+                !props.result ? (
+                  <SkeletonRows columnCount={sessionsTableColumnCount(props)} />
+                ) : null
+              }
+            >
+              <StatusRows />
+            </Loading>
+            {groups() ? (
               <For each={groups()} keyed={(group) => group.id}>
                 {(group) => (
                   <SessionGroup {...props} group={group()} paginatedKeys={paginatedKeys()} />

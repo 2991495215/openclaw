@@ -33,6 +33,7 @@ it("retains native label selection and undo without value writes during row meta
   const setter = vi.spyOn(input, "value", "set");
   setCurrent((previous) => ({
     ...previous,
+    refreshing: true,
     result: {
       ...result,
       sessions: [
