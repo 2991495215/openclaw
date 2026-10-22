@@ -1,11 +1,25 @@
 /* @vitest-environment jsdom */
 import { expect, it, vi } from "vitest";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
+import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { ChatDetailsSession } from "./chat-details-session.tsx";
 import type { ChatDetailsProps } from "./chat-details-types.ts";
+import type { SessionWorkspaceArtifacts } from "./chat-session-workspace-types.ts";
 
 async function mountOutputs() {
   const navigate = vi.fn();
+  const owner: SessionWorkspaceArtifacts = {
+    items: Array.from({ length: 5 }, (_, id) => ({
+      id: String(id),
+      title: `Demo ${id}.md`,
+      type: "document",
+      download: { mode: "bytes" as const },
+    })),
+    resolved: true,
+    loaded: true,
+    loading: false,
+    error: null,
+  };
   const value: ChatDetailsProps = {
     sessionKey: "agent:main:details",
     currentAgentId: "main",
@@ -18,13 +32,8 @@ async function mountOutputs() {
     },
     desktopDisclosures: { expanded: { outputs: true }, onExpandedChange: vi.fn() },
     outputs: {
-      artifacts: Array.from({ length: 5 }, (_, id) => ({
-        id: String(id),
-        title: `Demo ${id}.md`,
-        type: "document",
-        download: { mode: "bytes" as const },
-      })),
-      artifactsLoading: false,
+      artifacts: owner.items,
+      artifactRead: owner,
       artifactsError: null,
       dashboard: null,
       dashboardError: null,
@@ -36,26 +45,31 @@ async function mountOutputs() {
   };
   const view = mountSolid(() => <ChatDetailsSession props={value} presented desktop />);
   const element = view.container.querySelector("openclaw-chat-details-session")!;
-  await element.updateComplete;
+  await waitForSolid(() => expect(element.querySelector(".chat-outputs__view-all")).not.toBeNull());
   const button = element.querySelector<HTMLButtonElement>(".chat-outputs__view-all")!;
   expect(button).not.toBeNull();
-  return { element, button, value, navigate };
+  return { element, button, value, navigate, owner };
 }
 
 it("opens Files through the current callback when Outputs refreshes before the visible button settles", async () => {
-  const { element, button, value, navigate } = await mountOutputs();
+  const { element, button, value, navigate, owner } = await mountOutputs();
   button.click();
   expect(navigate).toHaveBeenCalledOnce();
   navigate.mockClear();
   const refreshed = vi.fn();
+  owner.readResult = new Promise<void>(() => {});
+  owner.loading = true;
+  owner.loaded = false;
   element.props = {
     ...value,
-    outputs: { ...value.outputs!, artifactsLoading: true, onViewAll: refreshed },
+    outputs: { ...value.outputs!, onViewAll: refreshed },
   };
   expect(element.querySelector(".chat-outputs__view-all")).toBe(button);
   button.click();
   expect(refreshed).toHaveBeenCalledOnce();
   expect(navigate).not.toHaveBeenCalled();
+  await waitForSolid(() => expect(element.textContent).toContain("Updating"));
+  expect(element.querySelector(".chat-outputs__view-all")).toBe(button);
 });
 
 it.each(["session", "agent", "incarnation", "visibility"] as const)(
