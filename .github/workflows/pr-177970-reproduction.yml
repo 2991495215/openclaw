@@ -49,7 +49,6 @@ jobs:
       MAIN_SHA: 74ca496bf40e1e702e824aa597620b9e1798efab
       CANDIDATE_SHA: fbb30e598cdad1e284058798bc6c6b5eaf80f2e5
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-      REUSED_MAIN_ARCHIVE: ${{ runner.temp }}/verified-main/app.zip
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -82,6 +81,8 @@ jobs:
           scripts/install-xcodegen.sh "$RUNNER_TEMP/saved-gateway-tools/bin"
           echo "$RUNNER_TEMP/saved-gateway-tools/bin" >> "$GITHUB_PATH"
       - name: Reproduce with the packaged runtime through the native menu and windows
+        env:
+          REUSED_MAIN_ARCHIVE: ${{ runner.temp }}/verified-main/app.zip
         shell: bash
         run: |
           /bin/bash scripts/pr-177970-reproduction/run.sh \
