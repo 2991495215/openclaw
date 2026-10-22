@@ -1,10 +1,12 @@
 /* @vitest-environment jsdom */
 
+import { createComponent, createSignal, Show } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import "../components/modal-dialog.tsx";
 import { setToastInNavDrawer } from "../app/navigation-surface.ts";
+import { ModalDialog } from "../components/modal-dialog.tsx";
 import { installDialogPolyfill } from "../test-helpers/modal-dialog.ts";
-import { flush } from "../test-helpers/solid-settle.ts";
+import { mountSolid } from "../test-helpers/mount-solid.ts";
+import { flush, waitForSolid } from "../test-helpers/solid-settle.ts";
 import { showToast } from "./toast.ts";
 import "./toast-host.tsx";
 
@@ -89,6 +91,35 @@ describe("shared toast", () => {
     expect(host.isConnected).toBe(false);
     expect(document.body.childElementCount).toBe(0);
     expect(onDismiss).toHaveBeenCalledExactlyOnceWith("disconnected");
+  });
+
+  it("returns a borrowed toast to the shell when a Solid modal unmounts", async () => {
+    const shell = document.body.appendChild(document.createElement("div"));
+    shell.className = "shell";
+    const host = shell.appendChild(document.createElement("openclaw-toast-host"));
+    await settleHost(host);
+    const [open, setOpen] = createSignal(true);
+    const view = mountSolid(() =>
+      createComponent(Show, {
+        get when() {
+          return open();
+        },
+        get children() {
+          return createComponent(ModalDialog, { label: "Review" });
+        },
+      }),
+    );
+    try {
+      await waitForSolid(() => expect(document.querySelector("dialog[open]")).not.toBeNull());
+      showToast({ message: "Submitted" });
+      await settleHost(host);
+      expect(host.closest("openclaw-modal-dialog")).not.toBeNull();
+      setOpen(false);
+      await waitForSolid(() => expect(host.parentElement).toBe(shell));
+      expect(host.textContent).toContain("Submitted");
+    } finally {
+      view.unmount();
+    }
   });
 
   it("presents toasts in the outer modal after a nested modal closes", async () => {

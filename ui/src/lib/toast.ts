@@ -119,7 +119,13 @@ class ToastOwner {
       return;
     }
     connectedHosts.delete(this.host);
-    if (this.host.closest("openclaw-modal-dialog") && this.restorePresentationLayer()) {
+    const parent = this.host.parentElement;
+    // Solid can clear the modal's ancestry before the borrowed host disconnects.
+    const borrowed = parent && this.homeLayer && parent !== this.homeLayer;
+    if (
+      (this.host.closest("openclaw-modal-dialog") || borrowed) &&
+      this.restorePresentationLayer()
+    ) {
       return;
     }
     this.homeLayer = undefined;
