@@ -50,6 +50,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             app.terminate()
         }
         app.launch()
+        try await self.openPrimaryFromStatusItem(app)
         try await self.openSavedSettings(app)
         let add = app.buttons["Add Gateway"]
         try self.require(add.waitForExistence(timeout: 10), app: app, message: "Add Gateway is absent")
@@ -89,6 +90,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
         // keeping only the profile that the real settings UI just persisted.
         app.terminate()
         app.launch()
+        try await self.openPrimaryFromStatusItem(app)
         if entry == "settings" { try await self.openSavedSettings(app) }
         let initial = try await self.control("await-cold")
         XCTAssertEqual(initial["savedConnections"] as? Int, 0, "Saved Gateway was not cold; fixture is invalid")
@@ -116,10 +118,13 @@ final class SavedGatewayOpeningUITests: XCTestCase {
         self.capture(app, name: "\(stage)-\(entry)-pending")
         let observed = try await self.control("observe-cleanup")
         _ = try await self.control("release", method: "POST")
-        let target = app.windows.matching(NSPredicate(format: "label CONTAINS %@", "Reproduction server")).firstMatch
+        let target = native
+            ? app.windows.matching(NSPredicate(
+                format: "label == %@ OR title == %@", "Reproduction server", "Reproduction server")).firstMatch
+            : app.windows.containing(.staticText, identifier: "Saved Gateway ready").firstMatch
         let ready = native
             ? target.textViews["chat-message-input"]
-            : target.staticTexts["Synthetic Gateway ready"]
+            : target.staticTexts["Saved Gateway ready"]
         let opened = await self.waitUntilVisible(ready, timeout: 20)
         self.capture(app, name: "\(stage)-\(entry)-settled")
         let openingFinished = try await self.control("state")
@@ -218,6 +223,18 @@ final class SavedGatewayOpeningUITests: XCTestCase {
         }
         XCTAssertEqual(buttons.count, 1, "Expected one Open Window button in the synthetic server row")
         return try XCTUnwrap(buttons.first)
+    }
+
+    @MainActor
+    private func openPrimaryFromStatusItem(_ app: XCUIApplication) async throws {
+        let items = app.descendants(matching: .statusItem)
+        let status = items.firstMatch
+        let available = await self.waitUntilVisible(status, timeout: 10)
+        try self.require(available && items.count == 1, app: app, message: "Unique status item is not ready")
+        // This public click opens the dashboard after credential startup. The
+        // launch arguments select primary; no state is cleared during the case.
+        status.click()
+        app.activate()
     }
 
     @MainActor

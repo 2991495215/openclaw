@@ -46,7 +46,9 @@ function startGateway(port, saved) {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
       });
-      res.end("<!doctype html><title>Reproduction server</title><h1>Synthetic Gateway ready</h1>");
+      const title = saved ? "Reproduction server" : "Primary proof server";
+      const heading = saved ? "Saved Gateway ready" : "Primary Gateway ready";
+      res.end(`<!doctype html><title>${title}</title><h1>${heading}</h1>`);
       record("document", { saved });
       return;
     }
