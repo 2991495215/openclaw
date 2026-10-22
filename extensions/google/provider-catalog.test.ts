@@ -188,6 +188,16 @@ describe("google provider catalog", () => {
         thinkingLevelMap: { minimal: null },
       }),
       expect.objectContaining({
+        id: "gemini-3.8-flash",
+        name: "Gemini 3.8 Flash",
+        reasoning: true,
+        contextWindow: 1_048_576,
+        maxTokens: 65_536,
+        input: ["text", "image", "video"],
+        compat: { codeMode: "preferred" },
+        thinkingLevelMap: { minimal: null },
+      }),
+      expect.objectContaining({
         id: "gemini-4-argon",
         name: "Gemini 4 Argon",
         reasoning: true,
