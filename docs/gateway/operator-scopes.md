@@ -102,13 +102,16 @@ and session access are checked on every request. Publication always resolves the
 current Git remote again. Unavailable targets do not hide existing shared receipts.
 Reopen the chat or reconnect after the managed workspace changes to refresh its
 options. Personal account discovery and personal receipts still
-require `operator.read` and the authenticated owner. Identity, role, access grant,
+require ordinary read authority (`operator.read` or its non-enrolling read subset)
+and the authenticated owner. Identity, role, access grant,
 connection, and session visibility are rechecked before returning awaited reads.
 
 With `operator.sessions.write`, a requester can publish ordinary changes from
 sessions they created through the shared GitHub account. Workflow definition
-changes require the original requester's current full `operator.write`
-authority. Personal publication also requires `operator.write`. Every publication
+changes require the original requester's current ordinary write authority
+(`operator.write` or `operator.write.no-credential-enrollment`), rather than only
+session write access. Personal publication requires the same ordinary write
+authority. Every publication
 still requires current session authorization. See
 [GitHub connections](/concepts/user-model#github-connections).
 
