@@ -346,7 +346,7 @@ describe.skipIf(process.platform === "win32")("packaged QA bootstrap lifetime", 
         Node_Options: "--trace-warnings",
         OpenClaw_Build_Private_QA: "foreign",
         OpenClaw_Enable_Private_QA_Cli: "foreign",
-        QA_CLI_MARKER: "gateway",
+        QA_CLI_MARKER: "scenario",
       },
     });
     const env = {
@@ -359,7 +359,6 @@ describe.skipIf(process.platform === "win32")("packaged QA bootstrap lifetime", 
     await expect(
       runQaCli(env, ["message", "edit", "--json"], {
         json: true,
-        env: { QA_CLI_MARKER: "scenario" },
       }),
     ).resolves.toEqual({
       ownerPid: gateway.pid,

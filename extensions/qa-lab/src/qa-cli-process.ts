@@ -131,7 +131,7 @@ function parseQaCliJsonOutput(text: string, args: readonly string[]) {
 export async function runQaCli(
   env: Pick<QaSuiteRuntimeEnv, "gateway" | "repoRoot">,
   args: string[],
-  opts?: { timeoutMs?: number; json?: boolean; env?: NodeJS.ProcessEnv },
+  opts?: { timeoutMs?: number; json?: boolean },
 ) {
   const stdout = createQaChildOutputCapture();
   const command = env.gateway.cliCommand ?? {
@@ -144,7 +144,6 @@ export async function runQaCli(
     {
       cwd: command.cwd,
       baseEnv: env.gateway.runtimeEnv,
-      env: opts?.env,
       input: "",
       timeoutMs: resolveTimerTimeoutMs(opts?.timeoutMs, 60_000),
       killProcessTree: true,
