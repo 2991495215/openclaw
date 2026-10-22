@@ -5,12 +5,12 @@ export type {
   EmbeddedAgentMeta,
   EmbeddedAgentRunMeta,
   EmbeddedAgentRunResult,
-} from "./embedded-agent-runner.js";
+} from "./embedded-agent-runner/types.js";
+export { compactEmbeddedAgentSession } from "./embedded-agent-runner/compact.queued.js";
+export { runEmbeddedAgent } from "./embedded-agent-runner/run.js";
 export {
   abortAndDrainEmbeddedAgentRun,
   abortEmbeddedAgentRun,
-  compactEmbeddedAgentSession,
   isEmbeddedAgentRunHandleActive,
   resolveActiveEmbeddedRunSessionIdBySessionFile,
-  runEmbeddedAgent,
-} from "./embedded-agent-runner.js";
+} from "./embedded-agent-runner/runs.js";
