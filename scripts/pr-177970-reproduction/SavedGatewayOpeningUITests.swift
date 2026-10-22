@@ -107,7 +107,12 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             saved.click()
             _ = try await self.control("await-held")
         }
-        XCTAssertTrue(app.menuItems["Manage Gateways…"].waitForNonExistence(timeout: 5))
+        // AppKit retains closed menu items in its accessibility tree.
+        let menuClosed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == false"),
+            object: app.menuItems["Manage Gateways…"])
+        let closed = await XCTWaiter.fulfillment(of: [menuClosed], timeout: 5) == .completed
+        try self.require(closed, app: app, message: "Gateways menu remains interactive")
         self.capture(app, name: "\(stage)-\(entry)-pending")
         let observed = try await self.control("observe-cleanup")
         _ = try await self.control("release", method: "POST")
