@@ -1,4 +1,4 @@
-import { createMemo, Errored, lazy, Loading, onCleanup, onSettled, Show } from "solid-js";
+import { createMemo, Errored, lazy, Loading, onSettled, Show } from "solid-js";
 import type { SolidRouteProps } from "../../app-route-types.tsx";
 import { createGatewayControlUiReloadOptions } from "../../app/gateway-control-ui-reload.ts";
 import { reloadAfterRenderErrorOnce } from "../../app/stale-chunk-reload.ts";
@@ -335,9 +335,10 @@ function renderPageContent(host: PageHost) {
       />
     </NewSessionComposerTextareaContext>
   );
-  // Bind gateway facts before the first child read; teardown must also cover pre-settle disposal.
-  owner.connect();
-  onCleanup(() => owner.disconnect());
+  onSettled(() => {
+    owner.connect();
+    return () => owner.disconnect();
+  });
   onSettled(() => {
     const document = host.ownerDocument;
     const stops = [
