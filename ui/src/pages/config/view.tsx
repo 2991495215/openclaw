@@ -5,6 +5,8 @@ import {
   createSignal,
   Errored,
   For,
+  isPending,
+  latest,
   Loading,
   Show,
   untrack,
@@ -240,7 +242,6 @@ export function Config(props: ConfigProps) {
       configBusy,
       formBusy,
       mutationAllowed,
-      showSchemaLoading: props.schemaLoading && !analysis.schema,
       showSectionTabs,
       showToolbar,
       showValidityWarning,
@@ -252,6 +253,33 @@ export function Config(props: ConfigProps) {
       sensitiveCount,
     };
   });
+  const schemaRead = createMemo(() => ({ completion: props.schemaRead }), {
+    equals: (previous, next) => previous.completion === next.completion,
+  });
+  const hasSchema = createMemo(() => Boolean(props.schema));
+  const readSchema = () => {
+    const hasAcceptedSchema = hasSchema();
+    return schemaRead().completion?.then((result) => {
+      if (!result.ok && !hasAcceptedSchema) {
+        throw new Error(result.error);
+      }
+      return result.ok ? undefined : result.error;
+    });
+  };
+  const schemaReady = createMemo(readSchema);
+  const readSchemaReady = () => (hasSchema() ? latest(schemaReady) : schemaReady());
+  function SchemaError(errorProps: { message: string; onRetry: () => void }) {
+    return (
+      <div class="config-content-callout">
+        <div class="callout danger" role="alert">
+          {errorProps.message}{" "}
+          <button type="button" class="btn btn--sm" onClick={() => errorProps.onRetry()}>
+            {t("common.retry")}
+          </button>
+        </div>
+      </div>
+    );
+  }
   function RawEditor() {
     const [pending, setPending] = createOptimistic<"save" | "discard" | "open" | null>(null);
     const presentCommand = action(function* (
@@ -672,21 +700,44 @@ export function Config(props: ConfigProps) {
                 state().include?.has("__appearance__") ? (
                   <AppearanceSection {...props} />
                 ) : null}
-                {state().showSchemaLoading ? (
-                  <div class="config-loading">
-                    <div class="config-loading__spinner" />
-                    <span>{t("configView.loadingSchema")}</span>
-                  </div>
-                ) : (
-                  <FormEditor />
-                )}
-                {state().showSetup && !state().showSchemaLoading ? (
-                  <SetupSection
-                    schema={state().setupSchema!}
-                    config={props}
-                    disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
-                  />
-                ) : null}
+                <Errored
+                  fallback={(error, reset) => (
+                    <SchemaError
+                      message={formatUiError(error())}
+                      onRetry={() => {
+                        props.onRetrySchema?.();
+                        reset();
+                      }}
+                    />
+                  )}
+                >
+                  <Loading
+                    on={hasSchema() ? undefined : schemaRead()}
+                    fallback={
+                      <div class="config-loading" aria-busy="true">
+                        <div class="config-loading__spinner" />
+                        <span>{t("configView.loadingSchema")}</span>
+                      </div>
+                    }
+                  >
+                    <Show when={readSchemaReady()}>
+                      {(message) => (
+                        <SchemaError message={message()} onRetry={() => props.onRetrySchema?.()} />
+                      )}
+                    </Show>
+                    <span class="sr-only" role="status">
+                      {isPending(schemaReady) ? t("configView.loadingSchema") : ""}
+                    </span>
+                    <FormEditor />
+                    {state().showSetup ? (
+                      <SetupSection
+                        schema={state().setupSchema!}
+                        config={props}
+                        disabled={state().formBusy || !props.formValue || !state().mutationAllowed}
+                      />
+                    ) : null}
+                  </Loading>
+                </Errored>
               </>
             ) : (
               <RawEditor />
