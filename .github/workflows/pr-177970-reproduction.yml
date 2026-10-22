@@ -49,7 +49,7 @@ jobs:
           corepack enable
           scripts/install-xcodegen.sh "$RUNNER_TEMP/saved-gateway-tools/bin"
           echo "$RUNNER_TEMP/saved-gateway-tools/bin" >> "$GITHUB_PATH"
-      - name: Reproduce through the real native menu and windows
+      - name: Reproduce with the packaged runtime through the native menu and windows
         shell: bash
         run: |
           /bin/bash scripts/pr-177970-reproduction/run.sh \

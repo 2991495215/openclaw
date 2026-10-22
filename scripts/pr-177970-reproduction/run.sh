@@ -52,6 +52,7 @@ export TEST_RUNNER_OPENCLAW_PROOF_APP="$preflight"
 xcodebuild "${xcode_args[@]}" test-without-building \
   -only-testing:SavedGatewayProofUITests/SavedGatewayOpeningUITests/testDesktopPreflight \
   -resultBundlePath "$output/preflight.xcresult" > "$output/preflight.log" 2>&1
+xcrun xcresulttool export attachments --path "$output/preflight.xcresult" --output-path "$output/preflight-attachments"
 
 git -C "$proof_repo" fetch --no-tags --depth=1 origin "$MAIN_SHA" "$CANDIDATE_SHA"
 for stage in main candidate; do
@@ -86,33 +87,31 @@ PY
   (
     cd "$checkout"
     corepack prepare "$(node -p 'require("./package.json").packageManager')" --activate
-    pnpm install --frozen-lockfile --prefer-offline --optional \
-      --filter '@openclaw/mermaid-renderer...' --filter '@openclaw/gateway-protocol...'
-    node scripts/prepare-apple-mermaid.mjs
+    pnpm install --frozen-lockfile --prefer-offline
     git diff --exit-code
+    git diff --cached --exit-code
     test "$(git write-tree)" = "$expected_tree"
     test -z "$(git ls-files --others --exclude-standard -- apps/macos/Sources apps/shared)"
-    swift build --package-path apps/macos --build-system native --product OpenClaw \
-      --disable-keychain --disable-netrc --disable-index-store --jobs 3
+    # Startup runs the matching credential Doctor before enabling the app UI.
+    # Use the maintained package owner so that runtime and native bytes agree.
+    BUILD_CONFIG=debug BUILD_ARCHS="$(uname -m)" \
+      BUNDLE_ID=ai.openclaw.mac.saved-gateway-proof.debug \
+      SIGN_IDENTITY=- ALLOW_ADHOC_SIGNING=1 \
+      OPENCLAW_SKIP_MLX_TTS=1 SKIP_PNPM_INSTALL=1 \
+      OPENCLAW_PACKAGE_APP_ROOT="$checkout/dist/OpenClawSavedGatewayProof.app" \
+      /bin/bash scripts/package-mac-app.sh
   ) > "$output/$stage/build.log" 2>&1
-  products="$(swift build --package-path "$checkout/apps/macos" --build-system native --show-bin-path)"
-  app="$scratch/$stage-OpenClaw.app"
-  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
-  cp "$products/OpenClaw" "$app/Contents/MacOS/OpenClaw"
-  cp "$checkout/apps/macos/Sources/OpenClaw/Resources/Info.plist" "$app/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier ai.openclaw.mac.saved-gateway-proof' "$app/Contents/Info.plist"
-  for resource in "$products/"*.bundle; do
-    [[ ! -d $resource ]] || cp -R "$resource" "$app/Contents/Resources/"
-  done
-  sparkle="$checkout/apps/macos/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
-  test -d "$sparkle"
-  cp -R "$sparkle" "$app/Contents/Frameworks/"
-  compat="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx/libswiftCompatibilitySpan.dylib"
-  [[ ! -f $compat ]] || cp "$compat" "$app/Contents/Frameworks/"
-  codesign --force --deep --sign - "$app" > "$output/$stage/signing.log" 2>&1
-  shasum -a 256 "$products/OpenClaw" "$app/Contents/MacOS/OpenClaw" > "$output/$stage/executable-hashes.txt"
+  app="$checkout/dist/OpenClawSavedGatewayProof.app"
+  runtime="$app/Contents/Resources/runtime"
+  test -x "$app/Contents/MacOS/OpenClaw"
+  test -x "$runtime/bin/bun"
+  test -f "$runtime/lib/node_modules/openclaw/openclaw.mjs"
+  test "$(/usr/libexec/PlistBuddy -c 'Print :OpenClawGitCommit' "$app/Contents/Info.plist")" = "$revision"
+  codesign --verify --deep --strict "$app" > "$output/$stage/signing.log" 2>&1
+  shasum -a 256 "$app/Contents/MacOS/OpenClaw" "$runtime/bin/bun" > "$output/$stage/executable-hashes.txt"
   test "$(git -C "$checkout" write-tree)" = "$expected_tree"
   git -C "$checkout" diff --exit-code
+  git -C "$checkout" diff --cached --exit-code
   test -z "$(git -C "$checkout" ls-files --others --exclude-standard -- apps/macos/Sources apps/shared)"
 
   fixture="$scratch/$stage-fixture"
@@ -157,7 +156,6 @@ JS
       export TEST_RUNNER_OPENCLAW_PROOF_HOME="$app_home"
       export TEST_RUNNER_OPENCLAW_PROOF_STATE="$case_state/state"
       export TEST_RUNNER_OPENCLAW_PROOF_CONFIG="$case_state/state/openclaw.json"
-      export TEST_RUNNER_OPENCLAW_PROOF_FRAMEWORKS="$app/Contents/Frameworks:$products"
       export TEST_RUNNER_OPENCLAW_PROOF_STAGE="$stage"
       export TEST_RUNNER_OPENCLAW_PROOF_NATIVE="$native"
       export TEST_RUNNER_OPENCLAW_PROOF_ENTRY="$entry"

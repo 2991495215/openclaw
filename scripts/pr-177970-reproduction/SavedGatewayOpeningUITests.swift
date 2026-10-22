@@ -39,7 +39,6 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             "OPENCLAW_CONFIG_PATH": self.setting("OPENCLAW_PROOF_CONFIG"),
             "OPENCLAW_PROFILE": "gatewayproof",
             "NSUnbufferedIO": "YES",
-            "DYLD_FRAMEWORK_PATH": self.setting("OPENCLAW_PROOF_FRAMEWORKS"),
         ]
         defer {
             let tree = XCTAttachment(string: app.debugDescription)
@@ -49,33 +48,33 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             app.terminate()
         }
         app.launch()
-        self.openSavedSettings(app)
+        try await self.openSavedSettings(app)
         let add = app.buttons["Add Gateway"]
-        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        try self.require(add.waitForExistence(timeout: 10), app: app, message: "Add Gateway is absent")
         add.click()
         let name = app.textFields["Studio"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        try self.require(name.waitForExistence(timeout: 5), app: app, message: "Gateway name field is absent")
         name.click()
         name.typeText("Reproduction server")
         let address = app.textFields["gateway.example.com"]
         address.click()
         address.typeText("ws://127.0.0.1:19878")
         let credentials = app.disclosureTriangles["Token or password"]
-        XCTAssertTrue(credentials.exists)
+        try self.require(credentials.exists, app: app, message: "Credentials disclosure is absent")
         credentials.click()
         let token = app.secureTextFields.element(boundBy: 0)
-        XCTAssertTrue(token.waitForExistence(timeout: 5))
+        try self.require(token.waitForExistence(timeout: 5), app: app, message: "Token field is absent")
         token.click()
         token.typeText("synthetic-saved-gateway-token")
         app.buttons["Connect"].click()
-        XCTAssertTrue(
+        try self.require(
             app.staticTexts["Reproduction server"].waitForExistence(timeout: 10),
-            "Saved profile did not commit")
+            app: app, message: "Saved profile did not commit")
         // Saving legitimately opens a window. Restart to obtain a cold fleet,
         // keeping only the profile that the real settings UI just persisted.
         app.terminate()
         app.launch()
-        if entry == "settings" { self.openSavedSettings(app) }
+        if entry == "settings" { try await self.openSavedSettings(app) }
         let initial = try await self.control("await-cold")
         XCTAssertEqual(initial["savedConnections"] as? Int, 0, "Saved Gateway was not cold; fixture is invalid")
         _ = try await self.control("arm", method: "POST")
@@ -84,10 +83,10 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             let open = try self.savedOpenButton(app)
             open.click()
             _ = try await self.control("await-held")
-            self.openGatewayMenu(app)
+            try await self.openGatewayMenu(app)
             app.typeKey(.escape, modifierFlags: [])
         } else {
-            self.openGatewayMenu(app)
+            try await self.openGatewayMenu(app)
             let saved = app.menuItems["Reproduction server"]
             XCTAssertTrue(saved.waitForExistence(timeout: 5))
             saved.click()
@@ -118,7 +117,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             _ = try await self.control("checkpoint", method: "POST")
             target.click()
             app.typeKey("m", modifierFlags: .command)
-            self.openGatewayMenu(app)
+            try await self.openGatewayMenu(app)
             app.typeKey(.escape, modifierFlags: [])
             let minimized = try await self.control("observe-cleanup")
             let minimizedEvents = minimized["events"] as? [[String: Any]] ?? []
@@ -128,7 +127,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
             result["closedWhileMinimized"] = closedWhileMinimized
             self.capture(app, name: "\(stage)-\(entry)-minimized")
 
-            self.openGatewayMenu(app)
+            try await self.openGatewayMenu(app)
             app.menuItems["Reproduction server"].click()
             let restored = await self.waitUntilVisible(ready, timeout: 15)
             result["restoredAfterMinimize"] = restored
@@ -136,17 +135,17 @@ final class SavedGatewayOpeningUITests: XCTestCase {
                 target.click()
                 app.typeKey("w", modifierFlags: .command)
                 result["windowClosed"] = target.waitForNonExistence(timeout: 5)
-                self.openGatewayMenu(app)
+                try await self.openGatewayMenu(app)
                 app.typeKey(.escape, modifierFlags: [])
                 let closed = try await self.control("observe-cleanup")
                 result["connectionsAfterClose"] = closed["savedConnections"]
-                self.openGatewayMenu(app)
+                try await self.openGatewayMenu(app)
                 app.menuItems["Reproduction server"].click()
                 let reopened = await self.waitUntilVisible(ready, timeout: 15)
                 result["reopened"] = reopened
                 self.capture(app, name: "\(stage)-\(entry)-reopened")
                 if reopened {
-                    self.openSavedSettings(app)
+                    try await self.openSavedSettings(app)
                     let remove = app.buttons["Remove Reproduction server"]
                     XCTAssertTrue(remove.waitForExistence(timeout: 5))
                     remove.click()
@@ -202,20 +201,45 @@ final class SavedGatewayOpeningUITests: XCTestCase {
     }
 
     @MainActor
-    private func openGatewayMenu(_ app: XCUIApplication) {
+    private func openGatewayMenu(_ app: XCUIApplication) async throws {
         app.activate()
         let menu = app.menuBars.menuBarItems["Gateways"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        let ready = await self.waitUntilVisible(menu, timeout: 10)
+        self.captureDiagnostics(app, name: "before-gateways-menu")
+        try self.require(ready, app: app, message: "Gateways menu is not hittable after app activation")
         menu.click()
     }
 
     @MainActor
-    private func openSavedSettings(_ app: XCUIApplication) {
-        self.openGatewayMenu(app)
+    private func openSavedSettings(_ app: XCUIApplication) async throws {
+        try await self.openGatewayMenu(app)
         let manage = app.menuItems["Manage Gateways…"]
-        XCTAssertTrue(manage.waitForExistence(timeout: 5))
+        let ready = await self.waitUntilVisible(manage, timeout: 5)
+        try self.require(ready, app: app, message: "Manage Gateways is not hittable")
         manage.click()
-        XCTAssertTrue(app.buttons["Add Gateway"].waitForExistence(timeout: 10))
+        try self.require(
+            app.buttons["Add Gateway"].waitForExistence(timeout: 10),
+            app: app, message: "Gateway settings did not open")
+    }
+
+    @MainActor
+    private func require(_ condition: Bool, app: XCUIApplication, message: String) throws {
+        guard condition else {
+            self.captureDiagnostics(app, name: "failed-precondition")
+            throw NSError(domain: "SavedGatewayProof", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+    }
+
+    @MainActor
+    private func captureDiagnostics(_ app: XCUIApplication, name: String) {
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        self.add(screenshot)
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "\(name)-accessibility-tree"
+        tree.lifetime = .keepAlways
+        self.add(tree)
     }
 
     @MainActor
