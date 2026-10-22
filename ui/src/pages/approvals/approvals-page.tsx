@@ -1,9 +1,10 @@
 import type { JSX } from "@solidjs/web";
 import {
-  Errored,
   For,
   Loading,
+  action,
   createMemo,
+  createOptimistic,
   createSignal,
   isPending,
   latest,
@@ -42,6 +43,7 @@ import { useApplication } from "../../lib/reactive/context.ts";
 import { formatDateTimeMs } from "../../lib/reactive/format.ts";
 import { useGatewayPage } from "../../lib/reactive/gateway-page.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
+import { ApprovalErrorNotice } from "./approval-error-notice.tsx";
 
 registerEnglishCatalog(registerApprovalsEnglish);
 
@@ -132,42 +134,6 @@ function Cell(props: { labelKey: string; value: JSX.Element; mono?: boolean }) {
   );
 }
 
-function ApprovalErrorNotice(props: {
-  error: string | null;
-  onRetry?: () => void;
-  retryDisabled?: boolean;
-}) {
-  const readError = () => {
-    if (props.error) {
-      throw new Error(props.error);
-    }
-    return null;
-  };
-  return (
-    <Errored
-      fallback={(error, reset) => (
-        <div class="callout danger" role="alert">
-          {formatUiError(error())}
-          {props.onRetry ? (
-            <button
-              class="btn btn--sm"
-              disabled={props.retryDisabled}
-              onClick={() => {
-                props.onRetry?.();
-                reset();
-              }}
-            >
-              {t("common.retry")}
-            </button>
-          ) : null}
-        </div>
-      )}
-    >
-      {readError()}
-    </Errored>
-  );
-}
-
 export function ApprovalsPage() {
   const context = useApplication();
   let disposed = false;
@@ -250,6 +216,22 @@ export function ApprovalsPage() {
     return null;
   };
   const loadingMore = () => isPending(historyRead) && view().loadKind === "more";
+  const revokePresentation = createMemo(() => {
+    const generation = requestGeneration();
+    const [saving, setSaving] = createOptimistic(false);
+    return { generation, saving, setSaving };
+  });
+  const presentRevoke = action(function* (
+    presentation: ReturnType<typeof revokePresentation>,
+    completion: Promise<void>,
+    retired: Promise<void>,
+  ) {
+    if (!disposed && presentation.generation === state.requestGeneration) {
+      presentation.setSaving(true);
+    }
+    yield Promise.race([completion, retired]);
+  });
+  const revokeSaving = () => revokePresentation().saving();
   let stopEvents: (() => void) | undefined;
   useGatewayPage({
     getGateway: () => context.gateway,
@@ -286,7 +268,7 @@ export function ApprovalsPage() {
   });
 
   function resetHistory(clearData: boolean) {
-    // Retire presentation synchronously without cancelling the owner's requests.
+    // Retire pending presentation before replacing its request scope.
     presentationLifetime.resolve();
     presentationLifetime = Promise.withResolvers<void>();
     state.requestGeneration += 1;
@@ -468,29 +450,35 @@ export function ApprovalsPage() {
       return;
     }
     const isCurrent = () => isCurrentRequest(client, gateway, generation);
+    const presentation = revokePresentation();
+    const retired = presentationLifetime.promise;
     state.revokingGrantId = grantId;
-    publish();
-    try {
-      await client.request("exec.approval.grants.revoke", { grantId });
-      if (!isCurrent()) {
-        return;
-      }
-      state.grantsGeneration += 1;
-      const nowMs = Date.now();
-      state.grants = state.grants.map((grant) =>
-        grant.grantId === grantId ? { ...grant, revokedAtMs: nowMs } : grant,
-      );
-      state.grantsError = null;
-      publish();
-    } catch (error) {
-      if (isCurrent()) {
-        state.grantsError = formatUiError(error);
+    const completion = applyRevoke(client);
+    await presentRevoke(presentation, completion, retired);
+
+    async function applyRevoke(admittedClient: GatewayBrowserClient) {
+      try {
+        await admittedClient.request("exec.approval.grants.revoke", { grantId });
+        if (!isCurrent()) {
+          return;
+        }
+        state.grantsGeneration += 1;
+        const nowMs = Date.now();
+        state.grants = state.grants.map((grant) =>
+          grant.grantId === grantId ? { ...grant, revokedAtMs: nowMs } : grant,
+        );
+        state.grantsError = null;
         publish();
-      }
-    } finally {
-      if (isCurrent()) {
-        state.revokingGrantId = null;
-        publish();
+      } catch (error) {
+        if (isCurrent()) {
+          state.grantsError = formatUiError(error);
+          publish();
+        }
+      } finally {
+        if (isCurrent()) {
+          state.revokingGrantId = null;
+          publish();
+        }
       }
     }
   }
@@ -498,7 +486,7 @@ export function ApprovalsPage() {
   function GrantRow(props: { grant: ExecApprovalStandingGrant }) {
     const revokeLabel = () =>
       t(
-        view().revokingGrantId === props.grant.grantId
+        revokeSaving() && view().revokingGrantId === props.grant.grantId
           ? "standingGrants.revoking"
           : "standingGrants.revoke",
       );
@@ -519,7 +507,7 @@ export function ApprovalsPage() {
             <button
               class="btn btn--sm"
               aria-label={`${revokeLabel()}: ${props.grant.cronJobName ?? props.grant.cronJobId} — ${props.grant.command}`}
-              disabled={!view().connected || view().revokingGrantId !== null}
+              disabled={revokeSaving() || !view().connected}
               onClick={() => void revokeGrant(props.grant.grantId)}
             >
               {revokeLabel()}
