@@ -61,10 +61,6 @@ export function markAgentToolExecutionUnavailable<T extends object>(tool: T): T 
   return tool;
 }
 
-export function isAgentToolExecutionAvailable(tool: object): boolean {
-  return !availabilityBindings.get(tool)?.executionDenied;
-}
-
 /**
  * Keeps a tool's definition, so every turn of a session shares one prompt prefix,
  * while this turn may not run it.
