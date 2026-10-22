@@ -462,11 +462,28 @@ function continuationStatus(children) {
   };
 }
 
-function assertFailedArtifactProducersAreReusable(plan, status) {
+async function assertFailedArtifactProducersAreReusable(plan, status, client, operationDeadline) {
   if (!plan.candidate) {
     return;
   }
-  const consumed = status.failed.filter((child) => child.key.startsWith("artifact:"));
+  const consumed = [];
+  for (const child of status.failed.filter((entry) => entry.key === "artifact:npm")) {
+    const jobs = await client.getAttemptJobs(child.runId, child.effectiveRunAttempt, {
+      operationDeadline,
+    });
+    const preparation = jobs.filter(
+      (job) => job.name === "Prepare npm artifacts / Prepare publishable npm package",
+    );
+    // GitHub reruns only failed jobs. A successful preparation is carried forward
+    // without replacing the bytes already consumed by the candidate.
+    if (
+      preparation.length !== 1 ||
+      (preparation[0].status === "completed" && preparation[0].conclusion === "success")
+    ) {
+      continue;
+    }
+    consumed.push(child);
+  }
   if (consumed.length === 0) {
     return;
   }
@@ -1872,7 +1889,7 @@ export async function continueFailed(plan, rootRunId, reader, options = {}) {
       runKeys.set(producer.runId, `artifact:${producer.request.stage}`);
     }
     status = await inspectRecovery(plan, artifactProducers, client, { operationDeadline });
-    assertFailedArtifactProducersAreReusable(plan, status);
+    await assertFailedArtifactProducersAreReusable(plan, status, client, operationDeadline);
     for (const child of status.children) {
       const expectedAttempt = ownedAttempts.get(child.runId);
       if (expectedAttempt !== undefined) {

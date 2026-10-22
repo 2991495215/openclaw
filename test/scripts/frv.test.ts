@@ -502,17 +502,47 @@ describe("FRV continuation preflight", () => {
   it("refuses a consumed producer rerun before mutation and shows authenticated reuse", async () => {
     const fixture = artifactFixture("npm");
     fixture.producer.conclusion = "failure";
-    fixture.plan = {
+    fixture.client.getAttemptJobs = async () => [
+      {
+        ...job("Prepare npm artifacts / Prepare publishable npm package"),
+        conclusion: "failure",
+      },
+    ];
+    const consumedPlan = {
       ...fixture.plan,
       candidate: { producer: { runId: "606" } },
     };
 
-    await expect(continueFailed(fixture.plan, "77", fixture.client)).rejects.toThrow(
+    await expect(continueFailed(consumedPlan, "77", fixture.client)).rejects.toThrow(
       "artifact:npm producer 81 already supplied the sealed candidate evidence; rerunning cannot preserve those consumed immutable bytes. Dispatch a fresh all-group FRV with reuse_evidence=true to authenticate reuse instead.",
     );
     expect(fixture.client.rerunFailed).not.toHaveBeenCalled();
     expect(fixture.client.rerunParent).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { stage: "npm", carriedPreparation: true },
+    { stage: "docker", carriedPreparation: false },
+  ])(
+    "keeps consumed-candidate recovery for $stage producers that preserve bytes",
+    async ({ stage, carriedPreparation }) => {
+      const fixture = artifactFixture(stage);
+      fixture.producer.conclusion = "failure";
+      if (carriedPreparation) {
+        fixture.client.getAttemptJobs = async () => [
+          job("Prepare npm artifacts / Prepare publishable npm package"),
+        ];
+      }
+      const consumedPlan = {
+        ...fixture.plan,
+        candidate: { producer: { runId: "606" } },
+      };
+
+      await expect(
+        continueFailed(consumedPlan, "77", fixture.client, { dryRun: true }),
+      ).resolves.toMatchObject({ action: "would-rerun" });
+    },
+  );
 
   it("does not claim recovery for a failed candidate producer with undispatched consumers", async () => {
     const fixture = artifactFixture("candidate");
