@@ -9,7 +9,7 @@ import {
   createOptimistic,
   createSignal,
   isPending,
-  onCleanup,
+  onSettled,
 } from "solid-js";
 import type {
   WebSearchStatusParams,
@@ -109,12 +109,14 @@ export function SearchPage() {
     }
   }
   // Invalidate admitted tests and reads before config or selection changes can settle them.
-  const stopRuntime = runtimeView.subscribe(syncRuntime);
-  const stopSelection = selectionProjection.subscribe(syncAgent);
-  onCleanup(() => {
-    disposed = true;
-    stopRuntime();
-    stopSelection();
+  onSettled(() => {
+    const stopRuntime = runtimeView.subscribe(syncRuntime);
+    const stopSelection = selectionProjection.subscribe(syncAgent);
+    return () => {
+      disposed = true;
+      stopRuntime();
+      stopSelection();
+    };
   });
 
   function invalidateTest() {
