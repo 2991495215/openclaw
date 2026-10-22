@@ -39,7 +39,34 @@ import {
 } from "../../../helpers/openai-responses-sse.js";
 import { createDeferred, withinTest } from "../../../helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../helpers/temp-dir.js";
-import { isolatedGatewayEnv, messageText } from "./gateway-recovery.test-support.js";
+
+const isolatedGatewayEnv = {
+  OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
+  OPENCLAW_SKIP_BROWSER_CONTROL_SERVER: "1",
+  OPENCLAW_SKIP_CANVAS_HOST: "1",
+  OPENCLAW_SKIP_CHANNELS: "1",
+  OPENCLAW_SKIP_CRON: "1",
+  OPENCLAW_SKIP_GMAIL_WATCHER: "1",
+  OPENCLAW_SKIP_PROVIDERS: "1",
+  OPENCLAW_TEST_MINIMAL_GATEWAY: "1",
+};
+
+function messageText(message: { content?: unknown }): string {
+  if (typeof message.content === "string") {
+    return message.content.trim();
+  }
+  if (!Array.isArray(message.content)) {
+    return "";
+  }
+  return message.content
+    .flatMap((part) =>
+      part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+        ? [(part as { text: string }).text]
+        : [],
+    )
+    .join("\n")
+    .trim();
+}
 
 type ProviderRequest = {
   instructions?: string;
@@ -184,7 +211,7 @@ it(
     let jobId: string | undefined;
     let creator: GatewayClient | undefined;
     let gateway: Awaited<ReturnType<typeof startGatewayWithClient>> | undefined;
-    const envPatch = {
+    const envPatch: Record<string, string | undefined> = {
       ...isolatedGatewayEnv,
       HOME: home,
       OPENCLAW_STATE_DIR: stateDir,
