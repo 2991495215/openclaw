@@ -252,6 +252,7 @@ export function validateCandidateChangelog({
   const version = releaseNotesVersionForTag(tag);
   const releaseChangelog = loadReleaseNotesForTag({ rootDir, ref: targetSha, tag, version });
   return {
+    releaseNotesText: releaseChangelog.section,
     releaseNotesCheck: validateCandidateReleaseNotes({
       changelog: releaseChangelog.section,
       repository,
