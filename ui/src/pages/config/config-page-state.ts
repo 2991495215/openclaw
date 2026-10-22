@@ -201,6 +201,7 @@ export function createConfigPage(
     routeInitialized = true;
     retireCommands();
     if (pageId === "appearance" && nextPageId !== "appearance") {
+      context.theme.setPreview(null);
       customThemeImportOwner.retireImport();
       mediaDeviceOwner.retire();
     }
@@ -501,6 +502,8 @@ export function createConfigPage(
       onRawDiscard: () => runtimeConfig.discardDraft(),
       onOpenFile: () => runtimeConfig.openFile(),
       theme: settings().theme,
+      themePreview: context.theme.previewTheme,
+      setThemePreview: (theme: ThemeName | null) => context.theme.setPreview(theme),
       themeOverridden: themePref.overridden,
       themeProvenance: themePref.provenance,
       themeResetValue: themePref.resetValue ?? UI_APPEARANCE_DEFAULTS.theme,
@@ -758,6 +761,7 @@ export function createConfigPage(
     synchronize();
     return () => {
       commandLifetime.resolve();
+      context.theme.setPreview(null);
       subscriptions.forEach((stop) => stop());
       connected = false;
       customThemeImportOwner.retireImport();
