@@ -4861,6 +4861,9 @@ require('node:module').syncBuiltinESMExports();`,
         const first = receive("reused", sent);
         expect(first.result.status, failureDetail(first.result)).toBe(0);
         expect(git(first.receiver, ["rev-parse", "--is-shallow-repository"])).toBe("false");
+        const danglingPayload = path.join(root, "dangling-private-payload");
+        writeFileSync(danglingPayload, "prior private payload\n");
+        const dangling = git(first.receiver, ["hash-object", "-w", danglingPayload]);
         const capturedMode = git(first.receiver, ["ls-tree", "HEAD", "--", "mode.sh"]);
         expect(capturedMode).toMatch(/^100755 blob /u);
         const retained =
@@ -4905,6 +4908,12 @@ require('node:module').syncBuiltinESMExports();`,
           restored.trim(),
         );
         expect(git(reused.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
+        const danglingLookup = runCommand("git", ["cat-file", "-e", dangling], {
+          cwd: reused.receiver,
+          timeout: 10_000,
+        });
+        expect(danglingLookup.error, failureDetail(danglingLookup)).toBeUndefined();
+        expect(danglingLookup.status, failureDetail(danglingLookup)).toBe(1);
         git(reused.receiver, ["fsck", "--connectivity-only", "--no-dangling"]);
 
         // An existing shallow receiver has no complete history to retain. Preserve
@@ -4922,11 +4931,32 @@ require('node:module').syncBuiltinESMExports();`,
         expect(git(legacy.receiver, ["rev-parse", "HEAD^"])).toBe(base);
         expect(git(legacy.receiver, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
         expect(existsSync(path.join(legacy.receiver, ".git/objects/info/alternates"))).toBe(false);
-        for (const condition of ["missing ref", "missing base", "borrowed objects"] as const) {
+        for (const condition of [
+          "missing ref",
+          "missing base",
+          "borrowed objects",
+          "partial clone",
+        ] as const) {
           const fallback = receive(`prepared-${condition.replace(" ", "-")}`, sent, {
             prepareReceiver: (receiver) => {
               if (condition === "missing ref") {
                 git(receiver, ["update-ref", "-d", "refs/remotes/origin/main"]);
+                return;
+              }
+              if (condition === "partial clone") {
+                git(receiver, [
+                  "-c",
+                  "user.name=Transport Fixture",
+                  "-c",
+                  "user.email=transport@example.invalid",
+                  "commit",
+                  "--allow-empty",
+                  "-qm",
+                  "newer partial source",
+                ]);
+                git(receiver, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+                git(receiver, ["config", "extensions.partialclone", "origin"]);
+                git(receiver, ["config", "remote.origin.promisor", "true"]);
                 return;
               }
               rmSync(receiver, { recursive: true });
