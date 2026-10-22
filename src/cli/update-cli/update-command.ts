@@ -101,7 +101,10 @@ async function updateCommandWithRuntime(
         prepared.controlPlaneUpdateSentinelMeta?.completionOwner === "gateway-restart" || undefined,
     });
     const { updateStateNeedsInitialization } = await import("./update-command-initialization.js");
-    assertUpdatePackageActivationAdmission(root, { serviceRoot });
+    assertUpdatePackageActivationAdmission(root, {
+      serviceRoot,
+      dryRun: inputOpts.dryRun,
+    });
     const needsInitialization = await updateStateNeedsInitialization(env);
     const execute = (initialization?: InitializedUpdate) =>
       runAdmittedUpdate(
@@ -396,6 +399,7 @@ async function runResolvedUpdate(
   if (!schemaPreflight) {
     return;
   }
+  schemaPreflight.preflightNotes.push(...prepared.packageActivationNotes);
 
   if (opts.dryRun) {
     finishUpdateRun(run.runId, { status: "skipped", reason: "dry-run" }, { env: run.env });
