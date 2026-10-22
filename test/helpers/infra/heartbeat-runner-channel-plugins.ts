@@ -1,10 +1,5 @@
-// Heartbeat runner channel plugin fixtures build channel plugin contracts for tests.
-import type {
-  ChannelId,
-  ChannelMessagingAdapter,
-  ChannelOutboundAdapter,
-  ChannelPlugin,
-} from "../../../src/channels/plugins/types.public.js";
+// Telegram heartbeat channel plugin fixture for reply conversation tests.
+import type { ChannelOutboundAdapter } from "../../../src/channels/plugins/types.public.js";
 import {
   resolveOutboundSendDep,
   type OutboundSendDeps,
@@ -12,9 +7,6 @@ import {
 import { createOutboundTestPlugin } from "../../../src/test-utils/channel-plugins.js";
 import { parseTelegramTargetForTest } from "./telegram-targets.js";
 
-// Channel plugin fixtures used by heartbeat runner tests.
-
-type HeartbeatSendChannelId = "slack" | "telegram" | "whatsapp";
 type HeartbeatSendFn = (
   to: string,
   text: string,
@@ -22,11 +14,11 @@ type HeartbeatSendFn = (
 ) => Promise<Record<string, unknown>>;
 
 /** Create an outbound adapter that routes through heartbeat send deps. */
-function createHeartbeatOutboundAdapter(channelId: HeartbeatSendChannelId): ChannelOutboundAdapter {
+function createHeartbeatOutboundAdapter(): ChannelOutboundAdapter {
   const resolveSend = (deps: unknown) => {
-    const send = resolveOutboundSendDep<HeartbeatSendFn>(deps as OutboundSendDeps, channelId);
+    const send = resolveOutboundSendDep<HeartbeatSendFn>(deps as OutboundSendDeps, "telegram");
     if (!send) {
-      throw new Error(`Missing ${channelId} outbound send dependency`);
+      throw new Error("Missing telegram outbound send dependency");
     }
     return send;
   };
@@ -34,25 +26,14 @@ function createHeartbeatOutboundAdapter(channelId: HeartbeatSendChannelId): Chan
     deliveryMode: "direct",
     sendText: async ({ to, text, deps, cfg, accountId, replyToId, threadId, ...opts }) => {
       const send = resolveSend(deps);
-      const baseOptions = {
+      const sendOptions = {
         verbose: false,
         cfg,
         accountId,
+        ...(typeof threadId === "number" ? { messageThreadId: threadId } : {}),
+        ...(typeof replyToId === "string" ? { replyToMessageId: Number(replyToId) } : {}),
+        ...(opts.silent !== undefined ? { silent: opts.silent } : {}),
       };
-      const sendOptions =
-        channelId === "telegram"
-          ? {
-              ...baseOptions,
-              ...(typeof threadId === "number" ? { messageThreadId: threadId } : {}),
-              ...(typeof replyToId === "string" ? { replyToMessageId: Number(replyToId) } : {}),
-              ...(opts.silent !== undefined ? { silent: opts.silent } : {}),
-            }
-          : {
-              ...baseOptions,
-              ...opts,
-              ...(replyToId ? { replyToId } : {}),
-              ...(threadId !== undefined ? { threadId } : {}),
-            };
       return (await send(to, text, sendOptions)) as never;
     },
     sendMedia: async ({ to, text, mediaUrl, deps, cfg, accountId, ...opts }) => {
@@ -68,66 +49,17 @@ function createHeartbeatOutboundAdapter(channelId: HeartbeatSendChannelId): Chan
   };
 }
 
-/** Create a channel plugin fixture with heartbeat/outbound behavior. */
-function createHeartbeatChannelPlugin(params: {
-  id: HeartbeatSendChannelId;
-  label: string;
-  docsPath: string;
-  heartbeat?: ChannelPlugin["heartbeat"];
-  messaging?: ChannelMessagingAdapter;
-}): ChannelPlugin {
-  return {
-    ...createOutboundTestPlugin({
-      id: params.id as ChannelId,
-      label: params.label,
-      docsPath: params.docsPath,
-      outbound: createHeartbeatOutboundAdapter(params.id),
-      ...(params.messaging ? { messaging: params.messaging } : {}),
-    }),
-    ...(params.heartbeat ? { heartbeat: params.heartbeat } : {}),
-  };
-}
-
-/** Slack heartbeat channel fixture. */
-export const heartbeatRunnerSlackPlugin = createHeartbeatChannelPlugin({
-  id: "slack",
-  label: "Slack",
-  docsPath: "/channels/slack",
-});
-
 /** Telegram heartbeat channel fixture with thread preservation. */
-export const heartbeatRunnerTelegramPlugin = createHeartbeatChannelPlugin({
+export const heartbeatRunnerTelegramPlugin = createOutboundTestPlugin({
   id: "telegram",
   label: "Telegram",
   docsPath: "/channels/telegram",
+  outbound: createHeartbeatOutboundAdapter(),
   messaging: {
     inferTargetChatType: ({ to }) => {
       const target = parseTelegramTargetForTest(to);
       return target.chatType === "unknown" ? undefined : target.chatType;
     },
     preserveHeartbeatThreadIdForGroupRoute: true,
-  },
-});
-
-/** WhatsApp heartbeat channel fixture with readiness checks. */
-export const heartbeatRunnerWhatsAppPlugin = createHeartbeatChannelPlugin({
-  id: "whatsapp",
-  label: "WhatsApp",
-  docsPath: "/channels/whatsapp",
-  heartbeat: {
-    checkReady: async ({ cfg, deps }) => {
-      if (cfg.channels?.whatsapp?.enabled === false) {
-        return { ok: false, reason: "whatsapp-disabled" };
-      }
-      const authExists = await (deps?.webAuthExists ?? (async () => true))();
-      if (!authExists) {
-        return { ok: false, reason: "whatsapp-not-linked" };
-      }
-      const listenerActive = deps?.hasActiveWebListener ? deps.hasActiveWebListener() : true;
-      if (!listenerActive) {
-        return { ok: false, reason: "whatsapp-not-running" };
-      }
-      return { ok: true, reason: "ok" };
-    },
   },
 });
