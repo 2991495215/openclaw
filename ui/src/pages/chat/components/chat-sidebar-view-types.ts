@@ -19,7 +19,8 @@ import type {
 
 type SessionWorkspaceView = ReturnType<typeof createSessionWorkspaceProps>;
 type SessionWorkspaceOptionalKey =
-  | "retainReads"
+  | "readState"
+  | "readResult"
   | "transcriptAttachments"
   | "presentation"
   | "folderView"

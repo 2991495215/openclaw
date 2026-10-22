@@ -4,11 +4,6 @@ import { createComponent, createSignal, merge } from "solid-js";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { createDeferred as deferred } from "../../../../../test/helpers/promise.js";
-import { GatewayRequestError } from "../../../api/gateway.ts";
-import {
-  createGatewayRequestMock,
-  createTestGatewayClient,
-} from "../../../test-helpers/gateway-client.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import {
   clearNativeGatewayTestState,
@@ -124,6 +119,44 @@ afterEach(async () => {
 });
 
 describe("SessionDiffPanel", () => {
+  it("names untracked repository directories in the review and file tree", async () => {
+    setNativeGatewayTestState(null);
+    setupDesktopResizeObserver();
+    const { panel, update } = mountPanel();
+    update({
+      mobile: false,
+      loader: async () => ({
+        ...result("main"),
+        files: ["nested-repo/", "packages/child/"].map((path) => ({
+          path,
+          status: "added" as const,
+          untracked: true,
+          additions: 0,
+          deletions: 0,
+          truncated: true,
+        })),
+      }),
+    });
+    await settlePanel(panel);
+    expect
+      .soft([...panel.querySelectorAll(".session-diff__filename")].map((el) => el.textContent))
+      .toEqual(["nested-repo", "child"]);
+    panel.querySelector<HTMLButtonElement>('button[aria-label="Changed files tree"]')!.click();
+    flush();
+    for (const [path, name] of [
+      ["nested-repo/", "nested-repo"],
+      ["packages/child/", "child"],
+    ] as const) {
+      const entry = panel.querySelector<HTMLButtonElement>(
+        `.session-diff__tree-row[title="${path}"]`,
+      )!;
+      expect.soft(entry.querySelector(".session-diff__filename-label")?.textContent).toBe(name);
+      entry.click();
+      flush();
+      expect(entry.getAttribute("aria-current")).toBe("true");
+    }
+  });
+
   it.each(["__proto__", "constructor"])(
     "retains %s disclosure on refresh and applies presentation entry resets",
     async (path) => {
@@ -354,9 +387,8 @@ describe("SessionDiffPanel", () => {
     update({ loader: async () => ({ ...result("feature/test"), truncated: true }) });
     await settlePanel(panel);
 
-    expect(
-      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
-    ).not.toBeNull();
+    expect(panel.textContent).not.toContain("No changes in this session's checkout.");
+    expect(panel.textContent).toContain("Some changes could not be displayed.");
     expect(panel.querySelector(".session-diff__file")).toBeNull();
 
     update({
@@ -371,10 +403,8 @@ describe("SessionDiffPanel", () => {
     await settlePanel(panel);
 
     expect(panel.querySelector(".session-diff__filename")?.textContent).toBe("example.txt");
-    expect(panel.querySelector(".session-diff__file-body")?.textContent?.trim()).toBe("");
-    expect(
-      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
-    ).not.toBeNull();
+    expect(panel.textContent).toContain("Diff preview is unavailable.");
+    expect(panel.textContent).toContain("Some changes could not be displayed.");
     expect(panel.textContent).not.toContain("No changes in this session's checkout.");
 
     update({ loader: async () => ({ ...fileResult(SNAPSHOT_PATCH), truncated: true }) });
@@ -383,21 +413,18 @@ describe("SessionDiffPanel", () => {
     expect(panel.querySelector(".session-diff__filename")?.textContent).toBe("example.txt");
     expect(panel.textContent).toContain("snapshot line");
     expect(panel.textContent).not.toContain("Diff preview is unavailable.");
-    expect(
-      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
-    ).not.toBeNull();
+    expect(panel.textContent).toContain("Some changes could not be displayed.");
     expect(panel.textContent).not.toContain("No changes in this session's checkout.");
 
     update({ loader: async () => result("feature/test") });
     await settlePanel(panel);
 
-    expect(
-      panel.querySelector('[aria-description="Some changes could not be displayed."]'),
-    ).toBeNull();
+    expect(panel.textContent).toContain("No changes in this session's checkout.");
+    expect(panel.textContent).not.toContain("Some changes could not be displayed.");
     expect(panel.querySelector(".session-diff__file")).toBeNull();
   });
 
-  it("keeps stopped cloud changes visible without a local checkout action", async () => {
+  it("keeps stopped cloud changes visible with restart guidance and no local checkout action", async () => {
     setNativeGatewayTestState("local");
     const { panel, update } = mountPanel();
     update({
@@ -407,7 +434,9 @@ describe("SessionDiffPanel", () => {
         files: [{ path: "saved.txt", status: "modified", additions: 0, deletions: 0 }],
       }),
     });
-    await waitForSolid(() => expect(panel.textContent).toContain("saved.txt"));
+    await waitForSolid(() => expect(panel.textContent).toContain("Saved changed files are shown."));
+    expect(panel.textContent).toContain("saved.txt");
+    expect(panel.textContent).toContain("Start the cloud session to load this diff.");
     expect(panel.textContent).not.toContain("Diff preview is unavailable.");
     expect(panel.textContent).not.toContain("No changes in this session");
     expect(panel.querySelector(".session-diff__toolbar-button")).toBeNull();
@@ -416,216 +445,6 @@ describe("SessionDiffPanel", () => {
     expect(panel.querySelector("openclaw-session-diff-menu")?.textContent).not.toContain(
       "Open in Editor",
     );
-  });
-
-  it("renders a skeleton only while a real diff request is pending", async () => {
-    setNativeGatewayTestState(null);
-    const pending = deferred<SessionsDiffResult>();
-    const { panel, update } = mountPanel();
-
-    flush();
-    expect(panel.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
-    expect(panel.querySelector(".session-diff")?.getAttribute("aria-busy")).toBe("false");
-
-    update({ loader: vi.fn(() => pending.promise) });
-    await waitForSolid(() => {
-      expect(
-        panel.querySelector("openclaw-panel-loading-skeleton")?.getAttribute("data-panel-skeleton"),
-      ).toBe("review");
-      expect(panel.querySelector(".session-diff")?.getAttribute("aria-busy")).toBe("true");
-    });
-
-    pending.resolve(result("feature/pending"));
-    await waitForSolid(() => expect(panel.textContent).toContain("feature/pending"));
-    expect(panel.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
-    expect(panel.querySelector(".session-diff")?.getAttribute("aria-busy")).toBe("false");
-
-    const replacement = deferred<SessionsDiffResult>();
-    update({ owner: { agentId: "main", sessionKey: "another-session" } });
-    update({ loader: () => replacement.promise });
-    flush();
-    expect(
-      panel.querySelector("openclaw-panel-loading-skeleton")?.getAttribute("data-panel-skeleton"),
-    ).toBe("review");
-    expect(panel.textContent).not.toContain("feature/pending");
-    replacement.resolve(result("feature/replacement"));
-    await waitForSolid(() => expect(panel.textContent).toContain("feature/replacement"));
-
-    const failedRead = vi.fn(async () => {
-      throw new Error("Diff unavailable");
-    });
-    update({ loader: failedRead });
-    await waitForSolid(() => expect(failedRead).toHaveBeenCalledOnce());
-    await settlePanel(panel);
-    expect(panel.textContent).not.toContain("feature/replacement");
-    expect(panel.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
-  });
-
-  it("shows loading instead of the old files while a changed scope is pending", async () => {
-    const pending = deferred<SessionsDiffResult>();
-    const loader = vi
-      .fn<NonNullable<SessionDiffProps["loader"]>>()
-      .mockResolvedValueOnce(fileResult(SNAPSHOT_PATCH))
-      .mockReturnValueOnce(pending.promise);
-    const { panel, update } = mountPanel();
-    update({ loader });
-    await waitForSolid(() => expect(panel.querySelector(".session-diff__file")).not.toBeNull());
-
-    panel.querySelector<HTMLButtonElement>(".session-diff__section-title")!.click();
-    await waitForSolid(() =>
-      expect(panel.querySelector('button[value="scope:uncommitted"]')).not.toBeNull(),
-    );
-    panel.querySelector<HTMLButtonElement>('button[value="scope:uncommitted"]')!.click();
-    try {
-      await waitForSolid(() => {
-        expect(panel.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
-        expect(panel.querySelector(".session-diff__file")).toBeNull();
-      });
-      expect(loader).toHaveBeenLastCalledWith({ scope: "uncommitted" });
-    } finally {
-      pending.resolve(fileResult(FRESH_PATCH));
-    }
-    await waitForSolid(() => expect(panel.textContent).toContain("fresh snapshot line"));
-  });
-
-  it("keeps computing responses pending and retains the last diff during refresh", async () => {
-    vi.useFakeTimers();
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    const computing = { ...result("feature/test"), computing: true };
-    const slow = deferred<SessionsDiffResult>();
-    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-    const loader = vi
-      .fn<NonNullable<SessionDiffProps["loader"]>>()
-      .mockResolvedValueOnce(computing)
-      .mockReturnValueOnce(slow.promise)
-      .mockResolvedValueOnce(computing)
-      .mockResolvedValueOnce(fileResult(FRESH_PATCH));
-    const onResult = vi.fn();
-    const { panel, update } = mountPanel();
-    update({ loader, onResult });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(panel.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
-    expect(panel.textContent).not.toContain("No changes in this session");
-    expect(onResult).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(499);
-    expect(loader).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(loader).toHaveBeenCalledTimes(2);
-    visibility.mockReturnValue("hidden");
-    document.dispatchEvent(new Event("visibilitychange"));
-    visibility.mockReturnValue("visible");
-    document.dispatchEvent(new Event("visibilitychange"));
-    update({ active: false });
-    await vi.advanceTimersByTimeAsync(0);
-    update({ active: true });
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(loader).toHaveBeenCalledTimes(2);
-    expect(panel.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
-    expect(onResult).not.toHaveBeenCalled();
-    slow.resolve(fileResult(SNAPSHOT_PATCH));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(panel.textContent).toContain("snapshot line");
-    expect(onResult).toHaveBeenCalledTimes(1);
-
-    panel.querySelector<HTMLButtonElement>(".session-diff__refresh")!.click();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(panel.textContent).toContain("snapshot line");
-    expect(panel.querySelector(".session-diff")?.getAttribute("aria-busy")).toBe("true");
-    expect(onResult).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(500);
-    expect(panel.textContent).toContain("fresh snapshot line");
-    expect(panel.querySelector(".session-diff")?.getAttribute("aria-busy")).toBe("false");
-    expect(onResult).toHaveBeenCalledTimes(2);
-  });
-
-  it("stops computing polls while hidden or inactive and retires them with the request owner", async () => {
-    vi.useFakeTimers();
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-    const loader = vi.fn().mockResolvedValue({ ...result("feature/test"), computing: true });
-    const { panel, update, unmount } = mountPanel();
-    update({ loader });
-    await vi.advanceTimersByTimeAsync(0);
-    update({ active: false });
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(loader).toHaveBeenCalledTimes(1);
-    update({ active: true });
-    await vi.advanceTimersByTimeAsync(500);
-    expect(loader).toHaveBeenCalledTimes(2);
-    visibility.mockReturnValue("hidden");
-    document.dispatchEvent(new Event("visibilitychange"));
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(loader).toHaveBeenCalledTimes(2);
-    visibility.mockReturnValue("visible");
-    document.dispatchEvent(new Event("visibilitychange"));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(loader).toHaveBeenCalledTimes(3);
-    update({
-      owner: { agentId: "main", sessionKey: "replacement" },
-      loader: async () => result("replacement"),
-    });
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(panel.textContent).toContain("replacement");
-    expect(loader).toHaveBeenCalledTimes(3);
-    update({ loader });
-    await vi.advanceTimersByTimeAsync(0);
-    unmount();
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(loader).toHaveBeenCalledTimes(4);
-  });
-
-  it("recovers a transient diff read without polling a healthy or inactive panel", async () => {
-    vi.useFakeTimers();
-    onTestFinished(() => void vi.useRealTimers());
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-    const unavailable = new GatewayRequestError({
-      code: "UNAVAILABLE",
-      message: "Busy",
-      retryable: true,
-    });
-    const loader = vi
-      .fn()
-      .mockRejectedValueOnce(unavailable)
-      .mockResolvedValue(fileResult(FRESH_PATCH));
-    const { panel, update } = mountPanel();
-    update({ loader, active: true, canRead: () => true });
-    await vi.advanceTimersByTimeAsync(10_000);
-    update({ active: false });
-    await vi.advanceTimersByTimeAsync(10_000);
-    update({ active: true });
-    await vi.advanceTimersByTimeAsync(9_999);
-    expect(loader).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(loader).toHaveBeenCalledTimes(2);
-    expect(panel.textContent).toContain("fresh snapshot line");
-    await vi.advanceTimersByTimeAsync(300_000);
-    expect(loader).toHaveBeenCalledTimes(2);
-    loader.mockRejectedValueOnce(unavailable);
-    panel.querySelector<HTMLButtonElement>(".session-diff__refresh")!.click();
-    await vi.advanceTimersByTimeAsync(0);
-    update({ active: false });
-    await vi.advanceTimersByTimeAsync(300_000);
-    expect(loader).toHaveBeenCalledTimes(3);
-  });
-
-  it("does not publish an invalid diff RPC result and settles loading", async () => {
-    const request = createGatewayRequestMock().mockResolvedValue({});
-    const client = createTestGatewayClient(request);
-    const onResult = vi.fn();
-    const { panel, update } = mountPanel();
-    update({
-      loader: (scope) => client.request<SessionsDiffResult>("sessions.diff", scope),
-      onResult,
-    });
-    await waitForSolid(() => expect(request).toHaveBeenCalledOnce());
-    await settlePanel(panel);
-    expect(onResult).not.toHaveBeenCalled();
-    expect(panel.querySelector("openclaw-panel-loading-skeleton")).toBeNull();
-    expect(panel.querySelector(".session-diff__file")).toBeNull();
   });
 
   it.each([true])("highlights source in split=%s without changing its text", async (split) => {

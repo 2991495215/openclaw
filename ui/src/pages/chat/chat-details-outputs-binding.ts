@@ -6,6 +6,7 @@ import type { ChatPageHost } from "./chat-state-host.ts";
 import type { ChatDetailsOutputsIcons, ChatDetailsProps } from "./components/chat-details-types.ts";
 import {
   isCurrentSessionWorkspace,
+  loadSessionWorkspaceArtifacts,
   retainSessionWorkspaceArtifacts,
   selectSessionWorkspacePreview,
 } from "./components/chat-session-workspace-state.ts";
@@ -73,6 +74,11 @@ export function createDetailsOutputsBinding(
         }
       };
     },
+    onRetryArtifacts: () => {
+      if (current()) {
+        void loadSessionWorkspaceArtifacts(state, true, "assistant");
+      }
+    },
     onOpenArtifact: (id: string) => {
       if (!current()) {
         return;
@@ -118,6 +124,8 @@ export function projectDetailsOutputs(
     outputs: {
       ...icons,
       artifacts: artifacts?.resolved ? artifacts.items : null,
+      artifactRead: artifacts,
+      artifactsError: artifacts?.error ?? null,
       dashboard: !board.available
         ? null
         : boardReady && board.provider.hasLoadedSnapshot
@@ -130,7 +138,9 @@ export function projectDetailsOutputs(
               }
             : null
           : undefined,
+      dashboardError: board.provider.loadError$.value,
       onOpenArtifact: binding.onOpenArtifact,
+      onRetryArtifacts: binding.onRetryArtifacts,
       onViewAll: binding.onViewAll,
     },
   };

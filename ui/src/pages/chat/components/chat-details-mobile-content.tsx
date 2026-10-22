@@ -1,5 +1,5 @@
 import { dynamic } from "@solidjs/web";
-import { Match, Show, Switch, createMemo, onSettled } from "solid-js";
+import { Match, Show, Switch, createMemo, isPending, onSettled } from "solid-js";
 import { toSanitizedMarkdownHtml } from "../../../components/markdown.ts";
 import type { SessionPlacementPresentation } from "../../../components/session-placement-move-dialog.tsx";
 import { StepMarker } from "../../../components/session-progress-card-content.tsx";
@@ -63,7 +63,10 @@ import {
   ChatSessionVersionsMobile,
   type ChatSessionVersionsMobileProps,
 } from "./chat-session-versions-mobile.tsx";
-import type { SessionAutomationInventory } from "./chat-summary-automations.tsx";
+import {
+  SessionAutomationRead,
+  type SessionAutomationInventory,
+} from "./chat-summary-automations.tsx";
 import "../../../styles/chat/details.css";
 import { sessionAutomationSchedule } from "./session-automation-schedule.ts";
 
@@ -195,6 +198,37 @@ function MobileRoot(
       }),
     );
   });
+  const automationNotice = (
+    <Show when={props.content.automations}>
+      {(input) => (
+        <SessionAutomationRead
+          inventory={input().inventory}
+          readDeniedOnly
+          error={
+            input().inventory.connected() && (
+              <div class="chat-details-mobile-root__notice" role="status">
+                <span>
+                  {t(
+                    input().inventory.loaded()
+                      ? "chat.sessionDetails.automationUpdateError"
+                      : "chat.sessionDetails.automationError",
+                  )}
+                </span>
+                <button
+                  type="button"
+                  class="chip"
+                  disabled={!props.presented || isPending(input().inventory.read)}
+                  onClick={() => void input().inventory.refresh()}
+                >
+                  {t("common.retry")}
+                </button>
+              </div>
+            )
+          }
+        />
+      )}
+    </Show>
+  );
   const automations = (): ChatDetailsMobileRootProps["automations"] => {
     const input = props.content.automations;
     if (!input) {
@@ -217,85 +251,93 @@ function MobileRoot(
       })),
       total: inventory.loaded() ? inventory.total() : undefined,
       summary: input.summary,
+      notice: automationNotice,
     };
   };
   return (
-    <>
-      <ChatDetailsMobileRoot
-        {...props.content.entries}
-        presented={props.presented}
-        taskProgress={
-          progress()?.counts || progressNote()
-            ? {
-                label: (progress()?.counts ? progress()?.stepLabel : undefined) ?? progressNote(),
-                truncateDescription: !progress()?.counts,
-                leading: progress()?.counts ? (
-                  <span
-                    class="chat-details-mobile-root__step-marker"
-                    data-status={progress()?.presentedCurrentStatus}
-                    aria-hidden="true"
-                  >
-                    <StepMarker
-                      status={progress()?.presentedCurrentStatus ?? "pending"}
-                      outcome={progress()?.terminalOutcome}
-                    />
-                  </span>
-                ) : undefined,
-                metadata: progress()?.counts
-                  ? `${progress()?.currentPosition} / ${progress()?.counts?.total}`
-                  : undefined,
-              }
-            : undefined
-        }
-        subagents={{ ...props.content.subagents, rows: listSubagents(props.details) }}
-        automations={automations()}
-        environment={
-          <ChatDetailsEnvironmentMobile
-            {...(props.content.environment ?? props.details.environment)}
-            details={props.details}
+    <ChatDetailsMobileRoot
+      {...props.content.entries}
+      presented={props.presented}
+      taskProgress={
+        progress()?.counts || progressNote()
+          ? {
+              label: (progress()?.counts ? progress()?.stepLabel : undefined) ?? progressNote(),
+              truncateDescription: !progress()?.counts,
+              leading: progress()?.counts ? (
+                <span
+                  class="chat-details-mobile-root__step-marker"
+                  data-status={progress()?.presentedCurrentStatus}
+                  aria-hidden="true"
+                >
+                  <StepMarker
+                    status={progress()?.presentedCurrentStatus ?? "pending"}
+                    outcome={progress()?.terminalOutcome}
+                  />
+                </span>
+              ) : undefined,
+              metadata: progress()?.counts
+                ? `${progress()?.currentPosition} / ${progress()?.counts?.total}`
+                : undefined,
+            }
+          : undefined
+      }
+      taskProgressNotice={
+        props.details.progressCardError === "access-denied" ? (
+          <div class="chat-details-mobile-root__notice" role="status">
+            {t("sessionProgressCard.widgetAccessDenied")}
+          </div>
+        ) : undefined
+      }
+      subagents={{ ...props.content.subagents, rows: listSubagents(props.details) }}
+      automations={automations()}
+      environment={
+        <ChatDetailsEnvironmentMobile
+          {...(props.content.environment ?? props.details.environment)}
+          details={props.details}
+          presented={props.presented}
+        />
+      }
+      outputs={outputs()}
+      sharingOptions={
+        props.content.sharing?.available ? (
+          <ChatSessionSharingOptions {...props.content.sharing.options} />
+        ) : undefined
+      }
+      publicationEntry={
+        props.details.githubPublication ? props.content.publicationEntry : undefined
+      }
+      context={
+        hasContext() ? (
+          <button
+            type="button"
+            class="chat-details-mobile-root__entry chat-details-mobile-context__summary"
+            data-details-destination="context"
+            aria-label={props.content.entries.labels.context}
+            disabled={!props.presented}
+            onClick={(event) =>
+              props.content.entries.onNavigate(
+                { kind: "context" },
+                { kind: "details-root", trigger: event.currentTarget },
+              )
+            }
+          >
+            <ChatDetailsContextSummary details={props.details} />
+            <Icon name="chevronRight" class="chat-details-mobile-root__chevron" />
+          </button>
+        ) : undefined
+      }
+      processes={
+        props.content.processes &&
+        (props.content.processes.rows.length > 0 ||
+          (props.content.processes.errorKind !== "read" && props.content.processes.error)) ? (
+          <ChatDetailsMobileProcesses
+            data={props.content.processes}
             presented={props.presented}
+            onOpen={props.details.onOpenProcesses}
           />
-        }
-        outputs={outputs()}
-        sharingOptions={
-          props.content.sharing?.available ? (
-            <ChatSessionSharingOptions {...props.content.sharing.options} />
-          ) : undefined
-        }
-        publicationEntry={
-          props.details.githubPublication ? props.content.publicationEntry : undefined
-        }
-        context={
-          hasContext() ? (
-            <button
-              type="button"
-              class="chat-details-mobile-root__entry chat-details-mobile-context__summary"
-              data-details-destination="context"
-              aria-label={props.content.entries.labels.context}
-              disabled={!props.presented}
-              onClick={(event) =>
-                props.content.entries.onNavigate(
-                  { kind: "context" },
-                  { kind: "details-root", trigger: event.currentTarget },
-                )
-              }
-            >
-              <ChatDetailsContextSummary details={props.details} />
-              <Icon name="chevronRight" class="chat-details-mobile-root__chevron" />
-            </button>
-          ) : undefined
-        }
-        processes={
-          props.content.processes && props.content.processes.rows.length > 0 ? (
-            <ChatDetailsMobileProcesses
-              data={props.content.processes}
-              presented={props.presented}
-              onOpen={props.details.onOpenProcesses}
-            />
-          ) : undefined
-        }
-      />
-    </>
+        ) : undefined
+      }
+    />
   );
 }
 

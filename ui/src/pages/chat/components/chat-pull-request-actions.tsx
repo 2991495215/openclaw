@@ -8,20 +8,21 @@ import {
   type MenuEntry,
   type MenuHandle,
 } from "../../../components/solid/menu.tsx";
-import { copyToClipboard } from "../../../lib/clipboard.ts";
 import type { PresentationValue } from "../../../lib/presentation.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { projectPresentation } from "../../../lib/reactive/presentation.ts";
 import { sessionPullRequestStateIcons } from "../../../lib/session-pull-request-presentation.ts";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import { showToast } from "../../../lib/toast.ts";
-import { ChatCiAutomation } from "./chat-ci-automation-control.tsx";
-import { ChatCiDetails } from "./chat-ci-details.tsx";
+import { createPullRequestCopy } from "./chat-pull-request-copy.ts";
 import {
   ChecksRows,
+  StatusWarning,
   STATE_LABEL_KEYS,
   type ChatPullRequestsProps,
 } from "./chat-pull-request-shared.tsx";
+import "./chat-ci-details.ts";
+import "./chat-ci-automation-control.ts";
 
 const CHECK_ROLLUP = {
   failing: ["failed", "chat.pullRequests.checksFailed", "circleX"],
@@ -42,7 +43,6 @@ export function PullRequestActions(props: {
   const controls = createMenuControls();
   const parentPresented = useContext(ContentPresentation);
   let menu: MenuHandle | undefined;
-  const [copying, setCopying] = createSignal(false);
   const [page, setPage] = createSignal<"home" | "checks" | "monitoring">("home");
   let backButton: HTMLButtonElement | undefined;
   let checksButton: HTMLButtonElement | undefined;
@@ -59,26 +59,14 @@ export function PullRequestActions(props: {
   const [menuOpen, setMenuOpen] = createSignal(false);
   const presentation = createMemo(() => projectPresentation(props.presented));
   const presented = () => parentPresented() && !props.dismissed && presentation().read();
-  const copy = async () => {
-    if (copying()) {
-      return;
-    }
-    const url = props.pullRequest.url;
-    setCopying(true);
-    const current = () =>
-      presented() && menu?.overlay.open === true && props.pullRequest.url === url;
-    const copied = await copyToClipboard(url, current);
-    setCopying(false);
-    if (!current()) {
-      return;
-    }
-    if (copied) {
+  const clipboard = createPullRequestCopy({
+    url: () => props.pullRequest.url,
+    presented: () => presented() && menu?.overlay.open === true,
+    onCopied: () => {
       menu?.close();
       showToast({ message: t("chat.pullRequests.linkCopied") });
-    } else {
-      showToast({ message: t("chat.pullRequests.copyFailed"), severity: "error" });
-    }
-  };
+    },
+  });
   const checks = () => props.pullRequest.checks;
   const rollup = () => {
     const current = checks();
@@ -117,14 +105,14 @@ export function PullRequestActions(props: {
           <ChecksRows checks={checks()} runningFirst />
         </div>
       </div>
-      <ChatCiDetails
-        pullRequest={props.pullRequest}
-        gateway={props.owner.gateway}
-        sessionKey={props.owner.sessionKey ?? ""}
-        presented={presented() && menuOpen() && page() === "checks"}
-        inline={true}
-        menuControls={true}
-        controls={controls}
+      <openclaw-chat-ci-details
+        prop:pullRequest={props.pullRequest}
+        prop:gateway={props.owner.gateway}
+        prop:sessionKey={props.owner.sessionKey ?? ""}
+        prop:presented={presented() && menuOpen() && page() === "checks"}
+        prop:inline={true}
+        prop:menuControls={true}
+        prop:controls={controls}
       />
     </div>
   );
@@ -135,15 +123,15 @@ export function PullRequestActions(props: {
       aria-label={t("chat.pullRequests.ciMonitoring")}
     >
       <div class="chat-pr-menu__caption">{t("chat.pullRequests.ciMonitoring")}</div>
-      <ChatCiAutomation
-        pullRequest={props.pullRequest}
-        gateway={props.owner.gateway}
-        sessionKey={props.owner.sessionKey ?? ""}
-        sessionId={props.owner.sessionId ?? ""}
-        presented={presented() && menuOpen() && page() === "monitoring"}
-        inline={true}
-        menuPresentation={true}
-        controls={controls}
+      <openclaw-chat-ci-automation
+        prop:pullRequest={props.pullRequest}
+        prop:gateway={props.owner.gateway}
+        prop:sessionKey={props.owner.sessionKey ?? ""}
+        prop:sessionId={props.owner.sessionId ?? ""}
+        prop:presented={presented() && menuOpen() && page() === "monitoring"}
+        prop:inline={true}
+        prop:menuPresentation={true}
+        prop:controls={controls}
       />
     </div>
   );
@@ -245,6 +233,13 @@ export function PullRequestActions(props: {
                     {t(STATE_LABEL_KEYS[props.pullRequest.state])}
                   </span>
                 </div>
+                <Show
+                  when={
+                    props.pullRequest.state !== "merged" || props.owner.status === "unavailable"
+                  }
+                >
+                  <StatusWarning status={props.owner.status} text />
+                </Show>
               </div>
             ),
           },
@@ -263,9 +258,7 @@ export function PullRequestActions(props: {
               },
               {
                 id: "checks",
-                label: rollup()
-                  ? `${t("chat.pullRequests.checksTitle")}: ${rollup()?.label} ${rollup()?.count}`
-                  : t("chat.pullRequests.checksTitle"),
+                label: `${t("chat.pullRequests.checksTitle")}: ${rollup()?.label ?? t("chat.pullRequests.automationNoChecks")}${rollup() ? ` ${rollup()?.count}` : ""}`,
                 closeOnSelect: false,
                 render: (attributes) => (
                   <button
@@ -280,7 +273,7 @@ export function PullRequestActions(props: {
                       <Icon name={rollup()?.icon ?? "listChecks"} />
                     </span>
                     <span class="oc-menu-item__label">
-                      {rollup()?.label ?? t("chat.pullRequests.checksTitle")}
+                      {rollup()?.label ?? t("chat.pullRequests.automationNoChecks")}
                     </span>
                     <span class="chat-pr-menu__value">{rollup()?.count}</span>
                     <Icon name="chevronRight" />
@@ -309,8 +302,19 @@ export function PullRequestActions(props: {
                 id: "copy",
                 label: t("chat.pullRequests.copyLink"),
                 icon: <Icon name="link" />,
-                disabled: copying(),
+                disabled: clipboard.copying(),
                 closeOnSelect: false,
+              },
+              {
+                kind: "content",
+                id: "copy-error",
+                content: (
+                  <Show when={clipboard.failed()}>
+                    <p class="chat-pr-menu__error" role="alert">
+                      {t("chat.pullRequests.copyFailed")}
+                    </p>
+                  </Show>
+                ),
               },
             ],
           },
@@ -374,6 +378,7 @@ export function PullRequestActions(props: {
       onOpenChange={(open) => {
         setMenuOpen(open);
         if (!open) {
+          clipboard.retire();
           setPage("home");
         }
       }}
@@ -395,7 +400,7 @@ export function PullRequestActions(props: {
           props.onDismiss();
         }
         if (item.id === "copy") {
-          void copy();
+          void clipboard.copy();
         }
       }}
     />

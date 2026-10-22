@@ -1,9 +1,5 @@
 /* @vitest-environment jsdom */
-import {
-  GatewayProtocolRequestError,
-  GatewayProtocolRequestTimeoutError,
-} from "@openclaw/gateway-client/browser";
-import { beforeEach, describe, expect, it, onTestFinished, vi, type MockInstance } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { CronJob } from "../../../api/types.ts";
@@ -16,9 +12,9 @@ import {
   createGatewayHarness,
   flushSync,
 } from "../../../lib/session-pull-requests.test-support.ts";
-import * as toast from "../../../lib/toast.ts";
-import type { ChatCiAutomationElement } from "./chat-ci-automation-control.tsx";
-import "./chat-ci-automation-control.tsx";
+import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
+import type { ChatCiAutomationElement } from "./chat-ci-automation-control.ts";
+import "./chat-ci-automation-control.ts";
 
 const sessionKey = "agent:main:dashboard:ci-test";
 const cronStatus = { enabled: true, triggersEnabled: true, jobs: 0 };
@@ -92,16 +88,10 @@ class Fixture {
     await this.element.updateComplete;
   }
   async open(settled = true) {
-    if (!this.root.open) {
-      const toggled = new Promise<void>((resolve) => {
-        this.root.addEventListener("toggle", () => resolve(), { once: true });
-      });
+    await new Promise<void>((resolve) => {
+      this.root.addEventListener("toggle", () => resolve(), { once: true });
       this.root.open = true;
-      if (vi.isFakeTimers()) {
-        await vi.advanceTimersByTimeAsync(0);
-      }
-      await toggled;
-    }
+    });
     await this.element.updateComplete;
     if (settled) {
       await this.settle();
@@ -128,174 +118,30 @@ class Fixture {
 }
 describe("CI automation popup scope", () => {
   let h: Fixture;
-  let notify: MockInstance<typeof toast.showToast>;
   beforeEach(async () => {
-    notify = vi.spyOn(toast, "showToast").mockReturnValue(true);
     h = new Fixture();
     await h.paint("first");
   });
-  it("recovers failed inventory reads with backoff and stops polling after success", async () => {
-    vi.useFakeTimers();
-    onTestFinished(() => void vi.useRealTimers());
-    let unavailable = true;
-    h.request.mockImplementation(async (method) => {
-      if (method === "cron.status") {
-        return cronStatus;
-      }
-      if (unavailable) {
-        if (h.calls("cron.list").length === 1) {
-          throw new GatewayProtocolRequestError({
-            code: "UNAVAILABLE",
-            message: "Temporary inventory failure",
-            retryable: true,
-            details: { method: "cron.list" },
-          });
-        }
-        throw new GatewayProtocolRequestTimeoutError({
-          method: "cron.list",
-          timeoutMs: 30_000,
-          requestSent: true,
-        });
-      }
-      return inventory(h.jobs);
-    });
-    await h.open();
-    expect(h.calls("cron.list")).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(29_999);
-    expect(h.calls("cron.list")).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(h.calls("cron.list")).toHaveLength(2);
-    await vi.advanceTimersByTimeAsync(59_999);
-    expect(h.calls("cron.list")).toHaveLength(2);
-    unavailable = false;
-    h.jobs = [job("first")];
-    await vi.advanceTimersByTimeAsync(1);
-    await h.settle();
-    expect(h.calls("cron.list")).toHaveLength(3);
-    expect(h.checkbox().checked).toBe(true);
-    expect(h.checkbox().closest("fieldset")?.disabled).toBe(false);
-    expect(h.root.textContent).not.toContain("Temporary inventory failure");
-    expect(notify).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(600_000);
-    expect(h.calls("cron.list")).toHaveLength(3);
-  });
-
-  it.each(["hidden", "closed"] as const)(
-    "preserves the server retry deadline across %s, reopening, and owner events",
-    async (boundary) => {
-      vi.useFakeTimers();
-      onTestFinished(() => void vi.useRealTimers());
-      h.request.mockRejectedValueOnce(
-        new GatewayProtocolRequestError({
-          code: "UNAVAILABLE",
-          message: "Inventory busy",
-          retryable: true,
-          retryAfterMs: 90_000,
-          details: { method: "cron.list" },
-        }),
-      );
-      await h.open();
-      expect(h.calls("cron.list")).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(10_000);
-      if (boundary === "hidden") {
-        h.element.presented = false;
-      } else {
-        h.root.open = false;
-      }
-      await h.settle();
-      await vi.advanceTimersByTimeAsync(10_000);
-      if (boundary === "hidden") {
-        h.element.presented = true;
-      } else {
-        await h.open();
-      }
-      await h.settle();
-      expect(h.calls("cron.list")).toHaveLength(1);
-      h.harness.emit({}, "cron");
-      await h.settle();
-      expect(h.calls("cron.list")).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(69_999);
-      expect(h.calls("cron.list")).toHaveLength(1);
-      h.jobs = [job("first")];
-      await vi.advanceTimersByTimeAsync(1);
-      await h.settle();
-      expect(h.calls("cron.list")).toHaveLength(2);
-      expect(h.checkbox().checked).toBe(true);
-      expect(h.calls("cron.add")).toHaveLength(0);
-      expect(h.calls("cron.update")).toHaveLength(0);
-    },
-  );
-
-  it.each(["hidden", "document hidden", "connection", "session"] as const)(
-    "retires scheduled inventory recovery at %s and resumes on return",
-    async (boundary) => {
-      vi.useFakeTimers();
-      onTestFinished(() => void vi.useRealTimers());
-      h.request.mockRejectedValueOnce(
-        new GatewayProtocolRequestError({
-          code: "UNAVAILABLE",
-          message: "Temporary inventory failure",
-          retryable: true,
-          details: { method: "cron.list" },
-        }),
-      );
-      await h.open();
-      expect(h.calls("cron.list")).toHaveLength(1);
-      const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-      if (boundary === "hidden") {
-        h.element.presented = false;
-      } else if (boundary === "document hidden") {
-        visibility.mockReturnValue("hidden");
-        document.dispatchEvent(new Event("visibilitychange"));
-      } else if (boundary === "connection") {
-        h.snapshot({ phase: "offline" });
-      } else {
-        await h.paint("replacement");
-      }
-      await h.settle();
-      await vi.advanceTimersByTimeAsync(600_000);
-      expect(h.calls("cron.list")).toHaveLength(1);
-      h.jobs = [job(boundary === "session" ? "replacement" : "first")];
-      if (boundary === "hidden") {
-        h.element.presented = true;
-      } else if (boundary === "document hidden") {
-        visibility.mockReturnValue("visible");
-        document.dispatchEvent(new Event("visibilitychange"));
-      } else if (boundary === "connection") {
-        h.snapshot({ phase: "connected" });
-      } else {
-        await h.open();
-      }
-      await vi.advanceTimersByTimeAsync(0);
-      await h.settle();
-      expect(h.calls("cron.list")).toHaveLength(2);
-      expect(h.checkbox().checked).toBe(true);
-    },
-  );
-
-  it("retires denied inventory without timer retries and waits for fresh owner events", async () => {
-    vi.useFakeTimers();
-    onTestFinished(() => void vi.useRealTimers());
-    h.jobs = [job("first")];
-    await h.open();
-    expect(h.checkbox().checked).toBe(true);
-    h.request.mockRejectedValueOnce(
-      new GatewayProtocolRequestError({
-        code: "FORBIDDEN",
-        message: "Access revoked",
-      }),
-    );
-    h.harness.emit({}, "cron");
-    await h.settle();
-    expect(h.calls("cron.list")).toHaveLength(2);
-    expect(h.checkbox().checked).toBe(false);
+  it("keeps controls disabled through an initial read failure and enables an empty retry", async () => {
+    const read = createDeferred<ReturnType<typeof inventory>>();
+    h.read = read.promise;
+    await h.open(false);
     expect(h.checkbox().closest("fieldset")?.disabled).toBe(true);
-    await vi.advanceTimersByTimeAsync(600_000);
+    read.reject(new Error("Inventory unavailable"));
+    await waitForSolid(() => {
+      expect(h.root.querySelector('[role="alert"]')?.textContent).toContain(
+        "Inventory unavailable",
+      );
+      expect(h.checkbox().closest("fieldset")?.disabled).toBe(true);
+    });
+    h.read = undefined;
+    h.root.querySelector<HTMLButtonElement>(".chat-ci__automation-retry")!.click();
+    await waitForSolid(() => {
+      expect(h.root.querySelector('[role="alert"]')).toBeNull();
+      expect(h.checkbox().closest("fieldset")?.disabled).toBe(false);
+    });
     expect(h.calls("cron.list")).toHaveLength(2);
-    h.harness.emit({}, "config.changed");
-    await h.settle();
-    expect(h.calls("cron.list")).toHaveLength(3);
-    expect(h.checkbox().checked).toBe(true);
+    h.toggles(false, false);
   });
 
   it("keeps concurrent intents across stale inventory and out-of-order acknowledgements", async () => {
@@ -307,10 +153,12 @@ describe("CI automation popup scope", () => {
     h.jobs = [fix];
     h.writes = { "cron.update": fixWrite.promise, "cron.add": mergeWrite.promise };
     await h.open();
+    const fixInput = h.checkbox();
     const before = h.root.textContent;
     h.request.mockImplementationOnce(() => staleRead.promise);
     h.harness.emit({}, "cron");
     await h.element.updateComplete;
+    expect(h.checkbox()).toBe(fixInput);
     h.checkbox().click();
     expect(h.checkbox().checked).toBe(false);
     await h.element.updateComplete;
@@ -326,6 +174,7 @@ describe("CI automation popup scope", () => {
     staleRead.resolve(inventory([job("first")]));
     await h.settle();
     h.toggles(false, true);
+    expect(h.checkbox()).toBe(fixInput);
     h.jobs.push(merge);
     mergeWrite.resolve({ job: merge });
     h.harness.emit({}, "cron");
@@ -345,7 +194,7 @@ describe("CI automation popup scope", () => {
     expect(h.root.textContent).toBe(before);
   });
 
-  it("reports a lost acknowledgement once and reconciles sibling writes without replay", async () => {
+  it("retains a lost-ack error through sibling completion and reconciles without replay", async () => {
     const fixWrite = createDeferred<{ job: CronJob }>();
     const mergeWrite = createDeferred<{ job: CronJob }>();
     h.writes["cron.add"] = (params) =>
@@ -355,6 +204,7 @@ describe("CI automation popup scope", () => {
     await h.open();
     h.checkbox().click();
     h.checkbox("autoMerge").click();
+    h.harness.emit({}, "cron");
     fixWrite.reject(new Error("Lost acknowledgement"));
     await h.settle();
     h.toggles(false, true);
@@ -362,12 +212,11 @@ describe("CI automation popup scope", () => {
     h.writes = {};
     mergeWrite.resolve({ job: job("first", "autoMerge") });
     await h.settle();
-    expect(notify).toHaveBeenCalledExactlyOnceWith({
-      message: "Lost acknowledgement",
-      severity: "error",
-    });
-    expect(h.root.textContent).not.toContain("Lost acknowledgement");
+    expect(h.root.textContent).toContain("Lost acknowledgement");
     h.toggles(true, true);
+    h.root.querySelector<HTMLButtonElement>(".chat-ci__automation-retry")!.click();
+    await h.settle();
+    expect(h.root.querySelector('[role="alert"]')).toBeNull();
     expect(h.calls("cron.add")).toHaveLength(2);
   });
 
@@ -426,6 +275,15 @@ describe("CI automation popup scope", () => {
     h.writes["cron.add"] = pending.promise;
     await h.open();
     h.checkbox().click();
+    await h.element.updateComplete;
+    h.element.presented = false;
+    await h.settle();
+    expect(h.checkbox().checked).toBe(true);
+    expect(h.checkbox().disabled).toBe(true);
+    h.element.presented = true;
+    await h.settle();
+    expect(h.checkbox().disabled).toBe(true);
+    expect(h.calls("cron.list")).toHaveLength(1);
     h.element.presented = false;
     h.jobs = [job("first")];
     pending.resolve({ job: h.jobs[0]! });
@@ -461,7 +319,6 @@ describe("CI automation popup scope", () => {
       pending.reject(new Error("Old context failure"));
       await h.settle();
       expect(h.root.textContent).not.toContain("Old context failure");
-      expect(notify).not.toHaveBeenCalled();
       expect(h.checkbox().checked).toBe(false);
       expect(h.calls("cron.add")).toHaveLength(1);
     },

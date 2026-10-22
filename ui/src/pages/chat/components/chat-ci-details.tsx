@@ -1,5 +1,14 @@
-import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
-import { For, Show, createMemo, createStore } from "solid-js";
+import {
+  Errored,
+  For,
+  Loading,
+  Show,
+  createMemo,
+  createSignal,
+  createStore,
+  isPending,
+  latest,
+} from "solid-js";
 import type {
   ControlUiSessionPullRequestCheck,
   ControlUiSessionPullRequestCheckDetails,
@@ -13,7 +22,6 @@ import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import { formatDurationCompact } from "../../../lib/format-duration.ts";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { createGatewayConnectionLifecycle } from "../../../lib/gateway-connection-lifecycle.ts";
-import { isRetryableGatewayReadError } from "../../../lib/gateway-errors.ts";
 import { resolveSafeExternalUrl } from "../../../lib/open-external-url.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
@@ -23,7 +31,6 @@ registerEnglishCatalog(registerChatCiEnglish);
 registerEnglishCatalog(registerGitHubEnglish);
 
 const REFRESH_MS = 30_000;
-const MAX_RETRY_MS = 5 * 60_000;
 const CHECK_ORDER = { failed: 0, running: 1, passed: 2, skipped: 3 } as const;
 type CheckState = ControlUiSessionPullRequestCheck["state"] | "queued";
 
@@ -88,9 +95,6 @@ function duration(item: { startedAt?: string; completedAt?: string }, running: b
 
 /** Presentation-only details: the Gateway owns GitHub discovery, joins, and caching. */
 type DetailsState = {
-  loading: boolean;
-  result: ControlUiSessionPullRequestCheckDetails | undefined;
-  error: string | null;
   retryAt: number;
   expandedJobs: Record<number, boolean>;
 };
@@ -98,20 +102,22 @@ const inputHandlers = new WeakMap<HTMLElement, (key: keyof ChatCiDetailsProps) =
 
 function createCiDetails(host: ChatCiDetailsElement) {
   const [state, setState] = createStore<DetailsState>({
-    loading: false,
-    result: undefined,
-    error: null,
     retryAt: 0,
     expandedJobs: {},
   });
   const connection = createGatewayConnectionLifecycle({ client: null, phase: "stopped" });
+  const [receipt, setReceipt] = createSignal(
+    Promise.resolve<ControlUiSessionPullRequestCheckDetails | undefined>(undefined),
+  );
+  const read = createMemo(() => receipt());
+  const [scopeRevision, setScope] = createSignal(0);
+  let accepted: ControlUiSessionPullRequestCheckDetails | undefined;
   let target = "";
   let sessionKey = "";
   let stopGateway: (() => void) | undefined;
   let requestController: AbortController | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let expansionInitialized = false;
-  let retryDelay = REFRESH_MS;
   const disclosure = createCiDisclosure(host, handleVisibility, () => {
     inputHandlers.set(host, handleInputsChanged);
     bindGateway();
@@ -134,10 +140,10 @@ function createCiDetails(host: ChatCiDetailsElement) {
     stopGateway = gateway?.subscribe((snapshot) => {
       if (connection.transition(snapshot)) {
         reset();
-        queueMicrotask(() => void load());
+        queueMicrotask(load);
       }
     });
-    queueMicrotask(() => void load());
+    queueMicrotask(load);
   }
 
   function syncTarget() {
@@ -178,32 +184,30 @@ function createCiDetails(host: ChatCiDetailsElement) {
     requestController = undefined;
     clearTimeout(refreshTimer);
     refreshTimer = undefined;
-    setState((draft) => {
-      draft.loading = false;
-    });
+    void setReceipt(Promise.resolve(accepted));
   }
 
   function reset() {
     cancelRequest();
+    accepted = undefined;
+    void setReceipt(Promise.resolve(undefined));
+    setScope((value) => value + 1);
     setState((draft) => {
-      draft.result = undefined;
-      draft.error = null;
       draft.retryAt = 0;
       draft.expandedJobs = {};
     });
     expansionInitialized = false;
-    retryDelay = REFRESH_MS;
   }
 
   function handleVisibility() {
     if (disclosure.visible()) {
-      void load();
+      load();
     } else {
       cancelRequest();
     }
   }
 
-  async function load(): Promise<void> {
+  function load(): void {
     if (!disclosure.visible() || requestController) {
       return;
     }
@@ -214,94 +218,82 @@ function createCiDetails(host: ChatCiDetailsElement) {
     const pr = host.pullRequest;
     const scope = connection.capture();
     if (!scope || !host.gateway || !pr?.headSha || !host.sessionKey) {
-      setState((draft) => {
-        draft.error = t("chat.pullRequests.checksUnavailable");
-      });
+      const result = Promise.reject(new Error(t("chat.pullRequests.checksUnavailable")));
+      void setReceipt(result);
+      void result.catch(() => {});
       return;
     }
     clearTimeout(refreshTimer);
     const controller = new AbortController();
+    const client = scope.client;
+    const params = {
+      sessionKey: host.sessionKey,
+      owner: pr.owner,
+      repo: pr.repo,
+      number: pr.number,
+      headSha: pr.headSha,
+    };
     requestController = controller;
-    setState((draft) => {
-      draft.loading = true;
-      draft.error = null;
-    });
     const current = () =>
       disclosure.visible() && requestController === controller && connection.isCurrent(scope);
-    try {
-      const result = await scope.client.request<ControlUiSessionPullRequestCheckDetails>(
-        "controlUi.sessionPullRequests.checks",
-        {
-          sessionKey: host.sessionKey,
-          owner: pr.owner,
-          repo: pr.repo,
-          number: pr.number,
-          headSha: pr.headSha,
-        },
-        { signal: controller.signal },
-      );
-      if (!current()) {
-        return;
-      }
-      const retryAt =
-        Date.now() + Math.max(0, result.retryAfterMs ?? (result.rateLimited ? 60_000 : 0));
-      setState((draft) => {
-        draft.result = result;
-        draft.retryAt = retryAt;
-        if (!expansionInitialized && result.checks.length > 0) {
-          expansionInitialized = true;
-          const first = result.checks
-            .toSorted((a, b) => CHECK_ORDER[a.state] - CHECK_ORDER[b.state])
-            .find((check) => check.state === "failed" || check.state === "running");
-          if (first) {
-            draft.expandedJobs[first.id] = true;
-          }
+    const pending = request();
+    void setReceipt(pending);
+    // The read boundary observes failures even if this disclosure closes first.
+    void pending.catch(() => {});
+
+    async function request(): Promise<ControlUiSessionPullRequestCheckDetails | undefined> {
+      try {
+        const result = await client.request<ControlUiSessionPullRequestCheckDetails>(
+          "controlUi.sessionPullRequests.checks",
+          params,
+          { signal: controller.signal },
+        );
+        if (!current()) {
+          return accepted;
         }
-        const ids = new Set(result.checks.map((check) => check.id));
-        for (const id of Object.keys(draft.expandedJobs)) {
-          if (!ids.has(Number(id))) {
-            delete draft.expandedJobs[Number(id)];
-          }
-        }
-      });
-      if (result.status === "ready" && !result.rateLimited && !result.error) {
-        retryDelay = REFRESH_MS;
-        // Completed jobs can be rerun on the same head without changing the summary counts.
-        scheduleRetryAvailability(Math.max(retryAt, Date.now() + REFRESH_MS));
-      } else {
-        retryRead(retryAt);
-      }
-    } catch (error) {
-      if (current()) {
-        // Only explicit stale responses authorize retaining previous details.
+        accepted = result;
+        const retryAt =
+          Date.now() + Math.max(0, result.retryAfterMs ?? (result.rateLimited ? 60_000 : 0));
         setState((draft) => {
-          draft.result = undefined;
-          draft.error = formatUiError(error, t("chat.pullRequests.checksUnavailable"));
+          draft.retryAt = retryAt;
+          if (!expansionInitialized && result.checks.length > 0) {
+            expansionInitialized = true;
+            const first = result.checks
+              .toSorted((a, b) => CHECK_ORDER[a.state] - CHECK_ORDER[b.state])
+              .find((check) => check.state === "failed" || check.state === "running");
+            if (first) {
+              draft.expandedJobs[first.id] = true;
+            }
+          }
+          const ids = new Set(result.checks.map((check) => check.id));
+          for (const id of Object.keys(draft.expandedJobs)) {
+            if (!ids.has(Number(id))) {
+              delete draft.expandedJobs[Number(id)];
+            }
+          }
         });
-        if (isRetryableGatewayReadError(error, "controlUi.sessionPullRequests.checks")) {
-          retryRead(
-            Date.now() +
-              (error instanceof GatewayProtocolRequestError ? (error.retryAfterMs ?? 0) : 0),
-          );
+        if (retryAt > Date.now()) {
+          scheduleRetryAvailability(retryAt);
+        } else if (result.status === "ready") {
+          // Completed jobs can be rerun on the same head without changing the summary counts.
+          refreshTimer = setTimeout(load, REFRESH_MS);
         }
-      }
-    } finally {
-      if (current()) {
-        requestController = undefined;
-        setState((draft) => {
-          draft.loading = false;
-        });
+        return result;
+      } catch (error) {
+        if (current()) {
+          // Only explicit stale responses authorize retaining previous details.
+          accepted = undefined;
+          throw new Error(formatUiError(error, t("chat.pullRequests.checksUnavailable")), {
+            cause: error,
+          });
+        }
+        return accepted;
+      } finally {
+        if (current()) {
+          requestController = undefined;
+        }
       }
     }
-  }
-
-  function retryRead(serverRetryAt = 0) {
-    const retryAt = Math.max(serverRetryAt, Date.now() + retryDelay);
-    retryDelay = Math.min(MAX_RETRY_MS, retryDelay * 2);
-    setState((draft) => {
-      draft.retryAt = retryAt;
-    });
-    scheduleRetryAvailability(retryAt);
   }
 
   function scheduleRetryAvailability(retryAt: number) {
@@ -311,13 +303,15 @@ function createCiDetails(host: ChatCiDetailsElement) {
         setState((draft) => {
           draft.retryAt = 0;
         });
-        void load();
       },
       Math.min(2_147_483_647, Math.max(0, retryAt - Date.now())),
     );
   }
   return {
     state,
+    read,
+    scope: scopeRevision,
+    load,
     setExpanded: (id: number, open: boolean) => {
       setState((draft) => {
         draft.expandedJobs[id] = open;
@@ -334,19 +328,27 @@ type ChatCiDetailsProps = ChatCiDisclosureProps & {
 
 export type ChatCiDetailsElement = SolidBridgeElement<ChatCiDetailsProps>;
 function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElement) {
-  const skippedRef = createMemo(() => props.controls?.ref());
+  const retryRef = props.controls?.ref();
+  const skippedRef = props.controls?.ref();
   const model = createCiDetails(host);
   const state = model.state;
-  const result = () => state.result;
+  const retryWait = () => Math.max(0, state.retryAt - Date.now());
+  const result = createMemo(() => latest(model.read));
+  const loading = createMemo(() => isPending(model.read));
   const checks = () => result()?.checks ?? [];
   const jobs = () =>
     checks()
       .filter((check) => check.state !== "skipped")
       .toSorted((a, b) => CHECK_ORDER[a.state] - CHECK_ORDER[b.state]);
   const skipped = () => checks().filter((check) => check.state === "skipped");
+  const showNotice = () =>
+    result()?.rateLimited ||
+    result()?.status === "stale" ||
+    result()?.status === "unavailable" ||
+    result()?.error;
   const job = (check: () => ControlUiSessionPullRequestCheck) => {
-    const summaryRef = createMemo(() => props.controls?.ref());
-    const linkRef = createMemo(() => props.controls?.ref());
+    const summaryRef = props.controls?.ref();
+    const linkRef = props.controls?.ref();
     const jobState = (): CheckState =>
       check().state === "running" && check().status !== "in_progress" ? "queued" : check().state;
     const url = () =>
@@ -367,7 +369,7 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
         }}
       >
         <summary
-          ref={summaryRef()}
+          ref={(element) => summaryRef?.(element)}
           class="chat-ci__job-summary"
           data-form-control={props.menuControls ? "" : undefined}
         >
@@ -379,7 +381,18 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
           </span>
         </summary>
         <div class="chat-ci__job-detail">
-          <Show when={check().steps?.length}>
+          <Show
+            when={check().steps?.length}
+            fallback={
+              <div class="chat-ci__empty-steps">
+                {t(
+                  check().source === "check"
+                    ? "chat.pullRequests.checksNoSteps"
+                    : "chat.pullRequests.checksStepsUnavailable",
+                )}
+              </div>
+            }
+          >
             <ol class="chat-ci__steps" role="list">
               <For
                 each={check().steps?.toSorted((a, b) => a.number - b.number)}
@@ -400,7 +413,7 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
           <Show when={url()}>
             {(href) => (
               <a
-                ref={linkRef()}
+                ref={(element) => linkRef?.(element)}
                 class="chat-ci__job-link"
                 href={href()}
                 target="_blank"
@@ -419,48 +432,121 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
       </details>
     );
   };
-  return (
+  const notice = (error: () => string | undefined, retry: () => void) => (
     <div
-      class="chat-ci__jobs"
-      aria-busy={state.loading ? "true" : "false"}
-      aria-description={state.error ?? undefined}
+      class="chat-ci__notice"
+      role="status"
+      data-state={!error() && result()?.rateLimited ? "rate-limited" : "unavailable"}
     >
-      <For each={jobs()} keyed={(check) => check.id}>
-        {job}
-      </For>
-      <Show when={skipped().length}>
-        <details class="chat-ci__skipped">
-          <summary ref={skippedRef()} data-form-control={props.menuControls ? "" : undefined}>
-            <CheckStatus state="skipped" />
-            <span>
-              {t("chat.pullRequests.checksSkippedCount", { count: String(skipped().length) })}
-            </span>
-            <span class="chat-ci__chevron" aria-hidden="true">
-              <Icon name="chevronDown" />
-            </span>
-          </summary>
-          <For each={skipped()} keyed={(check) => check.id}>
+      <span>
+        {error() ??
+          t(
+            result()?.rateLimited
+              ? "chat.pullRequests.checksRateLimited"
+              : result()?.status === "stale"
+                ? "chat.pullRequests.checksStale"
+                : "chat.pullRequests.checksUnavailable",
+          )}
+        {retryWait() > 0
+          ? t("chat.pullRequests.checksRetryAfter", {
+              duration: formatDurationCompact(retryWait()) ?? "",
+            })
+          : undefined}
+      </span>
+      <button
+        ref={(element) => retryRef?.(element)}
+        class="chat-ci__retry"
+        type="button"
+        disabled={loading() || retryWait() > 0}
+        onClick={() => retry()}
+      >
+        {t("common.retry")}
+      </button>
+    </div>
+  );
+  const loadingNotice = () => (
+    <div class="chat-ci__notice" role="status">
+      {t("chat.pullRequests.checksLoading")}
+    </div>
+  );
+  return (
+    <Errored
+      fallback={(error, reset) => (
+        <>
+          {notice(
+            () => formatUiError(error()),
+            () => {
+              model.load();
+              reset();
+            },
+          )}
+          <div class="chat-ci__jobs" aria-busy="false" />
+        </>
+      )}
+    >
+      <Loading
+        on={model.scope()}
+        fallback={
+          <>
+            {loadingNotice()}
+            <div class="chat-ci__jobs" aria-busy="true" />
+          </>
+        }
+      >
+        <Show
+          when={loading() && !result()}
+          fallback={<Show when={showNotice()}>{notice(() => undefined, model.load)}</Show>}
+        >
+          {loadingNotice()}
+        </Show>
+        <div class="chat-ci__jobs" aria-busy={loading() ? "true" : "false"}>
+          <For each={jobs()} keyed={(check) => check.id}>
             {job}
           </For>
-        </details>
-      </Show>
-    </div>
+          <Show when={skipped().length}>
+            <details class="chat-ci__skipped">
+              <summary
+                ref={(element) => skippedRef?.(element)}
+                data-form-control={props.menuControls ? "" : undefined}
+              >
+                <CheckStatus state="skipped" />
+                <span>
+                  {t("chat.pullRequests.checksSkippedCount", { count: String(skipped().length) })}
+                </span>
+                <span class="chat-ci__chevron" aria-hidden="true">
+                  <Icon name="chevronDown" />
+                </span>
+              </summary>
+              <For each={skipped()} keyed={(check) => check.id}>
+                {job}
+              </For>
+            </details>
+          </Show>
+          <Show
+            when={
+              result()?.status === "ready" &&
+              !checks().length &&
+              !result()?.rateLimited &&
+              !result()?.error
+            }
+          >
+            <div class="chat-ci__notice">{t("chat.pullRequests.checksEmpty")}</div>
+          </Show>
+        </div>
+      </Loading>
+    </Errored>
   );
 }
 
-export const ChatCiDetails = defineSolidBridge<ChatCiDetailsProps>(
-  "openclaw-chat-ci-details",
-  ChatCiDetailsContent,
-  {
-    propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
-    properties: {
-      gateway: { default: undefined, attribute: false },
-      pullRequest: { default: undefined, attribute: false },
-      sessionKey: { default: "", attribute: false },
-      presented: { default: true, type: Boolean },
-      inline: { default: false, attribute: false },
-      menuControls: { default: false, attribute: false },
-      controls: { default: undefined, attribute: false },
-    },
+defineSolidBridge<ChatCiDetailsProps>("openclaw-chat-ci-details", ChatCiDetailsContent, {
+  propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
+  properties: {
+    gateway: { default: undefined, attribute: false },
+    pullRequest: { default: undefined, attribute: false },
+    sessionKey: { default: "", attribute: false },
+    presented: { default: true, type: Boolean },
+    inline: { default: false, attribute: false },
+    menuControls: { default: false, attribute: false },
+    controls: { default: undefined, attribute: false },
   },
-);
+});
