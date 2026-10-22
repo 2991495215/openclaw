@@ -6,8 +6,9 @@ import { observeResponseBody, writeOversizedJson } from "./http.test-support.js"
 afterEach(() => vi.restoreAllMocks());
 
 it("does not report reader activity while an HTTP response remains unread", async () => {
+  let clientClosed: Promise<void> | undefined;
   const server = createServer((_req, res) => {
-    writeOversizedJson(res, 32 * 1024 * 1024, '{"padding":"');
+    clientClosed = writeOversizedJson(res, 32 * 1024 * 1024, '{"padding":"');
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -24,6 +25,7 @@ it("does not report reader activity while an HTTP response remains unread", asyn
   } finally {
     await response?.body?.cancel();
     server.closeAllConnections();
+    await clientClosed;
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });
