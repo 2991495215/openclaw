@@ -1479,6 +1479,53 @@ struct GatewayProcessManagerTests {
         }
     }
 
+    @Test func `reused launchd gateway gets the cold-start budget before repair`() async throws {
+        let port = 19119
+        let url = try #require(URL(string: "ws://example.invalid"))
+        let firstHealthResponse = AsyncTestGate()
+        let (_, connection, manager) = self.makeGatewayReadinessFixture(url: url) {
+            self.gatewayTask(healthSucceedsAfter: 0, healthResponseGates: [firstHealthResponse])
+        }
+
+        try await self.withLaunchAgentEnvironment(
+            port: port,
+            statusPayload: self.loadedGatewayStatus(port: port))
+        {
+            manager.setTestingLastFailureReason(nil)
+            manager._testClearLaunchAgentReadinessFailure()
+            manager._testClearLaunchAgentInstallEvidence()
+            let descriptor = self.gatewayDescriptor(pid: 4242)
+            await PortGuardian.shared.setTestingDescriptor(descriptor, forPort: port)
+            defer {
+                manager.setTestingLastFailureReason(nil)
+                manager._testClearLaunchAgentReadinessFailure()
+                manager._testClearLaunchAgentInstallEvidence()
+            }
+
+            _ = try await connection.request(method: "status", params: nil, retryTransportFailures: false)
+            manager._testStartLaunchdGatewayReadiness(
+                port: port,
+                pid: 4242,
+                readinessWindow: 0.2,
+                firstInstallReadinessBudget: 0.2,
+                reusedLaunchdReadinessBudget: 5,
+                hasFreshInstallEvidence: false)
+            await self.waitForCondition(attempts: 3000) {
+                GatewayLaunchAgentManager.testingDaemonCommandCallsSnapshot()
+                    .contains { $0.first == "status" }
+            }
+            firstHealthResponse.open()
+            await manager.waitForStartupAttempt()
+
+            #expect(manager.status == .running(details: "pid 4242"))
+            #expect(manager.lastFailureReason == nil)
+            #expect(!manager._testHasLaunchAgentReadinessFailure())
+
+            await connection.shutdown()
+            await PortGuardian.shared.setTestingDescriptor(nil, forPort: port)
+        }
+    }
+
     @Test func `new launchd gateway can cross multiple readiness deadlines`() async throws {
         let port = 19116
         let url = try #require(URL(string: "ws://example.invalid"))
