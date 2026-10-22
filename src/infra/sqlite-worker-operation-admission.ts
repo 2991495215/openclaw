@@ -32,6 +32,8 @@ const TIMED_OUT = 3;
 // clock captured at import. Fake timers replace `process.hrtime` on one thread
 // with a clock that starts at zero; reading that replacement would expire, or
 // extend, every deadline the other thread set.
+// Each side measures admission deadlines on its own thread's monotonic clock:
+// Bun starts process.hrtime at zero independently in every worker.
 const processMonotonicClock = process.hrtime;
 const readMonotonicNs = (): bigint => processMonotonicClock.bigint();
 
@@ -174,8 +176,14 @@ export function createSqliteWorkerOperationAdmission(
       return;
     }
     const decision = new Int32Array(message.decision);
+    // A worker's monotonic instant cannot cross threads. Bound host-side work
+    // from receipt while the worker independently enforces its own wait budget.
+    const hostDeadlineNs =
+      typeof message.deadlineMs === "number" && Number.isFinite(message.deadlineMs)
+        ? readMonotonicNs() + BigInt(Math.max(0, Math.ceil(message.deadlineMs))) * 1_000_000n
+        : undefined;
     const expired = () => {
-      if (typeof message.deadlineNs === "bigint" && readMonotonicNs() >= message.deadlineNs) {
+      if (hostDeadlineNs !== undefined && readMonotonicNs() >= hostDeadlineNs) {
         if (Atomics.compareExchange(decision, 0, REQUESTED, TIMED_OUT) === REQUESTED) {
           Atomics.notify(decision, 0);
         }
@@ -450,7 +458,6 @@ export function requestSqliteWorkerOperationAdmission(
     {
       ...request,
       decision: decision.buffer,
-      deadlineNs,
       ports: transferList.filter((value) => value instanceof MessagePort),
     },
     transferList,
