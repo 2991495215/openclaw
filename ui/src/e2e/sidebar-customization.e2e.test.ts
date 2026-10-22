@@ -644,7 +644,11 @@ suite.define(() => {
           .first()
           .evaluate((svg) => svg.getBoundingClientRect().width);
       const background = (locator: typeof railUsage) =>
-        locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+        locator.evaluate(async (element) => {
+          // Capture the reference and compared colors only after their transitions settle.
+          await Promise.all(element.getAnimations().map((animation) => animation.finished));
+          return getComputedStyle(element).backgroundColor;
+        });
       expect(await iconWidth(railUsage)).toBe(await iconWidth(pagesButton));
       const pressedBackground = await background(pagesButton);
       await railUsage.hover();
