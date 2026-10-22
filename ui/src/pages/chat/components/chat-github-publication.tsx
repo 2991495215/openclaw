@@ -6,6 +6,7 @@ import {
   createSignal,
   Errored,
   Loading,
+  onSettled,
   refresh as refreshRead,
   Show,
 } from "solid-js";
@@ -86,12 +87,11 @@ function createPublicationAction(publication: () => GitHubPublicationView) {
       const completion = callback?.();
       if (completion) {
         // Acknowledgement can retire its binding; commit that owner change first.
-        const pending = Promise.resolve().then(() => present(view, completion));
-        // An owner update can remove these controls before the outcome is observed.
-        void pending.catch(() => {});
-        setReceipt({
-          retired: view.retired,
-          completion: pending,
+        onSettled(() => {
+          const pending = present(view, completion);
+          // An owner update can remove these controls before the outcome is observed.
+          void pending.catch(() => {});
+          setReceipt({ retired: view.retired, completion: pending });
         });
       }
     },

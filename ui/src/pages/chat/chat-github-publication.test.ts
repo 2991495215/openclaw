@@ -19,6 +19,22 @@ import {
 import { GitHubPublicationAction } from "./components/chat-github-publication.tsx";
 
 describe("explicit GitHub publication", () => {
+  it("notifies sibling presentations only after freezing the admitted account", async () => {
+    const { controller, request, changed } = setup();
+    const ready = await settled(controller);
+    const response = createDeferred<unknown>();
+    request.mockReturnValueOnce(response.promise);
+    const snapshots: unknown[] = [];
+    changed.mockImplementation(() => {
+      const view = controller.view()!;
+      snapshots.push({ activity: view.activity, locked: view.locked, onSelect: view.onSelect });
+    });
+    const completion = ready.onPublish?.();
+    expect(snapshots).toEqual([{ activity: "publish", locked: true, onSelect: undefined }]);
+    response.resolve({ requestId, status: "requested", publisher: shared });
+    await completion;
+  });
+
   it("does not present an accepted publication status read as a new write", async () => {
     const { controller, request } = setup();
     (await settled(controller)).onSelect?.("personal");

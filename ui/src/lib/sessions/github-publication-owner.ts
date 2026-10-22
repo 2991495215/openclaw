@@ -293,9 +293,11 @@ export class GitHubPublicationOwner {
     this.readCompletion = readCompletion;
     this.error = null;
     this.errorActivity = null;
-    this.changed();
     try {
-      await action(this.owner, current);
+      const completion = action(this.owner, current);
+      // Publish the admitted attempt together with its activity to every pane.
+      this.changed();
+      await completion;
     } catch (error) {
       if (current()) {
         this.error = formatUiError(error);
