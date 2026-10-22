@@ -172,6 +172,26 @@ function createSessionDiffResultViews(
             base: result().baseRef!,
           })
         : (result().branch ?? result().baseRef ?? t("chat.sessionDiff.allChanges"));
+    function ScopeButton(button: { footer?: boolean }) {
+      return (
+        <button
+          class={button.footer ? "session-diff__footer" : "session-diff__section-title"}
+          hidden={desktop()}
+          type="button"
+          aria-label={t("chat.sessionDiff.scopeMenu")}
+          onClick={(event) =>
+            openAnchoredMenu(
+              event,
+              { kind: "scope", active: scope(), result: result() },
+              button.footer ? "top-start" : "bottom-start",
+            )
+          }
+        >
+          <span>{button.footer ? footer() : scopeTitle(result())}</span>
+          <Icon name={button.footer ? "chevronUp" : "chevronDown"} />
+        </button>
+      );
+    }
     return (
       <>
         {result().unavailableReason === "not_git" ||
@@ -191,22 +211,7 @@ function createSessionDiffResultViews(
             {result().unavailableReason === "workspace_stopped" && (
               <div class="session-diff__note">{t("chat.sessionDiff.workspaceStopped")}</div>
             )}
-            <button
-              class="session-diff__section-title"
-              hidden={desktop()}
-              type="button"
-              aria-label={t("chat.sessionDiff.scopeMenu")}
-              onClick={(event) =>
-                openAnchoredMenu(
-                  event,
-                  { kind: "scope", active: scope(), result: result() },
-                  "bottom-start",
-                )
-              }
-            >
-              <span>{scopeTitle(result())}</span>
-              <Icon name="chevronDown" />
-            </button>
+            <ScopeButton />
             <div
               class="session-diff__reading-layout"
               style={
@@ -282,22 +287,7 @@ function createSessionDiffResultViews(
                 )}
               </div>
             </div>
-            <button
-              class="session-diff__footer"
-              hidden={desktop()}
-              type="button"
-              aria-label={t("chat.sessionDiff.scopeMenu")}
-              onClick={(event) =>
-                openAnchoredMenu(
-                  event,
-                  { kind: "scope", active: scope(), result: result() },
-                  "top-start",
-                )
-              }
-            >
-              <span>{footer()}</span>
-              <Icon name="chevronUp" />
-            </button>
+            <ScopeButton footer />
           </>
         )}
       </>

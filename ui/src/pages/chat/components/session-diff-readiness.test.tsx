@@ -196,32 +196,35 @@ describe("SessionDiffPanel readiness", () => {
     },
   );
 
-  it("shows loading instead of the old files while a changed scope is pending", async () => {
-    const pending = deferred<SessionsDiffResult>();
-    const loader = vi
-      .fn<NonNullable<SessionDiffProps["loader"]>>()
-      .mockResolvedValueOnce(fileResult(SNAPSHOT_PATCH))
-      .mockReturnValueOnce(pending.promise);
-    const { panel, update } = mountPanel();
-    update({ loader });
-    await waitForSolid(() => expect(panel.querySelector(".session-diff__file")).not.toBeNull());
+  it.each(["section-title", "footer"])(
+    "shows loading instead of old files when %s changes scope",
+    async (trigger) => {
+      const pending = deferred<SessionsDiffResult>();
+      const loader = vi
+        .fn<NonNullable<SessionDiffProps["loader"]>>()
+        .mockResolvedValueOnce(fileResult(SNAPSHOT_PATCH))
+        .mockReturnValueOnce(pending.promise);
+      const { panel, update } = mountPanel();
+      update({ loader });
+      await waitForSolid(() => expect(panel.querySelector(".session-diff__file")).not.toBeNull());
 
-    panel.querySelector<HTMLButtonElement>(".session-diff__section-title")!.click();
-    await waitForSolid(() =>
-      expect(panel.querySelector('button[value="scope:uncommitted"]')).not.toBeNull(),
-    );
-    panel.querySelector<HTMLButtonElement>('button[value="scope:uncommitted"]')!.click();
-    try {
-      await waitForSolid(() => {
-        expect(panel.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
-        expect(panel.querySelector(".session-diff__file")).toBeNull();
-      });
-      expect(loader).toHaveBeenLastCalledWith({ scope: "uncommitted" });
-    } finally {
-      pending.resolve(fileResult(FRESH_PATCH));
-    }
-    await waitForSolid(() => expect(panel.textContent).toContain("fresh snapshot line"));
-  });
+      panel.querySelector<HTMLButtonElement>(`.session-diff__${trigger}`)!.click();
+      await waitForSolid(() =>
+        expect(panel.querySelector('button[value="scope:uncommitted"]')).not.toBeNull(),
+      );
+      panel.querySelector<HTMLButtonElement>('button[value="scope:uncommitted"]')!.click();
+      try {
+        await waitForSolid(() => {
+          expect(panel.querySelector("openclaw-panel-loading-skeleton")).not.toBeNull();
+          expect(panel.querySelector(".session-diff__file")).toBeNull();
+        });
+        expect(loader).toHaveBeenLastCalledWith({ scope: "uncommitted" });
+      } finally {
+        pending.resolve(fileResult(FRESH_PATCH));
+      }
+      await waitForSolid(() => expect(panel.textContent).toContain("fresh snapshot line"));
+    },
+  );
 
   it("keeps computing responses pending and retains the last diff during refresh", async () => {
     vi.useFakeTimers();
