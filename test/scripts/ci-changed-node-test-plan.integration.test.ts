@@ -78,6 +78,7 @@ it("keeps the hybrid hourly plan within the main-tier cap", () => {
   const hourly = createNodeTestShardBundles({
     runnerBackend: "hybrid",
     compactMode: "pull-request",
+    mainValidation: true,
     compactNodeJobCap: 77,
     includeProofTests: true,
     includeReleaseOnlyToolingShards: true,
