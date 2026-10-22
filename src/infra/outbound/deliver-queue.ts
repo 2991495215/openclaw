@@ -396,7 +396,6 @@ async function runOutboundDeliveryWithQueue(
       replyToId: params.reply?.replyToId,
       threadId: params.threadId,
       silent: params.silent,
-      reconcileUnknownSend: true,
     });
     delete requirements.messageSendingHooks;
     const support = await resolveOutboundDurableFinalDeliverySupport({
