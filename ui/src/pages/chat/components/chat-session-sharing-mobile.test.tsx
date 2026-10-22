@@ -131,10 +131,7 @@ it("keeps sharing busy through refresh and retires it for a same-key successor",
   const view = accessFixture(source);
   view.getByRole("button", { name: /Shared/ }).click();
   await waitForSolid(() =>
-    expect(
-      view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled"),
-      "sharing: initial busy",
-    ).toBe(true),
+    expect(view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled")).toBe(true),
   );
   // A delayed header render may check hydration while the write is pending.
   pane.syncSelectedSessionSharing(previous);
@@ -143,10 +140,7 @@ it("keeps sharing busy through refresh and retires it for a same-key successor",
   response.resolve({});
   await refreshStarted.promise;
   flush();
-  expect(
-    view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled"),
-    "sharing: refresh busy",
-  ).toBe(true);
+  expect(view.getByRole("button", { name: /Shared/ }).hasAttribute("disabled")).toBe(true);
   expect(view.applied).not.toHaveBeenCalled();
   holdRefresh = false;
   rows[0] = replacement;
@@ -157,9 +151,7 @@ it("keeps sharing busy through refresh and retires it for a same-key successor",
     reason: "update",
     session: replacement,
   });
-  await waitForSolid(() =>
-    expect(source.operationSignal?.aborted, "sharing: successor retirement").toBe(true),
-  );
+  await waitForSolid(() => expect(source.operationSignal?.aborted).toBe(true));
   pane.syncSelectedSessionSharing(replacement);
   await waitForSolid(() =>
     expect(pane.prepareSessionSharing(replacement)?.state?.loading).toBe(false),
