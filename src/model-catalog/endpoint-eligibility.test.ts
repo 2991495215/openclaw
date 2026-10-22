@@ -3,32 +3,29 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isProviderCatalogSourceAllowed } from "../plugins/provider-config-owner.js";
 import { planEffectiveModelCatalogRows } from "./index.js";
 
-const registry = {
-  plugins: [
+const plugin = {
+  id: "catalog-owner",
+  providers: ["fixture"],
+  providerEndpoints: [
     {
-      id: "catalog-owner",
-      providers: ["fixture"],
-      providerEndpoints: [
-        {
-          endpointClass: "openai-public",
-          hosts: ["native.example"],
-          hostSuffixes: ["region.example"],
-        },
-      ],
-      modelCatalog: {
-        aliases: { alternate: { provider: "fixture", baseUrl: "https://alternate.example/api" } },
-        providers: {
-          fixture: {
-            baseUrl: "https://native.example/v1",
-            api: "openai-completions",
-            models: [
-              { id: "native-model", name: "Native model", baseUrl: "https://model.example/v1" },
-            ],
-          },
-        },
-      },
+      endpointClass: "openai-public",
+      hosts: ["native.example"],
+      hostSuffixes: ["region.example"],
     },
   ],
+  modelCatalog: {
+    aliases: { alternate: { provider: "fixture", baseUrl: "https://alternate.example/api" } },
+    providers: {
+      fixture: {
+        baseUrl: "https://native.example/v1",
+        api: "openai-completions",
+        models: [{ id: "native-model", name: "Native model", baseUrl: "https://model.example/v1" }],
+      },
+    },
+  },
+} satisfies Parameters<typeof planEffectiveModelCatalogRows>[0]["registry"]["plugins"][number];
+const registry = {
+  plugins: [plugin],
 } satisfies Parameters<typeof planEffectiveModelCatalogRows>[0]["registry"];
 
 function providerConfig(baseUrl: string): OpenClawConfig {
@@ -78,7 +75,6 @@ describe("provider endpoint catalog eligibility", () => {
   });
 
   it("does not extend configured-endpoint discovery to static manifest rows", () => {
-    const plugin = registry.plugins[0];
     const configuredEndpointPlugin = {
       ...plugin,
       modelCatalog: {

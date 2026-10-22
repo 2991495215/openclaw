@@ -1,3 +1,7 @@
+import type {
+  ModelCatalogModel,
+  ModelCatalogProvider,
+} from "@openclaw/model-catalog-core/model-catalog-types";
 import { afterEach, assert, beforeEach, expect, it, vi } from "vitest";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import type { ProviderPlugin } from "../plugins/types.js";
@@ -30,14 +34,20 @@ import {
   PLUGIN_MODEL_CATALOG_GENERATED_BY,
 } from "./plugin-model-catalog.js";
 
-const nativeModel = modelDefinition("native-model", {
+const nativeModel = {
+  id: "native-model",
   name: "Native model",
+  reasoning: true,
+  input: ["text"],
+  maxTokens: 8192,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 128000,
-});
-const nativeCatalog = providerEntry("https://native.example/v1", {
+} satisfies ModelCatalogModel;
+const nativeCatalog = {
+  baseUrl: "https://native.example/v1",
   api: "openai-completions",
   models: [nativeModel],
-});
+} satisfies ModelCatalogProvider;
 const provider: ProviderPlugin = {
   id: "fixture",
   pluginId: "catalog-owner",
