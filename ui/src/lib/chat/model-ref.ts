@@ -116,35 +116,9 @@ export function resolvePreferredServerChatModelValue(
   return trimmedModel;
 }
 
-function formatChatModelDisplay(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const separator = trimmed.indexOf("/");
-  if (separator <= 0) {
-    return trimmed;
-  }
-  return `${trimmed.slice(separator + 1)} · ${trimmed.slice(0, separator)}`;
-}
-
 function formatRawCatalogLabel(entry: ModelCatalogEntry): string {
   const provider = entry.provider?.trim();
   return provider ? `${entry.id} · ${provider}` : entry.id;
-}
-
-function resolveCatalogDisplayName(entry: ModelCatalogEntry): string {
-  const name = entry.name.trim();
-  const alias = entry.alias?.trim();
-  if (!name || !alias) {
-    return name || alias || "";
-  }
-  if (alias.toLowerCase() === name.toLowerCase()) {
-    return name;
-  }
-  // Aliases are selectable metadata, not a replacement for model identity.
-  // Preserve richer custom labels only when they already contain the full name.
-  return alias.toLowerCase().includes(name.toLowerCase()) ? alias : `${name} · ${alias}`;
 }
 
 function createQualifiedCatalogKey(entry: ModelCatalogEntry): string {
@@ -161,7 +135,15 @@ export function buildCatalogDisplayLookup(catalog: ModelCatalogEntry[]): Map<str
   const nameToValues = new Map<string, Set<string>>();
   const nameProviderToValues = new Map<string, Set<string>>();
   const entries = catalog.map((entry) => {
-    const name = resolveCatalogDisplayName(entry);
+    let name = entry.name.trim();
+    const alias = entry.alias?.trim();
+    if (!name || !alias) {
+      name = name || alias || "";
+    } else if (alias.toLowerCase() !== name.toLowerCase()) {
+      // Aliases are selectable metadata, not a replacement for model identity.
+      // Preserve richer custom labels only when they already contain the full name.
+      name = alias.toLowerCase().includes(name.toLowerCase()) ? alias : `${name} · ${alias}`;
+    }
     return {
       entry,
       name,
@@ -210,9 +192,14 @@ export function formatCatalogChatModelDisplayFromLookup(
     return "";
   }
 
-  return (
-    displayLookup.get(normalizeAgentModelRefForConfig(trimmed)) ?? formatChatModelDisplay(trimmed)
-  );
+  const label = displayLookup.get(normalizeAgentModelRefForConfig(trimmed));
+  if (label !== undefined && label !== null) {
+    return label;
+  }
+  const separator = trimmed.indexOf("/");
+  return separator <= 0
+    ? trimmed
+    : `${trimmed.slice(separator + 1)} · ${trimmed.slice(0, separator)}`;
 }
 
 export function buildChatModelOptionFromLookup(
