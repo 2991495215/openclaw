@@ -19,45 +19,7 @@ final class SavedGatewayOpeningUITests: XCTestCase {
     @MainActor
     func testSavedGatewayOpening() async throws {
         self.continueAfterFailure = false
-        let networkMonitor = self
-            .addUIInterruptionMonitor(withDescription: "Deny only the proof app's local network prompt") { _ in
-                let dialog = XCUIApplication(bundleIdentifier: "com.apple.UserNotificationCenter").dialogs["alert"]
-                let expected = "Allow “OpenClawSavedGatewayProof” to find devices on local networks?"
-                guard dialog.exists, dialog.staticTexts.allElementsBoundByIndex.contains(where: { text in
-                    [text.label, text.value as? String ?? ""].contains { value in
-                        value.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression) == expected
-                    }
-                }) else { return false }
-                XCTContext.runActivity(named: "Inspect the exact local network prompt") { activity in
-                    let tree = XCTAttachment(string: dialog.debugDescription)
-                    tree.name = "local-network-alert-accessibility-tree"
-                    tree.lifetime = .keepAlways
-                    activity.add(tree)
-                }
-                let denyTitles = ["Don’t Allow", "Don't Allow"]
-                let buttons = dialog.buttons.matching(NSPredicate(
-                    format: "label IN %@ OR title IN %@ OR value IN %@", denyTitles, denyTitles, denyTitles))
-                    .allElementsBoundByIndex
-                guard buttons.count == 1, let deny = buttons.first, deny.isHittable else { return false }
-                XCTContext
-                    .runActivity(named: "Deny local network access for the synthetic loopback proof") { activity in
-                        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-                        screenshot.name = "local-network-prompt"
-                        screenshot.lifetime = .keepAlways
-                        activity.add(screenshot)
-                    }
-                deny.click()
-                guard dialog.waitForNonExistence(timeout: 5) else { return false }
-                XCTContext.runActivity(named: "Local network permission denied") { activity in
-                    let decision =
-                        XCTAttachment(
-                            string: "Clicked Don’t Allow on the exact proof-app local network prompt; dialog closed.")
-                    decision.name = "local-network-decision"
-                    decision.lifetime = .keepAlways
-                    activity.add(decision)
-                }
-                return true
-            }
+        let networkMonitor = self.installLocalNetworkDenialMonitor(appDisplayName: "OpenClawSavedGatewayProof")
         defer { self.removeUIInterruptionMonitor(networkMonitor) }
         let stage = try self.setting("OPENCLAW_PROOF_STAGE")
         let entry = try self.setting("OPENCLAW_PROOF_ENTRY")
@@ -101,9 +63,22 @@ final class SavedGatewayOpeningUITests: XCTestCase {
         address.typeText("ws://127.0.0.1:19878")
         let credentials = app.disclosureTriangles["Token or password"]
         try self.require(credentials.exists, app: app, message: "Credentials disclosure is absent")
-        credentials.click()
+        let credentialsFrame = credentials.frame
+        try self.require(
+            credentials.isHittable && abs(credentialsFrame.width - 147.5) <= 1 &&
+                abs(credentialsFrame.height - 16) <= 1,
+            app: app, message: "Credentials disclosure geometry differs from the captured control")
+        // The captured AX frame starts at x244, while its disclosure glyph is at x270.
+        // Clicking the frame center hits the label, which does not expand this Mac control.
+        credentials.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: 26, dy: 0)).click()
+        let expansion = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == 1 OR value == '1'"), object: credentials)
+        let expanded = await XCTWaiter.fulfillment(of: [expansion], timeout: 5) == .completed
+        try self.require(expanded, app: app, message: "Credentials disclosure did not expand")
         let token = app.secureTextFields.element(boundBy: 0)
-        try self.require(token.waitForExistence(timeout: 5), app: app, message: "Token field is absent")
+        let tokenReady = await self.waitUntilVisible(token, timeout: 5)
+        try self.require(tokenReady, app: app, message: "Token field is not visible after expansion")
         token.click()
         token.typeText("synthetic-saved-gateway-token")
         app.buttons["Connect"].click()

@@ -34,7 +34,7 @@ trap cleanup_all EXIT
 
 project="$scratch/ui-tests"
 mkdir -p "$project"
-cp "$helpers/project.yml" "$helpers/SavedGatewayOpeningUITests.swift" "$project/"
+cp "$helpers/project.yml" "$helpers/SavedGatewayOpeningUITests.swift" "$helpers/NativeProofLaunchSupport.swift" "$project/"
 xcodegen generate --spec "$project/project.yml" --project "$project" > "$output/project.log" 2>&1
 xcode_args=(-project "$project/SavedGatewayProof.xcodeproj" -scheme SavedGatewayProof
   -destination 'platform=macOS' -derivedDataPath "$scratch/derived" -parallel-testing-enabled NO)

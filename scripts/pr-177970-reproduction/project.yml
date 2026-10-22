@@ -13,6 +13,7 @@ targets:
     platform: macOS
     sources:
       - SavedGatewayOpeningUITests.swift
+      - NativeProofLaunchSupport.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.proof.saved-gateway
