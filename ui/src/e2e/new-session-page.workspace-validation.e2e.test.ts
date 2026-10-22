@@ -5,6 +5,7 @@ import {
   waitForControlUiGatewayReady,
   waitForControlUiGatewayReconnecting,
 } from "../test-helpers/control-ui-e2e-readiness.ts";
+import { pauseVirtualClock } from "../test-helpers/control-ui-e2e.ts";
 import { controlUiE2eBuiltModuleRequest } from "./control-ui-built-module.test-support.ts";
 import { holdModuleResponse, tooltipTitleText } from "./control-ui-e2e-suite.test-support.ts";
 import {
@@ -127,12 +128,24 @@ async function chooseCustomFolder(page: Page, gateway: MockGateway) {
     .toEqual({ repoRoot: TARGET_REPO, includeRepositoryStatus: true });
 }
 
+async function resumeGatewayOnline(page: Page, gateway: MockGateway) {
+  await gateway.setOnline(true);
+  const retryDelay = await evaluateControlUiContext(
+    page,
+    ({ gateway: source }) => (source.snapshot.reconnectAt ?? Number.NaN) - Date.now(),
+  );
+  expect(retryDelay).toBeGreaterThan(0);
+  await page.clock.fastForward(retryDelay);
+  await page.clock.resume();
+  await waitForControlUiGatewayReady(page);
+}
+
 async function reconnectForBranchRediscovery(page: Page, gateway: MockGateway) {
   const branchRequests = await requestCount(gateway, "worktrees.branches");
+  await pauseVirtualClock(page);
   await gateway.setOnline(false);
   await waitForControlUiGatewayReconnecting(page);
-  await gateway.setOnline(true);
-  await waitForControlUiGatewayReady(page);
+  await resumeGatewayOnline(page, gateway);
   await expectRequests(gateway, "worktrees.branches", branchRequests + 1);
 }
 
@@ -295,6 +308,7 @@ suite.define(() => {
     "handles %s worktree rediscovery becoming %s",
     async (folder, repositoryStatus, message, id) => {
       await suite.withPage(BASE_CONTEXT, async ({ page }) => {
+        await page.clock.install();
         const key = `agent:main:${id}`;
         const gateway = await installMockGateway(page, {
           workspace: WORKSPACE,
@@ -385,6 +399,7 @@ suite.define(() => {
 
   it("blocks an unavailable cloud source until New workspace is explicitly selected", async () => {
     await suite.withPage(BASE_CONTEXT, async ({ page }) => {
+      await page.clock.install();
       const sessionKey = "agent:main:cleared-unavailable-source";
       const gateway = await openNewPage(
         page,
@@ -634,6 +649,9 @@ suite.define(() => {
   for (const reconnectKind of ["same-client reconnect", "client replacement"] as const) {
     it(`automatically resumes an idempotent session creation after ${reconnectKind}`, async () => {
       await suite.withPage(DESKTOP_CONTEXT, async ({ page }) => {
+        if (reconnectKind === "same-client reconnect") {
+          await page.clock.install();
+        }
         const sessionKey = `agent:main:resumed-${reconnectKind.replaceAll(" ", "-")}`;
         const gateway = await openNewPage(page, {
           "agents.list": mainAgentList("Original agent", SOURCE_REPO),
@@ -662,6 +680,7 @@ suite.define(() => {
           await expect.poll(() => gateway.getSocketCount()).toBe(socketsBefore + 1);
           await waitForControlUiGatewayReady(page);
         } else {
+          await pauseVirtualClock(page);
           await gateway.setOnline(false);
           await waitForControlUiGatewayReconnecting(page);
           // Transport loss keeps the submitted display while execution waits for reconnection.
@@ -670,8 +689,7 @@ suite.define(() => {
             .poll(() => page.locator(".chat-working-indicator").textContent())
             .toContain("Reconnecting");
           expect(await page.locator("openclaw-chat-pane").count()).toBe(0);
-          await gateway.setOnline(true);
-          await waitForControlUiGatewayReady(page);
+          await resumeGatewayOnline(page, gateway);
         }
         await expectRequests(gateway, "agents.list", agentRequestsBefore + 1);
         await expectRequests(gateway, "sessions.create", 2);
@@ -693,6 +711,7 @@ suite.define(() => {
     "keeps an interrupted creation fail-closed after the Gateway %s",
     async (change) => {
       await suite.withPage(DESKTOP_CONTEXT, async ({ page }) => {
+        await page.clock.install();
         const gateway = await openNewPage(page, {
           "agents.list": mainAgentList(),
           "worktrees.branches": branchList(),
@@ -723,10 +742,10 @@ suite.define(() => {
             },
           });
         }
+        await pauseVirtualClock(page);
         await gateway.setOnline(false);
         await waitForControlUiGatewayReconnecting(page);
-        await gateway.setOnline(true);
-        await waitForControlUiGatewayReady(page);
+        await resumeGatewayOnline(page, gateway);
         await waitForGatewayRecoveryScope(page);
 
         const warning = page.getByRole("alert").filter({
