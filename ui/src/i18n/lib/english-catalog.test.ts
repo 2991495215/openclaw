@@ -184,12 +184,13 @@ it("loads optional usage copy without replacing shared labels or retained provid
     expect(en.usage.details).toBe(details);
     expect(en.usage.providerUsage).toBe(providerUsage);
   } finally {
-    for (const [target, original] of [
+    const originals: Array<[TranslationMap, TranslationMap]> = [
       [en.usage, originalUsage],
       [details, originalDetails],
       [en.usage.overview, originalOverview],
       [providerUsage, originalProviderUsage],
-    ]) {
+    ];
+    for (const [target, original] of originals) {
       for (const key of Object.keys(target)) {
         if (!Object.hasOwn(original, key)) {
           Reflect.deleteProperty(target, key);
