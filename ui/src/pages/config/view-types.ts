@@ -12,6 +12,8 @@ type ConfigData = {
     | "onRawDiscard"
     | "onOpenFile"
     | "presentationRetired"
+    | "setSessionObserverEnabled"
+    | "setSessionObserverUtilityModel"
     | "onNativeNotificationsSendTest"
     | "onImportCustomTheme"
     | "onWebPushSubscribe"

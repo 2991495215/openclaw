@@ -56,7 +56,6 @@ import {
 } from "../../lib/system-info.ts";
 import { observeRealtimeTalkDevices } from "../chat/talk/input.ts";
 import { switchActiveRealtimeTalkCameras } from "../chat/talk/session.ts";
-import { createConfigCommandPresentation } from "./config-command-presentation.ts";
 import { createConfigPageModels } from "./config-page-models.ts";
 import {
   configSectionKeysForPage,
@@ -159,8 +158,13 @@ export function createConfigPage(
   const customThemeImportOwner = new themeImport.CustomThemeImportOwner(invalidate);
   let configViewState: View.ConfigViewState = createConfigViewState();
   let runtimeConfigSource: ApplicationContext["runtimeConfig"] | null = null;
+  // Release command presentation before a reactive scope change can park its cleanup.
+  let commandLifetime = Promise.withResolvers<void>();
+  function retireCommands() {
+    commandLifetime.resolve();
+    commandLifetime = Promise.withResolvers<void>();
+  }
   const updates = createConfigUpdatesPresentation(context);
-  const commands = createConfigCommandPresentation(context, updates.busy);
   let mediaDeviceWatch: (() => void) | null = null;
   const mediaDevices = {
     microphone: createMediaDeviceState(),
@@ -193,7 +197,17 @@ export function createConfigPage(
 
   function mutationDisabled() {
     revision();
-    return commands.mutationDisabled();
+    const state = context.runtimeConfig.state;
+    return (
+      !state.connected ||
+      state.configLoading ||
+      state.configSaving ||
+      state.configApplying ||
+      updates.busy() ||
+      context.overlays.snapshot.updateStatusRefreshing ||
+      !context.runtimeConfig.canSet ||
+      !hasOperatorAdminAccess(context.gateway.snapshot.hello?.auth ?? null)
+    );
   }
   function updateBusy() {
     revision();
@@ -205,7 +219,7 @@ export function createConfigPage(
       return;
     }
     routeInitialized = true;
-    commands.retire();
+    retireCommands();
     if (pageId === "appearance" && nextPageId !== "appearance") {
       customThemeImportOwner.retireImport();
       retireMediaPermissionRequests();
@@ -266,7 +280,7 @@ export function createConfigPage(
       snapshot.hello !== previousHello ||
       snapshot.phase !== previousPhase;
     if (connectionChanged) {
-      commands.retire();
+      retireCommands();
       abortRequests();
       systemInfo = null;
       systemInfoUnavailable = false;
@@ -460,7 +474,7 @@ export function createConfigPage(
 
   function synchronizeRuntimeConfig(runtimeConfig: ApplicationContext["runtimeConfig"]) {
     if (runtimeConfig !== runtimeConfigSource) {
-      commands.retire();
+      retireCommands();
       if (runtimeConfigSource) {
         customThemeImportOwner.retireImport();
       }
@@ -593,6 +607,13 @@ export function createConfigPage(
       updates.busy() ||
       context.overlays.snapshot.updateStatusRefreshing ||
       !hasOperatorAdminAccess(context.gateway.snapshot.hello?.auth ?? null);
+    const observerLifetime = commandLifetime.promise;
+    const observerResult = (saved: boolean) => {
+      if (!saved && observerLifetime === commandLifetime.promise && configState.lastError) {
+        throw new Error(configState.lastError);
+      }
+      return saved;
+    };
     const withConfigMutation =
       <Args extends unknown[]>(mutate: (...args: Args) => void) =>
       (...args: Args) => {
@@ -638,7 +659,7 @@ export function createConfigPage(
             ? "raw"
             : (presentation.formModes[pageId] ?? "form");
         if (mode !== currentMode) {
-          commands.retire();
+          retireCommands();
         }
         setPresentation((draft) => {
           draft.formModes[pageId] = mode;
@@ -653,14 +674,14 @@ export function createConfigPage(
         runtimeConfig.removeFormValue(path),
       ),
       onSectionChange: (section: string | null) => {
-        commands.retire();
+        retireCommands();
         setPresentation((draft) => {
           draft.selections[pageId] = { activeSection: section, activeSubsection: null };
         });
         invalidate();
       },
       onSubsectionChange: (section: string | null) => {
-        commands.retire();
+        retireCommands();
         setPresentation((draft) => {
           draft.selections[pageId] = {
             ...(draft.selections[pageId] ?? defaultConfigSelection(pageId)),
@@ -670,7 +691,7 @@ export function createConfigPage(
         invalidate();
       },
       onSave: () => runtimeConfig.save(),
-      presentationRetired: commands.retired,
+      presentationRetired: () => commandLifetime.promise,
       onRawDiscard: () => runtimeConfig.discardDraft(),
       onOpenFile: () => runtimeConfig.openFile(),
       theme: settings.theme,
@@ -808,22 +829,28 @@ export function createConfigPage(
       sessionObserverModelsUnavailable: observerModels.unavailable,
       sessionObserverDisabled: sessionObserverBusy,
       setSessionObserverEnabled: (enabled: boolean) =>
-        void runtimeConfig.patch({
-          raw: buildSessionObserverTogglePatch(enabled),
-          note: t("configView.sessionObserver.toggleNote"),
-        }),
-      setSessionObserverUtilityModel: (modelSelection: SessionObserverModelSelection) =>
-        void runtimeConfig
+        runtimeConfig
+          .patch({
+            raw: buildSessionObserverTogglePatch(enabled),
+            note: t("configView.sessionObserver.toggleNote"),
+          })
+          .then(observerResult),
+      setSessionObserverUtilityModel: (modelSelection: SessionObserverModelSelection) => {
+        const retired = commandLifetime.promise;
+        return runtimeConfig
           .patch({
             raw: buildSessionObserverUtilityModelPatch(modelSelection, utilityModel),
             note: t("configView.sessionObserver.modelNote"),
             replacePaths: ["agents.defaults.utilityModel.fallbacks"],
           })
-          .then((saved) => {
-            if (saved) {
-              void refreshSystemInfo();
+          .then(async (saved) => {
+            observerResult(saved);
+            if (saved && retired === commandLifetime.promise) {
+              await refreshSystemInfo();
             }
-          }),
+            return saved;
+          });
+      },
       lobsterPetVisits: settings.lobsterPetVisits ?? UI_APPEARANCE_DEFAULTS.lobsterPetVisits,
       sessionDeleteConfirm:
         settings.sessionDeleteConfirm ?? UI_APPEARANCE_DEFAULTS.sessionDeleteConfirm,
@@ -906,6 +933,20 @@ export function createConfigPage(
     ].map((source) => source.subscribe(refresh));
     // Server selection intent can change while the stored preferences stay equal.
     subscriptions.push(context.theme.subscribe(refresh));
+    let location = context.router.getState().location;
+    subscriptions.push(
+      context.router.subscribe(() => {
+        const next = context.router.getState().location;
+        if (
+          next.pathname !== location.pathname ||
+          next.search !== location.search ||
+          next.hash !== location.hash
+        ) {
+          location = next;
+          retireCommands();
+        }
+      }),
+    );
     connected = true;
     settings = loadSettings();
     hiddenSessionCatalogsChanged();
@@ -921,6 +962,7 @@ export function createConfigPage(
     });
     synchronize();
     return () => {
+      commandLifetime.resolve();
       subscriptions.forEach((stop) => stop());
       connected = false;
       customThemeImportOwner.retireImport();
