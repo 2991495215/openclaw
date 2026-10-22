@@ -44,7 +44,7 @@ export function createLogbook(initialClient: GatewayBrowserClient | null) {
   let backgroundRefresh: Promise<void> | null = null;
   let backgroundRefreshQueued = false;
   let dayLifetime = Promise.withResolvers<void>();
-  const frameLoads = new Set<number>();
+  const frameLoads = new Map<number, PromiseWithResolvers<void>>();
   let notify = () => {};
   const projection = projectMutableSource(state, (source) => source);
   notify = projection.publish;
@@ -191,15 +191,15 @@ export function createLogbook(initialClient: GatewayBrowserClient | null) {
     load,
     async loadFrame(frameId: number) {
       const current = client;
-      if (
-        !current ||
-        state.framePreviews.has(frameId) ||
-        frameLoads.has(frameId) ||
-        state.framePreviewFailed.has(frameId)
-      ) {
+      if (!current || state.framePreviews.has(frameId) || state.framePreviewFailed.has(frameId)) {
         return;
       }
-      frameLoads.add(frameId);
+      const pending = frameLoads.get(frameId);
+      if (pending) {
+        return pending.promise;
+      }
+      const completion = Promise.withResolvers<void>();
+      frameLoads.set(frameId, completion);
       try {
         const payload = await current.request<{ base64: string; format: string }>("logbook.frame", {
           frameId,
@@ -224,6 +224,7 @@ export function createLogbook(initialClient: GatewayBrowserClient | null) {
           frameLoads.delete(frameId);
           notify();
         }
+        completion.resolve();
       }
     },
     setCapturePaused(paused: boolean) {
