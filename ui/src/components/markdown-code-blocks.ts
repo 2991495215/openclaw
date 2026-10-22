@@ -19,18 +19,22 @@ const blockArtCodeBlockCopyPayloadEncoding = "block-art-json";
 const CODE_PREVIEW_LINE_COUNT = 7;
 const CODE_STICKY_ACTIONS_LINE_THRESHOLD = 300;
 
-type Highlighter = typeof import("./markdown-highlight-runtime.ts").highlightCodeHtml;
-const [readHighlighter, setHighlighter] = createSignal<Highlighter | null | undefined>(undefined);
+type Highlighter = typeof import("./markdown-highlight-runtime.ts");
+let highlighter: Highlighter | null | undefined;
+const [readHighlightingRevision, setHighlightingRevision] = createSignal(0);
 let highlighterLoad: Promise<void> | undefined;
+const pendingLanguages = new Set<Promise<void>>();
 
 /** Shared by code renderers; a failed optional chunk leaves escaped, copyable text. */
 function loadMarkdownHighlighter(): Promise<void> {
   highlighterLoad ??= import("./markdown-highlight-runtime.ts").then(
     (runtime) => {
-      setHighlighter(() => runtime.highlightCodeHtml);
+      highlighter = runtime;
+      setHighlightingRevision((revision) => revision + 1);
     },
     () => {
-      setHighlighter(null);
+      highlighter = null;
+      setHighlightingRevision((revision) => revision + 1);
       console.warn("[markdown] Syntax highlighting could not be loaded; showing plain code.");
     },
   );
@@ -38,12 +42,13 @@ function loadMarkdownHighlighter(): Promise<void> {
 }
 
 // Cached Markdown must subscribe even when a previous render already filled its cache.
-export function markdownHighlightingReady(): boolean {
-  return typeof readHighlighter() === "function";
+export function markdownHighlightingRevision(): number {
+  return readHighlightingRevision();
 }
 
 export function markdownHighlightingPending(): boolean {
-  return highlighterLoad !== undefined && readHighlighter() === undefined;
+  readHighlightingRevision();
+  return (highlighterLoad !== undefined && highlighter === undefined) || pendingLanguages.size > 0;
 }
 
 function encodeCodeBlockCopyPayload(value: string): string {
@@ -160,12 +165,29 @@ export function updateCodeBlockWidthOverflow(wrapper: HTMLElement): void {
 
 /** Highlight when available; plain escaped code remains readable while the chunk loads. */
 export function highlightCodeHtml(text: string, lang: string): string {
-  const highlighter = readHighlighter();
-  if (highlighter) {
-    return highlighter(text, lang);
-  }
+  readHighlightingRevision();
   if (text.trim()) {
-    void loadMarkdownHighlighter();
+    if (highlighter) {
+      const pending = highlighter.loadHighlightLanguage(lang);
+      if (pending && !pendingLanguages.has(pending)) {
+        pendingLanguages.add(pending);
+        void pending.then(
+          () => {
+            pendingLanguages.delete(pending);
+            setHighlightingRevision((revision) => revision + 1);
+          },
+          () => {
+            pendingLanguages.delete(pending);
+            setHighlightingRevision((revision) => revision + 1);
+            console.warn("[markdown] Syntax highlighting could not be loaded; showing plain code.");
+          },
+        );
+      }
+      return highlighter.highlightCodeHtml(text, lang);
+    }
+    if (highlighter === undefined) {
+      void loadMarkdownHighlighter();
+    }
   }
   return escapeHtml(text);
 }

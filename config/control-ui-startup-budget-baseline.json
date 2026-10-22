@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315696,
-  "reason": "Keep the stricter startup baseline after runtime English deferrals; measured head 315926 B",
+  "startupJsGzipBytes": 315967,
+  "reason": "Preserve current main startup baseline corrected after runtime English deferrals; optional catalog and grammar head measured 315762 B",
   "updatedAt": "2026-10-22"
 }

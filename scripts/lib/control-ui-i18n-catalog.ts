@@ -15,10 +15,12 @@ import { registerBrowserEnglish } from "../../ui/src/i18n/locales/en-browser.ts"
 import { registerChatCameraEnglish } from "../../ui/src/i18n/locales/en-chat-camera.ts";
 import { registerChatCiEnglish } from "../../ui/src/i18n/locales/en-chat-ci.ts";
 import { registerChatCommandResultsEnglish } from "../../ui/src/i18n/locales/en-chat-command-results.ts";
+import { registerChatComposerMenuEnglish } from "../../ui/src/i18n/locales/en-chat-composer-menu.ts";
 import { registerChatComposerEnglish } from "../../ui/src/i18n/locales/en-chat-composer.ts";
 import { registerChatGoalsEnglish } from "../../ui/src/i18n/locales/en-chat-goals.ts";
 import { registerChatMessageMetadataEnglish } from "../../ui/src/i18n/locales/en-chat-message-metadata.ts";
 import { registerChatProviderReviewEnglish } from "../../ui/src/i18n/locales/en-chat-provider-review.ts";
+import { registerChatSessionPanelsEnglish } from "../../ui/src/i18n/locales/en-chat-session-panels.ts";
 import { registerChatSessionEnglish } from "../../ui/src/i18n/locales/en-chat-session.ts";
 import { registerClawsEnglish } from "../../ui/src/i18n/locales/en-claws.ts";
 import { registerCodeBlocksEnglish } from "../../ui/src/i18n/locales/en-code-blocks.ts";
@@ -96,10 +98,12 @@ const sourceFiles = [
   "en-chat-ci.ts",
   "en-chat-command-results.ts",
   "en-chat-composer.ts",
+  "en-chat-composer-menu.ts",
   "en-chat-goals.ts",
   "en-chat-message-metadata.ts",
   "en-chat-provider-review.ts",
   "en-chat-session.ts",
+  "en-chat-session-panels.ts",
   "en-claws.ts",
   "en-code-blocks.ts",
   "en-command-palette.ts",
@@ -211,6 +215,11 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       chat: {
         ...en.chat,
         ...registerChatSessionEnglish.catalog.chat,
+        ...registerChatSessionPanelsEnglish.catalog.chat,
+        composer: {
+          ...registerChatComposerEnglish.catalog.chat.composer,
+          menu: registerChatComposerMenuEnglish.catalog.chat.composer.menu,
+        },
         commands: registerCommandPaletteEnglish.catalog.chat.commands,
         welcome: registerCommandPaletteEnglish.catalog.chat.welcome,
         messages: registerChatMessageMetadataEnglish.catalog.chat.messages,
@@ -237,6 +246,7 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       profilePage: {
         ...en.profilePage,
         identity: registerProfileEnglish.catalog.profilePage.identity,
+        modelAccounts: registerModelAccountsEnglish.catalog.profilePage.modelAccounts,
       },
     },
     registerActivityEnglish.catalog,

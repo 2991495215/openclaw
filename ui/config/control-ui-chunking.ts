@@ -137,6 +137,18 @@ export function controlUiStableChunkName(id: string): string | undefined {
   // Code highlighting is requested by the first completed code block; it must
   // not share the parser/sanitizer chunk used by ordinary transcript prose.
   if (moduleIdIncludesPackage(id, "highlight.js")) {
+    const grammar = /\/(?:es|lib)\/languages\/([^/]+)\.js(?:[?#]|$)/u.exec(normalized)?.[1];
+    if (grammar) {
+      // TypeScript requires JavaScript; their near-identical grammars compress together.
+      if (grammar === "javascript" || grammar === "typescript") {
+        return "markdown-highlight-javascript-typescript";
+      }
+      // These related grammars share enough tokens to offset auto-detection request overhead.
+      if (grammar === "cpp" || grammar === "java" || grammar === "rust" || grammar === "go") {
+        return "markdown-highlight-compiled";
+      }
+      return `markdown-highlight-${grammar}`;
+    }
     return "markdown-highlight-runtime";
   }
   if (moduleIdIncludesPackage(id, "dompurify")) {

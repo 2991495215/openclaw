@@ -205,6 +205,20 @@ describe("Control UI build chunking", () => {
     });
     for (const [id, expected] of [
       ["/repo/ui/node_modules/highlight.js/lib/core.js", "markdown-highlight-runtime"],
+      ["/repo/ui/node_modules/highlight.js/lib/languages/json.js", "markdown-highlight-json"],
+      ["/repo/ui/node_modules/highlight.js/es/languages/json.js", "markdown-highlight-json"],
+      ["/repo/ui/node_modules/highlight.js/es/languages/cpp.js", "markdown-highlight-compiled"],
+      ["/repo/ui/node_modules/highlight.js/es/languages/java.js", "markdown-highlight-compiled"],
+      ["/repo/ui/node_modules/highlight.js/es/languages/rust.js", "markdown-highlight-compiled"],
+      ["/repo/ui/node_modules/highlight.js/es/languages/go.js", "markdown-highlight-compiled"],
+      [
+        "/repo/ui/node_modules/highlight.js/es/languages/javascript.js",
+        "markdown-highlight-javascript-typescript",
+      ],
+      [
+        String.raw`C:\repo\ui\node_modules\highlight.js\lib\languages\typescript.js`,
+        "markdown-highlight-javascript-typescript",
+      ],
       ["/repo/ui/node_modules/markdown-it/dist/markdown-it.mjs", undefined],
       ["/repo/ui/node_modules/entities/dist/esm/index.js", undefined],
       [String.raw`C:\repo\ui\node_modules\highlight.js\lib\core.js`, "markdown-highlight-runtime"],

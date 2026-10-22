@@ -55,41 +55,7 @@ const catalog = {
       attachPhoto: "Photo",
       attachFileOption: "File",
       menu: {
-        back: "Back",
-        skills: "Skills",
-        connectors: "Plugins",
-        webSearch: "Web search",
-        webSearchGloballyDisabled:
-          "Web search is disabled in config (tools.web.search.enabled). Session overrides cannot turn it back on.",
-        webSearchClearStaleEnable:
-          "Web search is disabled in config. Click to clear this session’s enable override.",
-        managePlugins: "Manage plugins",
-        manageSkills: "Manage skills",
-        addMcpServer: "Add MCP server…",
-        addMcpServerTitle: "Add MCP server",
-        addMcpServerDescription: "Configure the server and choose where it is enabled.",
-        scopeLabel: "Availability",
-        scopeSession: "This session",
-        scopeEverywhere: "Everywhere",
-        scopeSessionHint:
-          "The server is saved globally disabled and enabled only for this session.",
-        scopeEverywhereHint: "The server is saved and enabled for every session.",
-        toolAccess: {
-          label: "Tool access",
-          loading: "Loading tools…",
-          loadFailed: "Couldn’t load tools.",
-          noTools: "No tools available for this MCP server.",
-          summary: "{enabled} of {total} tools on",
-          summaryOne: "{enabled} of {total} tool on",
-        },
-        enabledCount: "{count} on",
-        loadingSkills: "Loading skills…",
-        skillsLoadFailed: "Couldn’t load skills.",
-        noSkills: "No skills available.",
-        noConnectors: "No MCP servers configured.",
-        depsMissing: "deps missing",
-        skillBlocked: "not available for this agent",
-        sessionTag: "session",
+        toolAccess: { loadFailed: "Couldn’t load tools." },
         offlineBlocked: "Connect to the gateway to change session capabilities.",
         adminBlocked: "Admin access is required to manage MCP servers.",
         savingBlocked: "Wait for the current session capability change to finish.",
@@ -317,7 +283,11 @@ const catalog = {
 
 export const registerChatComposerEnglish = Object.assign(
   () => {
-    Object.assign(en.chat.composer, catalog.chat.composer);
+    const { menu, ...composer } = catalog.chat.composer;
+    const { toolAccess, ...menuItems } = menu;
+    Object.assign(en.chat.composer, composer);
+    Object.assign(en.chat.composer.menu, menuItems);
+    Object.assign(en.chat.composer.menu.toolAccess, toolAccess);
     Object.assign(en.chat.queue, catalog.chat.queue);
     Object.assign(en.chat.mentions, catalog.chat.mentions);
     Object.assign(en.chat.permissions, catalog.chat.permissions);

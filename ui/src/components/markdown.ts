@@ -10,7 +10,7 @@ import { parseGitHubLinkTarget } from "./github-link-target.ts";
 import { createAssistantTranscriptPlainTextFallback } from "./markdown-assistant-transcript.ts";
 import {
   markdownHighlightingPending,
-  markdownHighlightingReady,
+  markdownHighlightingRevision,
   renderMarkdownCodeBlock,
 } from "./markdown-code-blocks.ts";
 import { isHostLocalMarkdownFileHref } from "./markdown-file-links.ts";
@@ -339,7 +339,7 @@ const APP_RESOURCE_PATH_PREFIXES = [
   ["plugins", "diffs"],
   ["plugins", "diffs-language-pack"],
 ];
-const markdownCache = new Map<string, { html: string; highlighting?: boolean }>();
+const markdownCache = new Map<string, { html: string; highlighting?: number }>();
 const HIGHLIGHTABLE_CODE_RE = /<pre><code(?! class="markdown-block-art")/u;
 
 function normalizeStreamingMarkdownInput(markdownLocal: string, streamKey?: string): string {
@@ -638,11 +638,11 @@ export function toSanitizedMarkdownHtml(
   // Only highlightable code changes when the optional highlighter loads.
   if (
     !cached ||
-    (cached.highlighting !== undefined && cached.highlighting !== markdownHighlightingReady())
+    (cached.highlighting !== undefined && cached.highlighting !== markdownHighlightingRevision())
   ) {
     cached = { html: renderSanitizedMarkdown(renderInput, renderOptions) };
     if (HIGHLIGHTABLE_CODE_RE.test(cached.html)) {
-      cached.highlighting = markdownHighlightingReady();
+      cached.highlighting = markdownHighlightingRevision();
     }
   }
   markdownCache.delete(cacheKey);

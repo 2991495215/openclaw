@@ -3,6 +3,7 @@ import { createMemo, Errored, For, Loading, onSettled } from "solid-js";
 import { pathForRoute } from "../../../app-route-paths.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import type { MenuEntry, MenuHandle, MenuItem } from "../../../components/solid/menu.tsx";
+import { registerChatComposerMenuEnglish } from "../../../i18n/locales/en-chat-composer-menu.ts";
 import { registerMcpEnglish } from "../../../i18n/locales/en-mcp.ts";
 import { formatUiExternalText } from "../../../lib/format-error.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -39,6 +40,7 @@ import type {
   ChatComposerPlusMenuView,
 } from "./chat-composer-plus-menu.types.ts";
 
+registerEnglishCatalog(registerChatComposerMenuEnglish);
 registerEnglishCatalog(registerMcpEnglish);
 
 function rootItems(menu: ChatComposerPlusMenuContentProps): MenuEntry[] {

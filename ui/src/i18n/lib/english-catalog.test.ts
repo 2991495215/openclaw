@@ -4,6 +4,9 @@ import { expect, it, vi } from "vitest";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { registerBoardWebsiteEnglish } from "../locales/en-board-website.ts";
 import { registerBoardEnglish } from "../locales/en-board.ts";
+import { registerChatComposerMenuEnglish } from "../locales/en-chat-composer-menu.ts";
+import { registerChatComposerEnglish } from "../locales/en-chat-composer.ts";
+import { registerChatSessionPanelsEnglish } from "../locales/en-chat-session-panels.ts";
 import { registerChatSessionEnglish } from "../locales/en-chat-session.ts";
 import { registerProviderUsageEnglish } from "../locales/en-provider-usage.ts";
 import { registerUsageEnglish } from "../locales/en-usage.ts";
@@ -29,6 +32,11 @@ it("keeps shared session labels eager while lazy renderers extend their retained
   remember(en.chat);
   const details = en.chat.sessionDetails;
   const diff = en.chat.sessionDiff;
+  const automation = en.chat.sessionAutomation;
+  const youtube = en.chat.youtube;
+  const composer = en.chat.composer;
+  const menu = composer.menu;
+  const toolAccess = menu.toolAccess;
   try {
     await i18n.setLocale("en");
     expect(t("chat.sessionDetails.progressOptions")).toBe("Task progress options");
@@ -37,9 +45,43 @@ it("keeps shared session labels eager while lazy renderers extend their retained
 
     registerEnglishCatalog(registerChatSessionEnglish);
     expect(t("chat.activityPills.label")).toBe("Session activity");
+    expect(t("chat.sessionDiff.modeUnified")).toBe("chat.sessionDiff.modeUnified");
+    expect(t("chat.sessionAutomation.daily")).toBe("chat.sessionAutomation.daily");
+    expect(t("chat.youtube.video")).toBe("chat.youtube.video");
+
+    registerEnglishCatalog(registerChatComposerEnglish);
+    expect(t("chat.composer.menu.adminBlocked")).toBe(
+      "Admin access is required to manage MCP servers.",
+    );
+    expect(t("chat.composer.menu.offlineBlocked")).toBe(
+      "Connect to the gateway to change session capabilities.",
+    );
+    expect(t("chat.composer.menu.savingBlocked")).toBe(
+      "Wait for the current session capability change to finish.",
+    );
+    expect(t("chat.composer.menu.toolAccess.loadFailed")).toBe("Couldn’t load tools.");
+    expect(t("chat.composer.menu.addMcpServer")).toBe("chat.composer.menu.addMcpServer");
+
+    registerEnglishCatalog(registerChatSessionPanelsEnglish);
+    expect(t("chat.sessionDiff.modeUnified")).toBe("Unified");
+    expect(t("chat.sessionAutomation.daily")).toBe("Daily");
+    expect(t("chat.youtube.video")).toBe("YouTube video");
+    registerEnglishCatalog(registerChatComposerMenuEnglish);
+    expect(t("chat.composer.menu.addMcpServer")).toBe("Add MCP server…");
+    expect(t("chat.composer.menu.toolAccess.label")).toBe("Tool access");
+
+    registerEnglishCatalog(registerChatComposerEnglish);
+    registerEnglishCatalog(registerChatSessionEnglish);
+    expect(t("chat.composer.menu.addMcpServer")).toBe("Add MCP server…");
+    expect(t("chat.composer.menu.toolAccess.label")).toBe("Tool access");
     expect(t("chat.sessionDiff.modeUnified")).toBe("Unified");
     expect(en.chat.sessionDetails).toBe(details);
     expect(en.chat.sessionDiff).toBe(diff);
+    expect(en.chat.sessionAutomation).toBe(automation);
+    expect(en.chat.youtube).toBe(youtube);
+    expect(en.chat.composer).toBe(composer);
+    expect(en.chat.composer.menu).toBe(menu);
+    expect(en.chat.composer.menu.toolAccess).toBe(toolAccess);
   } finally {
     for (const { target, value } of snapshots) {
       for (const key of Object.keys(target)) {

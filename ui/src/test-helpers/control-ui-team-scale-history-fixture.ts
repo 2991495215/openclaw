@@ -5,6 +5,7 @@ export function createTeamScaleHistoryFixture(options: {
   inlineWidgets: number;
   now: number;
   largeSnapshot?: boolean;
+  transcriptCode?: "named" | "auto";
   attachments?: ReturnType<typeof createTeamScaleDuplicateReadFixture>["attachments"];
 }) {
   const messageIds = Array.from(
@@ -12,6 +13,7 @@ export function createTeamScaleHistoryFixture(options: {
     (_, index) => `team-message-${index + 1}`,
   );
   const messagesPerWidget = Math.ceil(options.messageCount / options.inlineWidgets);
+  const lastAssistantIndex = Math.floor(options.messageCount / 2) * 2 - 1;
   const historyMessages = messageIds.map((id, index) => ({
     role:
       options.largeSnapshot && index % 4 === 2 ? "toolResult" : index % 2 ? "assistant" : "user",
@@ -42,6 +44,12 @@ export function createTeamScaleHistoryFixture(options: {
           index === options.messageCount - 1
             ? [
                 `[embed ref="team-scale-chart-${Math.floor(index / messagesPerWidget) + 1}" title="Team metric ${Math.floor(index / messagesPerWidget) + 1}" height="220" /]`,
+              ]
+            : []),
+          ...(options.transcriptCode && index === lastAssistantIndex
+            ? [
+                `\`\`\`${options.transcriptCode === "named" ? "ts" : ""}\nconst ready: boolean = true;\nconsole.log(ready);\n\`\`\``,
+                `\`\`\`${options.transcriptCode === "named" ? "json" : ""}\n{"ready":true,"count":42}\n\`\`\``,
               ]
             : []),
         ].join("\n\n"),

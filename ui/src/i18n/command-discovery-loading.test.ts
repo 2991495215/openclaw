@@ -12,7 +12,6 @@ describe("command discovery English loading", () => {
       load: () => import("../components/command-palette-catalog-search.ts"),
     },
     { surface: "session transcript search", load: () => import("../pages/sessions/view.tsx") },
-    { surface: "slash commands", load: () => import("../lib/chat/commands.ts") },
     { surface: "shortcut help", load: () => import("../lib/keyboard-shortcut-catalog.ts") },
   ])("registers fallback copy before $surface reads it", async ({ load }) => {
     const { manager } = await loadI18n();
@@ -31,5 +30,30 @@ describe("command discovery English loading", () => {
     expect(manager.t("common.health")).toBe("Gesundheit");
     expect(manager.t("commandPalette.newSessionSettings")).toBe("New session settings");
     expect(manager.t("chat.commands.menu")).toBe("Slash commands");
+  });
+
+  it("keeps chat commands, welcome text, and account choices independent of optional catalogs", async () => {
+    const { manager } = await loadI18n();
+    await manager.setLocale("de");
+    const { SLASH_COMMANDS, getSlashCommandDescription } = await import("../lib/chat/commands.ts");
+    await import("../pages/chat/components/chat-welcome.tsx");
+    await import("../pages/chat/components/chat-model-account-control.ts");
+
+    expect(manager.t("chat.commands.menu")).toBe("Slash commands");
+    expect(manager.t("chat.welcome.recentSessions")).toBe("Recent chats");
+    expect(manager.t("profilePage.modelAccounts.loadMore")).toBe("Load more saved accounts");
+    expect(manager.t("profilePage.modelAccounts.inventoryFailed")).toBe(
+      "Could not load saved accounts. Refresh to retry.",
+    );
+    const steer = SLASH_COMMANDS.find((command) => command.key === "steer");
+    expect(steer?.description).toBe("Inject a message into the active run");
+    expect(steer && getSlashCommandDescription(steer)).toBe("Inject a message into the active run");
+    expect(manager.t("commandPalette.newSessionSettings")).toBe(
+      "commandPalette.newSessionSettings",
+    );
+    expect(manager.t("profilePage.modelAccounts.addAccount")).toBe(
+      "profilePage.modelAccounts.addAccount",
+    );
+    expect(manager.t("common.health")).toBe("Gesundheit");
   });
 });

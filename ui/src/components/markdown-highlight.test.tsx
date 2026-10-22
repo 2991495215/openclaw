@@ -15,8 +15,13 @@ import { MarkdownHtml } from "./solid/markdown-html.tsx";
 import { SanitizedHtml } from "./solid/sanitized-html.tsx";
 
 const chunk = vi.hoisted(() => Promise.withResolvers<void>());
+const pythonChunk = vi.hoisted(() => Promise.withResolvers<void>());
 vi.mock("./markdown-highlight-runtime.ts", async (importOriginal) => {
   await chunk.promise;
+  return importOriginal();
+});
+vi.mock("highlight.js/lib/languages/python", async (importOriginal) => {
+  await pythonChunk.promise;
   return importOriginal();
 });
 
@@ -118,9 +123,41 @@ it("preserves readable code and node state across lazy highlighting", async () =
   expect(proseRuns).toEqual({ cached: 1, streaming: 1 });
   expect(find(".static-fixture")?.innerHTML).toBe(sample.html);
   expect(find(".streaming-fixture")?.innerHTML).toBe(sample.html);
+
+  const { default: hljs } = await import("highlight.js/lib/core");
+  expect(hljs.listLanguages().toSorted()).toEqual([
+    "css",
+    "javascript",
+    "json",
+    "typescript",
+    "xml",
+  ]);
+  // A second language must invalidate already-cached and completed streaming code.
+  const pythonSource = '```py\ndef greet(name):\n    return f"Hello {name}"\n```\n\nReady.';
+  const pythonView = mountSolid(() => (
+    <>
+      <MarkdownHtml class="cached-python" markdown={pythonSource} />
+      <SanitizedHtml
+        class="streaming-python"
+        html={toStreamingMarkdownParts(pythonSource, {}, "late-python").join("")}
+      />
+    </>
+  ));
+  expect(pythonView.container.querySelector(".hljs-keyword")).toBeNull();
+  expect(pythonView.container.textContent).toContain('return f"Hello {name}"');
+  pythonChunk.resolve();
+  await waitForSolid(() =>
+    expect(pythonView.container.querySelectorAll(".hljs-keyword")).toHaveLength(4),
+  );
+  expect(pythonView.container.querySelector(".cached-python")?.innerHTML).toBe(
+    pythonView.container.querySelector(".streaming-python")?.innerHTML,
+  );
+  expect(proseRuns).toEqual({ cached: 1, streaming: 1 });
 });
 
-it.each(corpus)("preserves transcript $name byte for byte", ({ source, html, options }) => {
+it.each(corpus)("preserves transcript $name byte for byte", async ({ source, html, options }) => {
   // SAFETY: This checked-in corpus was captured with these renderer options at the merge base.
-  expect(toSanitizedMarkdownHtml(source, options as MarkdownRenderOptions)).toBe(html);
+  await waitForSolid(() =>
+    expect(toSanitizedMarkdownHtml(source, options as MarkdownRenderOptions)).toBe(html),
+  );
 });

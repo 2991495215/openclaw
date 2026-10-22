@@ -5,7 +5,6 @@ import { createBackgroundLayoutRef } from "../../../components/session-backgroun
 import { AgentIdentityAvatar } from "../../../components/solid/identity-avatar.tsx";
 import { Kbd } from "../../../components/solid/kbd.tsx";
 import "../../../components/openclaw-mascot.ts";
-import { registerCommandPaletteEnglish } from "../../../i18n/locales/en-command-palette.ts";
 import { formatRelativeTimestamp } from "../../../lib/format.ts";
 import { i18nRevision, t } from "../../../lib/reactive/i18n.ts";
 import {
@@ -17,8 +16,6 @@ import {
   resolveAssistantDisplayAvatar,
   type WelcomeRecentSession,
 } from "./chat-welcome.ts";
-
-registerCommandPaletteEnglish();
 
 export type ChatWelcomeIdentityProps = {
   currentAgentId?: string;

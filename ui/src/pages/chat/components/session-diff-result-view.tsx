@@ -4,7 +4,7 @@ import type { SessionsDiffResult } from "../../../../../packages/gateway-protoco
 import { Icon } from "../../../components/solid/icon.tsx";
 import { PanelEmptyState } from "../../../components/solid/panel-empty-state.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
-import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
+import { registerChatSessionPanelsEnglish } from "../../../i18n/locales/en-chat-session-panels.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { createResizeObserver } from "../../../lib/reactive/observers.ts";
 import { createScrollStateRef } from "../../../lib/reactive/scroll-state.ts";
@@ -14,7 +14,7 @@ import type { SessionDiffViewBindings } from "./session-diff-presentation.ts";
 import { SessionDiffTree } from "./session-diff-tree.tsx";
 import type { DiffValue, FileView } from "./session-diff-types.ts";
 
-registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatSessionPanelsEnglish);
 
 function createSessionDiffResultViews(
   bindings: SessionDiffViewBindings,

@@ -128,32 +128,8 @@ const enCommandPalette = {
     },
   },
   chat: {
-    welcome: {
-      hintBeforeShortcut: "Type a message below ·",
-      hintAfterShortcut: "for commands",
-      recentSessions: "Recent chats",
-      suggestions: {
-        whatCanYouDo: en.chat.welcome.suggestions.whatCanYouDo,
-        summarizeRecentSessions: "Summarize my recent sessions",
-        configureChannel: "Help me configure a channel",
-        checkSystemHealth: "Check system health",
-      },
-    },
-    commands: {
-      arguments: "Command arguments",
-      menu: "Slash commands",
-      optionCount: "{count} options",
-      clearDescription: "Clear chat history",
-      redirectDescription: "Abort and restart with a new message",
-      steerDescription: "Inject a message into the active run",
-      exportDescription: "Download this conversation as Markdown",
-      categories: {
-        session: "Session",
-        model: "Model",
-        agents: "Agents",
-        tools: "Tools",
-      },
-    },
+    welcome: en.chat.welcome,
+    commands: en.chat.commands,
   },
 } satisfies TranslationMap;
 

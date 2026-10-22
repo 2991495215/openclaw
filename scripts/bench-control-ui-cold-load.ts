@@ -9,6 +9,7 @@
 // OPENCLAW_CONTROL_UI_BUILD_ID supplies the matching identity outside a Git checkout.
 // --gateway-url uses real Gateway HTTP serving with synthetic bootstrap/RPC fixtures.
 // --first-load --runs 1 skips warm-up; restart the Gateway separately for a cold server cache.
+// --transcript-code named|auto adds TS/JSON code to the last assistant message.
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -219,6 +220,7 @@ const { values } = parseArgs({
     "dashboard-widget": { type: "boolean", default: false },
     "connect-not-before-ms": { type: "string", default: "0" },
     "transcript-messages": { type: "string" },
+    "transcript-code": { type: "string" },
     "overlay-probe": { type: "boolean", default: false },
     untraced: { type: "boolean", default: false },
     "filmstrip-only": { type: "boolean", default: false },
@@ -303,6 +305,10 @@ if (!values["sidebar-list-churn"] && sidebarRowTransfer !== "full") {
 const sidebarView = values["sidebar-view"];
 if (sidebarView !== "sessions" && sidebarView !== "online") {
   throw new Error("Expected sidebar-view sessions or online");
+}
+const transcriptCode = values["transcript-code"];
+if (transcriptCode !== undefined && transcriptCode !== "named" && transcriptCode !== "auto") {
+  throw new Error("Expected transcript-code named or auto");
 }
 const cpuProfile = values["cpu-profile"] || Boolean(values["cpu-profile-compare"]);
 const allocations = values.allocations;
@@ -419,6 +425,9 @@ const frameGapMs = Number(values["frame-gap-ms"]);
 const captureMs = Number(values["capture-ms"]);
 const transcriptMessages =
   values["transcript-messages"] === undefined ? undefined : Number(values["transcript-messages"]);
+if (transcriptCode && (bootRoute !== "chat" || (transcriptMessages ?? 2) < 2)) {
+  throw new Error("transcript-code requires the chat route and at least two transcript messages");
+}
 const streamingBurstSize = Number(values["streaming-burst-size"]);
 if (
   !Number.isSafeInteger(streamingBurstSize) ||
@@ -592,6 +601,7 @@ const fixture = createControlUiTeamScaleFixture({
   largeSnapshot: values["large-snapshot"],
   offRosterSession: values["off-roster-route"],
   transcriptMessages,
+  transcriptCode,
   dashboardWidgetFontUrl: dashboardFont
     ? `http://127.0.0.1:${address.port}${dashboardFontPath}`
     : undefined,
@@ -2056,6 +2066,7 @@ try {
         cpuThrottle,
         comparisonBundleDirs,
         fixture: fixture.counts,
+        transcriptCode,
         sidebarView,
         sidebarAvatars: values["sidebar-avatars"],
         sidebarExpanded: values["sidebar-expanded"],

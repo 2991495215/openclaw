@@ -48,7 +48,7 @@ export const en: TranslationMap & {
       | "sessionDiscussion",
       TranslationMap
     > & {
-      composer: TranslationMap;
+      composer: TranslationMap & { menu: TranslationMap & { toolAccess: TranslationMap } };
       queue: TranslationMap;
       mentions: TranslationMap;
       permissions: TranslationMap;
@@ -73,7 +73,7 @@ export const en: TranslationMap & {
       workspaceFiles: TranslationMap & Record<"copyPath", string>;
       codeBlock: TranslationMap;
       commandResults: TranslationMap & { fast: TranslationMap };
-      commands: TranslationMap;
+      commands: TranslationMap & Record<"steerDescription" | "exportDescription", string>;
       detailPanel: TranslationMap;
       welcome: TranslationMap & { suggestions: TranslationMap & { whatCanYouDo: string } };
       goals: TranslationMap;
@@ -97,6 +97,7 @@ export const en: TranslationMap & {
   configPage: TranslationMap;
   profilePage: TranslationMap & {
     personalInstructions: TranslationMap;
+    modelAccounts: TranslationMap & Record<"loadMore" | "inventoryFailed", string>;
     identity: TranslationMap &
       Record<
         | "title"
@@ -187,6 +188,18 @@ export const en: TranslationMap & {
       | "createdBy"
       | "ownedBy"
       | "archivedBy"
+      | "archiveReasonManual"
+      | "archiveReasonAgeRetention"
+      | "archiveReasonActiveSessionCap"
+      | "archiveReasonStaleDashboard"
+      | "archiveReasonRestartRecovery"
+      | "pinRootSessionsOnly"
+      | "copyTranscriptChanged"
+      | "openWindowBlocked"
+      | "splitUnavailable"
+      | "stopCloudWorker"
+      | "stopCloudWorkerConfirm"
+      | "stopCloudWorkerConfirmAction"
       | "viewingNow"
       | "owners"
       | "allOwners"
@@ -789,6 +802,12 @@ export const en: TranslationMap & {
     createdBy: "Created by {name}",
     ownedBy: "Owned by {name}",
     archivedBy: "Archived by {name}",
+    archiveReasonManual: "Archived manually",
+    archiveReasonAgeRetention: "Automatically archived by age retention",
+    archiveReasonActiveSessionCap:
+      "Automatically archived because the active-session limit was reached",
+    archiveReasonStaleDashboard: "Automatically archived after dashboard inactivity",
+    archiveReasonRestartRecovery: "Archived when a replacement session was recovered",
     viewingNow: "viewing now",
     owners: "Owners",
     allOwners: "All owners",
@@ -863,7 +882,14 @@ export const en: TranslationMap & {
       cyan: "Cyan",
     },
     pinSession: "Pin session",
+    pinRootSessionsOnly: "Only root sessions can be pinned; pin the parent session instead.",
     unpinSession: "Unpin session",
+    copyTranscriptChanged: "Conversation changed while copying. Try again.",
+    openWindowBlocked: "Allow pop-ups for this site, then try again.",
+    splitUnavailable: "Open a conversation on a wide screen to use split view.",
+    stopCloudWorker: "Stop cloud worker…",
+    stopCloudWorkerConfirm: 'Stop the cloud worker for "{session}"?',
+    stopCloudWorkerConfirmAction: "Stop worker",
     forkedSession: "Forked session",
     archiveSession: "Archive session",
     restoreSession: "Restore session",
@@ -1785,7 +1811,10 @@ export const en: TranslationMap & {
       displayName: "Display name",
       linkedEmails: "Linked emails",
     },
-    modelAccounts: {},
+    modelAccounts: {
+      loadMore: "Load more saved accounts",
+      inventoryFailed: "Could not load saved accounts. Refresh to retry.",
+    },
   },
   skillWorkshop: {},
   // Chat swarm summaries render before the lazy Activity catalog loads.
@@ -2337,7 +2366,21 @@ export const en: TranslationMap & {
       tokens: "{count} output tokens",
       tokensOne: "1 output token",
     },
-    commands: {},
+    commands: {
+      arguments: "Command arguments",
+      menu: "Slash commands",
+      optionCount: "{count} options",
+      clearDescription: "Clear chat history",
+      redirectDescription: "Abort and restart with a new message",
+      steerDescription: "Inject a message into the active run",
+      exportDescription: "Download this conversation as Markdown",
+      categories: {
+        session: "Session",
+        model: "Model",
+        agents: "Agents",
+        tools: "Tools",
+      },
+    },
     skills: {
       menu: "Skill references",
       label: "Skills",
@@ -2396,7 +2439,17 @@ export const en: TranslationMap & {
       catalogPaginationFailed: "Session catalog returned a repeated page cursor",
       catalogPageMissingHost: "Session catalog page did not include the requested host",
     },
-    welcome: { suggestions: { whatCanYouDo: "What can you do?" } },
+    welcome: {
+      hintBeforeShortcut: "Type a message below ·",
+      hintAfterShortcut: "for commands",
+      recentSessions: "Recent chats",
+      suggestions: {
+        whatCanYouDo: "What can you do?",
+        summarizeRecentSessions: "Summarize my recent sessions",
+        configureChannel: "Help me configure a channel",
+        checkSystemHealth: "Check system health",
+      },
+    },
     runControls: {
       newSession: "New session",
       newSessionWorktree: "New session in worktree",
@@ -2591,7 +2644,7 @@ export const en: TranslationMap & {
       reason: "Run /pair qr again to generate a fresh setup code.",
       badge: "Expired",
     },
-    composer: {},
+    composer: { menu: { toolAccess: {} } },
     attachments: {
       allowImage: "Allow image",
       attachedFile: "Attached file",

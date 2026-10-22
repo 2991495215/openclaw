@@ -37,8 +37,8 @@ const enModelAccounts = {
       gatewayAccount: "Selected saved account",
       selectAction: "Use for new chats",
       savedAccounts: "Saved accounts",
-      loadMore: "Load more saved accounts",
-      inventoryFailed: "Could not load saved accounts. Refresh to retry.",
+      loadMore: en.profilePage.modelAccounts.loadMore,
+      inventoryFailed: en.profilePage.modelAccounts.inventoryFailed,
       authTypes: {
         oauth: "Browser sign-in · saved account",
         token: "Token · saved account",

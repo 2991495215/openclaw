@@ -15,7 +15,7 @@ import type { OpenClawCanvasWidgetView } from "../../../components/canvas-widget
 import { dispatchWidgetPrompt } from "../../../components/mcp-app-security.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { LazyViewError } from "../../../components/solid/lazy-view-error.tsx";
-import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
+import { registerChatSessionPanelsEnglish } from "../../../i18n/locales/en-chat-session-panels.ts";
 import { registerMcpAppEnglish } from "../../../i18n/locales/en-mcp-app.ts";
 import {
   canvasWidgetNameForDocument,
@@ -52,7 +52,7 @@ import {
 import { exportWidget } from "./widget-export.ts";
 import { WidgetPinButton, type WidgetPinTarget } from "./widget-pin-button.tsx";
 
-registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatSessionPanelsEnglish);
 
 registerMcpAppEnglish();
 

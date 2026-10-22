@@ -12,9 +12,7 @@ import {
 } from "../../../../src/auto-reply/reply/directive-handling.parse.js";
 import type { IconName } from "../../components/icon-data.ts";
 import { t } from "../../i18n/index.ts";
-import { registerCommandPaletteEnglish } from "../../i18n/locales/en-command-palette.ts";
-
-registerCommandPaletteEnglish();
+import { en } from "../../i18n/locales/en.ts";
 
 export type SlashCommandCategory = "session" | "model" | "agents" | "tools";
 
@@ -153,12 +151,12 @@ const COMMAND_OVERRIDES: Partial<
   Record<string, Pick<SlashCommandDef, "description" | "descriptionKey" | "args">>
 > = {
   steer: {
-    description: registerCommandPaletteEnglish.catalog.chat.commands.steerDescription,
+    description: en.chat.commands.steerDescription,
     descriptionKey: "chat.commands.steerDescription",
     args: "<message>",
   },
   "export-session": {
-    description: registerCommandPaletteEnglish.catalog.chat.commands.exportDescription,
+    description: en.chat.commands.exportDescription,
     descriptionKey: "chat.commands.exportDescription",
     args: undefined,
   },
