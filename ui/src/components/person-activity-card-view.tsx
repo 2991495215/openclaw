@@ -25,7 +25,7 @@ import type { PersonCardInput } from "./person-activity-card.tsx";
 import { personActivityLink } from "./person-activity-link.ts";
 import { createHovercardControlRef } from "./portaled-hovercard-focus.ts";
 import { Icon } from "./solid/icon.tsx";
-import "./viewer-facepile.ts";
+import "./solid/viewer-facepile.tsx";
 
 type ScopedSession = { row: GatewaySessionRow; agentId: string };
 
