@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { asRecord } from "@openclaw/normalization-core/record-coerce";
@@ -306,7 +307,8 @@ suite.define(() => {
                 .waitFor({ state: "detached" });
               expect(await retainedRow!.evaluate((element) => element.isConnected)).toBe(true);
               await retainedRow!.dispose();
-              const ownerId = stopped.owner!.actor.id;
+              const ownerId = stopped.owner?.actor.id;
+              assert.ok(ownerId, "The stopped fixture session must have an owner id");
               await chooseSidebarOwner(page, `owner:${ownerId}`);
               await gateway.waitForRequest("sessions.list", { match: { ownerId } });
               await sidebar
