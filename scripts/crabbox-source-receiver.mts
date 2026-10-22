@@ -122,7 +122,9 @@ try {
   // A reused lease can own this exact base through a newer verified ref. Preserve
   // its complete history; legacy shallow and cold workspaces retain depth 2.
   // The new private Git directory never keeps an alternate to preparedGit.
-  git(["fetch", "-q", ...(reuseHistory ? ["--no-tags"] : ["--depth=2"]),
+  const baseFetchOptions = reuseHistory ? ["--no-tags"] :
+    reusePreparedBase ? ["--depth=2", "--no-tags"] : ["--depth=2"];
+  git(["fetch", "-q", ...baseFetchOptions,
     reusePreparedBase ? preparedGit : "origin", expected.baseSha + ":refs/remotes/origin/main"],
     { phase: "base-fetch" });
   if (git(["rev-parse", "refs/remotes/origin/main"]).trim() !== expected.baseSha)

@@ -4913,6 +4913,7 @@ require('node:module').syncBuiltinESMExports();`,
           prepareReceiver: (receiver) => {
             rmSync(receiver, { recursive: true });
             git(root, ["clone", "-q", "--depth=2", `file://${origin}`, receiver]);
+            git(receiver, ["tag", "retained-base", "HEAD^"]);
           },
         });
         expect(legacy.result.status, failureDetail(legacy.result)).toBe(0);
