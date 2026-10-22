@@ -1,7 +1,5 @@
-import { withTimeout } from "@openclaw/fs-safe/advanced";
 import type { Page } from "playwright";
 import { expect, it } from "vitest";
-import { recordControlUiE2eFailureFacts } from "../test-helpers/control-ui-e2e-diagnostics.ts";
 import {
   controlUiBundledSettingsStorageKey,
   installMockGateway,
@@ -73,35 +71,7 @@ async function checkPluginOrder({ page }: { page: Page }) {
   await expect.poll(keys).toEqual(expected);
 
   const reorderBeta = sidebar.getByRole("button", { name: "Reorder Beta", exact: true });
-  try {
-    await reorderBeta.focus();
-  } catch (error) {
-    await withTimeout(
-      Promise.allSettled([
-        gateway.getRequests("sessions.list"),
-        gateway.getRequests("sessions.groups.list"),
-        gateway.getRequests("sessions.groups.defaults"),
-        sidebar.locator('[data-session-section^="category:"]').count(),
-        sidebar.locator('[data-session-section="category:Beta"]').count(),
-        reorderBeta.count(),
-      ]),
-      1_000,
-    )
-      .then(([sessions, groups, defaults, sections, beta, reorder]) => {
-        recordControlUiE2eFailureFacts(page, {
-          pluginOrderSessionListRequests:
-            sessions.status === "fulfilled" ? sessions.value.length : null,
-          pluginOrderGroupListRequests: groups.status === "fulfilled" ? groups.value.length : null,
-          pluginOrderGroupDefaultRequests:
-            defaults.status === "fulfilled" ? defaults.value.length : null,
-          pluginOrderCategorySections: sections.status === "fulfilled" ? sections.value : null,
-          pluginOrderBetaSectionPresent: beta.status === "fulfilled" ? beta.value > 0 : null,
-          pluginOrderReorderButtons: reorder.status === "fulfilled" ? reorder.value : null,
-        });
-      })
-      .catch(() => undefined);
-    throw error;
-  }
+  await reorderBeta.focus();
   await page.keyboard.press("Enter");
   await page.getByRole("menuitem", { name: "Move up", exact: true }).press("Enter");
   const sectionOrder = () =>
