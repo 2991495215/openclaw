@@ -48,6 +48,7 @@ for (const gateway of spec.gateways) {
 }
 await writeFile(path.join(spec.output, "process-launch-context.json"), JSON.stringify({
   controller: { executable: process.execPath, arguments: process.argv.slice(1), workingDirectory: process.cwd() },
+  appLaunchEnvironment: spec.appEnvironment,
   gateways: spec.gateways.map(({ label, executable, arguments: args, workingDirectory, environment }) =>
     ({ label, executable, arguments: args, workingDirectory, environment })),
   observerCLI: [spec.local, spec.remote].map(target => ({ executable: target.executable, entry: target.entry,
@@ -128,13 +129,13 @@ function cliEnvironment(target) {
     OPENCLAW_SQLITE_LIBRARY: target.sqliteLibrary, NO_COLOR: "1" };
 }
 
-async function rpc(target, method, params, directory, name) {
+async function rpc(target, method, params, directory, name, requestTimeoutMs = 45000) {
   let stdout = "", stderr = "", error;
   try {
     ({ stdout, stderr } = await ownedRun(target.executable, [target.entry, "gateway", "call", method,
       "--params", JSON.stringify(params), "--expect-url", target.gatewayUrl,
-      "--timeout", "45000", "--json"],
-    { env: cliEnvironment(target), cwd: target.home, timeout: 60000, maxBuffer: 16 * 1024 * 1024 }));
+      "--timeout", String(requestTimeoutMs), "--json"],
+    { env: cliEnvironment(target), cwd: target.home, timeout: requestTimeoutMs + 15000, maxBuffer: 16 * 1024 * 1024 }));
   } catch (caught) {
     error = caught; stdout = caught.stdout ?? ""; stderr = caught.stderr ?? "";
   }
@@ -229,6 +230,42 @@ async function observe(phase) {
   await writeFile(input, JSON.stringify(observationSpec));
   await ownedRun(process.execPath, [observer, input], { cwd: target.home, timeout: 180000, maxBuffer: 1024 * 1024 });
   const observation = JSON.parse(await readFile(path.join(directory, "rpc", "observation.json"), "utf8"));
+  if (observation.status === "incomplete_observation") {
+    // Preserve the failed catalog observation. These read-only replays expose the
+    // node boundary error that providers intentionally normalize for their UI.
+    const diagnostics = [];
+    const attempted = new Set();
+    for (const issue of observation.issues) {
+      if (issue.kind !== "host-incomplete" || issue.hostId !== `node:${macNode.nodeId}` ||
+          !["codex", "claude"].includes(issue.catalogId) || attempted.has(issue.catalogId)) continue;
+      const call = observation.calls.find(item => item.id === issue.callId);
+      if (call?.method !== "sessions.catalog.list") continue;
+      const response = JSON.parse(await readFile(path.join(directory, "rpc", call.rawFile), "utf8"));
+      const host = response.catalogs.find(item => item.id === issue.catalogId)?.hosts
+        .find(item => item.hostId === issue.hostId);
+      if (host?.error?.code !== "NODE_INVOKE_FAILED") continue;
+      attempted.add(issue.catalogId);
+      const codex = issue.catalogId === "codex";
+      const command = codex ? "codex.appServer.threads.list.v1" : "anthropic.claude.sessions.list.v1";
+      const params = { ...(codex ? { agentId: call.params.agentId ?? "main" } : {}),
+        limit: call.params.limitPerHost,
+        ...(call.params.search ? { searchTerm: call.params.search } : {}),
+        ...(call.params.cursors?.[issue.hostId] ? { cursor: call.params.cursors[issue.hostId] } : {}) };
+      const timeoutMs = codex ? 65000 : 30000;
+      const record = { catalogId: issue.catalogId, originalCallId: call.id, command, params, timeoutMs,
+        note: "Separate CLI read-only diagnostic; does not replace the provider observation or its caller scope",
+        startedAt: new Date().toISOString() };
+      try {
+        record.response = await rpc(target, "node.invoke", { nodeId: macNode.nodeId, command, params,
+          timeoutMs, idempotencyKey: randomUUID() }, directory, `node-catalog-diagnostic-${issue.catalogId}`, timeoutMs + 15000);
+      } catch (error) {
+        record.transportError = String(error);
+      }
+      record.finishedAt = new Date().toISOString();
+      diagnostics.push(record);
+      await writeFile(path.join(directory, "node-catalog-diagnostics.json"), JSON.stringify(diagnostics, null, 2));
+    }
+  }
   return { phase, mode, nodeId: macNode.nodeId, description, workerResult, observation };
 }
 

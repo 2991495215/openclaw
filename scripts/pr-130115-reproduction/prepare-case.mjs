@@ -138,7 +138,7 @@ async function observer(label, gatewayUrl, token, expected) {
   return { executable, entry, sqliteLibrary, home: env.HOME, state: env.OPENCLAW_STATE_DIR, config: env.OPENCLAW_CONFIG_PATH,
     gatewayUrl, fixtures: expected };
 }
-const control = { app: input.app, appConfig: appEnvironment.OPENCLAW_CONFIG_PATH, output: input.output,
+const control = { app: input.app, appEnvironment, appConfig: appEnvironment.OPENCLAW_CONFIG_PATH, output: input.output,
   controlPort: input.controlPort, gateways,
   local: await observer("observe-local", localURL, localToken, localFixtures),
   remote: await observer("observe-remote", remoteURL, remoteToken, remoteFixtures) };
