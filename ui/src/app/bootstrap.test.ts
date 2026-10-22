@@ -157,6 +157,31 @@ describe("bootstrapApplication", () => {
     expect(runtime.context.nativeNotifications).toBeNull();
   });
 
+  it("retires a pending bootstrap config response when the runtime stops", async () => {
+    window.history.replaceState({}, "", "/focus/terminal");
+    const response = createDeferred<Response>();
+    // Deliberately ignore fetch cancellation to exercise late-result admission too.
+    const request = vi.fn<typeof fetch>().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", request);
+    const runtime = bootstrapApplication();
+    vi.spyOn(runtime.context.gateway, "start").mockImplementation(() => {});
+    const initialConfig = runtime.context.config.current;
+    const publish = vi.fn();
+    runtime.context.config.subscribe(publish);
+    const refresh = vi.spyOn(runtime.context.config, "refresh");
+
+    await runtime.start();
+    const loading = refresh.mock.results[0]!.value;
+    runtime.stop();
+    response.resolve(Response.json({ basePath: "", serverVersion: "retired-runtime" }));
+    await loading;
+
+    expect(runtime.context.config.current).toBe(initialConfig);
+    expect(publish).not.toHaveBeenCalled();
+    expect(request.mock.calls[0]?.[1]?.signal).toBe(runtime.context.lifecycleAbortSignal);
+    expect(runtime.context.lifecycleAbortSignal?.aborted).toBe(true);
+  });
+
   it.each([
     { pathname: "/chat/main/example-deadbeef", routeId: "chat", warmed: true },
     { pathname: "/approve/exec%3A1", routeId: "chat", warmed: false },
@@ -532,7 +557,10 @@ describe("bootstrapApplication", () => {
     expect(
       [...readinessSubscriptions].filter((listener) => activeSubscriptions.has(listener)),
     ).toHaveLength(0);
-    expect(configRefresh).toHaveBeenCalledWith({ ifNeeded: true });
+    expect(configRefresh).toHaveBeenCalledWith({
+      ifNeeded: true,
+      signal: runtime.context.lifecycleAbortSignal,
+    });
     expect(routerStart).not.toHaveBeenCalled();
   });
 
