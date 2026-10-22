@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 26,
   newBootJsRequests: 20,
-  // Picker deferrals and native preloads: 1,414,864 B Chat and 915,265 B New Session.
+  // Lazy Online sidebar: 1,414,223 B Chat and 914,489 B New Session.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_469_628,
-  newBootJsGzipBytes: 929_032,
+  chatBootJsGzipBytes: 1_467_894,
+  newBootJsGzipBytes: 927_306,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
