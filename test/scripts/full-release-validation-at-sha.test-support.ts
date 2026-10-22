@@ -96,6 +96,7 @@ export function createDispatchFixture(
     workflowSource?: string;
     targetSource?: Record<string, string>;
     omitPurpose?: boolean;
+    unreachableContributionRecord?: boolean;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "openclaw-release-dispatch-"));
