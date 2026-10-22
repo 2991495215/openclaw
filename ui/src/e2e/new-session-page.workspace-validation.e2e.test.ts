@@ -5,6 +5,7 @@ import {
   controlUiE2eWaitTimeoutMs,
   waitForControlUiGatewayReady,
   waitForControlUiGatewayReconnecting,
+  waitForControlUiInitialRoster,
 } from "../test-helpers/control-ui-e2e-readiness.ts";
 import { pauseVirtualClock } from "../test-helpers/control-ui-e2e.ts";
 import { controlUiE2eBuiltModuleRequest } from "./control-ui-built-module.test-support.ts";
@@ -767,6 +768,7 @@ suite.define(() => {
           expect(
             await page.getByText("do not duplicate this task", { exact: true }).isVisible(),
           ).toBe(false);
+          await waitForControlUiInitialRoster(page);
           await messageInput(page).fill("new owner's task");
           expect(await startButton(page).isEnabled()).toBe(true);
         }
