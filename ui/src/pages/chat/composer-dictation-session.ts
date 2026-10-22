@@ -3,14 +3,15 @@ import type { GatewayBrowserClient, GatewayEventFrame } from "../../api/gateway.
 import { loadSettings } from "../../app/settings.ts";
 import { t } from "../../i18n/index.ts";
 import { bytesToBase64 } from "../../lib/bytes-base64.ts";
-import { formatUiError, formatUiExternalText } from "../../lib/format-error.ts";
+import { formatUiExternalText } from "../../lib/format-error.ts";
+import { formatDictationError } from "./composer-dictation-error.ts";
 import {
   floatToG711Ulaw,
   measureRealtimeTalkAudioFrame,
   RealtimeTalkMediaStreamMeter,
   RealtimeTalkPcmInputPump,
 } from "./talk/audio.ts";
-import { describeRealtimeTalkInputError, RealtimeTalkInputOwner } from "./talk/input.ts";
+import { RealtimeTalkInputOwner } from "./talk/input.ts";
 
 const FINAL_TRANSCRIPT_MAX_WAIT_MS = 10_000;
 const DICTATION_ENCODING = "g711_ulaw";
@@ -41,13 +42,6 @@ function eventPayload(frame: GatewayEventFrame) {
     return null;
   }
   return asOptionalObjectRecord(frame.payload) ?? null;
-}
-
-export function formatDictationError(error: unknown): string {
-  if (error instanceof DOMException) {
-    return describeRealtimeTalkInputError(error);
-  }
-  return formatUiError(error);
 }
 
 function isAbortError(error: unknown): boolean {

@@ -76,6 +76,10 @@ export function controlUiStableChunkName(id: string): string | undefined {
     case "ui/src/pages/chat/route-entry.ts":
       // Pending New Session previews must render while the Chat route entry waits.
       return "chat-route-entry";
+    case "ui/src/pages/chat/composer-dictation-session.ts":
+    case "ui/src/pages/chat/talk/audio.ts":
+      // Composer and Split Talk share capture only after a voice interaction.
+      return "dictation-capture-runtime";
     case "ui/src/i18n/locales/en-chat-composer.ts":
       // New Session shares composer copy; session copy stays with Chat's boot group.
       return "chat-english";

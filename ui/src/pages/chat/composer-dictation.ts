@@ -2,7 +2,8 @@ import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { t } from "../../i18n/index.ts";
 import { listen } from "../../lib/reactive/listener.ts";
 import { GatewaySpeechPlayback } from "../../lib/speech-playback.ts";
-import { ComposerDictationSession, formatDictationError } from "./composer-dictation-session.ts";
+import { formatDictationError } from "./composer-dictation-error.ts";
+import type { ComposerDictationSession } from "./composer-dictation-session.ts";
 
 const HOLD_ARM_DELAY_MS = 150,
   HOLD_PROGRESS_MS = 350;
@@ -64,6 +65,7 @@ export class ComposerDictationOwner extends EventTarget {
   private cancellationListeners: AbortController | null = null;
   private holdTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private session: ComposerDictationSession | null = null;
+  private pendingStart: object | null = null;
   private suppressedPointerId: number | null = null;
   private suppressClickTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private pendingCommitSession: ComposerDictationSession | null = null;
@@ -286,6 +288,7 @@ export class ComposerDictationOwner extends EventTarget {
 
   private async start(): Promise<void> {
     const client = this.options.client;
+    const sessionKey = this.options.sessionKey;
     if (this.phase !== "holding" || !client || !this.canHold()) {
       await this.stop({ commit: false });
       return;
@@ -301,49 +304,73 @@ export class ComposerDictationOwner extends EventTarget {
     // Crossing the threshold latches dictation. Pointer ownership ends here,
     // while Escape/visibility/blur keep guarding the live capture lifecycle.
     this.clearPointerGesture();
+    const start = {};
+    this.pendingStart = start;
     this.setPhase("connecting");
-    const session = new ComposerDictationSession(
-      client,
-      {
-        onError: (message, preservesText) => {
-          if (this.session !== session && this.pendingCommitSession !== session) {
-            return;
-          }
-          try {
-            this.options.onError(message, { kind: "interrupted", preservesText });
-          } finally {
-            if (this.session === session) {
-              void this.stop({ commit: true });
-            } else if (this.pendingCommitSession === session) {
-              this.retirePendingCommit();
-              this.dispatchEvent(new Event("change"));
-            }
-          }
-        },
-        onTranscriptChange: () => this.dispatchEvent(new Event("change")),
-        onReady: () => {
-          if (this.session === session && this.phase === "connecting") {
-            this.setPhase("recording");
-          }
-        },
-      },
-      { sessionKey: this.options.sessionKey },
-    );
-    this.retirePendingCommit();
-    this.session = session;
+    let session: ComposerDictationSession | undefined;
     try {
+      this.retirePendingCommit();
+      // Safari's playback permission belongs to this gesture, before the import.
       this.playback.prepare(client, () => void this.stop({ commit: false }));
-      await session.start();
-    } catch (error) {
-      if (this.session !== session || this.disposed || this.finalizing) {
+      const { ComposerDictationSession } = await import("./composer-dictation-session.ts");
+      if (this.pendingStart !== start) {
         return;
       }
+      if (
+        !this.canHold() ||
+        this.options.client !== client ||
+        this.options.sessionKey !== sessionKey
+      ) {
+        await this.stop({ commit: false });
+        return;
+      }
+      this.pendingStart = null;
+      const currentSession = new ComposerDictationSession(
+        client,
+        {
+          onError: (message, preservesText) => {
+            if (this.session !== currentSession && this.pendingCommitSession !== currentSession) {
+              return;
+            }
+            try {
+              this.options.onError(message, { kind: "interrupted", preservesText });
+            } finally {
+              if (this.session === currentSession) {
+                void this.stop({ commit: true });
+              } else if (this.pendingCommitSession === currentSession) {
+                this.retirePendingCommit();
+                this.dispatchEvent(new Event("change"));
+              }
+            }
+          },
+          onTranscriptChange: () => this.dispatchEvent(new Event("change")),
+          onReady: () => {
+            if (this.session === currentSession && this.phase === "connecting") {
+              this.setPhase("recording");
+            }
+          },
+        },
+        { sessionKey },
+      );
+      session = currentSession;
+      this.session = session;
+      await session.start();
+    } catch (error) {
+      if (
+        (session ? this.session !== session : this.pendingStart !== start) ||
+        this.disposed ||
+        this.finalizing
+      ) {
+        return;
+      }
+      this.pendingStart = null;
       this.options.onError(formatDictationError(error), { kind: "start", preservesText: false });
       await this.stop({ commit: false });
     }
   }
 
   private stop(options: { commit: boolean }): Promise<boolean> {
+    this.pendingStart = null;
     if (!options.commit) {
       this.retirePendingCommit();
     }
@@ -354,6 +381,7 @@ export class ComposerDictationOwner extends EventTarget {
     this.clearPointerGesture();
     const session = this.session;
     if (!session) {
+      this.playback.stop();
       this.setPhase("idle");
       return Promise.resolve(false);
     }

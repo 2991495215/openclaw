@@ -9,7 +9,6 @@ import { GatewaySpeechPlayback } from "../../lib/speech-playback.ts";
 import { cleanupSolid, mountSolid } from "../../test-helpers/mount-solid.ts";
 import { waitForFast } from "../../test-helpers/wait-for.ts";
 import { renderComposerVoiceButtonSolid } from "./components/chat-composer-controls.tsx";
-import { ComposerDictationSession } from "./composer-dictation-session.ts";
 import { ComposerDictationOwner, insertComposerDictation } from "./composer-dictation.ts";
 
 type GatewayListener = (event: GatewayEventFrame) => void;
@@ -213,11 +212,8 @@ function createButtonHarness() {
 }
 
 async function startDirect(controller: ComposerDictationOwner) {
-  const start = vi.spyOn(ComposerDictationSession.prototype, "start");
   expect(controller.startDirect()).toBe(true);
-  const started = start.mock.results[0];
-  assert.isDefined(started);
-  await started.value;
+  await waitForFast(() => expect(controller.active && !controller.connecting).toBe(true));
 }
 async function startHold(target: HTMLElement): Promise<void> {
   target.dispatchEvent(pointer("pointerdown"));
@@ -297,6 +293,32 @@ afterEach(() => {
 });
 
 describe("ComposerDictationOwner", () => {
+  it("starts only the current capture when a pending start is cancelled and replaced", async () => {
+    const { controller } = createHarness();
+    expect(controller.startDirect()).toBe(true);
+    expect(audios.at(-1)?.play).toHaveBeenCalledOnce();
+    controller.cancel();
+
+    await startDirect(controller);
+
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(request.mock.calls.filter(([method]) => method === "talk.session.create")).toHaveLength(
+      1,
+    );
+  });
+
+  it("retires a pending start when its displayed session changes", async () => {
+    const { controller, options } = createHarness({ sessionKey: "agent:main:first" });
+    expect(controller.startDirect()).toBe(true);
+    controller.update({ ...options, sessionKey: "agent:main:second" });
+
+    await waitForFast(() => expect(controller.locksComposer).toBe(false));
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalledWith("talk.session.create", expect.anything());
+    expect(audios.at(-1)?.pause).toHaveBeenCalled();
+  });
+
   it("retires capture before a retained owner adopts another draft's callbacks", async () => {
     const { controller, options, onCommit } = createHarness({ draftKey: "first" });
     const stopTrack = vi.fn();
