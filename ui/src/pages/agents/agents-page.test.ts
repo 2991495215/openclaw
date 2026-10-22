@@ -204,7 +204,7 @@ describe("AgentsPage gateway lifecycle", () => {
     const runtimeConfig = {
       state: {},
       agentEntry: vi.fn(() => ({
-        path: ["agents", "entries", "main"],
+        path: ["agents", "entries", "Main"],
         entry: { skills: ["coding-agent"] },
       })),
       patch,
@@ -221,10 +221,18 @@ describe("AgentsPage gateway lifecycle", () => {
       presentationSettled = true;
     });
     await waitForFast(() => expect(patch).toHaveBeenCalledOnce());
+    expect(patch).toHaveBeenCalledWith({
+      raw: { agents: { entries: { Main: { skills: null } } } },
+      note: "Reset agent skills to inherited defaults",
+      replacePaths: ["agents.entries.Main.skills"],
+      canDispatch: expect.any(Function),
+    });
     const canDispatch = vi.mocked(patch).mock.calls[0]?.[0]?.canDispatch;
     expect(canDispatch?.()).toBe(true);
 
     emitGatewaySnapshot(currentGateway, snapshot(client, false));
+    expect(page.read().agentSkills.onClear("main")).toBeUndefined();
+    expect(patch).toHaveBeenCalledOnce();
     emitGatewaySnapshot(currentGateway, snapshot(client));
 
     expect(canDispatch?.()).toBe(false);
