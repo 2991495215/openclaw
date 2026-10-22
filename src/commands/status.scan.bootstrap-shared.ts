@@ -9,23 +9,6 @@ import {
   type GatewayProbeSnapshot,
 } from "./status.scan.shared.js";
 
-function buildColdStartUpdateResult(): UpdateCheckResult {
-  return {
-    root: null,
-    installKind: "unknown",
-    packageManager: "unknown",
-  };
-}
-
-function buildColdStartAgentLocalStatuses() {
-  return {
-    defaultId: "main",
-    agents: [],
-    totalSessions: 0,
-    bootstrapPendingCount: 0,
-  };
-}
-
 /** Builds an empty summary for cold-start status paths that skip network and session work. */
 export function buildColdStartStatusSummary() {
   return {
@@ -47,7 +30,7 @@ export function buildColdStartStatusSummary() {
   };
 }
 
-type StatusScanCoreBootstrapParams<TAgentStatus> = {
+export async function createStatusScanCoreBootstrap<TAgentStatus>(params: {
   coldStart: boolean;
   cfg: OpenClawConfig;
   configPath: string;
@@ -60,11 +43,7 @@ type StatusScanCoreBootstrapParams<TAgentStatus> = {
   gatewaySnapshot?: GatewayProbeSnapshot;
   onGatewayProgress?: (phase: string) => void;
   getAgentLocalStatuses: (cfg: OpenClawConfig) => Promise<TAgentStatus>;
-};
-
-export async function createStatusScanCoreBootstrap<TAgentStatus>(
-  params: StatusScanCoreBootstrapParams<TAgentStatus>,
-) {
+}) {
   const tailscaleMode = params.cfg.gateway?.tailscale?.mode ?? "off";
   // First-run users without channels should get instant status instead of waiting on network probes.
   const skipColdStartNetworkChecks =
@@ -86,7 +65,11 @@ export async function createStatusScanCoreBootstrap<TAgentStatus>(
           .catch(() => null);
   // Update checks can hit git/registry, so cold-start status uses a synthetic unknown result.
   const updatePromise = skipColdStartNetworkChecks
-    ? Promise.resolve(buildColdStartUpdateResult())
+    ? Promise.resolve<UpdateCheckResult>({
+        root: null,
+        installKind: "unknown",
+        packageManager: "unknown",
+      })
     : import("./status.update.js").then(({ getUpdateCheckResult }) =>
         getUpdateCheckResult({
           timeoutMs: statusTimeoutMs,
@@ -96,7 +79,12 @@ export async function createStatusScanCoreBootstrap<TAgentStatus>(
         }),
       );
   const agentStatusPromise = skipColdStartNetworkChecks
-    ? Promise.resolve(buildColdStartAgentLocalStatuses() as TAgentStatus)
+    ? Promise.resolve({
+        defaultId: "main",
+        agents: [],
+        totalSessions: 0,
+        bootstrapPendingCount: 0,
+      } as TAgentStatus)
     : params.getAgentLocalStatuses(params.cfg);
   const gatewayProbePromise = params.gatewaySnapshot
     ? Promise.resolve(params.gatewaySnapshot)
