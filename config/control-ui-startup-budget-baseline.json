@@ -1,5 +1,5 @@
 {
   "startupJsGzipBytes": 315881,
-  "reason": "Retain the stricter main startup baseline; matched 2c5 comparison is 316173 to 316199 B (+26 B within variance), Chat 1403921 to 1402489 B at unchanged requests. Ratchet Chat with current relative headroom.",
+  "reason": "Claw review deferral retains the stricter 315881 B startup baseline; matched current-main builds measure 316339 B startup, 1385274 B Chat and 859874 B New Session.",
   "updatedAt": "2026-10-23"
 }
