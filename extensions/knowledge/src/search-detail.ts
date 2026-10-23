@@ -64,12 +64,10 @@ export function searchDetail<I extends { limit?: number }, O extends SearchOutpu
   ): Promise<ToolOutput<O>> => {
     const { detail, ...payload } = input;
     const agent = context.source === "tool";
-    const output = await handler(
-      (agent && payload.limit === undefined
-        ? { ...payload, limit: AGENT_HIT_LIMIT }
-        : payload) as I,
-      context,
-    );
+    const handlerInput =
+      agent && payload.limit === undefined ? { ...payload, limit: AGENT_HIT_LIMIT } : payload;
+    // SAFETY: handlerInput is the handler's input minus the wrapper-only `detail` key; an added `limit` is the number `I` declares.
+    const output = await handler(handlerInput as I, context);
     if (!agent || detail === "full") {
       return output;
     }
