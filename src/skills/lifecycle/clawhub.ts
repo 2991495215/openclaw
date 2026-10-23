@@ -101,8 +101,6 @@ export async function preflightSkillFromClawHub(params: {
   slug: string;
   version: string;
   expectedIntegrity?: string;
-  baseUrl?: string;
-  logger?: Logger;
 }): Promise<ClawHubSkillInstallPreflightResult> {
   try {
     const tracking = resolveWorkspaceClawHubSkills(params.workspaceDir);
@@ -112,7 +110,6 @@ export async function preflightSkillFromClawHub(params: {
       slug: requested.slug,
       ...(requested.ownerHandle ? { ownerHandle: requested.ownerHandle } : {}),
       version: params.version,
-      baseUrl: params.baseUrl,
     });
     if (resolved.version !== params.version) {
       return {
@@ -126,10 +123,7 @@ export async function preflightSkillFromClawHub(params: {
       slug: requested.slug,
       ...(requested.ownerHandle ? { ownerHandle: requested.ownerHandle } : {}),
       version: resolved.version,
-      baseUrl: params.baseUrl,
-      logger: params.logger,
       skipClawHubTrustCheck: isDefaultOfficialClawHubSkillSource({
-        baseUrl: params.baseUrl,
         detail: resolved.detail,
       }),
     });
@@ -163,7 +157,6 @@ export async function preflightSkillFromClawHub(params: {
       slug: requested.slug,
       ...(requested.ownerHandle ? { ownerHandle: requested.ownerHandle } : {}),
       version: resolved.version,
-      baseUrl: params.baseUrl,
     });
     try {
       const integrity = normalizeClawHubSha256Integrity(archive.integrity);
