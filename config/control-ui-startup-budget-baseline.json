@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 284696,
-  "reason": "Pure MIME/retry initializers: matched b19bade build 285482 to 284696 B gzip with 7 JS and 1 CSS request.",
+  "startupJsGzipBytes": 282045,
+  "reason": "Remove unused MIME and retry initializers: matched a7f5566 startup 282859 to 282045 B gzip, preserving 7 JS and 1 CSS request.",
   "updatedAt": "2026-10-23"
 }
