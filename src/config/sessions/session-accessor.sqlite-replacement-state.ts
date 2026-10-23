@@ -192,6 +192,25 @@ export function prepareSessionEntryReplacementPublication(
   return publication;
 }
 
+export function prepareSessionRemovalPublication(
+  database: OpenClawAgentDatabase,
+  removedEntries: readonly { sessionKey: string; entry: SessionEntry }[],
+  changedKeys: string[],
+) {
+  return changedKeys.length > 0
+    ? prepareSessionEntryReplacementPublication(
+        {
+          previous: new Map(removedEntries.map(({ sessionKey, entry }) => [sessionKey, entry])),
+          current: new Map<string, SessionEntry>(),
+          pendingArchiveRecovery: false,
+          membershipInvalidatedKeys: changedKeys,
+          maintenancePlans: [],
+        },
+        database,
+      )
+    : undefined;
+}
+
 /** Keep every required receipt fact when its optional full snapshots exceed one bounded envelope. */
 export function boundSessionEntryReplacementPublication(
   publication: SessionEntryReplacementPublication,

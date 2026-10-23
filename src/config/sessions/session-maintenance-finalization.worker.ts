@@ -5,7 +5,7 @@ import {
   collectReclamationChangedSessionKeys,
   collectReclamationDeletionEntries,
 } from "./session-accessor.sqlite-reclamation-publication.js";
-import { prepareSessionEntryReplacementPublication } from "./session-accessor.sqlite-replacement-state.js";
+import { prepareSessionRemovalPublication } from "./session-accessor.sqlite-replacement-state.js";
 import type { SessionEntryPatchReceipt } from "./session-entry-patch.types.js";
 import { transferSessionEntryWorkerCandidate } from "./session-entry-patch.worker.js";
 import type {
@@ -13,7 +13,6 @@ import type {
   SessionMaintenanceFinalizationInput,
 } from "./session-maintenance-finalization.types.js";
 import { runSessionNativeBindingTransaction } from "./session-native-binding.worker.js";
-import type { SessionEntry } from "./types.js";
 
 export function finalizeSessionMaintenance(
   input: SessionMaintenanceFinalizationInput,
@@ -30,19 +29,7 @@ export function finalizeSessionMaintenance(
     const result = finalizeSessionMaintenanceInDatabase(database, plan);
     const changedKeys = collectReclamationChangedSessionKeys(plan, result);
     const removedEntries = collectReclamationDeletionEntries(plan, result);
-    const publication =
-      changedKeys.length > 0
-        ? prepareSessionEntryReplacementPublication(
-            {
-              previous: new Map(removedEntries.map(({ sessionKey, entry }) => [sessionKey, entry])),
-              current: new Map<string, SessionEntry>(),
-              pendingArchiveRecovery: false,
-              membershipInvalidatedKeys: changedKeys,
-              maintenancePlans: [],
-            },
-            database,
-          )
-        : undefined;
+    const publication = prepareSessionRemovalPublication(database, removedEntries, changedKeys);
     const candidate: SessionMaintenanceFinalizationCommitted = {
       kind: "session-maintenance-finalize",
       result,

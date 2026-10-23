@@ -8,7 +8,7 @@ import {
   collectReclamationDeletionEntries,
 } from "./session-accessor.sqlite-reclamation-publication.js";
 import { reclaimSqliteSessionInTransaction } from "./session-accessor.sqlite-reclamation.js";
-import { prepareSessionEntryReplacementPublication } from "./session-accessor.sqlite-replacement-state.js";
+import { prepareSessionRemovalPublication } from "./session-accessor.sqlite-replacement-state.js";
 import type {
   SessionEntryDeletionCommitted,
   SessionEntryDeletionInput,
@@ -16,7 +16,6 @@ import type {
 import type { SessionEntryPatchReceipt } from "./session-entry-patch.types.js";
 import { transferSessionEntryWorkerCandidate } from "./session-entry-patch.worker.js";
 import { runSessionNativeBindingTransaction } from "./session-native-binding.worker.js";
-import type { SessionEntry } from "./types.js";
 
 export function planSessionDeletionInAgentWorker(
   planning: SessionDeletionPlanningOperation,
@@ -48,19 +47,7 @@ export function deleteSessionEntryInAgentWorker(
       ? collectReclamationChangedSessionKeys(plan, result)
       : [];
     const removedEntries = collectReclamationDeletionEntries(plan, result);
-    const publication =
-      changedKeys.length > 0
-        ? prepareSessionEntryReplacementPublication(
-            {
-              previous: new Map(removedEntries.map(({ sessionKey, entry }) => [sessionKey, entry])),
-              current: new Map<string, SessionEntry>(),
-              pendingArchiveRecovery: false,
-              membershipInvalidatedKeys: changedKeys,
-              maintenancePlans: [],
-            },
-            database,
-          )
-        : undefined;
+    const publication = prepareSessionRemovalPublication(database, removedEntries, changedKeys);
     if (publication && result.value.transcriptInventoryUnchanged) {
       publication.transcriptInventoryUnchanged = true;
     }
