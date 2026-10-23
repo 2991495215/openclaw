@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Deferred person-card body: 1,330,649 B Chat / 816,233 B New.
-  // Preserve relative headroom from the matched 1,333,529 B / 816,308 B baseline.
-  chatBootJsGzipBytes: 1_380_315,
-  newBootJsGzipBytes: 824_191,
+  // Deferred person-card body: 1,321,248 B Chat / 814,382 B New.
+  // Preserve relative headroom from the matched 1,324,134 B / 814,454 B baseline.
+  chatBootJsGzipBytes: 1_370_799,
+  newBootJsGzipBytes: 822_545,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
