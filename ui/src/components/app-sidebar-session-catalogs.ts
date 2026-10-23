@@ -158,7 +158,7 @@ export type SidebarSessionCatalog = SessionCatalog & {
 
 type SessionVisibilityRow = Pick<GatewaySessionRow, "key" | "archived" | "snoozedUntil">;
 
-/** Section peers and rendering share the same nonempty, owner-filtered catalogs. */
+/** Section peers and rendering share the same owner-filtered catalogs and discovery failures. */
 export function projectSidebarSessionCatalogs(
   catalogs: readonly SessionCatalog[],
   ownerId: string | null,
@@ -198,7 +198,11 @@ export function projectSidebarSessionCatalogs(
       }
     }
     const retryable = canRetry?.(catalog) === true;
-    return visibleHosts.length > 0 || retryable
+    // Discovery failures may expose an empty catalog, not sessions excluded by the user's filter.
+    const discoveryFailed =
+      catalog.hosts.every((host) => host.sessions.length === 0) &&
+      catalogErrorMessages(catalog).length > 0;
+    return visibleHosts.length > 0 || retryable || discoveryFailed
       ? [{ ...catalog, visibleHosts, ...(retryable ? { retryable } : {}) }]
       : [];
   });

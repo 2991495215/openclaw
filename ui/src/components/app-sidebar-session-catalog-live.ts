@@ -18,6 +18,7 @@ import { generateUUID } from "../lib/uuid.ts";
 import {
   isRepeatedCatalogCursorError,
   preserveExpandedCatalogHost,
+  sessionCatalogPageFailed,
   withdrawSessionCatalogRows,
 } from "./app-sidebar-session-catalog-state.ts";
 import { sessionCatalogHostKey } from "./app-sidebar-session-types.ts";
@@ -505,11 +506,17 @@ export class SessionCatalogLiveState {
       ) {
         this.discoveryPages.delete(hostKey);
       }
+      // An exhausted successful snapshot owns the entire host window, even if
+      // the prior view was expanded. Pending and failed reads still retain it.
+      const completeHost =
+        !freshHost.pending && !sessionCatalogPageFailed(freshHost) && !freshHost.nextCursor;
       const mergedHost =
         event.catalog.requiresFreshList ||
-        freshHost.pending ||
-        (params.pageDepths.get(hostKey) ?? 0) > 0 ||
-        this.discoveryPages.has(hostKey)
+        (!completeHost &&
+          (freshHost.pending ||
+            sessionCatalogPageFailed(freshHost) ||
+            (params.pageDepths.get(hostKey) ?? 0) > 0 ||
+            this.discoveryPages.has(hostKey)))
           ? preserveExpandedCatalogHost(freshHost, currentHost, event.catalog)
           : freshHost;
       const hosts = currentHost
@@ -517,6 +524,9 @@ export class SessionCatalogLiveState {
         : [...currentCatalog.hosts, mergedHost];
       nextCatalog = {
         ...event.catalog,
+        ...(event.catalog.pending && !event.catalog.error && currentCatalog.error
+          ? { error: currentCatalog.error }
+          : {}),
         hosts: hosts.toSorted((left, right) => left.label.localeCompare(right.label)),
       };
       catalogs = params.catalogs.map((catalog) =>
@@ -530,6 +540,7 @@ export class SessionCatalogLiveState {
       currentCatalog.label === nextCatalog.label &&
       currentCatalog.requiresFreshList === nextCatalog.requiresFreshList &&
       JSON.stringify(currentCatalog.capabilities) === JSON.stringify(nextCatalog.capabilities) &&
+      currentCatalog.pending === nextCatalog.pending &&
       JSON.stringify(currentCatalog.error) === JSON.stringify(nextCatalog.error);
     if (sameCatalogMetadata && JSON.stringify(currentHost) === JSON.stringify(nextHost)) {
       return null;

@@ -75,6 +75,11 @@ export function withdrawSessionCatalogRows(
   };
 }
 
+export function sessionCatalogPageFailed(host: Pick<SessionCatalogHost, "error">): boolean {
+  // A discovery frontier is a successful partial page, including its rows and exhausted cursor.
+  return host.error !== undefined && host.error.code !== "DISCOVERY_TRUNCATED";
+}
+
 export function preserveExpandedCatalogHost(
   freshHost: SessionCatalogHost,
   previous: SessionCatalogHost | undefined,
@@ -91,10 +96,11 @@ export function preserveExpandedCatalogHost(
     return freshHost;
   }
   const { sessions: _freshSessions, nextCursor: _freshNextCursor, ...freshDetails } = freshHost;
-  const { nextCursor, pending: _pending, ...previousDetails } = previous;
+  const { nextCursor, pending: _pending, error: previousError, ...previousDetails } = previous;
   return {
     ...previousDetails,
     ...freshDetails,
+    ...(freshHost.pending && !freshHost.error && previousError ? { error: previousError } : {}),
     ...(nextCursor !== undefined ? { nextCursor } : {}),
   };
 }
@@ -113,12 +119,17 @@ export async function refetchExpandedSessionCatalogPages(
   params: ExpandedSessionCatalogPagesParams,
 ): Promise<SessionCatalog[]> {
   if (
-    !params.catalogs.some((catalog) =>
-      catalog.hosts.some(
-        (host) =>
-          !host.pending &&
-          (params.pageDepths.get(sessionCatalogHostKey(catalog.id, host.hostId)) ?? 0) > 0,
-      ),
+    !params.catalogs.some(
+      (catalog) =>
+        catalog.hosts.some(
+          (host) =>
+            !host.pending &&
+            (params.pageDepths.get(sessionCatalogHostKey(catalog.id, host.hostId)) ?? 0) > 0,
+        ) ||
+        (params.previousCatalogs.some((previous) => previous.id === catalog.id) &&
+          (catalog.pending ||
+            sessionCatalogPageFailed(catalog) ||
+            catalog.hosts.some((host) => host.pending || sessionCatalogPageFailed(host)))),
     )
   ) {
     // The ordinary head-only read keeps exactly the same fresh-row normalization.
