@@ -63,20 +63,20 @@ function schemaIncludesAction(schema: unknown, expected: string): boolean {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     return false;
   }
-  const record = schema as Record<string, unknown>;
-  const properties = record.properties;
+  const properties = Reflect.get(schema, "properties");
   if (properties && typeof properties === "object" && !Array.isArray(properties)) {
-    const action = (properties as Record<string, unknown>).action;
+    const action = Reflect.get(properties, "action");
     if (action && typeof action === "object" && !Array.isArray(action)) {
-      const values = (action as Record<string, unknown>).enum;
+      const values = Reflect.get(action, "enum");
       if (Array.isArray(values) && values.includes(expected)) {
         return true;
       }
     }
   }
-  return [record.anyOf, record.oneOf, record.allOf].some(
-    (variants) =>
-      Array.isArray(variants) &&
-      variants.some((variant) => schemaIncludesAction(variant, expected)),
-  );
+  return ["anyOf", "oneOf", "allOf"].some((key) => {
+    const variants = Reflect.get(schema, key);
+    return (
+      Array.isArray(variants) && variants.some((variant) => schemaIncludesAction(variant, expected))
+    );
+  });
 }
