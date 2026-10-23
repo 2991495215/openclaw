@@ -5,7 +5,11 @@
 import { Type } from "typebox";
 import { isRequestedExecTargetAllowed } from "./bash-tools.exec-target.js";
 import type { ExecToolDefaults } from "./bash-tools.exec-types.js";
-import { executionTitleSchema, optionalStringEnum } from "./schema/typebox.js";
+import {
+  executionTitleSchema,
+  optionalFiniteNumberSchema,
+  optionalStringEnum,
+} from "./schema/typebox.js";
 
 const EXEC_TOOL_HOST_VALUES = ["auto", "sandbox", "gateway", "node"] as const;
 const PROCESS_TOOL_ACTIONS = [
@@ -34,11 +38,9 @@ export const execSchema = Type.Object({
       description: "Literal overrides; no expansion. Omit to inherit.",
     }),
   ),
-  yieldMs: Type.Optional(
-    Type.Number({
-      description: "Milliseconds before returning an ordinary-command handle; default 10000.",
-    }),
-  ),
+  yieldMs: optionalFiniteNumberSchema({
+    description: "Milliseconds before returning an ordinary-command handle; default 10000.",
+  }),
   awaitResults: Type.Optional(
     Type.Boolean({
       description:
@@ -51,11 +53,9 @@ export const execSchema = Type.Object({
         "Start an independent service now; survives request Stop. Use yieldMs for ordinary work. timeoutSeconds applies.",
     }),
   ),
-  timeoutSeconds: Type.Optional(
-    Type.Number({
-      description: "Process lifetime in seconds; 0 disables.",
-    }),
-  ),
+  timeoutSeconds: optionalFiniteNumberSchema({
+    description: "Process lifetime in seconds; 0 disables.",
+  }),
   pty: Type.Optional(
     Type.Boolean({
       description: "PTY for TTY-required CLIs/coding agents.",
@@ -132,11 +132,9 @@ export const processSchema = Type.Object({
   eof: Type.Optional(Type.Boolean({ description: "Close stdin after write" })),
   offset: Type.Optional(Type.Number({ description: "Log offset" })),
   limit: Type.Optional(Type.Number({ description: "Log length" })),
-  timeout: Type.Optional(
-    Type.Number({
-      description:
-        "For poll: wait up to this many milliseconds before returning; max 30000 ms, higher values are clamped to 30000",
-      minimum: 0,
-    }),
-  ),
+  timeout: optionalFiniteNumberSchema({
+    description:
+      "For poll: wait up to this many milliseconds before returning; max 30000 ms, higher values are clamped to 30000",
+    minimum: 0,
+  }),
 });
