@@ -3147,6 +3147,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@gfx/zopfli':
+        specifier: 1.0.15
+        version: 1.0.15
       '@solidjs/compiler':
         specifier: 2.0.0-rc.16
         version: 2.0.0-rc.16
@@ -4206,6 +4209,10 @@ packages:
   '@gar/promise-retry@1.0.3':
     resolution: {integrity: sha512-GmzA9ckNokPypTg10pgpeHNQe7ph+iIKKmhKu3Ob9ANkswreCx7R3cKmY781K8QK3AqVL3xVh9A42JvIAbkkSA==}
     engines: {node: ^20.17.0 || >=22.9.0}
+
+  '@gfx/zopfli@1.0.15':
+    resolution: {integrity: sha512-7mBgpi7UD82fsff5ThQKet0uBTl4BYerQuc+/qA1ELTwWEiIedRTcD3JgiUu9wwZ2kytW8JOb165rSdAt8PfcQ==}
+    engines: {node: '>= 8'}
 
   '@github/copilot-sdk-darwin-arm64@1.0.20':
     resolution: {integrity: sha512-TSUlQ3FZ7fnAKLyiOH6T/ZtgosPjN1GIn3/3Mo8YwseM6rPXUbe2ODiMPvQLcM2aDFbl2oqlAEtg5ezuAJOjHQ==}
@@ -12594,6 +12601,10 @@ snapshots:
   '@floating-ui/utils@0.2.12': {}
 
   '@gar/promise-retry@1.0.3': {}
+
+  '@gfx/zopfli@1.0.15':
+    dependencies:
+      base64-js: 1.5.1
 
   '@github/copilot-sdk-darwin-arm64@1.0.20':
     optional: true

@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315881,
-  "reason": "Detailed tool rows defer parser and formatting work; matched build 258e9d7 measures 315881 B startup and 1405648 B Chat with unchanged critical requests.",
-  "updatedAt": "2026-10-22"
+  "startupJsGzipBytes": 303767,
+  "reason": "Optimize gzip for canonical boot assets only: matched startup 316313 to 303767 B, Chat 1353547 to 1301022 B, New Session 826576 to 794464 B; requests unchanged.",
+  "updatedAt": "2026-10-23"
 }

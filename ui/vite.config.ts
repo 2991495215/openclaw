@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants } from "node:zlib";
+import { gzipAsync } from "@gfx/zopfli";
 import { gzip } from "pako";
 import {
   runnerImport,
@@ -88,6 +89,7 @@ function isControlUiPrecompressedAsset(fileName: string) {
 export async function createControlUiPrecompressedAssetVariants(
   fileName: string,
   source: string | Uint8Array,
+  optimizeGzip = false,
 ): Promise<Array<{ fileName: string; source: Buffer }>> {
   if (!isControlUiPrecompressedAsset(fileName)) {
     return [];
@@ -102,9 +104,13 @@ export async function createControlUiPrecompressedAssetVariants(
     },
     {
       fileName: `${fileName}.gz`,
-      // Host zlib is byte-unstable across supported runtimes; pako's classic hash is canonical.
-      // Smaller deflate blocks reduce startup JavaScript size and encoder memory.
-      source: Buffer.from(gzip(body, { level: 9, legacyHash: true, memLevel: 6 })),
+      // Spend iterative compression on boot assets; optional chunks keep the fast encoder.
+      // Both encoders are portable, keeping gzip bytes stable across supported hosts.
+      source: Buffer.from(
+        optimizeGzip
+          ? await gzipAsync(body, { numiterations: 15 })
+          : gzip(body, { level: 9, legacyHash: true, memLevel: 6 }),
+      ),
     },
   ];
 }
@@ -559,6 +565,12 @@ function controlUiBuildOutputPlugin(
         this.error("Control UI build requires an output directory");
       }
       const logger = this.environment.logger;
+      const bootAssets = collectControlUiBootAssets(bundle);
+      const optimizedGzipAssets = new Set([
+        ...bootAssets.chat,
+        ...bootAssets.new,
+        ...bootAssets.login,
+      ]);
       let completed = 0;
       let sidecars = 0;
       let lastProgressAt = performance.now();
@@ -568,7 +580,11 @@ function controlUiBuildOutputPlugin(
         // later generateBundle hook. Read from disk here so sidecars always
         // encode the exact final bytes that the identity response serves.
         const source = fs.readFileSync(path.join(buildOutDir, output.fileName));
-        const variants = await createControlUiPrecompressedAssetVariants(output.fileName, source);
+        const variants = await createControlUiPrecompressedAssetVariants(
+          output.fileName,
+          source,
+          optimizedGzipAssets.has(output.fileName),
+        );
         if (variants.length === 0) {
           return;
         }
@@ -614,7 +630,6 @@ function controlUiBuildOutputPlugin(
         )
         .toSorted();
       fs.writeFileSync(path.join(buildOutDir, ".build-inputs.json"), JSON.stringify(inputs));
-      const bootAssets = collectControlUiBootAssets(bundle);
       await refreshControlUiBuildOutput(
         buildOutDir,
         buildInfo,
