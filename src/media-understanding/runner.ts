@@ -110,6 +110,20 @@ const loadPreparedModelCatalogApi = createLazyRuntimeModule(async () => ({
   ...(await import("../agents/prepared-model-catalog.js")),
 }));
 
+async function readMediaVisionCatalog(
+  params: Pick<AutoModelSelectionParams, "cfg" | "agentId" | "agentDir" | "workspaceDir">,
+) {
+  const { findModelInCatalog, readPreparedModelCatalog, modelSupportsVision } =
+    await loadPreparedModelCatalogApi();
+  const catalog = await readPreparedModelCatalog({
+    config: params.cfg,
+    ...(params.agentId ? { agentId: params.agentId } : {}),
+    ...(params.agentDir ? { agentDir: params.agentDir } : {}),
+    ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
+  });
+  return { catalog, findModelInCatalog, modelSupportsVision };
+}
+
 function resolveConfiguredKeyProviderOrder(params: {
   cfg: OpenClawConfig;
   providerRegistry: ProviderRegistry;
@@ -155,14 +169,7 @@ async function explicitImageModelVisionStatus(
   if (resolveConfiguredImageModelId(params) === params.model) {
     return "supported";
   }
-  const { findModelInCatalog, readPreparedModelCatalog, modelSupportsVision } =
-    await loadPreparedModelCatalogApi();
-  const catalog = await readPreparedModelCatalog({
-    config: params.cfg,
-    ...(params.agentId ? { agentId: params.agentId } : {}),
-    ...(params.agentDir ? { agentDir: params.agentDir } : {}),
-    ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
-  });
+  const { catalog, findModelInCatalog, modelSupportsVision } = await readMediaVisionCatalog(params);
   const entry = findModelInCatalog(catalog, params.providerId, params.model);
   if (!entry) {
     return "unknown";
@@ -215,13 +222,7 @@ async function resolveAutoImageModelId(
   if (bundledDefaultModel) {
     return bundledDefaultModel;
   }
-  const { readPreparedModelCatalog, modelSupportsVision } = await loadPreparedModelCatalogApi();
-  const catalog = await readPreparedModelCatalog({
-    config: params.cfg,
-    ...(params.agentId ? { agentId: params.agentId } : {}),
-    ...(params.agentDir ? { agentDir: params.agentDir } : {}),
-    ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
-  });
+  const { catalog, modelSupportsVision } = await readMediaVisionCatalog(params);
   const providerId = params.providerId;
   const matches = catalog.filter(
     (entry) =>
@@ -312,14 +313,7 @@ async function activeModelSupportsNativeVision(
   ) {
     return false;
   }
-  const { findModelInCatalog, readPreparedModelCatalog, modelSupportsVision } =
-    await loadPreparedModelCatalogApi();
-  const catalog = await readPreparedModelCatalog({
-    config: params.cfg,
-    ...(params.agentId ? { agentId: params.agentId } : {}),
-    ...(params.agentDir ? { agentDir: params.agentDir } : {}),
-    ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
-  });
+  const { catalog, findModelInCatalog, modelSupportsVision } = await readMediaVisionCatalog(params);
   const entry = findModelInCatalog(catalog, activeProvider, params.activeModel?.model ?? "");
   return modelSupportsVision(entry);
 }
