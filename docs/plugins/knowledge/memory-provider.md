@@ -67,13 +67,16 @@ entities (people, companies, projects, repositories, concepts and anything else
 the active ontology can represent) and what is known about them. It asks the
 agent to:
 
-- search once for any entity a task names, or earlier work it refers to, before
-  planning, and follow the knowledge-recall skill for deeper questions;
+- search once for each entity a task names, not just the first, or earlier work
+  it refers to, before planning, and follow the knowledge-recall skill for deeper questions;
 - save decisions, preferences, corrections, commitments, project-state changes,
   and explicit remember requests with `knowledge_remember` before the final reply,
-  without being prompted, worded no more broadly than the supporting excerpt;
-- keep a page for work that spans turns or that the user will return to: reuse
-  the page recall found or create it through knowledge-entities, keep its
+  without being prompted, worded no more broadly than the supporting excerpt,
+  in one call with a fresh `requestId` and the claims in `items`;
+- keep a page for work that spans turns or that the user will return to, and
+  for each person, organization or project the user treats as significant:
+  reuse the page recall found or create it right away through
+  knowledge-entities, keep its
   current state accurate through knowledge-capture, and record the agent's own
   findings there as analysis rather than in `knowledge_remember`, which never
   stores agent inference;

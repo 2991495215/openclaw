@@ -257,7 +257,10 @@ it("prompt routes all workflows, obeys citation settings and omits disabled save
   expect(full).toMatch(
     /fast path for one-off information: no search or readback first, and no page is needed/,
   );
-  expect(full).toMatch(/This is for sustained work, not one-off claims/);
+  expect(full).toMatch(/each person, organization or project the user discusses as significant/);
+  expect(full).toMatch(/create it now, without waiting to see whether the work continues/);
+  // The call shape models get wrong: a fresh requestId and items, not claims.
+  expect(full).toMatch(/a fresh requestId \(a new UUID\).*an items array \(not claims\)/);
   expect(full).toMatch(/knowledge-capture to revise a page's prose/);
   // Entities are the catch-all memory subject; named entities trigger one search before planning.
   expect(full).toMatch(
@@ -268,7 +271,7 @@ it("prompt routes all workflows, obeys citation settings and omits disabled save
   );
   // Sustained work gets a maintained entity page; findings go there, not into source-claim remembering.
   expect(full).toMatch(
-    /Entity pages: work that spans several turns.*create it through knowledge-entities/,
+    /Entity pages: work that spans several turns.*create it now.*through knowledge-entities/,
   );
   expect(full).toMatch(/record your own findings there, labelled as your analysis/);
   expect(full).toMatch(/Record your own findings on pages instead/);
@@ -284,7 +287,7 @@ it("prompt routes all workflows, obeys citation settings and omits disabled save
   expect(partial).not.toMatch(/knowledge_record|knowledge_lookup|knowledge-capture/);
   expect(partial).toMatch(/Citations are disabled/);
   expect(partial).toMatch(
-    /names an entity or refers to earlier work, run knowledge_grep on that name once\./,
+    /refers to earlier work, run knowledge_grep once on each entity it names, not only the first\./,
   );
   const rememberWithoutPages = buildKnowledgeMemoryPrompt({
     availableTools: new Set(["knowledge_grep", "knowledge_remember"]),
