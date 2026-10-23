@@ -13,6 +13,7 @@ structured claims, then verify them. Read a reference only when its step needs i
 - [sources](references/sources.md): retaining originals; citation format
 - [speakers](references/speakers.md): possible split, duplicate or unclear speaker
 - [identity](references/identity.md): resolving a person, company or project
+- [writing](references/writing.md): before writing any page prose
 - [meeting page](references/meeting-page.md): writing the meeting page
 - [profiles](references/profiles.md): creating or updating a profile
 - [assertions](references/assertions.md): claims, attendance edges, reruns
@@ -24,10 +25,16 @@ structured claims, then verify them. Read a reference only when its step needs i
 
 - One page per real meeting. Retain the full transcript; recorder summaries are
   claims, not facts.
-- Speakers are resolved on evidence, never guessed.
-- Every identified attendee gets a substantive profile with a Timeline line and
-  attendance edge. Every relevant entity with a page gets a Timeline line and
-  links in both directions.
+- Speakers are resolved on evidence with a confidence, never guessed. Use every
+  real signal; leave a speaker unresolved only when there is none.
+- Every participant (spoke, was addressed, or otherwise took part) gets a
+  profile with a Timeline line and an attendance edge. Invite-list-only names
+  get neither.
+- Every company, project or concept the meeting says something substantive
+  about gets a page (found or created), a Timeline line and links in both
+  directions. Passing mentions don't.
+- Pages read like good human notes: names first, few caveats, no process
+  commentary.
 - Decisions, commitments and events become claims. Unverified claims don't
   spread to other pages.
 - Never call a meeting fully ingested until verification passes.
@@ -80,13 +87,13 @@ Order: meeting page → entity pages → claims and edges → link edits.
 Batch related records ([publish](references/publish.md)).
 
 - Meeting page per [meeting page](references/meeting-page.md).
-- For each attendee and relevant entity: find or create the page
-  (`knowledge-entities` for hard cases), add the Timeline line, update State only
-  if meaning changed ([profiles](references/profiles.md)).
+- For each participant and substantive entity: find or create the page
+  ([identity](references/identity.md) says when), add the Timeline line, update
+  State only if meaning changed ([profiles](references/profiles.md)).
 - Claims per [assertions](references/assertions.md): decisions, commitments,
   facts and one `source_event: true` event for the meeting itself, with all
   relevant `entities`. Other events keep their own dates.
-- An evidenced `attended` relationship per attendee. In the shipped ontology it
+- An evidenced `attended` relationship per participant. In the shipped ontology it
   runs participant → meeting; confirm in the definition. Set `source_page`.
 - Mentioned people with pages get links too. Don't create pages for unknown
   speakers.
@@ -104,6 +111,8 @@ Run [verify](references/verify.md) first. Then check:
   claim `entities`/`dependencies`, commitment `owner`, and edge
   `from`/`to`/`label`/`source_page`.
 - **State:** no updated profile has a State topic named for a date or meeting.
+- **Style:** reread each page against [writing](references/writing.md): names
+  first, no stacked caveats, no notes to yourself, no filler lines.
 - **Speakers:** no raw label passes as a known person; run the
   fabricated-attendee check in [speakers](references/speakers.md).
 - **Quotes:** read each quoted span's lines with `knowledge_evidence_read`. Fix
@@ -119,7 +128,8 @@ Run [verify](references/verify.md) first. Then check:
 
 ## Report
 
-Per meeting: page, retained sources, attendees enriched, entities updated or
+Per meeting: page, retained sources, participants enriched, entities updated or
 reused, claims and edges, verification result, sequence PASS or WAIVED with the
 open contradiction. List withheld claims, unresolved identities and remaining
-work. A partial report is honest progress, not completion.
+work here, in the report, not on the pages. A partial report is honest progress,
+not completion.

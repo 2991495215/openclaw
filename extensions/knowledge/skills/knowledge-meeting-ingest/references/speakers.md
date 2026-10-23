@@ -24,20 +24,31 @@ or declared ontology fields, never in arbitrary frontmatter.
 
 ## Speaker resolution
 
-1. Start from the attendee list and explicit roster or user evidence.
-2. Never guess. Use `UNKNOWN` or `[Room]` with an uncertainty flag.
-3. Resolve candidates with the identity rules; read existing evidence.
-4. Record each raw label → identity (or unresolved), with basis and confidence
-   (high/medium/low). Being on the roster doesn't tie a person to a voice track.
-5. **Role check:** if a speaker's stated role or company contradicts the named
-   person's evidence, the label may be wrong. Inspect before reattributing.
-6. **Phantom speakers:** more tracks than attendees, mid-sentence handoffs or
+Aim for a usable speaker map. Use every real signal, record a confidence, and
+leave a label unresolved only when there is genuinely no signal.
+
+1. **Recorder's own track.** Recorders that split audio into "me"/"microphone"
+   and "them"/"room" (Granola does) put the note owner on the "me" track. Map
+   it to the note owner with high confidence unless the content contradicts it.
+2. **Handoffs.** In round-robin meetings, "Gideon, go ahead" followed by an
+   update maps that update span to Gideon. Map the span, not the whole "them"
+   track. Medium confidence unless the speaker also self-identifies.
+3. **Self-identification and roles.** "This is Calin, on cloud workers…" or a
+   role that matches one roster person is evidence too. If a stated role
+   contradicts the named person's evidence, inspect before reattributing.
+4. Record each label or span → person, with basis and confidence
+   (high/medium/low) in `attribution_confidence` and your work log. Only a
+   compact speaker list goes on the meeting page.
+5. Use `UNKNOWN` or `[Room]` only when no signal exists. Two roster people
+   with the same first name and no other signal stay unresolved.
+6. A roster lists invitees. It is not proof that someone spoke or attended.
+7. **Phantom speakers:** more tracks than attendees, mid-sentence handoffs or
    labels that never address each other suggest over-splitting. Merge labels only
    on evidence, not counts.
-7. **User correction:** an explicit user identification overrides the mapping.
+8. **User correction:** an explicit user identification overrides the mapping.
    Retain it as attributed evidence and keep the original transcript. Repairs of
    existing assertions go through `knowledge-correct`.
-8. Search spelling variants before creating a transcript-only person. After
+9. Search spelling variants before creating a transcript-only person. After
    confirming identity, reuse the page and optionally add the alias.
 
 ## Fabricated-attendee check (during verification)

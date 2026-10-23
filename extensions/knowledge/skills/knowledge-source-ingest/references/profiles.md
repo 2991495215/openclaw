@@ -14,6 +14,7 @@ the last call?".
   Never add a topic or paragraph named for a date, meeting or source.
 - **Timeline:** newest first, one line per event:
   `- **YYYY-MM-DD** — what happened for this entity. [[source|Label · lines]]`
+  One short sentence about the event, not a copy of the State paragraph.
 
 Optional sections, only with evidence. Person: What They Believe, What They're
 Building, Motivations, Assessment, Relationship, Contact, Network, Open Threads.
@@ -22,6 +23,9 @@ Company: Open Threads. Never fill headings with speculation or placeholders.
 ## Rules
 
 - Every fact and Timeline line has an inline citation. Dates are event dates.
+- Write the introduction about the person or thing, not about the source
+  ("Works on guest access and RBAC", not "Is recorded in the attendee roster").
+  Follow [writing](writing.md); no email addresses in prose.
 - Unknown role, employer and surname stay absent. Populate ontology fields such
   as `role` only when the source establishes them.
 - Attribute beliefs to the speaker. Your assessment is not their belief.

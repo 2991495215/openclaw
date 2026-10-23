@@ -41,5 +41,16 @@ presence, not of who spoke). Keep ambiguous candidates separate.
 - Never hand-write References/Referenced-by lists. Never guess an ambiguous link
   target; use the observed path.
 - In an authorized ingestion, link every identified entity that has a page to the
-  source and back. Create new pages only for notable entities (see
-  `knowledge-entities`). Skip incidental names.
+  source and back.
+
+## When to create a page
+
+- **Person:** they actually took part (spoke, were addressed, or other evidence
+  shows they were present), or the source says something substantive about them.
+  A name only on an invite list or roster gets no page.
+- **Company, project or concept:** the source says something substantive about
+  it: a decision, commitment, status update, plan or real discussion. A passing
+  mention gets no page.
+- **Sub-features and small workstreams** (one plugin, one PR) go into the parent
+  project's Timeline, not their own page.
+- Find before creating: search, then create only if nothing matches.

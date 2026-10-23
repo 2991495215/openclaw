@@ -17,6 +17,7 @@ const topics = [
   "assertions.md",
   "profiles.md",
   "verify.md",
+  "writing.md",
   "meeting-entity-example.md",
 ];
 for (const name of (await readdir(root)).filter((entry) => entry.startsWith("knowledge-"))) {
