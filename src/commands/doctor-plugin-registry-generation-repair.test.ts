@@ -144,10 +144,10 @@ it.each(["record", "recency"] as const)(
     }
     expect([stale, active].map(hasRetainedManagedNpmInstallMarker)).toEqual([true, false]);
     if (authority === "record") {
+      vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       await expect(
         pruneGenerations({
           activeInstallPaths: [active],
-          npmDir: path.join(stateDir, "npm"),
         }),
       ).resolves.toBe(1);
       expect([stale, active].map((dir) => fs.existsSync(dir))).toEqual([false, true]);

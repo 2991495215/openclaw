@@ -66,7 +66,6 @@ export async function removeSessionWorktree(params: {
   sessionKey: string;
   reason: string;
   commitGuard?: () => void;
-  workerAuthority?: WorktreeWorkerAuthority;
   env?: NodeJS.ProcessEnv;
 }): Promise<PreservedSessionWorktree | undefined> {
   if (!params.id) {
@@ -99,14 +98,8 @@ export async function removeSessionWorktree(params: {
       reason: params.reason,
       commitGuard: assertCurrent,
       workerAuthority: {
-        ...params.workerAuthority,
-        assertCurrent: params.workerAuthority
-          ? params.workerAuthority.assertCurrent
-          : params.commitGuard,
-        predicates: [
-          ...(params.workerAuthority?.predicates ?? []),
-          { kind: "session-owner", id: record.id, sessionKey: params.sessionKey },
-        ],
+        assertCurrent: params.commitGuard,
+        predicates: [{ kind: "session-owner", id: record.id, sessionKey: params.sessionKey }],
       },
     });
   } catch (error) {

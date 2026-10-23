@@ -238,15 +238,13 @@ async function cleanupRetainedLegacyNpmPackages(params: {
 export async function cleanupRetainedManagedNpmInstallGenerations(
   params: {
     activeInstallPaths?: Iterable<string>;
-    env?: NodeJS.ProcessEnv;
-    npmDir?: string;
     onError?: (error: unknown, projectRoot: string) => void;
     assertCurrent?: () => void | Promise<void>;
   } = {},
 ): Promise<number> {
   // Callers run this only after the previous gateway server has closed and preserve
   // every active install path, so retired module graphs no longer need these trees.
-  const npmDir = params.npmDir ?? resolveDefaultPluginNpmDir(params.env);
+  const npmDir = resolveDefaultPluginNpmDir();
   const projectsDir = resolvePluginNpmProjectsDir(npmDir);
   const activeInstallPaths = Array.from(params.activeInstallPaths ?? [], (installPath) =>
     path.resolve(installPath),

@@ -114,6 +114,7 @@ it.each(["ordinary", "generation", "legacy"] as const)(
   "cleans a retired %s project while preserving the active install root",
   async (layout) => {
     const npmDir = makeNpmDir();
+    vi.stubEnv("OPENCLAW_STATE_DIR", path.dirname(npmDir));
     const packageName = "@openclaw/codex";
     const oldProjectRoot =
       layout === "legacy"
@@ -132,10 +133,7 @@ it.each(["ordinary", "generation", "legacy"] as const)(
 
     const refused = new Error("cleanup lease was replaced");
     const onError = vi.fn();
-    const options = {
-      npmDir,
-      ...(activePackageDir ? { activeInstallPaths: [activePackageDir], onError } : {}),
-    };
+    const options = activePackageDir ? { activeInstallPaths: [activePackageDir], onError } : {};
     await expect(
       cleanupRetainedManagedNpmInstallGenerations({
         ...options,
@@ -166,6 +164,7 @@ it.each(["noncanonical", "symlink"])(
   "preserves retained packages under a %s projects root",
   async (layout) => {
     const npmDir = makeNpmDir();
+    vi.stubEnv("OPENCLAW_STATE_DIR", path.dirname(npmDir));
     fs.mkdirSync(npmDir, { recursive: true });
     if (layout === "symlink") {
       const outside = retentionTempDirs.make("openclaw-retention-outside-");
@@ -180,7 +179,7 @@ it.each(["noncanonical", "symlink"])(
     fs.writeFileSync(siblingFile, "preserve me", "utf8");
     await mark(packageDir);
 
-    await expect(cleanupRetainedManagedNpmInstallGenerations({ npmDir })).resolves.toBe(0);
+    await expect(cleanupRetainedManagedNpmInstallGenerations()).resolves.toBe(0);
     expect(fs.readFileSync(siblingFile, "utf8")).toBe("preserve me");
   },
 );
@@ -189,12 +188,13 @@ it.each(["project", "legacy"] as const)(
   "preserves %s packages retained by an explicit keep-files uninstall",
   async (layout) => {
     const npmDir = makeNpmDir();
+    vi.stubEnv("OPENCLAW_STATE_DIR", path.dirname(npmDir));
     const projectRoot =
       layout === "legacy" ? npmDir : generation(npmDir, "kept-plugin-v1", "@openclaw/kept-plugin");
     const packageDir = makePackage(projectRoot, "@openclaw/kept-plugin");
     await mark(packageDir, RETAINED_MANAGED_NPM_KEEP_FILES_REASON, "kept-plugin");
 
-    await expect(cleanupRetainedManagedNpmInstallGenerations({ npmDir })).resolves.toBe(0);
+    await expect(cleanupRetainedManagedNpmInstallGenerations()).resolves.toBe(0);
     expect(fs.existsSync(packageDir)).toBe(true);
     expect(hasRetainedManagedNpmInstallMarker(packageDir)).toBe(true);
   },
