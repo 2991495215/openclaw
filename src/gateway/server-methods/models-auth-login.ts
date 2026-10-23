@@ -110,6 +110,7 @@ export const modelsAuthLoginHandlers: GatewayRequestHandlers = {
       };
       if (choice.appGuidedAuth && choice.credentialOnly !== true) {
         await startSetupActivationWizard({
+          request: options,
           sessionId: params.sessionId,
           client,
           ownerKey: resolveSystemAgentSessionOwnerKey({ client }),

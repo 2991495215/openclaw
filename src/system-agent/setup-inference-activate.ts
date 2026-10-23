@@ -451,6 +451,7 @@ async function verifyAndActivateCandidate(
       return await runSetupInferenceTurn({
         route,
         requireExecutionOwner: true,
+        assertSourceCurrent: () => throwIfSetupInferenceCancelled(params),
         signal: params.signal,
         runtime: params.runtime,
       });

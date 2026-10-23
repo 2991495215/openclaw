@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolvePreparedRunAdmission } from "../agents/admitted-run-context.js";
 import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import { buildAuthHealthSummary } from "../agents/auth-health.js";
 import { resolveApiKeyForProfile } from "../agents/auth-profiles/oauth.js";
@@ -68,6 +69,32 @@ async function writeConfig(setup: Setup, value: Setup["config"] | string) {
 afterEach(resetSetupInferenceState);
 
 describe("setup activation credentials and configuration", () => {
+  it("rejects a revoked setup source at probe execution before provider work", async () => {
+    const setup = await fixture();
+    const reply = setup.run.getMockImplementation();
+    assert.ok(reply);
+    const providerEffect = vi.fn(reply);
+    const source = new AbortController();
+    setup.run.mockImplementation(async (params) => {
+      source.abort(new Error("Setup source authority was revoked"));
+      assert.ok(params.runId);
+      await resolvePreparedRunAdmission({
+        runId: params.runId,
+        runtimeKind: "embedded",
+        preparedRunAdmission: params.preparedRunAdmission,
+      });
+      return providerEffect(params);
+    });
+    await expect(
+      setup.activate("provider-auth", undefined, {
+        assertCurrent: () => source.signal.throwIfAborted(),
+      }),
+    ).rejects.toThrow("Setup source authority was revoked");
+    expect(setup.run).toHaveBeenCalledOnce();
+    expect(providerEffect).not.toHaveBeenCalled();
+    expect(await fs.readFile(setup.configPath, "utf8")).toBe(setup.before);
+  });
+
   it.each([
     { target: "utility" as const, requested: undefined },
     { target: undefined, requested: "utility" as const },

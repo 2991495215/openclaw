@@ -240,9 +240,9 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
       const { params, respond, context, client } = options;
       const { sessionId, ...activation } = params;
       await startSetupActivationWizard({
+        request: options,
         sessionId,
         ownerKey: resolveSystemAgentSessionOwnerKey({ client }),
-        assertCurrent: readGatewayRequestMutationAuthority(options).assertCurrent,
         activation: { ...activation, kind: "provider-auth" },
         timeoutMs: PROVIDER_AUTH_SESSION_TIMEOUT_MS,
         context,
@@ -254,9 +254,11 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
   "openclaw.setup.activate.start": defineValidatedGatewayHandler(
     "openclaw.setup.activate.start",
     validateSystemAgentSetupActivateStartParams,
-    async ({ params, respond, context }) => {
+    async (options) => {
+      const { params, respond, context } = options;
       const { sessionId, ...activation } = params;
       await startSetupActivationWizard({
+        request: options,
         sessionId,
         activation,
         timeoutMs: PROVIDER_AUTH_SESSION_TIMEOUT_MS,

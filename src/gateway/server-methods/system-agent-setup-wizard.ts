@@ -1,6 +1,11 @@
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import { WizardSession } from "../../wizard/session.js";
+import { captureOperatorToolGatewayContinuationContext } from "../server-plugin-in-process-authority.js";
 import type { GatewayClient } from "./client-types.js";
+import {
+  readGatewayRequestMutationAuthority,
+  retainGatewayRequestMutationAuthority,
+} from "./session-mutation-guards.js";
 import {
   createAdmittedWizardSession,
   respondSetupAdmissionBusy,
@@ -10,7 +15,7 @@ import {
   activateGatewaySetupInference,
   createSystemAgentGatewayRuntime,
 } from "./system-agent-execution.js";
-import type { GatewayRequestContext, RespondFn } from "./types.js";
+import type { GatewayRequestContext, GatewayRequestOptions, RespondFn } from "./types.js";
 import { publishWizardLoginSession } from "./wizard-login.js";
 
 type SetupActivation = Pick<
@@ -136,6 +141,7 @@ export function rejectExistingSetupWizardSession(params: {
 }
 
 export async function startSetupActivationWizard(params: {
+  request: GatewayRequestOptions;
   sessionId: string;
   ownerKey?: string;
   client?: GatewayClient;
@@ -149,55 +155,89 @@ export async function startSetupActivationWizard(params: {
   if (rejectExistingSetupWizardSession(params)) {
     return;
   }
-  const session = await createSetupActivationSession(
-    params,
-    () =>
-      new WizardSession(
-        async (prompter, signal, runnerSession) => {
-          const result = await activateGatewaySetupInference({
-            ...params.activation,
-            surface: "gateway",
-            isRemoteProviderAuth: params.isLocalClient !== true,
-            runtime: createSystemAgentGatewayRuntime(),
-            prompter,
-            signal,
-            isCancelled: () => signal.aborted,
-            assertCurrent: params.assertCurrent,
-            beforePersistentEffect: () => {
-              params.assertCurrent?.();
-              runnerSession.lockCancellationForPreparation();
-            },
-            onPreparationComplete: () => {
-              params.assertCurrent?.();
-              runnerSession.finishPreparation();
-            },
-            onCommitStarted: () => {
-              params.assertCurrent?.();
-              runnerSession.lockCancellation();
-            },
-          });
-          params.assertCurrent?.();
-          signal.throwIfAborted();
-          if (!result.ok) {
-            if (result.disposition === "rejected-before-promotion") {
-              runnerSession.setActivationRejection({
-                disposition: result.disposition,
-                status: result.status,
+  const admission = {
+    ...params,
+    assertCurrent: () => {
+      readGatewayRequestMutationAuthority(params.request).assertCurrent();
+      params.assertCurrent?.();
+    },
+  };
+  // Capture the original operator before the start reply can close its transport.
+  const continuation = await captureOperatorToolGatewayContinuationContext();
+  let session: WizardSession | undefined;
+  try {
+    session = await createSetupActivationSession(admission, () => {
+      const authority = retainGatewayRequestMutationAuthority(params.request);
+      const assertCurrent = () => {
+        continuation?.assertCurrent();
+        authority.assertCurrent();
+        params.assertCurrent?.();
+      };
+      try {
+        const createSession = () =>
+          new WizardSession(
+            async (prompter, signal, runnerSession) => {
+              const result = await activateGatewaySetupInference({
+                ...params.activation,
+                surface: "gateway",
+                isRemoteProviderAuth: params.isLocalClient !== true,
+                runtime: createSystemAgentGatewayRuntime(),
+                prompter,
+                signal,
+                isCancelled: () => signal.aborted,
+                assertCurrent,
+                beforePersistentEffect: () => {
+                  assertCurrent();
+                  runnerSession.lockCancellationForPreparation();
+                },
+                onPreparationComplete: () => {
+                  assertCurrent();
+                  runnerSession.finishPreparation();
+                },
+                onCommitStarted: () => {
+                  assertCurrent();
+                  runnerSession.lockCancellation();
+                },
               });
-            }
-            throw new Error(result.error);
-          }
-          runnerSession.setModelActivation({
-            modelRef: result.modelRef,
-            ...(result.modelName ? { modelName: result.modelName } : {}),
-            ...(result.modelTarget ? { modelTarget: result.modelTarget } : {}),
-            ...(result.gatewayRestartRequired ? { gatewayRestartRequired: true } : {}),
-          });
-        },
-        { timeoutMs: params.timeoutMs },
-      ),
-  );
+              assertCurrent();
+              signal.throwIfAborted();
+              if (!result.ok) {
+                if (result.disposition === "rejected-before-promotion") {
+                  runnerSession.setActivationRejection({
+                    disposition: result.disposition,
+                    status: result.status,
+                  });
+                }
+                throw new Error(result.error);
+              }
+              runnerSession.setModelActivation({
+                modelRef: result.modelRef,
+                ...(result.modelName ? { modelName: result.modelName } : {}),
+                ...(result.modelTarget ? { modelTarget: result.modelTarget } : {}),
+                ...(result.gatewayRestartRequired ? { gatewayRestartRequired: true } : {}),
+              });
+            },
+            { timeoutMs: params.timeoutMs },
+          );
+        const created = continuation ? continuation.run(createSession) : createSession();
+        const release = () => {
+          authority.release();
+          continuation?.release();
+        };
+        // The runner includes deferred application/recovery; collecting its result owns no authority.
+        void created.whenSettled().then(release, release);
+        return created;
+      } catch (error) {
+        authority.release();
+        throw error;
+      }
+    });
+  } catch (error) {
+    continuation?.release();
+    throw error;
+  }
   if (!session) {
+    continuation?.release();
     respondSetupAdmissionBusy(params.respond);
     return;
   }
