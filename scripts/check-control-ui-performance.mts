@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Deferred dictation capture: 1,345,818 B Chat and 820,084 B New Session.
-  // Preserve the prior relative headroom against the matched main baseline.
-  chatBootJsGzipBytes: 1_397_054,
-  newBootJsGzipBytes: 831_106,
+  // Deferred dictation capture: 1,345,206 B Chat and 820,630 B New Session.
+  // Preserve main's relative headroom against the matched main baseline.
+  chatBootJsGzipBytes: 1_395_679,
+  newBootJsGzipBytes: 830_937,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
