@@ -31,7 +31,7 @@ import {
   mutateSubagentRuns,
   SubagentRegistryMutationRejectedError,
 } from "./subagent-registry-persistence.js";
-import { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
+import { createTestSubagentRegistryRestorer as createRestorer } from "./subagent-registry-restore.test-support.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import type { SubagentManagerOptions } from "./subagent-registry-run-wait.js";
 import { retireSupersededSubagentRun } from "./subagent-registry-sweeper-retire.js";
@@ -153,32 +153,6 @@ function createRegistrationFixture() {
   return { refusal, manager };
 }
 
-type RestoreOptions = Parameters<typeof createSubagentRegistryRestorer>[0];
-
-function createRestorer(
-  options: Pick<RestoreOptions, "getGatewayContextResolver"> & Partial<RestoreOptions>,
-) {
-  return createSubagentRegistryRestorer({
-    runs: subagentRuns,
-    bindGatewayOwners: () => true,
-    settleRequesterTurn: async () => false,
-    retireSupersededRun: async () => {},
-    ensureListener: () => {},
-    startSweeper: () => {},
-    scheduleSweep: () => {},
-    recoverInterruptedRuns: async () => {},
-    resumeRun: () => {},
-    listSwarmRunsForGroup: () => [],
-    startQueuedSubagentRun: async () => true,
-    terminateAcceptedRestoredCollectorRun: async () => {},
-    cleanupCollectorLaunchResources: async () => true,
-    settleFailedQueuedSubagentLaunch: async () => true,
-    completeCollectorLaunchCleanup: async () => {},
-    warn: subagentRegistryLog.warn,
-    ...options,
-  });
-}
-
 it.for([
   { sameRequesterAgent: false, preparing: true, closeGateway: false },
   { sameRequesterAgent: false, preparing: false, closeGateway: false },
@@ -254,14 +228,20 @@ it.for([
             signal,
           );
           expect(resumeRun).toHaveBeenCalledExactlyOnceWith("healthy-child");
+          if (preparing) {
+            await withinTest(activation.initial, signal);
+            expect([...activation.pending.keys()].toSorted()).toEqual(
+              sameRequesterAgent ? ["healthy", "main", "slow"] : ["healthy", "slow"],
+            );
+          }
           gatewayOpen = !closeGateway;
         } finally {
           databaseOpen = true;
           databaseReady.resolve();
           if (closeGateway) {
-            await expect(activation).rejects.toThrow("lost its Gateway owner");
+            await expect(activation.settled).rejects.toThrow("lost its Gateway owner");
           } else {
-            await activation;
+            await activation.settled;
           }
           restorer.reset();
         }
@@ -335,7 +315,7 @@ it.each(["restartRecovery", "killIntent", "killReconciliation"] as const)(
           return { ...fixture, updatedAt: 1 };
         },
         async () => {
-          await restorer.activate();
+          await restorer.activate().settled;
         },
       );
       expect(resumeRun).toHaveBeenCalledExactlyOnceWith("healthy-child");
@@ -456,7 +436,7 @@ it.each(["restart", "restart with newer sibling", "confirmed Stop"] as const)(
       }
       subagentRuns.clear();
       await restorer.restoreOnce();
-      await restorer.activate();
+      await restorer.activate().settled;
       await settleRootWork(true);
       expect((await readStored()).get(runId)?.execution.status).toBe("terminal");
       expect((await readStored()).get(runId)).toMatchObject({
@@ -628,7 +608,7 @@ it.each([
             return databaseReady.promise;
           },
         }),
-        () => restorer.activate(),
+        () => restorer.activate().settled,
       );
       try {
         await awaitGateBeforeSettlement(
@@ -646,7 +626,7 @@ it.each([
       expect(recovery.dispatchAgent).not.toHaveBeenCalled();
       expect(releaseSwarmRun(runningSiblingId)).toBe(true);
     } else {
-      await restorer.activate();
+      await restorer.activate().settled;
     }
     const result = await settled.promise;
     if (outcome === "accepted" || reloadLimit || outcome === "captured system") {
@@ -788,7 +768,7 @@ it("leaves an acknowledged collector rekey with its launch owner during restore 
     return { ...fixture, updatedAt: 1 };
   });
   await restorer.restoreOnce();
-  const activation = restorer.activate();
+  const activation = restorer.activate().settled;
   try {
     await awaitGateBeforeSettlement(
       entered.promise,
@@ -872,11 +852,11 @@ it.each(["current", "during hydration"] as const)(
     });
     try {
       if (owner === "during hydration") {
-        await restorer.activate();
+        await restorer.activate().settled;
         await expect(restorer.restoreOnce(true)).rejects.toBe(failure);
       } else {
         await restorer.restoreOnce();
-        await expect(restorer.activate()).rejects.toBe(failure);
+        await expect(restorer.activate().settled).rejects.toBe(failure);
       }
       expect(ensureListener).toHaveBeenCalledTimes(2);
       expect(startSweeper).toHaveBeenCalledOnce();
@@ -886,7 +866,7 @@ it.each(["current", "during hydration"] as const)(
       expect(resumeRun).toHaveBeenCalledWith("later-child");
       expect(subagentRuns.get("first-child")?.requesterTurnRunId).toBe("first-child-turn");
       expect(subagentRuns.get("later-child")?.requesterTurnRunId).toBeUndefined();
-      await restorer.activate();
+      await restorer.activate().settled;
       expect(subagentRuns.get("first-child")?.requesterTurnRunId).toBeUndefined();
       expect(settleRequesterTurn).toHaveBeenCalledTimes(3);
       expect(ensureListener).toHaveBeenCalledTimes(2);
@@ -897,7 +877,7 @@ it.each(["current", "during hydration"] as const)(
       await setImmediate();
       queryObjects(WeakRef);
       expect(restoredRows.map((entry) => entry.deref())).toEqual([undefined, undefined]);
-      await restorer.activate();
+      await restorer.activate().settled;
       expect(resumeRun).not.toHaveBeenCalled();
     } finally {
       restorer.reset();
@@ -982,7 +962,7 @@ it("retries retirement when registration supersedes another restored child durin
           options,
         ),
     );
-    activation = restorer.activate().then(
+    activation = restorer.activate().settled.then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -1000,7 +980,7 @@ it("retries retirement when registration supersedes another restored child durin
     expect((await readStored()).has("first-child")).toBe(false);
     expect((await readStored()).get("later-child")?.requesterTurnRunId).toBe("retirement-turn");
 
-    await restorer.activate();
+    await restorer.activate().settled;
     await retiredLater.promise;
     const saved = await readStored();
     expect(saved.has("later-child")).toBe(false);

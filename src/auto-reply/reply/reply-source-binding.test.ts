@@ -8,9 +8,11 @@ import {
   retireSessionControllerInput,
   tryClaimSessionControllerTask,
   updateSessionControllerSourcePolicy,
+  getExistingSessionControllerMailbox,
 } from "../../sessions/session-controller.mailbox.js";
 import { createReplyOperation } from "../../sessions/session-controller.operation.js";
 import { testing } from "../../sessions/session-controller.test-support.js";
+import { withAgentInputRecoveryContext } from "../../state/agent-input-recovery-context.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import { prepareInternalGetReplyOptions } from "./get-reply.types.js";
 import { createQueueTestRun } from "./queue.test-helpers.js";
@@ -38,13 +40,17 @@ function prepare(sessionKey = key, store = "/test/source.sqlite", commandTarget?
   );
 }
 
-it("carries the Gateway source through lifecycle/options spreads to the actual followup", () => {
+it("carries the Gateway source through lifecycle/options spreads to the actual followup", async () => {
   const input = reserve();
   const lifecycle: TurnAdoptionLifecycle = bindReplySourceInput({ onAdopted() {} }, input);
   const options = prepareInternalGetReplyOptions({
     turnAdoptionLifecycle: { ...lifecycle, onAdopted: async () => lifecycle.onAdopted() },
   });
-  const prepared = prepareReplySourceInput({ SessionKey: key }, {}, { ...options });
+  const prepared = await prepareReplySourceInput(
+    { SessionKey: key },
+    { session: { store: "/test/source.sqlite" } },
+    { ...options },
+  );
   const run = createQueueTestRun({ prompt: "hello" });
   expect(prepared.created).toBe(false);
   expect(readReplySourceInput(prepared.options)).toBe(input);
@@ -56,13 +62,13 @@ it("carries the Gateway source through lifecycle/options spreads to the actual f
   retireSessionControllerInput(input);
 });
 
-it("captures physical source rather than native command target before preparation", () => {
-  const source = prepare(key, "/test/actual.sqlite", "agent:main:other");
+it("captures physical source rather than native command target before preparation", async () => {
+  const source = await prepare(key, "/test/actual.sqlite", "agent:main:other");
   expect(source.input?.mailbox.owner.target).toMatchObject({
     sessionKey: key,
     storeScope: "/test/actual.sqlite",
   });
-  const otherStore = prepare(key, "/test/other.sqlite");
+  const otherStore = await prepare(key, "/test/other.sqlite");
   expect(otherStore.input?.mailbox).not.toBe(source.input?.mailbox);
   retireUnadoptedReplySource(source.input);
   retireUnadoptedReplySource(otherStore.input);
@@ -70,7 +76,7 @@ it("captures physical source rather than native command target before preparatio
 
 it("moves the native continuation itself, preserving custody and target backlog", async () => {
   const slash = "agent:main:slash";
-  const source = prepare(slash);
+  const source = await prepare(slash);
   const input = source.input!;
   const { mailbox: previous, instance, custody, settlement } = input;
   const older = reserve();
@@ -96,10 +102,66 @@ it("moves the native continuation itself, preserving custody and target backlog"
   releaseSessionControllerClaim(claim);
 });
 
-it("does not invent a mailbox for a sessionless source", () => {
-  const prepared = prepareReplySourceInput({}, {}, undefined);
+it("does not invent a mailbox for a sessionless source", async () => {
+  const prepared = await prepareReplySourceInput({}, {}, undefined);
   expect(prepared.input).toBeUndefined();
 });
+
+it("waits for only its agent's recovery before reserving fresh input", async () => {
+  const recovery = createDeferred();
+  const otherKey = "agent:other:source-binding";
+  const waiting = withAgentInputRecoveryContext(
+    () => ({
+      isPending: (agentId) => agentId === "main",
+      waitForAgentInputRecovery: (agentId) => (agentId === "main" ? recovery.promise : undefined),
+    }),
+    () => prepare(),
+  );
+  expect(getExistingSessionControllerMailbox(key, target)).toBeUndefined();
+  const other = await withAgentInputRecoveryContext(
+    () => ({
+      isPending: (agentId) => agentId === "main",
+      waitForAgentInputRecovery: (agentId) => (agentId === "main" ? recovery.promise : undefined),
+    }),
+    () => prepare(otherKey),
+  );
+  expect(other.input?.target?.agentId).toBe("other");
+  recovery.resolve();
+  const recovered = await waiting;
+  expect(recovered.input?.target?.agentId).toBe("main");
+  retireUnadoptedReplySource(other.input);
+  retireUnadoptedReplySource(recovered.input);
+});
+
+it.each(["live", "retired", "other session", "other store"] as const)(
+  "reuses only an exact live source during recovery: %s",
+  async (kind) => {
+    const input = reserve();
+    if (kind === "retired") {
+      retireSessionControllerInput(input);
+    }
+    const preparing = withAgentInputRecoveryContext(
+      () => ({
+        isPending: () => true,
+        waitForAgentInputRecovery: () => {
+          throw new Error("Fresh input must await recovery");
+        },
+      }),
+      () =>
+        prepareReplySourceInput(
+          { SessionKey: kind === "other session" ? `${key}:other` : key },
+          { session: { store: kind === "other store" ? "/test/other.sqlite" : target.storeScope } },
+          bindReplySourceInput({}, input),
+        ),
+    );
+    if (kind === "live") {
+      expect((await preparing).input).toBe(input);
+    } else {
+      await expect(preparing).rejects.toThrow("Reply source no longer owns the requested session");
+    }
+    retireUnadoptedReplySource(input);
+  },
+);
 
 it("keeps newest interrupt priority after older policy refinement and through delivery", async () => {
   const older = reserve();

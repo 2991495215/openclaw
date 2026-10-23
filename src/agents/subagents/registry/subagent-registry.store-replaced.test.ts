@@ -421,7 +421,7 @@ it.each(["same", "restore", "unknown retry", "failed", "pending acknowledgment"]
         await initSubagentRegistry();
         const context = createGatewayRequestContext(makeContextParams());
         context.resolveGatewayContext = () => context;
-        await activateSubagentRegistry(() => context);
+        await activateSubagentRegistry(() => context).settled;
         await settleRootWork(true);
       }
     } else {
@@ -433,7 +433,7 @@ it.each(["same", "restore", "unknown retry", "failed", "pending acknowledgment"]
     if (change === "unknown retry") {
       const context = createGatewayRequestContext(makeContextParams());
       context.resolveGatewayContext = () => context;
-      await activateSubagentRegistry(() => context);
+      await activateSubagentRegistry(() => context).settled;
       try {
         expect(retireNotifications).toHaveBeenCalled();
         await expect(retireNotifications.mock.results[0]?.value).rejects.toThrow(

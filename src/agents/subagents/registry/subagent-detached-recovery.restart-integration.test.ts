@@ -212,7 +212,7 @@ describe("detached subagent restart recovery", () => {
         });
       }
       await initSubagentRegistry();
-      await activateSubagentRegistry(() => previousContext);
+      await activateSubagentRegistry(() => previousContext).settled;
       bindGatewayContextResolver(predecessor, previousContext.resolveGatewayContext);
       client.internal = { ...client.internal, operatorRunAuthority: source?.authority };
       if (collect && source) {
@@ -326,7 +326,7 @@ describe("detached subagent restart recovery", () => {
           return { status: "accepted", runId: request.idempotencyKey };
         });
       }
-      await activateSubagentRegistry(() => replacementContext);
+      await activateSubagentRegistry(() => replacementContext).settled;
       await fixture.settle();
       await testing.sweepOnceForTests();
 

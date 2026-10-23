@@ -53,9 +53,10 @@ import { createGatewayPluginRuntimeGeneration } from "./server-plugin-runtime-ge
 import { createMockGatewayRecoveryRuntime } from "./server-recovery-runtime.test-support.js";
 import { registerGatewayStartupAdmissionTests } from "./server-startup-admission.test-support.js";
 import { restartSentinelMocks } from "./server-startup-background.test-support.js";
-import "./server-startup-outcomes.test-support.js";
 import type { GatewayStartupModuleMocks } from "./server-startup-module-mocks.test-support.js";
+import "./server-startup-outcomes.test-support.js";
 import { markGatewayStartupMainSessionOrphans } from "./server-startup-observers.js";
+import { postAttachMocks as hoisted } from "./server-startup-post-attach.mocks.test-support.js";
 import {
   createStartupMethodUnlocker,
   registerGatewayStartupReadinessTests,
@@ -66,94 +67,6 @@ const { installGatewayStartupModuleMocks, installGatewayHookModuleLoad } =
   await import("./server-startup-module-mocks.test-support.js");
 
 type PluginHookGatewayStartEvent = Parameters<PluginHookHandlerMap["gateway_start"]>[0];
-
-const hoisted = vi.hoisted(() => {
-  const startPluginServices = vi.fn<typeof import("../plugins/services.js").startPluginServices>(
-    async (params) => {
-      const handle: PluginServicesHandle = { reload: async () => {}, stop: async () => {} };
-      params.onHandle?.(handle);
-      return handle;
-    },
-  );
-  const startGmailWatcherWithLogs = vi.fn(async () => {});
-  const commitInternalHooks = vi.fn(() => true);
-  const prepareInternalHooks = vi.fn(async () => ({ loadedCount: 0, commit: commitInternalHooks }));
-  const hasInternalHookListeners = vi.fn(() => false);
-  const startupHookEvent = { type: "gateway", action: "startup", sessionKey: "gateway:startup" };
-  const createInternalHookEvent = vi.fn(() => startupHookEvent);
-  const triggerInternalHook = vi.fn(async () => {});
-  const updateCheck = {
-    initialize: vi.fn(async () => ({
-      root: null,
-      status: { root: null, installKind: "unknown" as const, packageManager: "unknown" as const },
-      installReceipt: null,
-    })),
-    start: vi.fn(),
-    stop: vi.fn(async () => {}),
-  };
-  const createGatewayUpdateCheck = vi.fn(() => updateCheck);
-  const logGatewayStartup = vi.fn();
-  const activateSubagentRegistry = vi.fn();
-  const markStartupOrphanedMainSessionsForRecovery = vi.fn(async () => ({ marked: 0, skipped: 0 }));
-  const scheduleRestartAbortedMainSessionRecovery = vi.fn();
-  const getAcpRuntimeBackend = vi.fn<(id?: string) => unknown>(() => null);
-  const reconcilePendingSessionIdentities = vi.fn(async () => ({
-    checked: 0,
-    resolved: 0,
-    failed: 0,
-  }));
-  const isCliProvider = vi.fn(() => false);
-  const resolveConfiguredModelRef = vi.fn(() => ({
-    provider: "openai",
-    model: "gpt-5.4",
-  }));
-  const resolveHooksGmailModel = vi.fn<() => { provider: string; model: string } | null>(
-    () => null,
-  );
-  const loadFullModelCatalog = vi.fn(async () => {
-    throw new Error("full model catalog should not materialize");
-  });
-  const loadModelCatalog = vi.fn(async (_options?: unknown): Promise<unknown> => ({}));
-  const getModelRefStatus = vi.fn(() => ({
-    key: "openai/gpt-5.4",
-    allowed: true,
-    inCatalog: true,
-  }));
-  const prepareModelRuntimeSnapshot = vi.fn(async () => ({}));
-  const refreshPreparedModelRuntimeSnapshots = vi.fn<
-    typeof import("../agents/prepared-model-runtime.js").refreshPreparedModelRuntimeSnapshots
-  >(async () => {});
-  const prewarmConfigDrivenReplyRuntime = vi.fn(async () => {});
-  const scheduleGatewayHandlerPrewarm = vi.fn(() => ({ stop: vi.fn() }));
-  return {
-    startPluginServices,
-    startGmailWatcherWithLogs,
-    prepareInternalHooks,
-    commitInternalHooks,
-    hasInternalHookListeners,
-    startupHookEvent,
-    createInternalHookEvent,
-    triggerInternalHook,
-    updateCheck,
-    createGatewayUpdateCheck,
-    logGatewayStartup,
-    activateSubagentRegistry,
-    markStartupOrphanedMainSessionsForRecovery,
-    scheduleRestartAbortedMainSessionRecovery,
-    getAcpRuntimeBackend,
-    reconcilePendingSessionIdentities,
-    isCliProvider,
-    resolveConfiguredModelRef,
-    resolveHooksGmailModel,
-    loadFullModelCatalog,
-    loadModelCatalog,
-    getModelRefStatus,
-    prepareModelRuntimeSnapshot,
-    refreshPreparedModelRuntimeSnapshots,
-    prewarmConfigDrivenReplyRuntime,
-    scheduleGatewayHandlerPrewarm,
-  };
-});
 
 vi.mock("../agents/subagents/registry/subagent-registry.js", () => ({
   activateSubagentRegistry: hoisted.activateSubagentRegistry,
@@ -606,6 +519,7 @@ describe("startGatewayPostAttachRuntime", () => {
       expect([...unavailableGatewayMethods]).toStrictEqual(["chat.send"]);
       startupOrder.push("registry");
       recoveryActivated.resolve();
+      return hoisted.createRecoveryProgress();
     });
     const log = { info: vi.fn(), warn: vi.fn() };
 
@@ -725,12 +639,14 @@ describe("startGatewayPostAttachRuntime", () => {
       const { promise: postReadyWork, resolve: releasePostReadyWork } = createDeferred();
       const restorationStarted = createDeferred();
       const restorationReady = createDeferred();
-      hoisted.activateSubagentRegistry.mockImplementationOnce(async () => {
+      hoisted.activateSubagentRegistry.mockImplementationOnce(() => {
         restorationStarted.resolve();
-        await restorationReady.promise;
-        if (failRestoration) {
-          throw new Error("restoration failed");
-        }
+        const settled = restorationReady.promise.then(() => {
+          if (failRestoration) {
+            throw new Error("restoration failed");
+          }
+        });
+        return hoisted.createRecoveryProgress(settled, Promise.resolve());
       });
       let waitForStart: (() => Promise<void>) | undefined;
       hoisted.scheduleRestartAbortedMainSessionRecovery.mockImplementationOnce(
@@ -1395,7 +1311,10 @@ describe("startGatewayPostAttachRuntime", () => {
       params.onHandle?.(pluginServices);
       return pluginServices;
     });
-    hoisted.activateSubagentRegistry.mockImplementationOnce(() => recoveryStarted.resolve());
+    hoisted.activateSubagentRegistry.mockImplementationOnce(() => {
+      recoveryStarted.resolve();
+      return hoisted.createRecoveryProgress();
+    });
     const runtime = await startGatewayPostAttachRuntime(
       createPostAttachParams({
         sidecarStartup: "defer",

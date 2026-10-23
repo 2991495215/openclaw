@@ -4,6 +4,10 @@ import {
   resolveSessionStorePathCore,
 } from "../../config/sessions/paths.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  getSessionControllerSourceIdentity,
+  isLiveSessionControllerSource,
+} from "../../sessions/session-controller.identity.js";
 import { captureSessionTarget } from "../../sessions/session-controller.lifecycle.js";
 import {
   bindSessionControllerSource,
@@ -12,6 +16,10 @@ import {
   retireSessionControllerInput,
   type SessionControllerInput,
 } from "../../sessions/session-controller.mailbox.js";
+import {
+  isAgentInputRecoveryPending,
+  waitForAgentInputRecovery,
+} from "../../state/agent-input-recovery-context.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import type { MsgContext } from "../templating.js";
@@ -68,14 +76,47 @@ export function readReplySourceInput(
 }
 
 /** Capture only an actual physical source scope, before asynchronous preparation. */
-export function prepareReplySourceInput(
+export async function prepareReplySourceInput(
   ctx: MsgContext,
   cfg: OpenClawConfig,
   options: InternalGetReplyOptions | undefined,
-): { options: InternalGetReplyOptions; input?: SessionControllerInput; created: boolean } {
+): Promise<{ options: InternalGetReplyOptions; input?: SessionControllerInput; created: boolean }> {
   const prepared = { ...options };
+  const sessionKey = ctx.SessionKey?.trim() || ctx.CommandTargetSessionKey?.trim();
   const existing = readReplySourceInput(prepared);
   if (existing) {
+    const identity = getSessionControllerSourceIdentity(existing);
+    const requestedAgentId = resolveSessionAgentId({
+      sessionKey,
+      config: cfg,
+      fallbackAgentId: ctx.AgentId,
+    });
+    if (
+      isAgentInputRecoveryPending(requestedAgentId) ||
+      (identity.agentId && isAgentInputRecoveryPending(identity.agentId))
+    ) {
+      const commandTarget = resolveCommandTurnTargetSessionKey(ctx);
+      const matchesSession = [sessionKey, commandTarget].some(
+        (key) => key !== undefined && existing.mailbox.owner.aliases.has(key),
+      );
+      const agentId = resolveSessionAgentId({
+        sessionKey: identity.sessionKey,
+        config: cfg,
+        fallbackAgentId: ctx.AgentId,
+      });
+      const storePath =
+        resolveExplicitSessionStorePathForScope({ agentId, sessionKey: identity.sessionKey }) ??
+        resolveSessionStorePathCore(cfg.session?.store, { agentId });
+      if (
+        !isLiveSessionControllerSource(existing) ||
+        !matchesSession ||
+        identity.agentId !== agentId ||
+        existing.target?.storeScope !== storePath
+      ) {
+        throw new Error("Reply source no longer owns the requested session");
+      }
+      existing.sourceAdapter?.authority?.assertCurrent();
+    }
     const signal = existing.claim?.operation?.abortSignal ?? existing.abortSignal;
     prepared.abortSignal =
       prepared.abortSignal && prepared.abortSignal !== signal
@@ -83,7 +124,6 @@ export function prepareReplySourceInput(
         : signal;
     return { options: bindReplySourceInput(prepared, existing), input: existing, created: false };
   }
-  const sessionKey = ctx.SessionKey?.trim() || ctx.CommandTargetSessionKey?.trim();
   if (!sessionKey) {
     return { options: prepared, created: false };
   }
@@ -100,6 +140,13 @@ export function prepareReplySourceInput(
   const signals = [options?.abortSignal, options?.turnAdoptionLifecycle?.abortSignal].filter(
     (signal): signal is AbortSignal => signal !== undefined,
   );
+  const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+  const recovery = waitForAgentInputRecovery(agentId, { signal });
+  if (recovery) {
+    await recovery;
+  }
+  signal?.throwIfAborted();
+  options?.operatorAuthority?.assertCurrent();
   const input = reserveSessionControllerSource(sessionKey, {
     sourceTurnId: readChannelSourceTurnId(ctx),
     protocolRunId: options?.runId,
@@ -111,7 +158,7 @@ export function prepareReplySourceInput(
       incarnation: options?.expectedExistingSessionId,
     }),
     adapter: {
-      signal: signals.length > 1 ? AbortSignal.any(signals) : signals[0],
+      signal,
       authority: options?.operatorAuthority,
     },
   });

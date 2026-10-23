@@ -5,6 +5,7 @@ import type {
 } from "../../gateway/server-methods/types.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { withAgentDatabasePreparationContext } from "../../state/agent-database-preparation-context.js";
+import { withAgentInputRecoveryContext } from "../../state/agent-input-recovery-context.js";
 import {
   getPluginExecutionFrame,
   pluginInstanceInvocation,
@@ -44,17 +45,25 @@ function runWithPluginGatewayScope<T>(
 ): T {
   const current = getPluginExecutionFrame();
   const runtime = getPluginRuntimeExecutionFrame(current);
-  return runWithPluginExecutionFrame(
-    runtime?.gatewayScope === gatewayScope && runtime.invocation === invocation
-      ? runtime
-      : new PluginRuntimeExecutionFrame(
-          // Reuse prepared frame facts; the mutable Gateway view remains call-local.
-          current ?? {},
-          gatewayScope,
-          runtime?.generationRegistry,
-          invocation,
-        ),
-    run,
+  return withAgentInputRecoveryContext(
+    () =>
+      (gatewayScope.resolveGatewayContext
+        ? gatewayScope.resolveGatewayContext()
+        : gatewayScope.context
+      )?.inputRecovery,
+    () =>
+      runWithPluginExecutionFrame(
+        runtime?.gatewayScope === gatewayScope && runtime.invocation === invocation
+          ? runtime
+          : new PluginRuntimeExecutionFrame(
+              // Reuse prepared frame facts; the mutable Gateway view remains call-local.
+              current ?? {},
+              gatewayScope,
+              runtime?.generationRegistry,
+              invocation,
+            ),
+        run,
+      ),
   );
 }
 
