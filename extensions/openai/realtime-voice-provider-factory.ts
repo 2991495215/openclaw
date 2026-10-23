@@ -59,6 +59,15 @@ const CUSTOM_ENDPOINT_CAPABILITIES: RealtimeVoiceProviderCapabilities = {
   supportsBrowserSession: false,
 };
 
+function resolveLiveCapabilities(model: string, supportsGatewayControl = false) {
+  return {
+    ...OPENAI_REALTIME_CAPABILITIES,
+    ...OPENAI_QUICKSILVER_CAPABILITIES,
+    ...resolveOpenAIQuicksilverVoiceCapabilities(model),
+    ...(supportsGatewayControl ? { supportsGatewayControl: true } : {}),
+  };
+}
+
 function prepareOpenAIRealtimeVoiceConfig({
   rawConfig,
   surface,
@@ -511,12 +520,7 @@ export function buildOpenAIRealtimeVoiceProvider(
             providerConfig: { ...providerConfig, model: effectiveModel },
             agentId,
           });
-        return {
-          ...OPENAI_REALTIME_CAPABILITIES,
-          ...OPENAI_QUICKSILVER_CAPABILITIES,
-          ...resolveOpenAIQuicksilverVoiceCapabilities(effectiveModel),
-          ...(supportsGatewayControl ? { supportsGatewayControl: true } : {}),
-        };
+        return resolveLiveCapabilities(effectiveModel, supportsGatewayControl);
       }
       return {
         ...OPENAI_REALTIME_CAPABILITIES,
@@ -550,12 +554,7 @@ export function buildOpenAIRealtimeVoiceProvider(
             providerConfig: { ...providerConfig, model: effectiveModel },
             agentId,
           }));
-        return {
-          ...OPENAI_REALTIME_CAPABILITIES,
-          ...OPENAI_QUICKSILVER_CAPABILITIES,
-          ...resolveOpenAIQuicksilverVoiceCapabilities(effectiveModel),
-          ...(supportsGatewayControl ? { supportsGatewayControl: true } : {}),
-        };
+        return resolveLiveCapabilities(effectiveModel, supportsGatewayControl);
       }
       return {
         ...OPENAI_REALTIME_CAPABILITIES,
@@ -608,11 +607,7 @@ export function buildOpenAIRealtimeVoiceProvider(
         return CUSTOM_ENDPOINT_CAPABILITIES;
       }
       if (isOpenAIGptLiveModel(model ?? config.model)) {
-        return {
-          ...OPENAI_REALTIME_CAPABILITIES,
-          ...OPENAI_QUICKSILVER_CAPABILITIES,
-          ...resolveOpenAIQuicksilverVoiceCapabilities(model ?? config.model ?? ""),
-        };
+        return resolveLiveCapabilities(model ?? config.model ?? "");
       }
       return OPENAI_REALTIME_CAPABILITIES;
     },
