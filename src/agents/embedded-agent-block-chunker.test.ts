@@ -167,6 +167,19 @@ describe("EmbeddedBlockChunker", () => {
     }
   });
 
+  it("retains unassigned newlines until a forced final drain", () => {
+    const source = "\n".repeat(31);
+    const chunker = paragraphChunker(1, 30);
+    chunker.append(source);
+
+    expect(drainChunks(chunker)).toEqual([]);
+    expect(chunker.bufferedText).toBe(source);
+    expect(chunker.consumedLength).toBe(0);
+
+    expect(drainChunks(chunker, true)).toEqual([]);
+    expectDrained(chunker, source.length);
+  });
+
   it.each(["\n\n", "\n \t\n", "\r\n\r\n"])(
     "releases a streamed partial label at a blank line %j",
     (blankLine) => {

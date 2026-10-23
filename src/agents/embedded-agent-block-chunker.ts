@@ -540,7 +540,7 @@ export class EmbeddedBlockChunker {
     start = committedStart;
     reopenFence = committedReopenFence;
     tableHeader = committedTableHeader;
-    if (!reopenFence) {
+    if (force && !reopenFence) {
       start = skipLeadingNewlines(source, start);
     }
     if (start === 0) {
