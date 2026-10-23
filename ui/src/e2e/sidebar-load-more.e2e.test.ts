@@ -52,16 +52,24 @@ suite.define(() => {
       await page.goto(controlUiSessionUrl(suite.server.baseUrl, rows[0]!.key));
       const sidebar = page.locator("openclaw-app-sidebar");
       const more = sidebar.getByRole("button", { name: "Load more sessions", exact: true });
-      if (retry) {
-        await gateway.deferNext("sessions.list", { offset: limit * 2 });
-      }
+      // Child-roster requests can use the same offsets.
+      const finalPage = { source: "sidebar", offset: limit * 2 };
+      const finalPageCursor = retry
+        ? await gateway.deferNext("sessions.list", finalPage)
+        : (await gateway.getRequests("sessions.list", finalPage)).length;
       await more.click();
-      await gateway.waitForRequest("sessions.list", { match: { offset: limit } });
-      await gateway.waitForRequest("sessions.list", { match: { offset: limit * 2 } });
+      await gateway.waitForRequest("sessions.list", {
+        match: { source: "sidebar", offset: limit },
+      });
+      await gateway.waitForRequest("sessions.list", { match: finalPage, after: finalPageCursor });
       if (retry) {
-        await gateway.resolveDeferred("sessions.list", {
-          __mockError: { code: "UNAVAILABLE", message: "Older sessions temporarily unavailable" },
-        });
+        await gateway.resolveDeferred(
+          "sessions.list",
+          {
+            __mockError: { code: "UNAVAILABLE", message: "Older sessions temporarily unavailable" },
+          },
+          { match: finalPage },
+        );
         try {
           await sidebar
             .getByText("Older sessions temporarily unavailable", { exact: false })
