@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 313194,
-  "reason": "Defer Settings, Terminal, Activity, preferences and update-detail English until their existing lazy owners load; matched 82c builds reduce startup from 316324 B to 313194 B, Chat to 1345889 B and New Session to 820166 B with unchanged requests.",
+  "startupJsGzipBytes": 313166,
+  "reason": "Defer Settings, Terminal, Activity, preferences and update-detail English until their existing lazy owners load; matched 0f6a builds reduce startup from 316310 B to 313166 B, Chat to 1344992 B and New Session to 820386 B with unchanged requests.",
   "updatedAt": "2026-10-23"
 }
