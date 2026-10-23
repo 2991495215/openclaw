@@ -148,6 +148,17 @@ function projectSourceActor(
   };
 }
 
+function sessionCreatorProfileIds(actors: readonly (StoredSessionActor | undefined)[]) {
+  return [
+    ...new Set(
+      actors.flatMap((actor) => {
+        const id = sessionCreatorProfileId(actor);
+        return id ? [id] : [];
+      }),
+    ),
+  ];
+}
+
 /**
  * Prepare portable creator claims for one synchronous page; claims never grant access.
  * @deprecated Use prepareSessionCatalogSourceActorProjector before rendering the page. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release.
@@ -160,14 +171,7 @@ export function createSessionCatalogSourceActorProjector(
     method: "createSessionCatalogSourceActorProjector",
     replacement: "await prepareSessionCatalogSourceActorProjector before rendering the page",
   });
-  const ids = [
-    ...new Set(
-      params.actors.flatMap((actor) => {
-        const id = sessionCreatorProfileId(actor);
-        return id ? [id] : [];
-      }),
-    ),
-  ];
+  const ids = sessionCreatorProfileIds(params.actors);
   let facts: Map<string, ReturnType<typeof readSourceProfileFacts>> | undefined;
   return (actor) => {
     const requestedId = actor && sessionCreatorProfileId(actor);
@@ -198,14 +202,7 @@ export function createSessionCatalogSourceActorProjector(
 export async function prepareSessionCatalogSourceActorProjector(
   params: CatalogSourceIdentity & { actors: readonly (StoredSessionActor | undefined)[] },
 ) {
-  const ids = [
-    ...new Set(
-      params.actors.flatMap((actor) => {
-        const id = sessionCreatorProfileId(actor);
-        return id ? [id] : [];
-      }),
-    ),
-  ];
+  const ids = sessionCreatorProfileIds(params.actors);
   const prepared = ids.length
     ? await prepareIdentityFacts({ kind: "source", profileIds: ids })
     : undefined;
