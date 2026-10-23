@@ -3,7 +3,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { isPostgresSqlConnection, type EngineConnection } from "../infra/sql-connection.js";
 import { isSqliteLockError } from "../infra/sqlite-error-diagnostics.js";
-import { createSqliteLifecycleAggregateError } from "../infra/sqlite-lifecycle-errors.js";
+import {
+  createSqliteLifecycleAggregateError,
+  throwSqliteLifecycleErrors,
+} from "../infra/sqlite-lifecycle-errors.js";
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
 import type { DatabasePathIdentity } from "../infra/sqlite-worker-identity.js";
 import { scheduleAbsoluteDeadline } from "../utils/absolute-deadline.js";
@@ -519,10 +522,9 @@ async function runStateLeaseOwnerInScope<T>(
             await startupCleanup?.close();
             heartbeatStopped = [...heartbeatCleanups].every((entry) => !entry.pending);
           } catch (stopError) {
-            throw createSqliteLifecycleAggregateError(
+            throwSqliteLifecycleErrors(
               [error, stopError],
               "state lease heartbeat startup and stop failed",
-              error,
             );
           }
           throw error;

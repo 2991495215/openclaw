@@ -79,10 +79,9 @@ export function runWithSqliteCleanup<T>(
     try {
       resource.release();
     } catch (releaseError) {
-      throw createSqliteLifecycleAggregateError(
+      throwSqliteLifecycleErrors(
         [operationError, releaseError],
         `${operationLabel} and resource release both failed`,
-        operationError,
       );
     }
     throw operationError;

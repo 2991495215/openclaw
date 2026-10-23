@@ -4,7 +4,7 @@ import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { racePromiseWithAbortSignal } from "./abort-signal.js";
 import { getSqliteRuntimeCapabilities } from "./bun-sqlite-library.js";
 import { throwSettledAggregate } from "./error-graph-internal.js";
-import { createSqliteLifecycleAggregateError } from "./sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "./sqlite-lifecycle-errors.js";
 import {
   readOnlyWorkerScope,
   type SqliteReadOnlyWorkerScope,
@@ -270,10 +270,9 @@ export function createSqliteReadOnlyWorkerPool(
           try {
             await closeSlot(selected);
           } catch (cleanupError) {
-            throw createSqliteLifecycleAggregateError(
+            throwSqliteLifecycleErrors(
               [error, cleanupError],
               "SQLite read and child cleanup failed",
-              error,
             );
           }
           throw error;

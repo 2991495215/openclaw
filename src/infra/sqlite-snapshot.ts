@@ -17,7 +17,7 @@ import { pathEntryExists } from "./path-existence.js";
 import { backupNodeSqliteDatabase } from "./sqlite-backup.js";
 import { copySqliteFile } from "./sqlite-file-copy.js";
 import { assertSqliteIntegrity } from "./sqlite-integrity.js";
-import { createSqliteLifecycleAggregateError } from "./sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "./sqlite-lifecycle-errors.js";
 import { captureSqliteMaintenanceIntegrity } from "./sqlite-maintenance-integrity.js";
 import { createPrivateSqliteTempDirectory } from "./sqlite-private-directory.js";
 import { withPreparedSqliteSnapshot } from "./sqlite-readonly-location-cleanup.js";
@@ -237,10 +237,9 @@ export async function prepareVerifiedSqliteFile(options: PublishVerifiedSqliteFi
     try {
       await cleanup();
     } catch (cleanupError) {
-      throw createSqliteLifecycleAggregateError(
+      throwSqliteLifecycleErrors(
         [error, cleanupError],
         "SQLite output preparation and cleanup both failed",
-        error,
       );
     }
     throw error;

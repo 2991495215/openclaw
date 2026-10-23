@@ -7,7 +7,7 @@ import {
   StateDatabaseOfflineMaintenanceError,
 } from "../infra/gateway-state-owner-record.js";
 import { readSqliteDatabaseCleanClose } from "../infra/sqlite-database-admission.js";
-import { createSqliteLifecycleAggregateError } from "../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
 import { captureSqlitePrivateSnapshotFamily } from "../infra/sqlite-private-snapshot-fork.js";
 import {
   deferSqliteSnapshotCleanupAfterRead,
@@ -220,10 +220,9 @@ export async function prepareOpenClawStateReadSnapshotSource({
           throw new SqliteSnapshotCleanupError("Shared-state snapshot preparation cleanup failed");
         }
       } catch (cleanupError) {
-        throw createSqliteLifecycleAggregateError(
+        throwSqliteLifecycleErrors(
           [error, cleanupError],
           "Shared-state snapshot preparation and cleanup failed",
-          error,
         );
       }
       throw new Error(

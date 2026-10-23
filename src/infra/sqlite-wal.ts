@@ -20,7 +20,7 @@ import {
   type SqliteDatabaseAdmissionKey,
 } from "./sqlite-database-admission.js";
 import { isSqliteLockError } from "./sqlite-error-diagnostics.js";
-import { createSqliteLifecycleAggregateError } from "./sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "./sqlite-lifecycle-errors.js";
 import { schemaAdmission } from "./sqlite-schema-admission.js";
 import {
   createSqliteWalCheckpoint,
@@ -675,10 +675,9 @@ export function configureSqliteConnectionPragmas(
     try {
       maintenance.close();
     } catch (closeError) {
-      throw createSqliteLifecycleAggregateError(
+      throwSqliteLifecycleErrors(
         [error, closeError],
         "SQLite connection pragma configuration and WAL maintenance cleanup both failed.",
-        error,
       );
     }
     throw error;

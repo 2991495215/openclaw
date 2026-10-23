@@ -1,7 +1,4 @@
-import {
-  createSqliteLifecycleAggregateError,
-  throwSqliteLifecycleErrors,
-} from "../../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import { runSqliteReadOperationSync } from "../../infra/sqlite-schema-facts.js";
 import { runSqliteReadSnapshotSync } from "../../infra/sqlite-transaction.js";
 import {
@@ -78,11 +75,7 @@ export function prepareSessionColdSourceGuard(
     try {
       close();
     } catch (cleanupError) {
-      throw createSqliteLifecycleAggregateError(
-        [error, cleanupError],
-        "Cold source preparation failed",
-        error,
-      );
+      throwSqliteLifecycleErrors([error, cleanupError], "Cold source preparation failed");
     }
     throw error;
   }

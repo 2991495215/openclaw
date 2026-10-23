@@ -11,10 +11,7 @@ import {
   createSqliteDatabaseAdmissionCursor,
   trackSqliteDatabaseAdmissionWorker,
 } from "./sqlite-database-admission.js";
-import {
-  createSqliteLifecycleAggregateError,
-  throwSqliteLifecycleErrors,
-} from "./sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "./sqlite-lifecycle-errors.js";
 import { SQLITE_WORKER_ADMISSION_TIMEOUT_MS } from "./sqlite-worker-broker-admission.js";
 import {
   receiveSqliteWorkerReply,
@@ -268,11 +265,7 @@ export function createSqliteWorkerLifecycle({
     try {
       await retireEmpty(slot);
     } catch (cleanupError) {
-      throw createSqliteLifecycleAggregateError(
-        [error, cleanupError],
-        "SQLite slot admission and cleanup failed",
-        error,
-      );
+      throwSqliteLifecycleErrors([error, cleanupError], "SQLite slot admission and cleanup failed");
     }
     throw error;
   }
@@ -309,11 +302,7 @@ export function createSqliteWorkerLifecycle({
       } catch (cleanupError) {
         errors.push(cleanupError);
       }
-      if (errors.length > 1) {
-        throw new AggregateError(errors, "SQLite worker admission and cleanup failed", {
-          cause: error,
-        });
-      }
+      throwSqliteLifecycleErrors(errors, "SQLite worker admission and cleanup failed");
     }
     throw error;
   }

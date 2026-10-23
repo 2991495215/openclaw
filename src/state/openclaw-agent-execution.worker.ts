@@ -3,7 +3,7 @@ import { expectDefined } from "@openclaw/normalization-core";
 import type { Result } from "@openclaw/normalization-core/result";
 import { isSessionActorCommand } from "../config/sessions/session-actor-command.js";
 import { sqlPublicationAnchor } from "../infra/sql-connection.js";
-import { createSqliteLifecycleAggregateError } from "../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
 import {
   assertTransactionUsable,
   type SqliteTransactionOptions,
@@ -88,11 +88,7 @@ export function createSqliteWorkerBackend(
     try {
       backend.closeAfterFailedOpen();
     } catch (cleanupError) {
-      throw createSqliteLifecycleAggregateError(
-        [error, cleanupError],
-        "Agent creation and cleanup failed",
-        error,
-      );
+      throwSqliteLifecycleErrors([error, cleanupError], "Agent creation and cleanup failed");
     }
     throw error;
   }
@@ -283,10 +279,9 @@ function openAgentDatabaseBackend(
           });
         } catch (error) {
           if (!openingResult.ok) {
-            throw createSqliteLifecycleAggregateError(
+            throwSqliteLifecycleErrors(
               [openingResult.error, error],
               `${String(openingResult.error)}; committed registration reporting failed: ${String(error)}`,
-              openingResult.error,
             );
           }
           throw error;

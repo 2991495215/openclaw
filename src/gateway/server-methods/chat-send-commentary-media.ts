@@ -13,7 +13,7 @@ import {
   runWithOwnedSessionTranscriptWrite,
   SessionTranscriptWriterClaimReboundError,
 } from "../../config/sessions/transcript-write-context.js";
-import { createSqliteLifecycleAggregateError } from "../../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contract.js";
 import { splitMediaFromOutput } from "../../media/parse.js";
 import {
@@ -335,10 +335,9 @@ function observeChatSendCommentaryMedia(params: AssistantCommentaryMediaCustodyP
                     });
                   }
                 } catch (retentionError) {
-                  throw createSqliteLifecycleAggregateError(
+                  throwSqliteLifecycleErrors(
                     [error, retentionError],
                     "Transcript rewrite and media retention failed",
-                    error,
                   );
                 }
               }

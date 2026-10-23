@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { setImmediate } from "node:timers/promises";
-import { createSqliteLifecycleAggregateError } from "../../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import {
   isOpenClawAgentDatabasePathCurrent,
   readOpenClawAgentDatabaseIdentity,
@@ -152,10 +152,9 @@ export async function publishSessionStateArchives(
         try {
           claim.release();
         } catch (releaseError) {
-          throw createSqliteLifecycleAggregateError(
+          throwSqliteLifecycleErrors(
             [operationError, releaseError],
             "SQLite archive publication and retained claim release both failed",
-            operationError,
           );
         }
         throw operationError;

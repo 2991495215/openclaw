@@ -81,6 +81,52 @@ function activeJob(slot: Slot, id = 1) {
   return { job, completion };
 }
 
+it.each([false, true])(
+  "preserves rejected admission after native cleanup (cleanup failed: %s)",
+  async (cleanupFailed) => {
+    const original = new Error("admission refused");
+    const cleanup = new Error("native cleanup failed");
+    const closing = createDeferredCore();
+    const actors = new Map<string, Actor>();
+    const enqueueClose = vi.fn(async () => {
+      if (cleanupFailed) {
+        throw cleanup;
+      }
+    });
+    const { lifecycle, workers, createSlot } = runtimeFixture({
+      actors,
+      enqueueClose,
+      fail: () => closing.resolve(),
+    });
+    const slot = createSlot();
+    const actor = Object.defineProperty(createSqliteWorkerClientActor(), "slot", { value: slot });
+    actors.set(actor.key, actor);
+    slot.actors.add(actor);
+    const outcome = lifecycle
+      .rejectActorAdmission(actor, original, undefined)
+      .catch((error: unknown) => error);
+    if (cleanupFailed) {
+      await closing.promise;
+      workers[0]!.emit("exit", 0);
+    }
+    const failure: unknown = await outcome;
+    if (cleanupFailed) {
+      expect(failure).toBeInstanceOf(AggregateError);
+      expect(failure).toMatchObject({
+        cause: original,
+        errors: [original, cleanup],
+        message: "SQLite worker admission and cleanup failed",
+      });
+    } else {
+      expect(failure).toBe(original);
+      workers[0]!.emit("exit", 0);
+    }
+    expect(enqueueClose).toHaveBeenCalledOnce();
+    expect(actor.references).toBe(0);
+    expect(actors.size).toBe(0);
+  },
+);
+
 it("cancels slot waiters while retaining the worker until exit", async ({ signal }) => {
   const { lifecycle, slots, workers, options, replyOwner, createSlot } = runtimeFixture();
   const slot = createSlot();

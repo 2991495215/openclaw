@@ -9,7 +9,6 @@ import { resolveSqliteDatabaseFilePath } from "../infra/sqlite-database-admissio
 import { isSqliteCorruptionError } from "../infra/sqlite-error-diagnostics.js";
 import { SQLITE_IDLE_HANDLE_TTL_MS } from "../infra/sqlite-handle-lifecycle.js";
 import {
-  createSqliteLifecycleAggregateError,
   SqliteCoordinatorError,
   throwSqliteLifecycleErrors,
 } from "../infra/sqlite-lifecycle-errors.js";
@@ -414,11 +413,7 @@ function openStateReadConnectionResult(
       errors.push(cleanupError);
     }
     if (errors.length > 1) {
-      throw createSqliteLifecycleAggregateError(
-        errors,
-        "Shared-state reader open and cleanup failed.",
-        error,
-      );
+      throwSqliteLifecycleErrors(errors, "Shared-state reader open and cleanup failed.");
     }
   };
   let native: ReturnType<typeof openTrackedStateDatabaseResult>;
@@ -533,10 +528,9 @@ function openStateReadConnectionResult(
         throw new SnapshotCleanupIncompleteError("Shared-state snapshot cleanup is incomplete.");
       }
     } catch (cleanupError) {
-      throw createSqliteLifecycleAggregateError(
+      throwSqliteLifecycleErrors(
         [error, cleanupError],
         "Shared-state reader identity and cleanup failed.",
-        error,
       );
     }
     throw error;
