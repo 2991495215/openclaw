@@ -32,6 +32,23 @@ function createLazyTool(
   };
 }
 
+function createFileNodeCommand(
+  command: string,
+  load: () => Promise<(params: Record<string, unknown>) => Promise<unknown>>,
+): OpenClawPluginNodeHostCommand {
+  return {
+    command,
+    hasActiveWork: () => false,
+    cap: "file",
+    dangerous: true,
+    handle: async (paramsJSON) => {
+      const handle = await load();
+      const params = readNodeCommandParams(paramsJSON) as Record<string, unknown>;
+      return JSON.stringify(await handle(params));
+    },
+  };
+}
+
 const fileTransferNodeHostCommands: OpenClawPluginNodeHostCommand[] = [
   {
     command: "file.stat",
@@ -56,28 +73,14 @@ const fileTransferNodeHostCommands: OpenClawPluginNodeHostCommand[] = [
       return JSON.stringify(await handleFileFetch(params, io));
     },
   },
-  {
-    command: "dir.list",
-    hasActiveWork: () => false,
-    cap: "file",
-    dangerous: true,
-    handle: async (paramsJSON) => {
-      const { handleDirList } = await import("./src/node-host/dir-list.js");
-      const params = readNodeCommandParams(paramsJSON) as Parameters<typeof handleDirList>[0];
-      return JSON.stringify(await handleDirList(params));
-    },
-  },
-  {
-    command: "dir.fetch",
-    hasActiveWork: () => false,
-    cap: "file",
-    dangerous: true,
-    handle: async (paramsJSON) => {
-      const { handleDirFetch } = await import("./src/node-host/dir-fetch.js");
-      const params = readNodeCommandParams(paramsJSON) as Parameters<typeof handleDirFetch>[0];
-      return JSON.stringify(await handleDirFetch(params));
-    },
-  },
+  createFileNodeCommand("dir.list", async () => {
+    const { handleDirList } = await import("./src/node-host/dir-list.js");
+    return handleDirList;
+  }),
+  createFileNodeCommand("dir.fetch", async () => {
+    const { handleDirFetch } = await import("./src/node-host/dir-fetch.js");
+    return handleDirFetch;
+  }),
   {
     command: "file.create",
     hasActiveWork: () => false,
@@ -90,17 +93,10 @@ const fileTransferNodeHostCommands: OpenClawPluginNodeHostCommand[] = [
       return JSON.stringify(await handleFileCreate(params, io));
     },
   },
-  {
-    command: "file.write",
-    hasActiveWork: () => false,
-    cap: "file",
-    dangerous: true,
-    handle: async (paramsJSON) => {
-      const { handleFileWrite } = await import("./src/node-host/file-write.js");
-      const params = readNodeCommandParams(paramsJSON) as Parameters<typeof handleFileWrite>[0];
-      return JSON.stringify(await handleFileWrite(params));
-    },
-  },
+  createFileNodeCommand("file.write", async () => {
+    const { handleFileWrite } = await import("./src/node-host/file-write.js");
+    return handleFileWrite;
+  }),
 ];
 
 export default definePluginEntry({
