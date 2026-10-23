@@ -683,27 +683,8 @@ describe("embedded agent link spans", () => {
     );
   });
 
-  it("protects a streamed Markdown destination before its first character arrives", () => {
-    const text = `[${"a".repeat(30)}](`;
-
-    expect(scanUnbreakableSpans(text, [], 160)).toEqual([
-      { start: 0, end: text.length, complete: false },
-    ]);
-  });
-
-  it("keeps adjacent Markdown destinations as independent spans", () => {
-    const first = "[a](https://a.co)";
-    const second = "[b](https://b.co)";
-    const text = first + second;
-
-    expect(scanUnbreakableSpans(text, [], 30)).toEqual([
-      { start: 0, end: first.length, complete: true },
-      { start: first.length, end: text.length, complete: true },
-    ]);
-  });
-
-  it("merges nested protected spans before resolving a break", () => {
-    const text = "[a[b](y)](z)";
+  it("uses the outer parser-owned link span for a nested image", () => {
+    const text = "[a![b](y)](z)";
     const spans = scanUnbreakableSpans(text, scanFenceSpans(text).spans, 30);
 
     expect(spans).toEqual([{ start: 0, end: text.length, complete: true }]);

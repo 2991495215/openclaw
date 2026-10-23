@@ -133,6 +133,40 @@ describe("EmbeddedBlockChunker", () => {
     expectDrained(chunker, link.length);
   });
 
+  it.each(["\n", "\r\n"])("keeps a fitting multiline-title link intact with %j", (newline) => {
+    const link = `[doc](https://docs.example "line one${newline}line two")`;
+    for (const delta of [1, link.length]) {
+      const chunker = paragraphChunker(1, 30, { hardMaxChars: 160 });
+      const { chunks, metadata } = streamChunks(chunker, link, delta);
+
+      expect(chunks).toEqual([link]);
+      expectSourceCoverage(metadata, link);
+      expectDrained(chunker, link.length);
+    }
+    const bounded = paragraphChunker(1, 30);
+    const { chunks, metadata } = streamChunks(bounded, link, 1);
+    expectChunksWithinLength(chunks, 30);
+    expectSourceCoverage(metadata, link);
+    expectDrained(bounded, link.length);
+  });
+
+  it("protects links rendered inside literal HTML blocks", () => {
+    const link = `[${"a".repeat(40)}](https://example.com/x)`;
+    const source = `<div>\n${link}\n</div>`;
+    for (const delta of [1, source.length]) {
+      const chunker = paragraphChunker(1, 30, { hardMaxChars: 160 });
+      const { chunks, metadata } = streamChunks(chunker, source, delta);
+
+      expect(chunks.some((chunk) => chunk.includes(link))).toBe(true);
+      expect(markdownToIR(source).links).toEqual([
+        expect.objectContaining({ href: "https://example.com/x" }),
+      ]);
+      expectChunksWithinLength(chunks, 160);
+      expectSourceCoverage(metadata, source);
+      expectDrained(chunker, source.length);
+    }
+  });
+
   it.each(["\n\n", "\n \t\n", "\r\n\r\n"])(
     "releases a streamed partial label at a blank line %j",
     (blankLine) => {

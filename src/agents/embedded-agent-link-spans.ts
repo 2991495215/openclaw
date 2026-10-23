@@ -1,5 +1,6 @@
 import type { FenceSpan } from "../../packages/markdown-core/src/fences.js";
 import { isSafeFenceBreak } from "../../packages/markdown-core/src/fences.js";
+import { findMarkdownLinkSourceSpans } from "../../packages/markdown-core/src/link-spans.js";
 
 export type UnbreakableSpan = {
   start: number;
@@ -132,10 +133,7 @@ function buildInlineCodeIndex(text: string, fenceSpans: FenceSpan[]) {
   };
 }
 
-function scanMarkdownDestination(
-  text: string,
-  start: number,
-): Pick<UnbreakableSpan, "end" | "complete"> | null {
+function hasUnfinishedMarkdownDestination(text: string, start: number): boolean {
   let index = start;
   let depth = 0;
   let hasDestination = false;
@@ -144,12 +142,12 @@ function scanMarkdownDestination(
     index++;
     while (index < text.length && text[index] !== ">") {
       if (text[index] === "\n" || text[index] === "\r") {
-        return null;
+        return false;
       }
       index += text[index] === "\\" ? 2 : 1;
     }
     if (index >= text.length) {
-      return { end: text.length, complete: false };
+      return true;
     }
     index++;
     hasDestination = true;
@@ -165,7 +163,7 @@ function scanMarkdownDestination(
         index++;
       } else if (char === ")") {
         if (depth === 0) {
-          return { end: index + 1, complete: true };
+          return false;
         }
         depth--;
         hasDestination = true;
@@ -181,46 +179,43 @@ function scanMarkdownDestination(
 
   if (!hasDestination) {
     if (index >= text.length) {
-      return { end: text.length, complete: false };
+      return true;
     }
-    return null;
+    return false;
   }
-  while (text[index] === " " || text[index] === "\t") {
+  while (/[\t\n\r ]/u.test(text[index] ?? "")) {
+    if (endsBlankLine(text, index)) {
+      return false;
+    }
     index++;
   }
   if (index >= text.length) {
-    return { end: text.length, complete: false };
-  }
-  if (text[index] === "\n" || text[index] === "\r") {
-    return null;
-  }
-  if (text[index] === ")") {
-    return { end: index + 1, complete: true };
+    return true;
   }
 
   const titleDelimiter = text[index];
   const titleCloser = titleDelimiter === "(" ? ")" : titleDelimiter;
   if (titleDelimiter !== '"' && titleDelimiter !== "'" && titleDelimiter !== "(") {
-    return null;
+    return false;
   }
   index++;
   while (index < text.length && text[index] !== titleCloser) {
-    if (text[index] === "\n" || text[index] === "\r") {
-      return null;
+    if (endsBlankLine(text, index)) {
+      return false;
     }
     index += text[index] === "\\" ? 2 : 1;
   }
   if (index >= text.length) {
-    return { end: text.length, complete: false };
+    return true;
   }
   index++;
-  while (text[index] === " " || text[index] === "\t") {
+  while (/[\t\n\r ]/u.test(text[index] ?? "")) {
+    if (endsBlankLine(text, index)) {
+      return false;
+    }
     index++;
   }
-  if (index >= text.length) {
-    return { end: text.length, complete: false };
-  }
-  return text[index] === ")" ? { end: index + 1, complete: true } : null;
+  return index >= text.length;
 }
 
 export function scanUnbreakableSpans(
@@ -228,14 +223,21 @@ export function scanUnbreakableSpans(
   fenceSpans: FenceSpan[],
   maxChars: number,
 ): UnbreakableSpan[] {
-  const spans: UnbreakableSpan[] = [];
+  const spans: UnbreakableSpan[] = findMarkdownLinkSourceSpans(text, { html: false }).map(
+    ([start, end]) => ({ start, end, complete: true }),
+  );
   const isInsideCode = buildInlineCodeIndex(text, fenceSpans);
+  // Complete Markdown grammar belongs to the parser; only unfinished suffixes need buffering.
   for (
     let labelEnd = text.indexOf("](");
     labelEnd !== -1;
     labelEnd = text.indexOf("](", labelEnd + 2)
   ) {
-    if (isEscaped(text, labelEnd) || isInsideCode(labelEnd)) {
+    if (
+      isEscaped(text, labelEnd) ||
+      isInsideCode(labelEnd) ||
+      spans.some((span) => span.start <= labelEnd && labelEnd < span.end)
+    ) {
       continue;
     }
     const labelStart = findMarkdownLabelStart(text, labelEnd, isInsideCode);
@@ -245,12 +247,11 @@ export function scanUnbreakableSpans(
     if (invalidLabel) {
       continue;
     }
-    const destination = scanMarkdownDestination(text, labelEnd + 2);
-    if (!destination) {
+    if (!hasUnfinishedMarkdownDestination(text, labelEnd + 2)) {
       continue;
     }
     const start = labelStart > 0 && text[labelStart - 1] === "!" ? labelStart - 1 : labelStart;
-    spans.push({ start, ...destination });
+    spans.push({ start, end: text.length, complete: false });
   }
 
   for (const match of text.matchAll(/https?:\/\/[^\s<]+/giu)) {
