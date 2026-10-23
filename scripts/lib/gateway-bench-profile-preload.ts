@@ -152,6 +152,11 @@ ${source}`;
   const initialResources = sampleResources();
   const inspector = new Session();
   let workerMemoryModule: typeof import("../../src/infra/worker-cpu.ts") | undefined;
+  // Packaged runs receive a compiled observer so sampling cannot load TSX or source aliases.
+  // The source URL remains for callers that already run the source runtime with its loader.
+  const workerSamplerUrl =
+    new URL(import.meta.url).searchParams.get("workerSampler") ??
+    new URL("../../src/infra/worker-cpu.ts", import.meta.url).href;
   const workers = new GatewayBenchWorkerProfiler(inspector, (threadId) => {
     // Retain registry identity before a short-lived worker disappears between resource samples.
     const memory = workerMemoryModule?.sampleTrackedWorkerMemory();
@@ -272,7 +277,7 @@ ${source}`;
         }
         // Native benchmark children do not load the Gateway's source registry or loader.
         if (message.includeWorkers) {
-          workerMemoryModule ??= await import("../../src/infra/worker-cpu.ts");
+          workerMemoryModule ??= await import(workerSamplerUrl);
         }
         const workerMemory = message.includeWorkers
           ? workerMemoryModule?.sampleTrackedWorkerMemory()
@@ -375,7 +380,7 @@ ${source}`;
           throw new Error(`Gateway ${message.kind} profile already started`);
         }
         if (message.includeWorkers) {
-          workerMemoryModule ??= await import("../../src/infra/worker-cpu.ts");
+          workerMemoryModule ??= await import(workerSamplerUrl);
         }
         if (message.kind === "cpu") {
           await inspector.post("Profiler.enable");

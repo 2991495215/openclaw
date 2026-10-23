@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import type { HeapProfiler, Profiler } from "node:inspector";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { HeapSpaceInfo } from "node:v8";
 import type { sampleTrackedWorkerMemory } from "../../src/infra/worker-cpu.ts";
 import type { WorkerMessageMetric } from "../../src/infra/worker-message-metrics.ts";
@@ -12,6 +12,27 @@ export const GATEWAY_PROFILE_CHANNEL = "openclaw-gateway-bench-profile";
 export const GATEWAY_GC_TRACE_MARKER = "OPENCLAW_GATEWAY_BENCH_GC ";
 export const GATEWAY_HEAP_SAMPLE_INTERVAL = 32 * 1024;
 export const GATEWAY_CPU_SAMPLE_INTERVAL_MICROS = 1_000;
+
+/** Compile the observer outside the measured process; keep its registry access lazy. */
+export async function prepareGatewayWorkerSampler(directory: string): Promise<URL> {
+  const { build } = await import("esbuild");
+  const outfile = path.join(directory, "worker-sampler.mjs");
+  const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+  await build({
+    absWorkingDir: repoRoot,
+    stdin: {
+      contents: 'export { sampleTrackedWorkerMemory } from "./src/infra/worker-cpu.ts";',
+      resolveDir: repoRoot,
+      sourcefile: "gateway-bench-worker-sampler.ts",
+    },
+    tsconfig: "tsconfig.json",
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    outfile,
+  });
+  return pathToFileURL(outfile);
+}
 
 export type GatewayProfileCommand = {
   channel: typeof GATEWAY_PROFILE_CHANNEL;

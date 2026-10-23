@@ -5,6 +5,7 @@ import { performance } from "node:perf_hooks";
 import { isRecord } from "../../packages/normalization-core/src/record-coerce.ts";
 import type { GatewayRpc } from "./gateway-bench-probes.ts";
 import {
+  controlGatewayProfile,
   measureGatewayCpuUsage,
   readGatewayResources,
   startGatewayDiagnostics,
@@ -107,6 +108,7 @@ export async function probeGatewayMemorySearch(params: {
   entry: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
+  cpuProfilePath?: string;
   signal?: AbortSignal;
   onChild: (child: ChildProcess) => void;
 }) {
@@ -116,7 +118,14 @@ export async function probeGatewayMemorySearch(params: {
   const output = { stdout: "", stderr: "", overflow: false };
   let exit: number | undefined;
   const errors: unknown[] = [];
+  let profiling = false;
   try {
+    if (params.cpuProfilePath) {
+      await controlGatewayProfile(params.gateway, "cpu", "start", params.cpuProfilePath, {
+        includeWorkers: true,
+      });
+      profiling = true;
+    }
     exit = await runManagedCommand({
       bin: params.runtime,
       args: [
@@ -149,6 +158,11 @@ export async function probeGatewayMemorySearch(params: {
   } catch (error) {
     errors.push(error);
   }
+  if (profiling) {
+    await controlGatewayProfile(params.gateway, "cpu", "stop", params.cpuProfilePath!).catch(
+      (error: unknown) => errors.push(error),
+    );
+  }
   const diagnostics = await stop().catch((error: unknown) => {
     throw new AggregateError([...errors, error], "Memory search command or diagnostics failed");
   });
@@ -162,30 +176,46 @@ export async function probeGatewayMemorySearch(params: {
     );
   }
   const result: unknown = JSON.parse(output.stdout);
-  if (!isRecord(result) || !Array.isArray(result.results) || result.warning || result.status) {
-    throw new Error("Memory search did not return an available, current search result");
+  // A completed bootstrap can carry a rebuild notice; the owner reports invalid results as stale.
+  if (!isRecord(result) || !Array.isArray(result.results) || result.stale || result.status) {
+    throw new Error(
+      `Memory search did not return an available, current search result: ${output.stdout.slice(-4096)}`,
+    );
   }
-  const stats = diagnostics.groups.filter(
+  // This channel reports pool completions, not task kinds. Profiles establish exact stats attribution.
+  const indexTasks = diagnostics.groups.filter(
     (group) =>
       group.channel === "openclaw.worker.task" &&
-      group.operation === "memoryIndex.transcript-stats",
+      /^(?:manager-index|memory-index)\.worker\.[cm]?[jt]s$/.test(group.operation),
   );
-  const statsTaskCount = stats.reduce((sum, group) => sum + group.count, 0);
+  const indexWorkerTaskCount = indexTasks.reduce((sum, group) => sum + group.count, 0);
+  const ownerRouteObserved = ["received", "response"].every((phase) =>
+    diagnostics.groups.some(
+      (group) =>
+        group.channel === "openclaw.gateway.rpc" &&
+        group.operation === `memory.search.owner.${phase}` &&
+        group.count > 0,
+    ),
+  );
   if (
-    !statsTaskCount ||
-    stats.some((group) => group.outcome !== "ok") ||
+    !ownerRouteObserved ||
+    !indexWorkerTaskCount ||
+    indexTasks.some((group) => group.outcome !== "ok") ||
     diagnostics.collectionErrors ||
     diagnostics.droppedEvents
   ) {
     throw new Error(
-      `Memory search did not prove successful Gateway transcript statistics (${statsTaskCount} observed tasks)`,
+      `Memory search did not prove successful Gateway indexing tasks (${indexWorkerTaskCount} observed tasks)`,
     );
   }
   const after = await readIndexWorkerResources(params.gateway, before);
   return {
     durationMs,
-    statsTaskCount,
+    indexWorkerTaskCount,
+    ownerRouteObserved,
+    cpuProfilePath: params.cpuProfilePath,
     resultCount: result.results.length,
+    ...(typeof result.warning === "string" ? { warning: result.warning } : {}),
     cpuUsage: measureGatewayCpuUsage(before, after),
     before,
     after,

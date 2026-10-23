@@ -7,10 +7,13 @@ const mocks = vi.hoisted(() => ({
   resources: vi.fn(),
   stop: vi.fn(),
   run: vi.fn(),
+  profile: vi.fn(),
+  result: { results: [] } as Record<string, unknown>,
 }));
 vi.mock("../../scripts/lib/gateway-bench-profile.ts", async (importOriginal) => ({
   ...(await importOriginal()),
   readGatewayResources: mocks.resources,
+  controlGatewayProfile: mocks.profile,
   startGatewayDiagnostics: async () => mocks.stop,
 }));
 vi.mock("../../scripts/lib/managed-child-process.mts", () => ({
@@ -27,13 +30,14 @@ const params = {
 };
 const statsTask = {
   channel: "openclaw.worker.task",
-  operation: "memoryIndex.transcript-stats",
+  operation: "manager-index.worker.js",
   outcome: "ok",
   count: 1,
 };
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.result = { results: [] };
   let sample = 0;
   mocks.resources.mockImplementation(async () => ({
     pid: 123,
@@ -46,20 +50,33 @@ beforeEach(() => {
       workerLifecycle: [],
     },
   }));
-  mocks.stop.mockResolvedValue({ groups: [statsTask], collectionErrors: 0, droppedEvents: 0 });
+  mocks.stop.mockResolvedValue({
+    groups: [
+      statsTask,
+      ...["received", "response"].map((phase) => ({
+        channel: "openclaw.gateway.rpc",
+        operation: `memory.search.owner.${phase}`,
+        outcome: "observed",
+        count: 1,
+      })),
+    ],
+    collectionErrors: 0,
+    droppedEvents: 0,
+  });
+  mocks.profile.mockResolvedValue(undefined);
   mocks.run.mockImplementation(async ({ onReady }) => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     onReady({ stdout, stderr });
-    stdout.end(JSON.stringify({ results: [] }));
+    stdout.end(JSON.stringify(mocks.result));
     stderr.end();
     return 0;
   });
 });
 
-it("accepts an empty search only with successful Gateway stats and a retained index worker", async () => {
+it("accepts an empty search only with successful Gateway indexing tasks and a retained index worker", async () => {
   await expect(probeGatewayMemorySearch(params)).resolves.toMatchObject({
-    statsTaskCount: 1,
+    indexWorkerTaskCount: 1,
     resultCount: 0,
   });
   expect(mocks.stop).toHaveBeenCalledOnce();
@@ -67,7 +84,26 @@ it("accepts an empty search only with successful Gateway stats and a retained in
 });
 
 it.each([
+  ["stale", { results: [], stale: true }],
+  ["disabled", { status: "disabled" }],
+])("rejects %s search results", async (_name, result) => {
+  mocks.result = result;
+  await expect(probeGatewayMemorySearch(params)).rejects.toThrow(
+    "available, current search result",
+  );
+});
+
+it("preserves an informational rebuild notice on current results", async () => {
+  mocks.result = { results: [], warning: "Automatic repair requested" };
+  await expect(probeGatewayMemorySearch(params)).resolves.toMatchObject({
+    indexWorkerTaskCount: 1,
+    warning: "Automatic repair requested",
+  });
+});
+
+it.each([
   ["local fallback", []],
+  ["local fallback with coincident indexing", [statsTask]],
   ["unrelated worker", [{ ...statsTask, operation: "memorySearch.search" }]],
   ["failed stats", [{ ...statsTask, outcome: "error" }]],
 ])("rejects successful CLI output backed by %s", async (_name, groups) => {
@@ -101,6 +137,18 @@ it("preserves unsettled CLI cleanup when diagnostics also fail", async () => {
   await expect(probeGatewayMemorySearch(params)).rejects.toMatchObject({
     errors: [commandError, diagnosticError],
   });
+});
+
+it("stops activation profiling and preserves both command and profile cleanup errors", async () => {
+  const commandError = new Error("CLI failed");
+  const profileError = new Error("profile cleanup failed");
+  mocks.run.mockRejectedValue(commandError);
+  mocks.profile.mockResolvedValueOnce(undefined).mockRejectedValueOnce(profileError);
+  await expect(
+    probeGatewayMemorySearch({ ...params, cpuProfilePath: "/fixture/activation.cpuprofile" }),
+  ).rejects.toMatchObject({ errors: [commandError, profileError] });
+  expect(mocks.profile).toHaveBeenCalledTimes(2);
+  expect(mocks.stop).toHaveBeenCalledOnce();
 });
 
 it.each(["replacement", "retirement"])(

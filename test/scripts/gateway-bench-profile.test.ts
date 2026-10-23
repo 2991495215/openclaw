@@ -10,6 +10,7 @@ import {
   controlGatewayProfile,
   measureGatewayCpuUsage,
   measureGatewayAllocations,
+  prepareGatewayWorkerSampler,
   readGatewayCpuUsage,
   readGatewayGcTrace,
   readGatewayHeapProfile,
@@ -24,6 +25,62 @@ const preloadUrl = new URL("../../scripts/lib/gateway-bench-profile-preload.ts",
 const fixturePath = (name: string) =>
   fileURLToPath(new URL(`./fixtures/${name}.mjs`, import.meta.url));
 const readJson = async <T>(file: string): Promise<T> => JSON.parse(await readFile(file, "utf8"));
+
+it("samples an existing worker registry under native Node without a source loader", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "gateway-native-sampler-"));
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  const owner = await prepareGatewayWorkerSampler(path.join(directory, "owner"));
+  const observer = await prepareGatewayWorkerSampler(path.join(directory, "observer"));
+  expect(await readFile(owner, "utf8")).toBe(await readFile(observer, "utf8"));
+  const preload = new URL(preloadUrl);
+  preload.searchParams.set("workerSampler", observer.href);
+  const { child, stderr } = spawnFixture([
+    "--import",
+    preload.href,
+    "--input-type=module",
+    "--eval",
+    `
+      import { Worker } from 'node:worker_threads';
+      import { once } from 'node:events';
+      const key = Symbol.for('openclaw.workerCpuSources');
+      if (globalThis[key]) throw new Error('Observer initialized the registry during startup');
+      await import(${JSON.stringify(owner.href)});
+      const registry = globalThis[key];
+      const listeners = process.listenerCount('worker');
+      process.channel.ref();
+      const worker = new Worker('setInterval(() => {}, 1000)', { eval: true, execArgv: [] });
+      await once(worker, 'online');
+      process.on('message', async message => {
+        if (message.retire) {
+          await worker.terminate();
+          process.send({
+            retired: true,
+            sameRegistry: globalThis[key] === registry,
+            sameListeners: process.listenerCount('worker') === listeners,
+          });
+        }
+      });
+      process.send({ ready: true, threadId: worker.threadId });
+    `,
+  ]);
+  const ready = await waitMessage(child, "ready");
+  const sampled = await readGatewayResources(child, { includeWorkers: true });
+  expect(sampled.workers?.workerCount, stderr()).toBe(1);
+  expect([
+    ...(sampled.workers?.workerHeaps ?? []),
+    ...(sampled.workers?.workerMemoryMissing ?? []),
+  ]).toEqual(expect.arrayContaining([expect.objectContaining({ threadId: ready.threadId })]));
+  expect(await sendMessage(child, { retire: true })).toEqual({
+    retired: true,
+    sameRegistry: true,
+    sameListeners: true,
+  });
+  const retired = await readGatewayResources(child, { includeWorkers: true });
+  expect(retired.workers?.workerCount).toBe(0);
+  expect(retired.workers?.workerLifecycle).toEqual([
+    { script: "other", started: 1, retired: [{ reason: "exit", count: 1 }] },
+  ]);
+});
 
 function spawnFixture(args: string[], directory?: string, ipc = true) {
   const child = spawn(nodeExecutable, args, {

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 // Measure Gateway probes during mock or explicitly selected live streaming turns.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
   copyFileSync,
@@ -61,6 +61,7 @@ import {
 import {
   controlGatewayProfile,
   measureGatewayCpuUsage,
+  prepareGatewayWorkerSampler,
   readGatewayCpuProfile,
   readGatewayCpuUsage,
   readGatewayHeapProfile,
@@ -180,6 +181,7 @@ type BenchmarkRun = {
   heapProfile?: GatewayHeapProfile & MainProfileArtifacts;
   loadCpuProfile?: GatewayCpuProfile & MainProfileArtifacts;
   memorySearch?: Awaited<ReturnType<typeof probeGatewayMemorySearch>>;
+  workerSamplerSha256?: string;
   indexWorkerLoad?: {
     before: Awaited<ReturnType<typeof readIndexWorkerResources>>;
     after?: Awaited<ReturnType<typeof readIndexWorkerResources>>;
@@ -1139,6 +1141,7 @@ function buildConfig(
   agentIds: string[],
   provider: CliOptions["provider"],
   activitySummaryDiagnostics = false,
+  memorySearch = false,
 ): string {
   const controlUiRoot = path.join(root, "control-ui");
   mkdirSync(controlUiRoot, { recursive: true });
@@ -1161,6 +1164,12 @@ function buildConfig(
   }
 
   const config = structuredClone(BASE_GATEWAY_BENCH_CONFIG) as Record<string, unknown>;
+  if (memorySearch) {
+    // The default memory-file source never scans the seeded SQLite transcripts.
+    config.memory = {
+      search: { sources: ["memory", "sessions"], rememberAcrossConversations: true },
+    };
+  }
   if (activitySummaryDiagnostics) {
     config.logging = { consoleLevel: "debug", consoleStyle: "json" };
   }
@@ -1940,6 +1949,17 @@ async function runGatewaySample(
     );
     root = fixtureRoot;
     cleanup.rootRemoved = false;
+    const profilePreload = new URL("./lib/gateway-bench-profile-preload.ts", import.meta.url);
+    if (
+      !options.controlUiLoad &&
+      (options.memorySearch || options.heapProfDir || options.loadCpuProfDir)
+    ) {
+      const sampler = await prepareGatewayWorkerSampler(fixtureRoot);
+      profilePreload.searchParams.set("workerSampler", sampler.href);
+      partialRun.workerSamplerSha256 = createHash("sha256")
+        .update(readFileSync(sampler))
+        .digest("hex");
+    }
     const [port, mockPort] = await Promise.all([
       getFreePort(),
       options.provider === "mock" ? getFreePort() : Promise.resolve(0),
@@ -1976,6 +1996,7 @@ async function runGatewaySample(
         agentIds,
         options.provider,
         Boolean(activityDiagnostics),
+        options.memorySearch,
       );
       const workersPath = path.join(fixtureRoot, "workers.jsonl");
       if (options.controlUiLoad) {
@@ -2035,12 +2056,9 @@ async function runGatewaySample(
       const gatewayArgs = buildGatewayBenchChildArgs(options.entry, port);
       gatewayArgs.unshift(
         "--import",
-        new URL(
-          options.controlUiLoad
-            ? "./lib/gateway-bench-load-preload.mjs"
-            : "./lib/gateway-bench-profile-preload.ts",
-          import.meta.url,
-        ).href,
+        options.controlUiLoad
+          ? new URL("./lib/gateway-bench-load-preload.mjs", import.meta.url).href
+          : profilePreload.href,
       );
       if (options.controlUiLoad) {
         gatewayArgs[gatewayArgs.indexOf("--auth") + 1] = "token";
@@ -2198,6 +2216,14 @@ async function runGatewaySample(
           runtime: options.gatewayRuntime,
           entry: options.entry,
           timeoutMs: options.timeoutMs,
+          ...(options.cpuProfDir
+            ? {
+                cpuProfilePath: path.resolve(
+                  options.cpuProfDir,
+                  `memory-search-${randomUUID()}.cpuprofile`,
+                ),
+              }
+            : {}),
           signal: options.signal,
           onChild: (child) => spawnedChildren.push(child),
           env: createGatewayBenchEnv(fixtureRoot, configPath, {
@@ -2755,6 +2781,7 @@ async function runGatewaySample(
         }));
       }
       result = {
+        workerSamplerSha256: partialRun.workerSamplerSha256,
         ...(partialRun.memorySearch
           ? { memorySearch: partialRun.memorySearch, indexWorkerLoad: partialRun.indexWorkerLoad }
           : {}),
