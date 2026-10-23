@@ -1,5 +1,31 @@
 # Team-shaped synthetic state
 
+## Device pairing publication
+
+`device-pairing-publication-measure.ts` seeds 64 synthetic paired nodes, then
+invalidates and rebuilds the shared node snapshot through the real pairing reader
+and SQLite worker. This isolates publication misses without repeated database
+writes. It verifies exact device contents, shared-snapshot reuse, and nested
+freezing. It measures the reader/publication boundary, not Gateway RPC latency.
+
+```sh
+node --expose-gc --trace-gc-nvp --import ./scripts/tsx.mjs \
+  scripts/perf/device-pairing-publication-measure.ts \
+  --state-dir /path/to/new-state --operations 4000 --devices 64 \
+  --start-at <allocation-epoch-ms> --cpu-start-at <later-cpu-epoch-ms> \
+  --output /path/to/result.json --gc-log /path/to/capture.log > /path/to/capture.log 2>&1
+```
+
+Run concurrent baseline/candidate processes with isolated state and shared phase
+deadlines under the quiet lock and production guard; swap the interleaved CPU sets
+for the second pair. `--publication-source` selects a saved sibling copy of the
+publication module for a same-tree comparison; the report hashes the selected
+source. Allocation sampling includes collected objects and is separate from
+CPU/latency/GC measurement. The report includes promotion, collection counts,
+pause maxima and sample counts for every tail. Apply the campaign's paired-delta
+and sample-count rules. The default 200 publications/minute is an explicit
+allocation projection, not an observed production publication rate.
+
 ## Background result lifecycle wait
 
 `background-result-wait-measure.ts` holds a synthetic session turn open while
