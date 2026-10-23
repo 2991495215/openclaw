@@ -15,6 +15,12 @@ import {
   resolveSessionEntryCandidates,
 } from "../../config/sessions/store-entry.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  captureReplySessionExecutionSelection,
+  isSameReplyExecutionSelection,
+  type ReplyExecutionSelection,
+} from "../../sessions/session-controller.execution-selection.js";
 import { registerOpenClawAgentDatabaseAsyncResource } from "../../state/openclaw-agent-db-resources.js";
 import { MessageInjectionTargetUnavailableError } from "./message-injection-authority.js";
 
@@ -45,18 +51,43 @@ export function prepareSteeringDelivery(params: {
   entry?: SessionEntry;
   assertCurrent: () => void;
 }) {
+  let executionSelection: { expected: ReplyExecutionSelection; config: OpenClawConfig } | undefined;
+  const bindExecutionSelection = (expected: ReplyExecutionSelection, config: OpenClawConfig) => {
+    executionSelection = { expected, config };
+  };
+  const matchesExecutionSelection = (entry: SessionEntry | undefined) =>
+    !executionSelection ||
+    isSameReplyExecutionSelection(
+      executionSelection.expected,
+      captureReplySessionExecutionSelection({
+        config: executionSelection.config,
+        agentId: params.agentId,
+        sessionEntry: entry,
+      }),
+    );
   const fallbackEntry = params.entry;
+  const sourceTurnId = (entry: SessionEntry | null | undefined) =>
+    params.sourceTurnId ??
+    normalizeOptionalString(
+      (executionSelection?.expected.recoveryDeliveryClaim ?? entry)
+        ?.restartRecoveryDeliverySourceRunId,
+    ) ??
+    "";
   const assertEntry = (
     current: Parameters<typeof resolveRestartRecoverySteeringBlockReason>[0],
   ) => {
     params.assertCurrent();
     const entry = current ?? fallbackEntry;
+    if (!matchesExecutionSelection(entry)) {
+      throw new MessageInjectionTargetUnavailableError(
+        "Execution settings changed during steering preparation",
+      );
+    }
     const reason = resolveRestartRecoverySteeringBlockReason(
       entry,
       params.sessionId ?? entry?.sessionId ?? "",
-      params.sourceTurnId ??
-        normalizeOptionalString(entry?.restartRecoveryDeliverySourceRunId) ??
-        "",
+      sourceTurnId(entry),
+      executionSelection?.expected.recoveryDeliveryClaim,
     );
     if (reason) {
       throw new MessageInjectionTargetUnavailableError(
@@ -65,21 +96,27 @@ export function prepareSteeringDelivery(params: {
     }
   };
   if (!params.sessionKey || !params.storePath) {
-    return prepareCurrentSteeringRead(() => assertEntry(fallbackEntry));
+    return {
+      ...prepareCurrentSteeringRead(() => assertEntry(fallbackEntry)),
+      bindExecutionSelection,
+    };
   }
   const memory = captureSessionActorStorageOwner(params, { assertCurrent() {}, authorize() {} });
   if (memory) {
     const sessionKey = params.sessionKey;
-    return prepareCurrentSteeringRead(() => {
-      const current =
-        memory.binding?.actor.target.sessionKey === sessionKey
-          ? memory.binding.actor.snapshot(memory.authority)
-          : memory.owner?.readSession(sessionKey, memory.authority);
-      if (!current?.entry) {
-        throw new MessageInjectionTargetUnavailableError("Steering target session was closed");
-      }
-      assertEntry(current.entry);
-    });
+    return {
+      ...prepareCurrentSteeringRead(() => {
+        const current =
+          memory.binding?.actor.target.sessionKey === sessionKey
+            ? memory.binding.actor.snapshot(memory.authority)
+            : memory.owner?.readSession(sessionKey, memory.authority);
+        if (!current?.entry) {
+          throw new MessageInjectionTargetUnavailableError("Steering target session was closed");
+        }
+        assertEntry(current.entry);
+      }),
+      bindExecutionSelection,
+    };
   }
   const { scope } = captureSessionEntryReadScope({
     agentId: params.agentId,
@@ -141,14 +178,14 @@ export function prepareSteeringDelivery(params: {
           sessionKey: selected?.sessionKey ?? sessionKey,
           entry: selected?.entry,
           matches: (before, after) =>
+            matchesExecutionSelection(after) &&
             before?.sessionId === after?.sessionId &&
             before?.lifecycleRevision === after?.lifecycleRevision &&
             !resolveRestartRecoverySteeringBlockReason(
               after ?? fallbackEntry,
               params.sessionId ?? after?.sessionId ?? "",
-              params.sourceTurnId ??
-                normalizeOptionalString(after?.restartRecoveryDeliverySourceRunId) ??
-                "",
+              sourceTurnId(after),
+              executionSelection?.expected.recoveryDeliveryClaim,
             ),
         });
         unregister = registerOpenClawAgentDatabaseAsyncResource({
@@ -168,6 +205,7 @@ export function prepareSteeringDelivery(params: {
     assertLegacyCurrent: assertCurrent,
   };
   return {
+    bindExecutionSelection,
     assertCurrent,
     release,
     prepareCurrent: async () => {

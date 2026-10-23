@@ -7,7 +7,12 @@ import type { JsonSchema } from "../../lib/config-form-utils.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { queryWithin } from "./plugins-page.lifecycle-test-support.ts";
-import { createInspectResult, createPlugin, createResult } from "./plugins-page.test-support.ts";
+import {
+  createDiscoveryDetail,
+  createInspectResult,
+  createPlugin,
+  createResult,
+} from "./plugins-page.test-support.ts";
 import {
   renderPluginSettingsDetail as PluginSettingsDetail,
   type DetailProps,
@@ -23,7 +28,7 @@ function setting(container: ParentNode, key: string) {
   return container.querySelector(`[data-setting="${key}"]`)!;
 }
 
-function mount(overrides: Partial<DetailProps>) {
+function mount(overrides: Partial<DetailProps>, setup?: (props: DetailProps) => void) {
   const props: DetailProps = {
     connected: true,
     loading: false,
@@ -36,6 +41,8 @@ function mount(overrides: Partial<DetailProps>) {
     mutationBlockedReason: null,
     configBusy: false,
     configSchemaLoading: false,
+    configRead: undefined,
+    configSchemaRead: undefined,
     configError: null,
     canEditConfig: true,
     configValue: {},
@@ -43,7 +50,7 @@ function mount(overrides: Partial<DetailProps>) {
     configUnsupportedPaths: [],
     pluginId: "workboard",
     inspection: null,
-    inspectionError: null,
+    inspectionRead: { receipt: () => null, value: () => null },
     configSchema: null,
     hostControlsSchema: null,
     backHref: "/settings/plugins",
@@ -64,7 +71,10 @@ function mount(overrides: Partial<DetailProps>) {
     ...overrides,
   };
   const [currentProps, setProps] = createSignal(props);
-  const { container } = mountSolid(() => <PluginSettingsDetail {...currentProps()} />);
+  const { container } = mountSolid(() => {
+    setup?.(props);
+    return <PluginSettingsDetail {...currentProps()} />;
+  });
   flush();
   return {
     container,
@@ -89,6 +99,38 @@ async function selectSettingAction(row: Element, value: "ask" | "reset") {
   await Promise.resolve();
   flush();
 }
+
+it.each(["multiple-servers", "mixed-capabilities", "missing-description", "disabled"] as const)(
+  "retains server-specific setup for %s instead of misattributing the plugin summary",
+  (scenario) => {
+    const plugin = createPlugin({
+      enabled: scenario !== "disabled",
+      state: scenario === "disabled" ? "disabled" : "enabled",
+      description: scenario === "missing-description" ? "" : "Manage workspace records.",
+    });
+    const catalog = createDiscoveryDetail(plugin);
+    catalog.plugin.catalog.family = "bundle-plugin";
+    catalog.plugin.catalog.summary = plugin.description;
+    catalog.detail.mcpServers = ["workspace"];
+    catalog.detail.mcpServerDetails = [
+      { name: "workspace", setup: "Connect the workspace account." },
+    ];
+    const inspection = createInspectResult();
+    inspection.components.mapped = ["mcpServers"];
+    inspection.components.mcpServers = ["workspace"];
+    inspection.declared.mcpServers = ["workspace"];
+    if (scenario === "multiple-servers") {
+      inspection.components.mcpServers.push("other");
+      inspection.declared.mcpServers.push("other");
+    } else if (scenario === "mixed-capabilities") {
+      inspection.declared.tools = ["workspace_sync"];
+    }
+    const { container } = mount({ result: createResult(plugin), catalog, inspection });
+    const details = container.querySelector(".plugin-capability__details")!;
+    expect(details.textContent).toContain("Connect the workspace account.");
+    expect(details.textContent).not.toContain("What this server does");
+  },
+);
 
 it("does not offer enablement or Settings for an uninstalled plugin", () => {
   const { find } = mount({
@@ -134,6 +176,55 @@ it("retains the disclosure as inventory enables the plugin and inspection arrive
   expect(disclosure()?.textContent).toContain("Only enable plugins you trust.");
   update({ inspection: createInspectResult({ overview: { hasNativeUi: true } }) });
   expect(disclosure()?.textContent).toContain("Only enable plugins you trust.");
+});
+
+it("retains the focused Uninstall button when inspection arrives", () => {
+  let publishInspection!: () => void;
+  const { find } = mount({ result: createResult(createPlugin({ removable: true })) }, (props) => {
+    const [inspection, setInspection] = createSignal<DetailProps["inspection"]>(null);
+    Object.defineProperty(props, "inspection", { get: inspection });
+    publishInspection = () => setInspection(createInspectResult());
+  });
+  const button = find<HTMLButtonElement>('[aria-label="Uninstall Workboard"]')!;
+  button.focus();
+  expect(document.activeElement).toBe(button);
+  publishInspection();
+  flush();
+  expect(find('[aria-label="Uninstall Workboard"]')).toBe(button);
+  expect(button.isConnected).toBe(true);
+  expect(document.activeElement).toBe(button);
+});
+
+it("retains inspection retry focus and uses the current error and callback", async () => {
+  const firstRetry = vi.fn();
+  const nextRetry = vi.fn();
+  let replace!: () => void;
+  const { container } = mount({}, (props) => {
+    const [failure, setFailure] = createSignal(new Error("Inspection unavailable"));
+    const [retry, setRetry] = createSignal<() => void>(() => firstRetry);
+    props.inspectionRead = {
+      receipt: () => null,
+      value: () => {
+        throw failure();
+      },
+    };
+    Object.defineProperty(props, "onRetryInspection", { get: retry });
+    replace = () => {
+      setFailure(new Error("Inspection still unavailable"));
+      setRetry(() => nextRetry);
+    };
+  });
+  const alert = container.querySelector('[role="alert"]')!;
+  const button = alert.querySelector("button")!;
+  expect(alert.textContent).toContain("Inspection unavailable");
+  button.focus();
+  replace();
+  await waitForSolid(() => expect(alert.textContent).toContain("Inspection still unavailable"));
+  expect(alert.querySelector("button")).toBe(button);
+  expect(document.activeElement).toBe(button);
+  button.click();
+  expect(firstRetry).not.toHaveBeenCalled();
+  expect(nextRetry).toHaveBeenCalledOnce();
 });
 
 it("does not dispatch enablement when setup is missing", () => {
