@@ -81,16 +81,12 @@ export type WorkboardAttachmentInput = {
   mimeType?: unknown;
   note?: unknown;
 };
-export type WorkboardWorkerLogInput = {
+export type WorkboardWorkerLogInput = Pick<WorkboardCardInput, "sessionKey" | "runId"> & {
   level?: unknown;
   message?: unknown;
-  sessionKey?: unknown;
-  runId?: unknown;
 };
-export type WorkboardProtocolViolationInput = {
+export type WorkboardProtocolViolationInput = Pick<WorkboardCardInput, "sessionKey" | "runId"> & {
   detail?: unknown;
-  sessionKey?: unknown;
-  runId?: unknown;
 };
 export type WorkboardClaimInput = WorkboardMutationScope & {
   ttlSeconds?: unknown;
