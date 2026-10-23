@@ -76,7 +76,8 @@ const installRunEmbeddedMocks = () => {
       },
     };
   });
-  vi.doMock("./agent-bundle-mcp-tools.js", () => ({
+  vi.doMock("./agent-bundle-mcp-tools.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./agent-bundle-mcp-tools.js")>()),
     disposeSessionMcpRuntime: (sessionId: string) => disposeSessionMcpRuntimeMock(sessionId),
     retireSessionMcpRuntime: ({ sessionId }: { sessionId?: string | null }) =>
       sessionId ? disposeSessionMcpRuntimeMock(sessionId) : Promise.resolve(false),

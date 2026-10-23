@@ -3,7 +3,10 @@ import { vi } from "vitest";
 import { handleSlackAction } from "./action-runtime.runtime.js";
 import { createSlackActions } from "./channel-actions.js";
 
-vi.mock("./action-runtime.runtime.js", () => ({ handleSlackAction: vi.fn() }));
+vi.mock("./action-runtime.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./action-runtime.runtime.js")>()),
+  handleSlackAction: vi.fn(),
+}));
 
 export function createInvokeSpy() {
   const invoke = vi.fn(

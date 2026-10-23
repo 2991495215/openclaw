@@ -103,7 +103,8 @@ vi.mock("../gateway/mcp-http.js", () => ({
   closeMcpLoopbackServer: closeLoopbackMock,
 }));
 
-vi.mock("./agent-bundle-mcp-tools.js", () => ({
+vi.mock("./agent-bundle-mcp-tools.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./agent-bundle-mcp-tools.js")>()),
   retireSessionMcpRuntime: retireMock,
 }));
 

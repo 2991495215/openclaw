@@ -47,7 +47,8 @@ vi.mock("../../plugins/cli-backends.runtime.js", () => ({
 vi.mock("../cli-runner.runtime.js", () => ({
   runCliAgent,
 }));
-vi.mock("../agent-bundle-mcp-tools.js", () => ({
+vi.mock("../agent-bundle-mcp-tools.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../agent-bundle-mcp-tools.js")>()),
   retireSessionMcpRuntime,
 }));
 const transcriptRecorder = vi.hoisted(() => ({
