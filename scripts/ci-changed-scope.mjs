@@ -217,7 +217,7 @@ const CONTROL_UI_I18N_SCOPE_RE =
 // A plugin can declare its browser entry in any package directory. Keep this
 // path-only planner conservative; source discovery selects actual UI owners.
 const CONTROL_UI_I18N_PRODUCTION_SOURCE_RE =
-  /^(?:ui\/src\/(?:app|components|lib|pages)\/.*\.tsx?|extensions\/[^/]+\/.*\.tsx?|src\/config\/(?:schema[^/]*|zod-schema[^/]*|media-audio-field-metadata|talk-defaults|channel-config-keys)\.ts)$/;
+  /^(?:ui\/src\/(?:app|components|lib|pages)\/.*\.tsx?|extensions\/[^/]+\/.*\.tsx?|src\/config\/(?:schema[^/]*|zod-schema[^/]*|media-audio-field-metadata|channel-config-keys)\.ts)$/;
 const CONTROL_UI_HARD_GENERATED_I18N_RE =
   /^(?:ui\/src\/i18n\/\.i18n\/(?:catalog-fallbacks\.json|[^/]+\.(?:meta\.json|tm\.jsonl))|extensions\/[^/]+\/(?:.*\/)?i18n\/\.i18n\/[^/]+\.(?:meta\.json|tm\.jsonl))$/;
 const RELEASE_BRANCH_RE = /^release\/\d{4}\.\d+\.\d+$/;

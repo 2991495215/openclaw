@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FIELD_HELP } from "./schema.help.js";
-import { describeTalkSilenceTimeoutDefaults } from "./talk-defaults.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const EXPECTED_TALK_SILENCE_TIMEOUT_MS_BY_PLATFORM = {
@@ -32,7 +31,7 @@ function readRepoFile(relativePath: string): string {
 
 describe("talk silence timeout defaults", () => {
   it("keeps help text and docs aligned with the policy", () => {
-    const defaultsDescription = describeTalkSilenceTimeoutDefaults();
+    const defaultsDescription = `${EXPECTED_TALK_SILENCE_TIMEOUT_MS_BY_PLATFORM.macos} ms on macOS and Android, ${EXPECTED_TALK_SILENCE_TIMEOUT_MS_BY_PLATFORM.ios} ms on iOS`;
     const talkDocDefaults =
       `\`${EXPECTED_TALK_SILENCE_TIMEOUT_MS_BY_PLATFORM.macos}\` ms macOS/Android, ` +
       `\`${EXPECTED_TALK_SILENCE_TIMEOUT_MS_BY_PLATFORM.ios}\` ms iOS`;

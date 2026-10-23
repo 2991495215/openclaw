@@ -29,7 +29,6 @@ on:
       - src/config/schema*.ts
       - src/config/zod-schema*.ts
       - src/config/media-audio-field-metadata.ts
-      - src/config/talk-defaults.ts
       - src/config/channel-config-keys.ts
       - scripts/lib/control-ui-i18n-config.json
       - scripts/lib/control-ui-i18n-config.ts
@@ -354,7 +353,6 @@ jobs:
             src/config/schema*.ts
             src/config/zod-schema*.ts
             src/config/media-audio-field-metadata.ts
-            src/config/talk-defaults.ts
             src/config/channel-config-keys.ts
             scripts/lib/control-ui-i18n-config.json
             scripts/lib/control-ui-i18n-config.ts
