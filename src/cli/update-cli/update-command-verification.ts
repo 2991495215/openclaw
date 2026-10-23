@@ -258,7 +258,8 @@ export async function verifyUpdatedGateway(
   const verification = updateGatewayHealthFacts(
     health,
     params.gatewayPort,
-    http?.readyz == null ? undefined : readyz,
+    // The observer owns positive readiness even when raw HTTP details are unavailable.
+    readyz || http?.readyz != null ? readyz : undefined,
     coreReady || httpFailed ? http?.coreReady : undefined,
   );
   if (params.purpose === "recovery") {
