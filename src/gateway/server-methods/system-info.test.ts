@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateSystemInfoResult } from "../../../packages/gateway-protocol/src/index.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import * as diskSpace from "../../infra/disk-space.js";
-import { acquireGatewayLock } from "../../infra/gateway-lock.js";
 import { inspectGatewayLockRecovery } from "../../infra/gateway-lock-recovery.js";
+import { acquireGatewayLock } from "../../infra/gateway-lock.js";
 import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { withPluginRuntimeRegistryScope } from "../../plugins/runtime/gateway-request-scope.js";
@@ -144,9 +144,9 @@ describe("system.info", () => {
     vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
     vi.spyOn(os, "platform").mockReturnValue("darwin");
     mocks.runCommandWithTimeout.mockReset().mockImplementation(mountedVolumeOutput);
-    mocks.statfs.mockReset().mockImplementation(async (path: string) => ({
-      blocks: path === "/" ? 1000n : 2000n,
-      bavail: path === "/" ? 400n : 1500n,
+    mocks.statfs.mockReset().mockImplementation(async (mountPath: string) => ({
+      blocks: mountPath === "/" ? 1000n : 2000n,
+      bavail: mountPath === "/" ? 400n : 1500n,
       frsize: 1024n,
     }));
   });
