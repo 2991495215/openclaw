@@ -4,9 +4,6 @@ import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
 import { findCodeRegions, isInsideCode } from "../shared/text/code-regions.js";
 
-type CanvasSurface = "assistant_message" | "node_panel";
-type CanvasSandbox = "strict" | "scripts";
-
 type McpAppPreviewDescriptor = {
   viewId: string;
   serverName?: string;
@@ -19,7 +16,7 @@ type McpAppPreviewDescriptor = {
 
 type CanvasPreview = {
   kind: "canvas";
-  surface: CanvasSurface;
+  surface: "assistant_message" | "node_panel";
   render: "url";
   title?: string;
   preferredHeight?: number;
@@ -27,7 +24,7 @@ type CanvasPreview = {
   viewId?: string;
   className?: string;
   style?: string;
-  sandbox?: CanvasSandbox;
+  sandbox?: "strict" | "scripts";
   boardWidgetName?: string;
   mcpApp?: McpAppPreviewDescriptor;
 };

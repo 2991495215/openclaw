@@ -1,11 +1,9 @@
 import path from "node:path";
 
-/** Alias class for current packaged paths and legacy bundled extension paths. */
-type BundledPluginLoadPathAliasKind = "current" | "legacy";
-
 /** Load path alias used while resolving bundled plugins across package layouts. */
 type BundledPluginLoadPathAlias = {
-  kind: BundledPluginLoadPathAliasKind;
+  /** Alias class for current packaged paths and legacy bundled extension paths. */
+  kind: "current" | "legacy";
   path: string;
 };
 

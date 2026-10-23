@@ -15,25 +15,22 @@ const EOF_MARKER = "*** End of File";
 const CHANGE_CONTEXT_MARKER = "@@ ";
 const EMPTY_CHANGE_CONTEXT_MARKER = "@@";
 
-type AddFileHunk = {
-  kind: "add";
-  path: string;
-  contents: string;
-};
-
-type DeleteFileHunk = {
-  kind: "delete";
-  path: string;
-};
-
-type UpdateFileHunk = {
-  kind: "update";
-  path: string;
-  movePath?: string;
-  chunks: UpdateFileChunk[];
-};
-
-export type Hunk = AddFileHunk | DeleteFileHunk | UpdateFileHunk;
+export type Hunk =
+  | {
+      kind: "add";
+      path: string;
+      contents: string;
+    }
+  | {
+      kind: "delete";
+      path: string;
+    }
+  | {
+      kind: "update";
+      path: string;
+      movePath?: string;
+      chunks: UpdateFileChunk[];
+    };
 
 export function parsePatchText(input: string): Hunk[] {
   const trimmed = input.trim();

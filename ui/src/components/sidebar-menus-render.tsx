@@ -5,6 +5,7 @@ import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import { isMobileNavLayout } from "../app/mobile-nav-layout.ts";
 import { patchSettings } from "../app/settings.ts";
 import { registerAgentCreationEnglish } from "../i18n/locales/en-agent-creation.ts";
+import { registerSessionOrganizationEnglish } from "../i18n/locales/en-session-organization.ts";
 import { openEditor } from "../lib/editor-links.ts";
 import { formatUiError } from "../lib/format-error.ts";
 import { canCallGatewayMethod, isGatewayMethodAdvertised } from "../lib/gateway-methods.ts";
@@ -34,7 +35,6 @@ import {
 import { renderSidebarAgentMenu as SidebarAgentMenu } from "./app-sidebar-agent-menu.tsx";
 import { SidebarDropdown, renderSidebarMenuAction } from "./app-sidebar-dropdown.tsx";
 import { renderSidebarIdentityMenu as SidebarIdentityMenu } from "./app-sidebar-identity-menu.tsx";
-import { renderSidebarPeopleFilterMenuForMenus } from "./app-sidebar-people-filter-menu.tsx";
 import { renderSidebarPluginNavigationMenuForMenus } from "./app-sidebar-plugin-navigation-menu.tsx";
 import { formatSidebarTimestamp } from "./app-sidebar-session-catalogs.ts";
 import { findActiveSidebarLineageRow } from "./app-sidebar-session-lookup.ts";
@@ -45,6 +45,7 @@ import {
 } from "./app-sidebar-session-menu-renderers.tsx";
 import "../styles/sidebar-menus.css";
 import { canRetryGatewayStatus } from "./gateway-status.ts";
+import type { PickerFocusHandle } from "./select-picker-types.ts";
 import { sessionMenuReasons } from "./session-menu-access.ts";
 import { SessionMenu, type SessionMenuAction } from "./session-menu-solid.tsx";
 import { moveSessionFromMenu, sessionPlacementAction } from "./session-placement-action.ts";
@@ -52,7 +53,9 @@ import { isUpdateAttentionForced } from "./sidebar-attention-dismissals.ts";
 import { isReleaseUpdateAvailable } from "./sidebar-attention-update.ts";
 import type { SidebarMenusOwner } from "./sidebar-menus-types.ts";
 import type { SidebarMenus } from "./sidebar-menus.tsx";
+import { SidebarSessionFilterPopover } from "./sidebar-session-filter-popover.tsx";
 import type { MenuEntry } from "./solid/menu.tsx";
+import { Picker } from "./solid/select-picker.tsx";
 
 export { CatalogSessionMenu } from "./catalog-session-menu-solid.tsx";
 export { createSessionMenuWork } from "./session-menu-work.ts";
@@ -61,7 +64,15 @@ const AgentCreateDialog = lazy(() => import("./agent-create-dialog.tsx"), {
   export: "AgentCreateDialog",
 });
 
+registerSessionOrganizationEnglish();
 registerAgentCreationEnglish();
+
+const SORT_OPTIONS = [
+  { value: "presence", labelKey: "presence.filters.presence" },
+  { value: "running", labelKey: "presence.filters.running" },
+  { value: "open", labelKey: "presence.filters.total" },
+  { value: "name", labelKey: "presence.filters.name" },
+] as const;
 
 export function SidebarMenusRenderer(props: {
   menus: SidebarMenus;
@@ -118,7 +129,91 @@ function renderSidebarMenus(
       {(menu) => renderSidebarSessionSortMenuForMenus(projected, view, menu)}
     </Show>,
     <Show when={projected.peopleFilterMenuPosition} keyed>
-      {(menu) => renderSidebarPeopleFilterMenuForMenus(projected, view, menu)}
+      {(menu) => {
+        const pickers = new Map<string, PickerFocusHandle>();
+        let reset: HTMLButtonElement | undefined;
+        const people = () => view.people;
+        const commit = (update: () => void) => {
+          if (projected.peopleFilterMenuPosition !== menu) {
+            return;
+          }
+          update();
+          projected.closePositionedMenu("peopleFilter", { restoreFocus: true });
+        };
+        const sheet = () => isMobileNavLayout();
+        const changed = createMemo(
+          () => people().statusFilter !== "all" || people().sortMode !== "presence",
+        );
+        return (
+          <SidebarSessionFilterPopover
+            class="sidebar-session-sort-menu sidebar-people-filter-menu"
+            anchor={projected.triggers.get("peopleFilter") ?? null}
+            label={t("presence.filters.label")}
+            initialFocus={() => pickers.get("status")?.trigger}
+            focusTargets={() => [
+              ...[...pickers.values()].flatMap((picker) => picker.elements()),
+              ...(reset ? [reset] : []),
+            ]}
+            onClose={projected.positionedMenuHandlers("peopleFilter").onClose}
+            content={
+              <>
+                <div class="sidebar-session-menu-section">
+                  <Picker
+                    focusRef={(handle) => pickers.set("status", handle)}
+                    id="sidebar-people-status"
+                    label={t("sessionsView.status")}
+                    value={people().statusFilter}
+                    variant="submenu"
+                    sheet={sheet()}
+                    showOptionTooltips={false}
+                    options={[
+                      { value: "all", label: t("sessionsView.all") },
+                      { value: "running", label: t("common.running") },
+                    ]}
+                    onChange={(value) => {
+                      if (value === "all" || value === "running") {
+                        commit(() => people().set("statusFilter", value));
+                      }
+                    }}
+                  />
+                  <Picker
+                    focusRef={(handle) => pickers.set("sort", handle)}
+                    id="sidebar-people-sort"
+                    label={t("chat.sidebar.sortBy")}
+                    value={people().sortMode}
+                    variant="submenu"
+                    sheet={sheet()}
+                    showOptionTooltips={false}
+                    options={SORT_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: t(option.labelKey),
+                    }))}
+                    onChange={(value) => {
+                      const option = SORT_OPTIONS.find((entry) => entry.value === value);
+                      if (option) {
+                        commit(() => people().set("sortMode", option.value));
+                      }
+                    }}
+                  />
+                </div>
+                {changed() ? (
+                  <footer class="sidebar-session-menu-footer">
+                    <button
+                      ref={(element) => (reset = element)}
+                      type="button"
+                      id="sidebar-people-reset"
+                      class="sidebar-session-filter-footer"
+                      onClick={() => commit(() => people().resetView())}
+                    >
+                      {t("presence.filters.reset")}
+                    </button>
+                  </footer>
+                ) : undefined}
+              </>
+            }
+          />
+        );
+      }}
     </Show>,
     <Show when={projected.catalogViewMenuPosition} keyed>
       {(menu) => renderSidebarCatalogViewMenuForMenus(projected, view, menu)}

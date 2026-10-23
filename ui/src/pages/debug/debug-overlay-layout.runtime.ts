@@ -5,7 +5,11 @@ const POSITION_KEY = "openclaw.debug-overlay.position";
 type Position = { x: number; y: number };
 type Mode = "expanded" | "minimized";
 
-function readPosition(): Position | undefined {
+export function createDebugOverlayLayout(element: HTMLElement) {
+  const listeners = new AbortController();
+  const eventOptions = { signal: listeners.signal };
+  let mode: Mode | undefined;
+  let position: Position | undefined;
   try {
     const value: unknown = JSON.parse(getSafeLocalStorage()?.getItem(POSITION_KEY) ?? "null");
     if (
@@ -18,19 +22,11 @@ function readPosition(): Position | undefined {
       typeof value.y === "number" &&
       Number.isFinite(value.y)
     ) {
-      return { x: value.x, y: value.y };
+      position = { x: value.x, y: value.y };
     }
   } catch {
     // Browser storage may be unavailable; moving the panel still works for this mount.
   }
-  return undefined;
-}
-
-export function createDebugOverlayLayout(element: HTMLElement) {
-  const listeners = new AbortController();
-  const eventOptions = { signal: listeners.signal };
-  let mode: Mode | undefined;
-  let position = readPosition();
   let frame = 0;
   let transitionFrom: DOMRect | undefined;
   let animation: Animation | undefined;
