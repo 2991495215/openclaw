@@ -36,6 +36,11 @@ type RuntimeConfigReplaceResult = import("../../config/mutate.js").ConfigReplace
 type RuntimeProviderListParams = {
   config?: import("../../config/types.openclaw.js").OpenClawConfig;
 };
+type RuntimeGenerationApi<Params, Result, Provider> = {
+  generate: (params: Params) => Promise<Result>;
+  listProviders: (params?: RuntimeProviderListParams) => Provider[];
+};
+
 type RuntimeConfigMutationContext = {
   snapshot: import("../../config/types.openclaw.js").ConfigFileSnapshot;
   previousHash: string | null;
@@ -491,30 +496,21 @@ export type PluginRuntimeCore = {
     describeVideoFile: MediaUnderstandingRuntime["describeVideoFile"];
     transcribeAudioFile: MediaUnderstandingRuntime["transcribeAudioFile"];
   };
-  imageGeneration: {
-    generate: (
-      params: import("../../image-generation/runtime-types.js").GenerateImageParams,
-    ) => Promise<import("../../image-generation/runtime-types.js").GenerateImageRuntimeResult>;
-    listProviders: (
-      params?: RuntimeProviderListParams,
-    ) => import("../../image-generation/types.js").ImageGenerationProvider[];
-  };
-  videoGeneration: {
-    generate: (
-      params: import("../../video-generation/runtime-types.js").GenerateVideoParams,
-    ) => Promise<import("../../video-generation/runtime-types.js").GenerateVideoRuntimeResult>;
-    listProviders: (
-      params?: RuntimeProviderListParams,
-    ) => import("../../video-generation/types.js").VideoGenerationProvider[];
-  };
-  musicGeneration: {
-    generate: (
-      params: import("../../music-generation/runtime-types.js").GenerateMusicParams,
-    ) => Promise<import("../../music-generation/runtime-types.js").GenerateMusicRuntimeResult>;
-    listProviders: (
-      params?: RuntimeProviderListParams,
-    ) => import("../../music-generation/types.js").MusicGenerationProvider[];
-  };
+  imageGeneration: RuntimeGenerationApi<
+    import("../../image-generation/runtime-types.js").GenerateImageParams,
+    import("../../image-generation/runtime-types.js").GenerateImageRuntimeResult,
+    import("../../image-generation/types.js").ImageGenerationProvider
+  >;
+  videoGeneration: RuntimeGenerationApi<
+    import("../../video-generation/runtime-types.js").GenerateVideoParams,
+    import("../../video-generation/runtime-types.js").GenerateVideoRuntimeResult,
+    import("../../video-generation/types.js").VideoGenerationProvider
+  >;
+  musicGeneration: RuntimeGenerationApi<
+    import("../../music-generation/runtime-types.js").GenerateMusicParams,
+    import("../../music-generation/runtime-types.js").GenerateMusicRuntimeResult,
+    import("../../music-generation/types.js").MusicGenerationProvider
+  >;
   webSearch: {
     /** @deprecated Await listProvidersAsync so discovery policy is prepared off-thread. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
     listProviders: (
