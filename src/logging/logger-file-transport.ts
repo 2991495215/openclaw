@@ -105,28 +105,6 @@ function getCurrentLogFileBytesSync(file: string): number {
   }
 }
 
-function buildDroppedMarker(target: FileLogQueueEntry, count: number): FileLogQueueEntry {
-  const date = new Date();
-  const message = `[openclaw] file log queue overflow; dropped ${count} oldest record${count === 1 ? "" : "s"}`;
-  const record = {
-    0: message,
-    _meta: {
-      date,
-      hostname: target.hostname,
-      logLevelName: "WARN",
-      name: "openclaw",
-    },
-    time: formatTimestamp(date, { style: "long" }),
-    hostname: target.hostname,
-    message,
-    dropped: count,
-  };
-  return {
-    ...target,
-    payload: `${JSON.stringify(record)}\n`,
-  };
-}
-
 function writeFileTransportWarning(message: string, synchronous: boolean): boolean {
   try {
     const redactedMessage = redactSensitiveText(message);
@@ -185,7 +163,27 @@ function claimQueuedEntries(): FileLogQueueEntry[] {
   queue = [];
   queueStart = 0;
   if (droppedCount > 0 && droppedTarget) {
-    entries.unshift(buildDroppedMarker(droppedTarget, droppedCount));
+    const target = droppedTarget;
+    const count = droppedCount;
+    const date = new Date();
+    const message = `[openclaw] file log queue overflow; dropped ${count} oldest record${count === 1 ? "" : "s"}`;
+    const record = {
+      0: message,
+      _meta: {
+        date,
+        hostname: target.hostname,
+        logLevelName: "WARN",
+        name: "openclaw",
+      },
+      time: formatTimestamp(date, { style: "long" }),
+      hostname: target.hostname,
+      message,
+      dropped: count,
+    };
+    entries.unshift({
+      ...target,
+      payload: `${JSON.stringify(record)}\n`,
+    });
   }
   droppedCount = 0;
   droppedTarget = null;
@@ -341,22 +339,18 @@ function scheduleFlush(): void {
   });
 }
 
-function handleProcessBeforeExit(): void {
-  void flushFileLogQueue();
-}
-
-function handleProcessExit(): void {
-  processExiting = true;
-  drainFileLogQueueSync();
-}
-
 function installProcessHooks(): void {
   if (processHooksInstalled) {
     return;
   }
   processHooksInstalled = true;
-  process.on("beforeExit", handleProcessBeforeExit);
-  process.on("exit", handleProcessExit);
+  process.on("beforeExit", function handleProcessBeforeExit() {
+    void flushFileLogQueue();
+  });
+  process.on("exit", function handleProcessExit() {
+    processExiting = true;
+    drainFileLogQueueSync();
+  });
 }
 
 /** Enqueues one serialized record without waiting for filesystem I/O. */

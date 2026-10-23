@@ -21,7 +21,15 @@ const SidebarAttention = lazy(() => import("../components/sidebar-attention.tsx"
   export: "SidebarAttention",
 });
 
-type FloatingUpdateCardProps = {
+declare module "@solidjs/web" {
+  namespace JSX {
+    interface IntrinsicElements {
+      "openclaw-sidebar-attention": SidebarAttentionElementAttributes;
+    }
+  }
+}
+
+export function FloatingUpdateCard(props: {
   navigationSurfaceHidden: boolean;
   mobileNavLayout: boolean;
   onboarding: boolean;
@@ -31,17 +39,7 @@ type FloatingUpdateCardProps = {
   refreshRequired: boolean;
   onRefresh: () => Promise<boolean>;
   onNavigate?: ApplicationContext["navigate"];
-};
-
-declare module "@solidjs/web" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "openclaw-sidebar-attention": SidebarAttentionElementAttributes;
-    }
-  }
-}
-
-export function FloatingUpdateCard(props: FloatingUpdateCardProps) {
+}) {
   return (
     <>
       <Show when={floatingSidebarAttentionVisible(props)}>

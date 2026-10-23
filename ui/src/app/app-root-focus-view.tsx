@@ -8,7 +8,7 @@ import type { ApplicationGatewaySnapshot } from "./context.ts";
 
 registerEnglishCatalog(registerSessionNavigationEnglish);
 
-type FocusDashboardProps = {
+export function FocusDashboard(props: {
   route: Promise<FocusDashboardRouteState>;
   snapshot: ApplicationGatewaySnapshot;
   onReady: () => void;
@@ -17,9 +17,7 @@ type FocusDashboardProps = {
   renderDocument: (
     props: Pick<BoardDocumentProps, "sessionKey" | "preparedSession">,
   ) => SolidJSX.Element;
-};
-
-export function FocusDashboard(props: FocusDashboardProps): SolidJSX.Element {
+}): SolidJSX.Element {
   const loadedRoute = createMemo(() => props.route);
   const connected = () => props.snapshot.phase === "connected";
   const failure = createMemo(() => {
