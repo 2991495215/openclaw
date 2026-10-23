@@ -4,11 +4,6 @@ import { pathForRoute } from "../app-route-paths.ts";
 import type { BoardFace } from "../lib/board/settings.ts";
 import { normalizeAgentId } from "../lib/sessions/session-key.ts";
 
-type ReleasedSessionQuery = {
-  face: BoardFace;
-  sessionKey: string;
-};
-
 export function resolvePersistedAgentId(
   selectedAgentId: string | null | undefined,
   agentsList: AgentsListResult | null,
@@ -26,7 +21,7 @@ export function resolvePersistedAgentId(
 export function releasedSessionQuery(
   location: RouteLocation,
   basePath: string,
-): ReleasedSessionQuery | null {
+): { face: BoardFace; sessionKey: string } | null {
   const params = new URLSearchParams(location.search);
   if (!params.has("session")) {
     return null;

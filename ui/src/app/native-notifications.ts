@@ -19,10 +19,6 @@ type NativeBackgroundSessionCompletion = {
   search?: string;
 };
 
-type NativeNotificationsWindow = Window & {
-  __OPENCLAW_NATIVE_NOTIFICATIONS__?: unknown;
-};
-
 // Wire contract with the Mac app's dashboard bridge (DashboardWindowController+Notifications.swift).
 const NATIVE_NOTIFICATIONS_STATUS_EVENT = "openclaw:native-notifications-status";
 
@@ -64,7 +60,9 @@ export function createNativeNotificationsCapability() {
     return null;
   }
 
-  const nativeWindow = window as NativeNotificationsWindow;
+  const nativeWindow = window as Window & {
+    __OPENCLAW_NATIVE_NOTIFICATIONS__?: unknown;
+  };
   let snapshot = snapshotFrom(nativeWindow["__OPENCLAW_NATIVE_NOTIFICATIONS__"]) ?? {
     permission: "unknown" as const,
     test: null,

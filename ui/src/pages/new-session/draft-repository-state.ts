@@ -29,18 +29,7 @@ type DraftRepositorySnapshot = Readonly<{
   gateway: ApplicationContext["gateway"]["snapshot"] | undefined;
 }>;
 
-type DraftRepositoryCallbacks = {
-  changed: () => void;
-  persistPreference: (patch: NewSessionPreference) => void;
-  capturePreferenceConsumption: (
-    owner: Readonly<{ agentId: string; workspace: string }>,
-    expected: SubmittedWorktreePreference,
-  ) => ((consume: () => void) => void | Promise<void>) | undefined;
-};
-
 export type DraftRepositoryRead<T> = Readonly<{ completed: Promise<T> }>;
-
-type ResolvedRepository = Exclude<DraftRepositoryState, { kind: "checking" }>;
 
 function initialRepositoryState(snapshot: DraftRepositorySnapshot): DraftRepositoryState {
   if (snapshot.remoteProject) {
@@ -89,7 +78,14 @@ export class DraftRepositoryStateOwner {
 
   constructor(
     private readonly read: () => DraftRepositorySnapshot,
-    private readonly callbacks: DraftRepositoryCallbacks,
+    private readonly callbacks: {
+      changed: () => void;
+      persistPreference: (patch: NewSessionPreference) => void;
+      capturePreferenceConsumption: (
+        owner: Readonly<{ agentId: string; workspace: string }>,
+        expected: SubmittedWorktreePreference,
+      ) => ((consume: () => void) => void | Promise<void>) | undefined;
+    },
   ) {}
 
   private matchesProjectCheckout(): boolean {
@@ -464,7 +460,7 @@ export class DraftRepositoryStateOwner {
     }
   }
 
-  private adoptResolvedRepository(state: ResolvedRepository) {
+  private adoptResolvedRepository(state: Exclude<DraftRepositoryState, { kind: "checking" }>) {
     // Worktree preferences can arrive while discovery is pending.
     this.repositoryValue = state;
     if (state.kind === "direct" && (!this.read().selectedProject || this.read().remotePlacement)) {

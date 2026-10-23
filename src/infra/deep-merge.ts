@@ -1,11 +1,6 @@
 import { isPlainObject } from "./plain-object.js";
 import { isBlockedObjectKey } from "./prototype-keys.js";
 
-type DeepMergeOptions = {
-  arrays?: "replace" | "concat";
-  undefinedValues?: "skip" | "replace";
-};
-
 function sanitizePlainObject(value: Record<string, unknown>): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -21,7 +16,10 @@ function sanitizePlainObject(value: Record<string, unknown>): Record<string, unk
 export function mergeDeep(
   base: unknown,
   override: unknown,
-  options: DeepMergeOptions = {},
+  options: {
+    arrays?: "replace" | "concat";
+    undefinedValues?: "skip" | "replace";
+  } = {},
 ): unknown {
   const arrays = options.arrays ?? "replace";
   const undefinedValues = options.undefinedValues ?? "skip";

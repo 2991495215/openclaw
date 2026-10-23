@@ -1,21 +1,19 @@
-type ChannelAvatarOrigin = {
-  provider?: string;
-  accountId?: string;
-  chatType?: string;
-  from?: string;
-  nativeDirectUserId?: string;
-};
-
-type NativeSenderAvatarScope = {
-  pluginId?: string | null;
-  accountId?: string | null;
-  id?: string | null;
-};
-
 /** Compare existing channel facts for display only; never create a profile association. */
 export function matchesChannelAvatarSenderSource(
-  origin: ChannelAvatarOrigin | undefined,
-  sender: NativeSenderAvatarScope,
+  origin:
+    | {
+        provider?: string;
+        accountId?: string;
+        chatType?: string;
+        from?: string;
+        nativeDirectUserId?: string;
+      }
+    | undefined,
+  sender: {
+    pluginId?: string | null;
+    accountId?: string | null;
+    id?: string | null;
+  },
 ): boolean {
   return Boolean(
     sender.pluginId &&

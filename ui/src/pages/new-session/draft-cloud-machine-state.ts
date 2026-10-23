@@ -5,10 +5,8 @@ import {
   type DraftCloudProfile,
 } from "./discovery.ts";
 
-type CloudOverride = { os?: string; machineClass?: string };
-
 export class DraftCloudMachineState {
-  private readonly overrides = new Map<string, CloudOverride>();
+  private readonly overrides = new Map<string, { os?: string; machineClass?: string }>();
 
   clear() {
     this.overrides.clear();
