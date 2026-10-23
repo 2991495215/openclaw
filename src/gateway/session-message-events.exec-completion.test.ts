@@ -194,11 +194,11 @@ describe("exec completion WebChat publication", () => {
           ws.close();
           await closed;
         }
-        const live = disconnected ? undefined : waitForSessionMessageEvent(ws, sessionKey);
         await prepareGatewayReplyRuntimeForTest({ force: true, config: cfg });
         gatewayReplyMock.mockImplementation((ctx, options, config) =>
           getReplyFromConfig(ctx, options, withFullRuntimeReplyConfig(config ?? cfg)),
         );
+        const live = disconnected ? undefined : waitForSessionMessageEvent(ws, sessionKey);
         receipt = enqueueSessionEventForHost(
           `Exec completed (webchat-proof, code 0) :: ${marker}`,
           {
