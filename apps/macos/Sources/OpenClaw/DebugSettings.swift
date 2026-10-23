@@ -750,7 +750,8 @@ struct DebugSettings: View {
                 hostedLocalProcess: hostsLocalGateway ? localStatus : nil)
         case .unconfigured:
             return GatewayStatus(
-                label: String(localized: "Not configured"), tint: .secondary,
+                label: String(localized: "Not configured"),
+                tint: .secondary,
                 subtitle: String(localized: "Choose local or remote before the app can attach to a Gateway."))
         }
     }
