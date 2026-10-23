@@ -274,7 +274,7 @@ it("a pass that leaves private claims unlinked queues the review automation once
   expect((await review())!.outcome).toBe("unavailable");
 
   // Once the review has linked everything, the pass does not queue it.
-  const left = (await service.relink({ dryRun: true }, main)).examples[0].id;
+  const left = (await service.relink({ dryRun: true }, main)).examples[0]!.id;
   const record = (await service.record({ id: left }, main)).record!;
   const prefs = await page(service, main, "Reply style", "concept");
   await service.annotate(

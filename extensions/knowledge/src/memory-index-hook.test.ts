@@ -42,7 +42,7 @@ it("keeps the rendered index byte-stable when a record is renamed mid-session", 
   const messages = [{ role: "user", timestamp: Date.now(), content: "hi" }];
   const first = await hook({ prompt: "hi", messages }, hookContext(f));
   expect(first.appendSystemContext).toContain("Original playbook title");
-  const current = (await f.service.record({ id: saved.id }, f.tool)).record;
+  const current = (await f.service.record({ id: saved.id }, f.tool)).record!;
   await f.service.save_page(
     {
       requestId: randomUUID(),
