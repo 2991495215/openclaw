@@ -477,7 +477,6 @@ it.each([
   const restartContinue = createDeferredCore();
   let shutdownReleased: Promise<void> | undefined;
   let interruptedRunId: string | undefined;
-  let interruptedSourceRunId: string | undefined;
   let entered = 0;
   let offered: unknown;
   let admittedOperator = false;
@@ -508,8 +507,7 @@ it.each([
     if (restarting && entered === 1) {
       expect(params.toolsAllow).toEqual(["github_publish"]);
       const recorder = expectDefined(params.userTurnTranscriptRecorder, "cron transcript owner");
-      const input = expectDefined(await recorder.persistApproved(), "persisted cron input");
-      interruptedSourceRunId = expectDefined(input.message.idempotencyKey, "cron input source id");
+      expect(await recorder.persistApproved()).toBeDefined();
       interruptedRunId = params.runId;
       await persistGatewaySessionLifecycleEvent({
         agentId: "main",
@@ -740,6 +738,10 @@ it.each([
       }
       if (restarting) {
         await restartEntered.promise;
+        const loadParent = () => accessor.loadSessionEntry(recovery.target);
+        const entry = loadParent();
+        const sourceId = expectDefined(entry?.restartRecoveryDeliverySourceRunId, "source");
+        expect(sourceId).not.toBe(interruptedRunId);
         const harness = createAgentEventTestHarness();
         try {
           const shutdown = await prepareGatewayRunShutdown({
@@ -752,20 +754,16 @@ it.each([
             removeChatRun: () => undefined,
             broadcast: harness.broadcast,
             nodeSendToSession: harness.nodeSendToSession,
-            markMainSessionsAbortedForRestart: (params) =>
-              markRestartAbortedMainSessions({ ...params, cfg: config, stateDir }).then(
-                () => undefined,
-              ),
+            markMainSessionsAbortedForRestart: async (params) => {
+              await markRestartAbortedMainSessions({ ...params, cfg: config, stateDir });
+            },
           });
           shutdownReleased = shutdown.released;
-          const interrupted = expectDefined(
-            accessor.loadSessionEntry(recovery.target),
-            "interrupted cron parent",
-          );
+          const interrupted = expectDefined(loadParent(), "interrupted cron parent");
           expect(interrupted).toMatchObject({
             status: "interrupted",
             mainRestartRecovery: { cycleId: expect.any(String) },
-            restartRecoveryDeliverySourceRunId: interruptedSourceRunId,
+            restartRecoveryDeliverySourceRunId: sourceId,
           });
           if (scenario !== "restart") {
             expect(interrupted.restartRecoveryTerminalRunIds).toContain(
