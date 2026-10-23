@@ -9,14 +9,12 @@ type DiscoveryOwner = {
   client: GatewayBrowserClient | null;
   agentId: string | null;
 };
-type DiscoveryOptions = {
+export function createModelProviderDiscovery(options: {
   canOpen: () => boolean;
   getOwner: () => DiscoveryOwner;
   onClose: () => void;
   onError: (error: unknown) => void;
-};
-
-export function createModelProviderDiscovery(options: DiscoveryOptions) {
+}) {
   const [opened, setOpened] = createSignal<DiscoveryOwner | null>(null);
   let owner: DiscoveryOwner | null = null;
   // Connection replacement cancels only the import; mounted setup owns recovery.

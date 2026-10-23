@@ -109,42 +109,6 @@ async function prepareCliTrajectory(
   return recorder;
 }
 
-function recordCliSessionEnded(params: {
-  recorder: CliTrajectoryRecorder;
-  context: PreparedCliRunContext;
-  result: EmbeddedAgentRunResult | undefined;
-  failed: boolean;
-  runError: unknown;
-}): void {
-  const { context, failed, recorder, result, runError } = params;
-  const stopReason = result?.meta.completion?.stopReason ?? result?.meta.stopReason;
-  const timedOut =
-    stopReason === "timeout" ||
-    (isFailoverError(runError) && runError.reason === "timeout") ||
-    (failed &&
-      context.params.abortSignal?.aborted === true &&
-      isSignalTimeoutReason(context.params.abortSignal.reason));
-  const aborted = result?.meta.aborted === true || isAbortError(runError);
-  const terminalAttempt = result?.meta.executionTrace?.attempts?.at(-1);
-  const status =
-    timedOut || aborted
-      ? "interrupted"
-      : failed || result?.meta.error || terminalAttempt?.result === "error"
-        ? "error"
-        : "success";
-  const promptError = failed ? formatErrorMessage(runError) : undefined;
-  const terminalError =
-    result?.meta.error?.message ?? (status === "error" ? terminalAttempt?.reason : undefined);
-  recordCliTrajectoryEvent(recorder, "session.ended", {
-    status,
-    aborted,
-    timedOut,
-    ...(stopReason ? { stopReason } : {}),
-    ...(promptError ? { promptError } : {}),
-    ...(terminalError ? { terminalError } : {}),
-  });
-}
-
 /** Settles a prepared CLI run and flushes its trajectory after the terminal outcome. */
 export async function settlePreparedCliRunWithTrajectory(
   context: PreparedCliRunContext,
@@ -175,7 +139,32 @@ export async function settlePreparedCliRunWithTrajectory(
     const activeRecorder = recorder;
     try {
       if (activeRecorder) {
-        recordCliSessionEnded({ recorder: activeRecorder, context, result, failed, runError });
+        const stopReason = result?.meta.completion?.stopReason ?? result?.meta.stopReason;
+        const timedOut =
+          stopReason === "timeout" ||
+          (isFailoverError(runError) && runError.reason === "timeout") ||
+          (failed &&
+            context.params.abortSignal?.aborted === true &&
+            isSignalTimeoutReason(context.params.abortSignal.reason));
+        const aborted = result?.meta.aborted === true || isAbortError(runError);
+        const terminalAttempt = result?.meta.executionTrace?.attempts?.at(-1);
+        const status =
+          timedOut || aborted
+            ? "interrupted"
+            : failed || result?.meta.error || terminalAttempt?.result === "error"
+              ? "error"
+              : "success";
+        const promptError = failed ? formatErrorMessage(runError) : undefined;
+        const terminalError =
+          result?.meta.error?.message ?? (status === "error" ? terminalAttempt?.reason : undefined);
+        recordCliTrajectoryEvent(activeRecorder, "session.ended", {
+          status,
+          aborted,
+          timedOut,
+          ...(stopReason ? { stopReason } : {}),
+          ...(promptError ? { promptError } : {}),
+          ...(terminalError ? { terminalError } : {}),
+        });
         await runAgentCleanupStep({
           runId: context.params.runId,
           sessionId: context.params.sessionId,
