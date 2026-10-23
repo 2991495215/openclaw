@@ -16,7 +16,8 @@ vi.mock("../../scripts/lib/gateway-bench-profile.ts", async (importOriginal) => 
   controlGatewayProfile: mocks.profile,
   startGatewayDiagnostics: async () => mocks.stop,
 }));
-vi.mock("../../scripts/lib/managed-child-process.mts", () => ({
+vi.mock("../../scripts/lib/managed-child-process.mts", async (importOriginal) => ({
+  ...(await importOriginal()),
   runManagedCommand: mocks.run,
 }));
 
