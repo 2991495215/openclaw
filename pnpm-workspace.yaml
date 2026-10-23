@@ -10,6 +10,8 @@ minimumReleaseAgeStrict: true
 
 # Trusted Codex runtimes are outside the dependency cooldown.
 minimumReleaseAgeExclude:
+  # Security fix for GHSA-27r3-jxmh-p828 (released 2026-10-22); remove after 2026-10-29T11:39:38.614Z.
+  - "body-parser@2.4.0"
   # Security fix for GHSA-68fv-2mgg-jv7q (released 2026-09-30); remove after 2026-10-07T14:08:09.382Z.
   - "source-map-js@1.2.2"
   # Maintainer-approved for Bun-only npm plugin installs; remove after 2026-09-29T21:29:31.258Z.
@@ -62,6 +64,8 @@ overrides:
   request: "npm:@cypress/request@4.0.1"
   request-promise: "npm:@cypress/request-promise@5.0.0"
   basic-ftp: 6.2.1
+  # GHSA-27r3-jxmh-p828: body-parser <2.4.0 can exhaust memory on oversized urlencoded input.
+  body-parser: 2.4.0
   brace-expansion: 5.0.12
   # GHSA-68fv-2mgg-jv7q: source-map-js <1.2.2 event-loop DoS (via css-tree).
   source-map-js: 1.2.2
