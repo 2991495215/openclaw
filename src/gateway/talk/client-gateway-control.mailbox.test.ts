@@ -267,7 +267,10 @@ it("closes a native Talk consultation waiting for saved-input recovery before ad
     await waiting.promise;
     expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
     await fixture.owner.close();
-    await expect(consultation).rejects.toThrow("closed");
+    await expect(consultation).rejects.toMatchObject({
+      name: "AbortError",
+      cause: fixture.owner.signal.reason,
+    });
     expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
   } finally {
     recovery.resolve();
