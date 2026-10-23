@@ -1,12 +1,12 @@
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
-import type { SessionPlacementPausedRecovery } from "./session-placement-recovery.ts";
 
 export const SESSION_PLACEMENT_ERROR_MAX_LENGTH = 4096;
 
 // Keep this projection free of storage validators: the lazy startup shell uses it too.
-export function formatSessionPlacementRecoveryError(
-  recovery: SessionPlacementPausedRecovery,
-): string {
+export function formatSessionPlacementRecoveryError(recovery: {
+  error: string;
+  sendError?: string;
+}): string {
   if (!recovery.sendError || recovery.sendError === recovery.error) {
     return recovery.error;
   }
