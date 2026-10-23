@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Compact tool presentation metadata: 1,273,984 B Chat / 769,640 B New.
-  // Floor preserves main's relative headroom against the matched b19bade build.
-  chatBootJsGzipBytes: 1_364_101,
-  newBootJsGzipBytes: 805_490,
+  // Compact tool presentation: matched a7f5566 Chat 1,273,728 to 1,271,539 B.
+  // New Session 769,205 to 767,113 B; preserve each surface's relative headroom.
+  chatBootJsGzipBytes: 1_361_324,
+  newBootJsGzipBytes: 802_467,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   // Jacob Tomlinson approved +50 B for native inline views (#173135, 2026-10-22).

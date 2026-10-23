@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 285482,
-  "reason": "Compact tool presentation metadata: matched b19bade build keeps startup at 285482 B gzip with 7 JS and 1 CSS request.",
+  "startupJsGzipBytes": 282539,
+  "reason": "Defer 245 optional feature English strings: matched b19bade build 285482 to 282539 B gzip with 7 JS and 1 CSS request.",
   "updatedAt": "2026-10-23"
 }
