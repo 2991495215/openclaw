@@ -37,16 +37,6 @@ export type OfficialExternalProviderAuthChoice = {
   onboardingScopes?: readonly PluginManifestOnboardingScope[];
 };
 
-type OfficialExternalProviderCatalogProvider = {
-  id?: string;
-  aliases?: readonly string[];
-  name?: string;
-  docs?: string;
-  categories?: readonly string[];
-  envVars?: readonly string[];
-  authChoices?: readonly OfficialExternalProviderAuthChoice[];
-};
-
 export type OfficialExternalWebSearchProvider = {
   id?: string;
   label?: string;
@@ -62,20 +52,13 @@ export type OfficialExternalWebSearchProvider = {
   autoDetectOrder?: number;
 };
 
-type OfficialExternalChannelSecretField = {
-  field: string;
-  activationField?: string;
-  activationEnv?: string;
-};
-
 export type OfficialExternalChannelSecretContract = {
   channelId: string;
-  fields: readonly OfficialExternalChannelSecretField[];
-};
-
-type OfficialExternalCatalogChannel = PluginPackageChannel & {
-  /** Older hosted catalogs used a flat env list before configuredState became canonical. */
-  envVars?: readonly string[];
+  fields: readonly {
+    field: string;
+    activationField?: string;
+    activationEnv?: string;
+  }[];
 };
 
 /** Manifest-like metadata stored in official external catalog entries. */
@@ -91,7 +74,10 @@ export type OfficialExternalPluginCatalogManifest = {
     label?: string;
   };
   catalog?: PluginManifestCatalog;
-  channel?: OfficialExternalCatalogChannel;
+  channel?: PluginPackageChannel & {
+    /** Older hosted catalogs used a flat env list before configuredState became canonical. */
+    envVars?: readonly string[];
+  };
   /** Host fallback for external channels that do not yet publish a secret-contract artifact. */
   channelSecrets?: {
     fields?: readonly {
@@ -106,7 +92,15 @@ export type OfficialExternalPluginCatalogManifest = {
     compatibilityMigration?: string;
     schemaAllOf?: readonly Record<string, unknown>[];
   };
-  providers?: readonly OfficialExternalProviderCatalogProvider[];
+  providers?: readonly {
+    id?: string;
+    aliases?: readonly string[];
+    name?: string;
+    docs?: string;
+    categories?: readonly string[];
+    envVars?: readonly string[];
+    authChoices?: readonly OfficialExternalProviderAuthChoice[];
+  }[];
   /**
    * Mirrors the plugin manifest's providerEndpoints so endpoint classification
    * keeps working when the plugin is not installed (dist excludes it).

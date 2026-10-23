@@ -49,30 +49,6 @@ import type { SkillMenu } from "./chat-composer-skill-menu.tsx";
 import type { SlashMenu } from "./chat-composer-slash-menu.tsx";
 import type { ChatPermissionPickerProps } from "./chat-permission-picker.tsx";
 
-type ChatQueuedEditProps = {
-  editingId: string | null;
-  editingText?: string;
-  editingMentions?: readonly HumanMention[];
-  source?: ChatQueueItem;
-  onEdit?: (id: string) => void;
-  onEditChange?: (text: string, mentions?: readonly HumanMention[]) => void;
-  onEditSubmit?: () => void;
-  onCancel: () => void;
-};
-
-/** Destinations and owner facts not already carried by ChatProps. */
-type ChatMobileActivities = {
-  onOpenSubagents?: NonNullable<ChatActivityPillsProps["subagents"]>["onOpen"];
-  goal?: Pick<NonNullable<ChatActivityPillsProps["goal"]>, "executionConfirmed" | "onOpen">;
-  onOpenProgress?: NonNullable<ChatActivityPillsProps["progress"]>["onOpen"];
-  onOpenPullRequest?: NonNullable<ChatActivityPillsProps["pullRequests"]>["onOpen"];
-  /** Eligibility is decided by the publication owner, including retained outcomes. */
-  publication?: {
-    eligible: boolean;
-    onOpen: NonNullable<ChatActivityPillsProps["publication"]>["onOpen"];
-  };
-};
-
 export type ChatComposerDisabledBanner = {
   kind: "above-composer" | "composer-replacement";
   presentation?: "compact" | "hidden";
@@ -117,7 +93,18 @@ export type ChatComposerProps = ChatAttachmentControlsProps & {
   mobileKeyboardVisible?: boolean;
   /** Presentation fact only. The host owns dock suspension and viewport recovery. */
   onComposerEditingChange?: (editing: boolean) => void;
-  mobileActivities?: ChatMobileActivities;
+  /** Destinations and owner facts not already carried by ChatProps. */
+  mobileActivities?: {
+    onOpenSubagents?: NonNullable<ChatActivityPillsProps["subagents"]>["onOpen"];
+    goal?: Pick<NonNullable<ChatActivityPillsProps["goal"]>, "executionConfirmed" | "onOpen">;
+    onOpenProgress?: NonNullable<ChatActivityPillsProps["progress"]>["onOpen"];
+    onOpenPullRequest?: NonNullable<ChatActivityPillsProps["pullRequests"]>["onOpen"];
+    /** Eligibility is decided by the publication owner, including retained outcomes. */
+    publication?: {
+      eligible: boolean;
+      onOpen: NonNullable<ChatActivityPillsProps["publication"]>["onOpen"];
+    };
+  };
   /** Prepared by ChatComposerView from native facts and real destinations. */
   mobileActivityPills?: ChatActivityPillsProps;
   mobileApprovalContent?: JSX.Element;
@@ -216,7 +203,16 @@ export type ChatComposerProps = ChatAttachmentControlsProps & {
   onQueueSteer?: (id: string) => void;
   onQueueMove?: (id: string, targetId: string) => void;
   displayQueue?: ChatQueueDisplayItem[];
-  queuedEdit?: ChatQueuedEditProps;
+  queuedEdit?: {
+    editingId: string | null;
+    editingText?: string;
+    editingMentions?: readonly HumanMention[];
+    source?: ChatQueueItem;
+    onEdit?: (id: string) => void;
+    onEditChange?: (text: string, mentions?: readonly HumanMention[]) => void;
+    onEditSubmit?: () => void;
+    onCancel: () => void;
+  };
   onClearReply?: () => void;
   goalRecovery?: ChatGoalRecovery;
   onGoalAction?: (goalId: string, action: ChatGoalAction) => void;
@@ -230,11 +226,6 @@ export type ChatComposerProps = ChatAttachmentControlsProps & {
 } & ChatSessionProgressProps &
   Partial<ChatRealtimeView>;
 
-type ScopedComposerDraft = {
-  key: string;
-  value: string;
-};
-
 export type ChatComposerState = {
   skillMenu: SkillMenu;
   slashMenu: SlashMenu;
@@ -246,7 +237,7 @@ export type ChatComposerState = {
   emojiMenu: ComposerEmojiMenu;
   mentionInput?: HumanMentionInput;
   composerInputIntentKey: string | null;
-  pendingClearedSubmittedDraft: ScopedComposerDraft | null;
+  pendingClearedSubmittedDraft: { key: string; value: string } | null;
   presentation: {
     dictationError: string | null;
     goalExpandedId: string | null;

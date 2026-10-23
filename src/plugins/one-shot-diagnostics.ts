@@ -40,13 +40,6 @@ function suppressOtelStdoutLogSink(config: OpenClawConfig): OpenClawConfig {
   };
 }
 
-function isOtelExportConfigured(config: OpenClawConfig): boolean {
-  // Mirrors the diagnostics-otel service's own start() gate so disabled
-  // configs skip plugin loading entirely on the CLI hot path.
-  const diagnostics = config.diagnostics;
-  return Boolean(diagnostics && diagnostics.enabled !== false && diagnostics.otel?.enabled);
-}
-
 /** CLI agent runs own exporter services outside the Gateway; stop drains and flushes them. */
 export async function startOneShotDiagnosticsExporters(params: {
   config: OpenClawConfig;
@@ -56,7 +49,10 @@ export async function startOneShotDiagnosticsExporters(params: {
     params.suppressStdoutDiagnosticLogs === true
       ? suppressOtelStdoutLogSink(params.config)
       : params.config;
-  if (!isOtelExportConfigured(config)) {
+  // Mirrors the diagnostics-otel service's own start() gate so disabled
+  // configs skip plugin loading entirely on the CLI hot path.
+  const diagnostics = config.diagnostics;
+  if (!(diagnostics && diagnostics.enabled !== false && diagnostics.otel?.enabled)) {
     return null;
   }
   const host = getBoundLegacyPluginSdkResourceHost();

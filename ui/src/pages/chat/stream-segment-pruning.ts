@@ -18,9 +18,6 @@ import {
   resolveMatchingLiveToolIdentity,
 } from "./tool-stream-identity.ts";
 
-type AssistantMessageVisibility = (message: unknown) => boolean;
-type StreamVisibility = (stream: string) => boolean;
-
 function pruneAccumulatedStreamSegments(
   segments: readonly ChatStreamSegment[],
   activeRunId: string | null | undefined,
@@ -66,8 +63,8 @@ export function pruneHistoryReplacedStreamSegments(
   messages: unknown[],
   state: ToolStreamReconciliationState,
   opts: {
-    isHiddenAssistantMessage: AssistantMessageVisibility;
-    isHiddenStreamText: StreamVisibility;
+    isHiddenAssistantMessage: (message: unknown) => boolean;
+    isHiddenStreamText: (stream: string) => boolean;
   },
 ): boolean {
   const replacedIndexes = new Set<number>();

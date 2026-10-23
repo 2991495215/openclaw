@@ -28,13 +28,6 @@ type QuestionInput = ChatComposerProps &
     >
   >;
 
-type QuestionDisclosure = {
-  activeQuestionKey: string | null;
-  gatewayQuestionIds: string[];
-  asyncQuestionIds: string[];
-  questionCollapsed: boolean;
-};
-
 /** One disclosure lifetime belongs to the pane, above replaceable composer renderers. */
 export function createComposerQuestions(paneId: string, readProps: () => QuestionInput | null) {
   const state = getChatComposerState(paneId);
@@ -110,7 +103,12 @@ export function createComposerQuestions(paneId: string, readProps: () => Questio
         (state.composerTextarea !== null && document.activeElement === state.composerTextarea),
     };
   });
-  const [disclosure, update] = createStore<QuestionDisclosure>(
+  const [disclosure, update] = createStore<{
+    activeQuestionKey: string | null;
+    gatewayQuestionIds: string[];
+    asyncQuestionIds: string[];
+    questionCollapsed: boolean;
+  }>(
     (draft) => {
       const data = source();
       if (!data) {

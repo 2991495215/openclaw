@@ -23,15 +23,13 @@ const RUN_FIELDS = [
   "waitingApprovalStatuses",
 ] as const;
 
-type RunField = (typeof RUN_FIELDS)[number];
-type ChatRunFields<T> = Partial<Pick<T, Extract<RunField, keyof T>>>;
 type ChatRunPublication = "immediate" | "animation-frame";
 
 const presentations = new WeakMap<object, ChatRunPresentation<object>>();
 
 /** Synchronous run state with one publication boundary for each accepted event. */
 class ChatRunPresentation<T extends object> {
-  readonly values: ChatRunFields<T> = {};
+  readonly values: Partial<Pick<T, Extract<(typeof RUN_FIELDS)[number], keyof T>>> = {};
   readonly fields = RUN_FIELDS;
   frame: number | null = null;
   private readonly listeners = createChangeListeners();

@@ -16,16 +16,6 @@ import { AgentSelect, RequiredSessionPlacement } from "./target-controls-view.ts
 type SettingsProjection = ReturnType<typeof resolvePaletteSessionSettings>;
 type FocusTarget = "back" | "search" | "workspace";
 
-function SettingsIcon() {
-  return (
-    <StrokeIcon width="24" height="24">
-      <path d="M4 7h8m4 0h4M4 17h2m4 0h10" />
-      <circle cx="14" cy="7" r="2" />
-      <circle cx="8" cy="17" r="2" />
-    </StrokeIcon>
-  );
-}
-
 export function PaletteSessionSettingsView(properties: {
   id: string;
   options: SettingsOptions;
@@ -413,7 +403,13 @@ export function PaletteSessionSettingsView(properties: {
       triggerId={properties.id + "-settings-trigger"}
       triggerClass="palette-session-settings__trigger"
       triggerTitle={t("commandPalette.newSessionSettings")}
-      trigger={<SettingsIcon />}
+      trigger={
+        <StrokeIcon width="24" height="24">
+          <path d="M4 7h8m4 0h4M4 17h2m4 0h10" />
+          <circle cx="14" cy="7" r="2" />
+          <circle cx="8" cy="17" r="2" />
+        </StrokeIcon>
+      }
       ref={(handle) => {
         popover = handle;
       }}

@@ -22,25 +22,21 @@ export const ChatQuestionCard = defineSolidBridge<CardProps>(
     host.style.display = "contents";
     return (
       <Show when={props.props}>
-        {(panel) => <QuestionCardContents panel={panel()} host={host} />}
+        {(panel) => (
+          <ChatImportBoundary
+            identity={[panel().model.requestKey]}
+            connected={() => host.isConnected}
+            fallback={() => <LoadingState />}
+            subtitle={t("chat.questions.eyebrow")}
+          >
+            <QuestionPanel props={panel()} />
+          </ChatImportBoundary>
+        )}
       </Show>
     );
   },
   { properties: { props: { default: undefined, attribute: false } } },
 );
-
-function QuestionCardContents(props: { panel: QuestionPanelProps; host: HTMLElement }) {
-  return (
-    <ChatImportBoundary
-      identity={[props.panel.model.requestKey]}
-      connected={() => props.host.isConnected}
-      fallback={() => <LoadingState />}
-      subtitle={t("chat.questions.eyebrow")}
-    >
-      <QuestionPanel props={props.panel} />
-    </ChatImportBoundary>
-  );
-}
 
 declare module "@solidjs/web" {
   namespace JSX {

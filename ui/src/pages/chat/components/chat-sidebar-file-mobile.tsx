@@ -31,8 +31,6 @@ export type MobileFileMenuAction = {
   onSelect: () => void;
 };
 
-type MobileFileReadMode = Pick<FileHtmlPreviewControls, "source" | "onToggle">;
-
 export type SidebarFileMobileRailProps = {
   name: string;
   /** Full identity for the tooltip; never derive a local path from an artifact URL. */
@@ -190,7 +188,7 @@ export type SidebarFileMobileTextControlsProps = {
   controls: FileViewControls;
   canEdit: boolean;
   /** Omit for code/plain text/CSV. Markdown and HTML share this two-mode contract. */
-  mode?: MobileFileReadMode;
+  mode?: Pick<FileHtmlPreviewControls, "source" | "onToggle">;
   /** False for retained tabs/routes that are not currently presented. */
   active: boolean;
   /** One owner operation clears matches/query and restores the prior mode and appropriate focus. */

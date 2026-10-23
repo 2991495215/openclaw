@@ -15,15 +15,13 @@ import type { ChatRunStartupState } from "./chat-run-startup.ts";
 
 export type ChatReasoning = {
   runId: string;
-  items: ChatReasoningItem[];
-};
-
-type ChatReasoningItem = {
-  itemId: string;
-  text: string;
-  startedAt: number;
-  /** Durable IDs survive display reindexing; source ownership can differ from the client run. */
-  receipt?: { runId: string; messageId: string; persisted?: true };
+  items: {
+    itemId: string;
+    text: string;
+    startedAt: number;
+    /** Durable IDs survive display reindexing; source ownership can differ from the client run. */
+    receipt?: { runId: string; messageId: string; persisted?: true };
+  }[];
 };
 
 export type AgentEventPayload = AgentEvent & {

@@ -115,10 +115,6 @@ export type PluginCommandResult = ReplyPayload & {
   suppressReply?: boolean;
 };
 
-type PluginCommandHandler = (
-  ctx: PluginCommandContext,
-) => PluginCommandResult | Promise<PluginCommandResult>;
-
 export const AGENT_PROMPT_SURFACE_KINDS = [
   "openclaw_main",
   /** @deprecated Use openclaw_main. */
@@ -190,5 +186,5 @@ export type OpenClawPluginCommandDefinition = {
    * by core. External plugins cannot use this field.
    */
   ownership?: "plugin" | "reserved";
-  handler: PluginCommandHandler;
+  handler: (ctx: PluginCommandContext) => PluginCommandResult | Promise<PluginCommandResult>;
 };

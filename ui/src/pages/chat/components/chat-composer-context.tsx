@@ -22,11 +22,6 @@ registerEnglishCatalog(registerChatComposerEnglish);
 
 const CONTEXT_NOTICE_RATIO = 0.85;
 
-type ContextNoticeOptions = {
-  messages?: unknown[];
-  providerUsage?: ProviderUsageDisplayProps;
-};
-
 type ProviderCostStats = {
   input?: number;
   output?: number;
@@ -255,7 +250,10 @@ function renderContextStat(label: string, value: string) {
   );
 }
 
-type ContextNoticeProps = ContextNoticeOptions & {
+type ContextNoticeProps = {
+  messages?: unknown[];
+  providerUsage?: ProviderUsageDisplayProps;
+} & {
   session?: GatewaySessionRow;
 };
 

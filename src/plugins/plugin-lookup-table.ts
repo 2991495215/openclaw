@@ -4,15 +4,13 @@ import { loadGatewayStartupPluginPlanWithMetadata } from "./gateway-startup-plug
 import type { PluginMetadataSnapshot } from "./plugin-metadata-snapshot.js";
 import { normalizeWorkerProviderIds } from "./worker-provider-id.js";
 
-type PluginLookUpTableMetrics = PluginMetadataSnapshot["metrics"] & {
-  startupPlanMs: number;
-  startupPluginCount: number;
-};
-
 export type PluginLookUpTable = PluginMetadataSnapshot & {
   startup: GatewayStartupPluginPlan;
   workerProviderIds: readonly string[];
-  metrics: PluginLookUpTableMetrics;
+  metrics: PluginMetadataSnapshot["metrics"] & {
+    startupPlanMs: number;
+    startupPluginCount: number;
+  };
 };
 
 type LoadPluginLookUpTableParams = Omit<

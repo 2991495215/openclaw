@@ -17,98 +17,6 @@ export type { RuntimeLogger };
 
 type PluginRuntimeChannel = import("./types-channel.js").PluginRuntimeChannel;
 
-type SubagentRunParams = {
-  /** Revalidate command authority at the host's run admission boundary. */
-  assertCurrent?: () => void;
-  sessionKey: string;
-  message: string;
-  /** Run with an exact empty tool surface. */
-  disableTools?: boolean;
-  /** Add exact tools registered by the calling plugin to the worker's normal tool surface. */
-  toolsAlsoAllow?: string[];
-  provider?: string;
-  model?: string;
-  extraSystemPrompt?: string;
-  /** Use the bounded subagent prompt instead of the full conversation prompt. */
-  promptMode?: "minimal";
-  lane?: string;
-  lightContext?: boolean;
-  deliver?: boolean;
-  /** Deliver the completion to the authenticated requester of the current hook invocation. */
-  completionDelivery?: "current-requester";
-  idempotencyKey?: string;
-  cwd?: string;
-};
-
-type SubagentCompleteParams = {
-  agentId: string;
-  message: string;
-  extraSystemPrompt?: string;
-  model?: string;
-  timeoutMs?: number;
-  signal?: AbortSignal;
-};
-
-type PluginManagedWorktree = {
-  id: string;
-  path: string;
-  branch: string;
-};
-
-type SubagentRunResult = {
-  runId: string;
-  /** Canonical accepted session identity. Optional for explicit/custom runtimes. */
-  sessionKey?: string;
-  runtime?: {
-    harness: string;
-    provider: string;
-    model: string;
-  };
-};
-
-type SubagentWaitParams = {
-  runId: string;
-  timeoutMs?: number;
-};
-
-type SubagentGetSessionMessagesParams = {
-  sessionKey: string;
-  limit?: number;
-};
-
-type SubagentGetSessionMessagesResult = {
-  messages: unknown[];
-};
-
-type SubagentDeleteSessionParams = {
-  sessionKey: string;
-  deleteTranscript?: boolean;
-};
-
-type RuntimeNodeListParams = {
-  connected?: boolean;
-};
-
-type RuntimeNodeListResult = {
-  nodes: Array<{
-    nodeId: string;
-    displayName?: string;
-    platform?: string;
-    clientId?: string;
-    remoteIp?: string;
-    connected?: boolean;
-    connectedAtMs?: number;
-    lastSeenAtMs?: number;
-    caps?: string[];
-    commands?: string[];
-    /** True only for the node host installed alongside this Gateway. */
-    gatewayLocal?: boolean;
-    /** Advertised commands currently permitted by Gateway node-command policy. */
-    invocableCommands?: string[];
-    nodePluginTools?: NodePluginToolDescriptor[];
-  }>;
-};
-
 type RuntimeNodeInvokeParams = {
   nodeId: string;
   command: string;
@@ -199,7 +107,14 @@ export type PluginRuntime = PluginRuntimeCore & {
     /** Native collector children; only callable during requester-bound reply_dispatch. */
     native?: NativeSubagentRuntime;
     /** Fresh, tool-free background inference under the existing subagent model policy. */
-    complete: (params: SubagentCompleteParams) => Promise<{ text: string }>;
+    complete: (params: {
+      agentId: string;
+      message: string;
+      extraSystemPrompt?: string;
+      model?: string;
+      timeoutMs?: number;
+      signal?: AbortSignal;
+    }) => Promise<{ text: string }>;
     /** Ephemeral session-context inference on the session's model, with tool execution denied. */
     forkSession: (params: {
       sessionKey: string;
@@ -207,15 +122,64 @@ export type PluginRuntime = PluginRuntimeCore & {
       signal?: AbortSignal;
       timeoutMs?: number;
     }) => Promise<{ text: string; usage?: LlmCompleteUsage }>;
-    run: (params: SubagentRunParams) => Promise<SubagentRunResult>;
-    waitForRun: (params: SubagentWaitParams) => Promise<AgentWaitResult>;
-    getSessionMessages: (
-      params: SubagentGetSessionMessagesParams,
-    ) => Promise<SubagentGetSessionMessagesResult>;
-    deleteSession: (params: SubagentDeleteSessionParams) => Promise<void>;
+    run: (params: {
+      /** Revalidate command authority at the host's run admission boundary. */
+      assertCurrent?: () => void;
+      sessionKey: string;
+      message: string;
+      /** Run with an exact empty tool surface. */
+      disableTools?: boolean;
+      /** Add exact tools registered by the calling plugin to the worker's normal tool surface. */
+      toolsAlsoAllow?: string[];
+      provider?: string;
+      model?: string;
+      extraSystemPrompt?: string;
+      /** Use the bounded subagent prompt instead of the full conversation prompt. */
+      promptMode?: "minimal";
+      lane?: string;
+      lightContext?: boolean;
+      deliver?: boolean;
+      /** Deliver the completion to the authenticated requester of the current hook invocation. */
+      completionDelivery?: "current-requester";
+      idempotencyKey?: string;
+      cwd?: string;
+    }) => Promise<{
+      runId: string;
+      /** Canonical accepted session identity. Optional for explicit/custom runtimes. */
+      sessionKey?: string;
+      runtime?: {
+        harness: string;
+        provider: string;
+        model: string;
+      };
+    }>;
+    waitForRun: (params: { runId: string; timeoutMs?: number }) => Promise<AgentWaitResult>;
+    getSessionMessages: (params: {
+      sessionKey: string;
+      limit?: number;
+    }) => Promise<{ messages: unknown[] }>;
+    deleteSession: (params: { sessionKey: string; deleteTranscript?: boolean }) => Promise<void>;
   };
   nodes: {
-    list: (params?: RuntimeNodeListParams) => Promise<RuntimeNodeListResult>;
+    list: (params?: { connected?: boolean }) => Promise<{
+      nodes: Array<{
+        nodeId: string;
+        displayName?: string;
+        platform?: string;
+        clientId?: string;
+        remoteIp?: string;
+        connected?: boolean;
+        connectedAtMs?: number;
+        lastSeenAtMs?: number;
+        caps?: string[];
+        commands?: string[];
+        /** True only for the node host installed alongside this Gateway. */
+        gatewayLocal?: boolean;
+        /** Advertised commands currently permitted by Gateway node-command policy. */
+        invocableCommands?: string[];
+        nodePluginTools?: NodePluginToolDescriptor[];
+      }>;
+    }>;
     invoke: (params: RuntimeNodeInvokeParams) => Promise<unknown>;
     /** Open a connection-scoped binary node command inside the trusted Gateway runtime. */
     openDuplex: (
@@ -256,7 +220,7 @@ export type PluginRuntime = PluginRuntimeCore & {
       ownerKind: "workboard";
       ownerId: string;
       commitGuard?: () => void;
-    }) => Promise<PluginManagedWorktree>;
+    }) => Promise<{ id: string; path: string; branch: string }>;
     release: (params: { path: string }) => Promise<void>;
     removeIfLossless: (params: {
       path: string;

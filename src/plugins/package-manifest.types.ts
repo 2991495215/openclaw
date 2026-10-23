@@ -55,21 +55,6 @@ export type PluginPackageInstall = {
   requiredPlatformPackages?: string[];
 };
 
-type OpenClawPackageSetupFeatures = {
-  configPromotion?: boolean | "preserve-root";
-  /**
-   * @deprecated Declare doctorContract.stateMigrations in openclaw.plugin.json instead.
-   * Removal plan: remove the setup-entry adapter after the 2027.1 external-plugin migration window.
-   */
-  legacyStateMigrations?: boolean;
-  legacySessionSurfaces?: boolean;
-};
-
-type OpenClawPackageCompat = {
-  pluginApi?: string;
-  minGatewayVersion?: string;
-};
-
 export type OpenClawPackageBuild = {
   bundledDist?: boolean;
   openclawVersion?: string;
@@ -82,13 +67,24 @@ export type OpenClawPackageManifest = {
   setupEntry?: string;
   runtimeSetupEntry?: string;
   controlUi?: string;
-  setupFeatures?: OpenClawPackageSetupFeatures;
+  setupFeatures?: {
+    configPromotion?: boolean | "preserve-root";
+    /**
+     * @deprecated Declare doctorContract.stateMigrations in openclaw.plugin.json instead.
+     * Removal plan: remove the setup-entry adapter after the 2027.1 external-plugin migration window.
+     */
+    legacyStateMigrations?: boolean;
+    legacySessionSurfaces?: boolean;
+  };
   plugin?: {
     id?: string;
     label?: string;
   };
   channel?: PluginPackageChannel;
-  compat?: OpenClawPackageCompat;
+  compat?: {
+    pluginApi?: string;
+    minGatewayVersion?: string;
+  };
   install?: PluginPackageInstall;
   build?: OpenClawPackageBuild;
 };

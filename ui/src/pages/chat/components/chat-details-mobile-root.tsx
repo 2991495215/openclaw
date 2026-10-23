@@ -26,18 +26,6 @@ export type ChatDetailsMobileEntry = {
   metadata?: JSX.Element;
 };
 
-type ChatDetailsMobileItem<T> = ChatDetailsMobileEntry & { value: T };
-
-type ChatDetailsMobileCollection<T> = {
-  /** Native order, including settled items; never a second roster or query. */
-  items: readonly ChatDetailsMobileItem<T>[];
-  /** Authoritative total, including pages not loaded. Undefined means unknown. */
-  total?: number;
-  summary: ChatDetailsMobileEntry;
-  /** Owner-rendered loading/error/retry; retained rows remain available. */
-  notice?: JSX.Element;
-};
-
 type ChatDetailsMobileRootDestination =
   | { kind: "people" }
   | { kind: "context" }
@@ -91,7 +79,15 @@ export type ChatDetailsMobileRootProps = {
   publication?: JSX.Element;
   /** The publication entry presentation; opening review is navigation, never publication. */
   publicationEntry?: ChatDetailsMobileEntry;
-  automations?: ChatDetailsMobileCollection<CronCompactJob["id"]>;
+  automations?: {
+    /** Native order, including settled items; never a second roster or query. */
+    items: readonly (ChatDetailsMobileEntry & { value: CronCompactJob["id"] })[];
+    /** Authoritative total, including pages not loaded. Undefined means unknown. */
+    total?: number;
+    summary: ChatDetailsMobileEntry;
+    /** Owner-rendered loading/error/retry; retained rows remain available. */
+    notice?: JSX.Element;
+  };
   outputs?: ChatDetailsMobileEntry;
   /** Supply even for one version; omission is not a greater-than-one policy. */
   versions?: ChatDetailsMobileEntry;
