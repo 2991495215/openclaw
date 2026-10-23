@@ -1,7 +1,8 @@
-/** Applies secrets migration plans across config files, auth stores, and env files. */
 import fs from "node:fs";
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
+/** Applies secrets migration plans across config files, auth stores, and env files. */
+import { stripMatchingQuotes } from "@openclaw/normalization-core/string-normalization";
 import { resolveAgentDir } from "../agents/agent-scope.js";
 import { loadAuthProfileStoreForSecretsRuntime } from "../agents/auth-profiles.js";
 import { AUTH_STORE_VERSION } from "../agents/auth-profiles/constants.js";
@@ -42,7 +43,7 @@ import { resolveSecretRefValue } from "./resolve.js";
 import { prepareSecretsRuntimeSnapshot } from "./runtime.js";
 import { assertExpectedResolvedSecretValue } from "./secret-value.js";
 import { isNonEmptyString, isRecord } from "./shared.js";
-import { listSecretsDotEnvPaths, parseEnvAssignmentValue } from "./storage-scan.js";
+import { listSecretsDotEnvPaths } from "./storage-scan.js";
 
 type FileSnapshot = {
   existed: boolean;
@@ -116,7 +117,7 @@ function scrubEnvRaw(
     return (
       !match ||
       !allowedEnvKeys.has(match[1] ?? "") ||
-      !migratedValues.has(parseEnvAssignmentValue(match[2] ?? ""))
+      !migratedValues.has(stripMatchingQuotes(match[2] ?? ""))
     );
   });
   if (nextLines.length === lines.length) {
