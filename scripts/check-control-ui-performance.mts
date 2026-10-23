@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Optional English: 1,344,992 B Chat and 820,386 B New Session.
-  // Preserve main's relative headroom against the matched 0f6a build.
-  chatBootJsGzipBytes: 1_395_456,
-  newBootJsGzipBytes: 830_689,
+  // Optional English: 1,344,835 B Chat and 823,080 B New Session.
+  // Preserve main's relative headroom against the matched 9104b120 build.
+  chatBootJsGzipBytes: 1_395_516,
+  newBootJsGzipBytes: 830_766,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,

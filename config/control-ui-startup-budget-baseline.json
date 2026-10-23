@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 313166,
-  "reason": "Defer Settings, Terminal, Activity, preferences and update-detail English until their existing lazy owners load; matched 0f6a builds reduce startup from 316310 B to 313166 B, Chat to 1344992 B and New Session to 820386 B with unchanged requests.",
+  "startupJsGzipBytes": 312120,
+  "reason": "Settings English deferral: matched 9104b120 builds measure startup 315210 to 312120 B, Chat 1347940 to 1344835 B, and New Session 826161 to 823080 B with unchanged requests.",
   "updatedAt": "2026-10-23"
 }
