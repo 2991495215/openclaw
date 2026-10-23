@@ -205,7 +205,7 @@ an autonomous ingestion engine.
 | `knowledge-capture`         | Save decisions, preferences, facts, and short notes with attribution and readback.                  |
 | `knowledge-correct`         | Correct or withdraw exact records and inspect affected knowledge.                                   |
 | `knowledge-entities`        | Resolve and enrich people, companies, projects, and concepts with sourced profiles.                 |
-| `knowledge-ingest`          | Ingest documents, articles, and conversations with retained originals and cross-links.              |
+| `knowledge-ingest`          | Ingest documents, articles, and conversations; learn lessons from sets of sources (`/learn`).       |
 | `knowledge-meeting-ingest`  | Ingest meeting transcripts with attendee enrichment, decisions, commitments, and chronology checks. |
 | `knowledge-recall`          | Answer from saved knowledge with inspectable citations. Read-only.                                  |
 | `knowledge-source-ingest`   | Incrementally ingest enumerable sources with snapshot manifests and diffing.                        |

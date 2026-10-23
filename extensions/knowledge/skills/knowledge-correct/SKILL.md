@@ -19,7 +19,8 @@ when the requested target or correction remains materially ambiguous.
 
 Distinguish an erroneous saved assertion from an unsupported answer, conflicting
 source statements, and a fact that changed over time. Contradiction alone does
-not authorize supersession. Do not manufacture a stored “guard fact” when no
+not authorize supersession; the one non-user case is a standing statement its own
+holder explicitly replaced, per publication. Do not manufacture a stored “guard fact” when no
 record exists or treat a retraction as evidence for its opposite.
 
 ## Apply the right operation

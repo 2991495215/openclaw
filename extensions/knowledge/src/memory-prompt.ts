@@ -89,7 +89,7 @@ export const buildKnowledgeMemoryPrompt: Prompt = (params) => {
       tools.has("knowledge_verify")
     ) {
       lines.push(
-        "Use available skills: knowledge-ingest for documents, knowledge-meeting-ingest for transcripts, knowledge-entities for creating and enriching entity pages.",
+        "Use available skills: knowledge-ingest for documents and for learning lessons from sets of conversations or past sessions, knowledge-meeting-ingest for transcripts, knowledge-entities for creating and enriching entity pages.",
       );
     }
     if (tools.has("knowledge_correct") && tools.has("knowledge_withdraw")) {

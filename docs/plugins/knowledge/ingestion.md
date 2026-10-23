@@ -16,16 +16,16 @@ How agents bring sources into Knowledge. Part of the
 Knowledge ships eight skills from its `skills/` directory. They are discovered
 with the plugin and need no separate install.
 
-| Skill                      | Route                                                                                         |
-| -------------------------- | --------------------------------------------------------------------------------------------- |
-| `knowledge-automation`     | Create and verify host-scheduled ingestion using a retained authorized worker                 |
-| `knowledge-recall`         | Answer from saved Knowledge with inspectable citations; read-only                             |
-| `knowledge-capture`        | Save claims with `knowledge_remember`, or short notes and page updates with exact source text |
-| `knowledge-ingest`         | Documents, articles, and conversations: assertions, entity propagation, and back-links        |
-| `knowledge-meeting-ingest` | Transcripts: speaker uncertainty, decisions and actions, chronology                           |
-| `knowledge-entities`       | Resolve identities and create or update sourced profiles                                      |
-| `knowledge-correct`        | Exact-target correction, withdrawal, and merge, with impact inspection                        |
-| `knowledge-source-ingest`  | Canonical source identity, retained coverage snapshots, and manifest diffing                  |
+| Skill                      | Route                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `knowledge-automation`     | Create and verify host-scheduled ingestion using a retained authorized worker                                               |
+| `knowledge-recall`         | Answer from saved Knowledge with inspectable citations; read-only                                                           |
+| `knowledge-capture`        | Save claims with `knowledge_remember`, or short notes and page updates with exact source text                               |
+| `knowledge-ingest`         | Documents, articles, and conversations: assertions, entity propagation, back-links; lessons from sets of sources (`/learn`) |
+| `knowledge-meeting-ingest` | Transcripts: speaker uncertainty, decisions and actions, chronology                                                         |
+| `knowledge-entities`       | Resolve identities and create or update sourced profiles                                                                    |
+| `knowledge-correct`        | Exact-target correction, withdrawal, and merge, with impact inspection                                                      |
+| `knowledge-source-ingest`  | Canonical source identity, retained coverage snapshots, and manifest diffing                                                |
 
 The skills are adapted from gbrain's ingestion, enrichment, and correction
 workflows, using Knowledge tools in place of gbrain commands. They are agent

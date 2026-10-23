@@ -271,6 +271,10 @@ Before creating another claim, compare meaning, owner, source and dates:
   earlier claim, establish completion, or make the newer source authoritative.
 - An explicit correction: use `knowledge_correct`, not an annotation or silent
   replacement. Missing/uncertain outcomes still follow mutation replay rules.
+- A standing statement (preference, decision, rule) that the same person or
+  authority later explicitly replaces: `knowledge_correct` the earlier claim with
+  the new one; the reason quotes the replacing statement. Different holders,
+  contrary evidence or your own inference never qualify; use `continuity`.
 
 An event claim that specifically represents the source meeting itself may set
 `source_event: true` with its `source_page`. Keep one shared event association for
