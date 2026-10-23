@@ -1,11 +1,7 @@
-type CryptoLike = {
-  randomUUID?: (() => string) | undefined;
-  getRandomValues?: ((array: Uint8Array<ArrayBuffer>) => Uint8Array<ArrayBuffer>) | undefined;
-};
-
 let warnedWeakCrypto = false;
 
-export function generateUUID(cryptoLike: CryptoLike | null = globalThis.crypto): string {
+export function generateUUID(): string {
+  const cryptoLike = globalThis.crypto;
   if (cryptoLike && typeof cryptoLike.randomUUID === "function") {
     return cryptoLike.randomUUID();
   }
