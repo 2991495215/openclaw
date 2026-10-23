@@ -1,6 +1,6 @@
 /** Verifies provider auth choice helper defaults, sorting, and config matching. */
 import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
+import type { OpenClawConfig, OpenClawConfigInput } from "../config/config.js";
 import type { ModelProviderConfig } from "../config/types.models.js";
 import { applyProviderAuthConfigPatch as applySdkAuthPatch } from "../plugin-sdk/provider-auth.js";
 import { applyProviderAuthConfigPatchWithNormalization } from "./provider-auth-choice-helpers.js";
@@ -87,7 +87,7 @@ describe("applyProviderAuthConfigPatchWithNormalization", () => {
         },
       },
     } satisfies OpenClawConfig;
-    const patch = {
+    const patch: ProviderAuthResult["configPatch"] = {
       models: {
         providers: {
           "microsoft-foundry": {
@@ -122,7 +122,6 @@ describe("applyProviderAuthConfigPatchWithNormalization", () => {
       models: {
         providers: {
           fixture: {
-            ...provider,
             headers: { Authorization: undefined },
             request: { headers: { "X-Custom-Auth": undefined } },
           },
@@ -131,11 +130,36 @@ describe("applyProviderAuthConfigPatchWithNormalization", () => {
     };
     const next = applySdkAuthPatch({ models: { providers: { fixture: provider } } }, patch);
     expect(next.models?.providers?.fixture).toMatchObject({
+      baseUrl: provider.baseUrl,
+      models: provider.models,
       headers: { "X-Deployment": "keep" },
       request: { headers: { "X-Route": "keep" } },
     });
     expect(next.models?.providers?.fixture?.headers).not.toHaveProperty("Authorization");
     expect(next.models?.providers?.fixture?.request?.headers).not.toHaveProperty("X-Custom-Auth");
+  });
+
+  it("accepts authored config input without materializing unrelated providers", () => {
+    const materialized: OpenClawConfig = {
+      models: { providers: { fixture: { baseUrl: "https://provider.example/v1", models: [] } } },
+    };
+    const fullResult: ProviderAuthResult = { profiles: [], configPatch: materialized };
+    expect(applySdkAuthPatch({}, fullResult.configPatch).models?.providers?.fixture).toMatchObject(
+      materialized.models!.providers!.fixture!,
+    );
+    const config: OpenClawConfigInput = {
+      models: {
+        providers: {
+          fixture: { baseUrl: "https://provider.example/v1", models: [] },
+          unrelated: { apiKey: "synthetic-unrelated-key" },
+        },
+      },
+    };
+    const result: ProviderAuthResult = { profiles: [], configPatch: config };
+    const next = applySdkAuthPatch({}, result.configPatch);
+    expect(next.models?.providers?.fixture?.baseUrl).toBe("https://provider.example/v1");
+    expect(next.models?.providers?.unrelated?.apiKey).toBe("synthetic-unrelated-key");
+    expect(config.models?.providers?.unrelated).toEqual({ apiKey: "synthetic-unrelated-key" });
   });
 
   it.each(["litellm", "LiteLLM"] as const)(
