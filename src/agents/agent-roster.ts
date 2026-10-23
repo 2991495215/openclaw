@@ -119,6 +119,42 @@ export function listAgentIds(cfg: AgentRosterConfig): string[] {
   return [...new Set(agents.map((entry) => normalizeAgentId(entry?.id)))];
 }
 
+/** Tests a normalized id without projecting the roster; raw SDK rosters keep legacy semantics. */
+export function hasAgentId(cfg: AgentRosterConfig, agentId: string): boolean {
+  const entries = cfg.agents?.entries;
+  if (
+    Object.hasOwn(cfg.agents ?? {}, "entries") &&
+    isRecord(entries) &&
+    Object.prototype.propertyIsEnumerable.call(entries, agentId) &&
+    isRecord(entries[agentId])
+  ) {
+    return true;
+  }
+  const roster = readAgentRosterProperty(cfg);
+  if (roster?.kind === "entries" && isRecord(roster.value)) {
+    for (const id in roster.value) {
+      if (
+        Object.hasOwn(roster.value, id) &&
+        isRecord(roster.value[id]) &&
+        normalizeAgentId(id) === agentId
+      ) {
+        return true;
+      }
+    }
+  } else if (roster?.kind === "list" && Array.isArray(roster.value)) {
+    for (const entry of roster.value) {
+      if (
+        entry !== null &&
+        typeof entry === "object" &&
+        (entry.id === agentId || normalizeAgentId(entry.id) === agentId)
+      ) {
+        return true;
+      }
+    }
+  }
+  return !roster && agentId === LEGACY_IMPLICIT_AGENT_ID;
+}
+
 /** Lists configured roster and ACP harness targets for subagent policy. */
 export function resolveConfiguredAcpSubagentTargetIds(cfg: OpenClawConfig): Set<string> {
   const ids = new Set<string>(listAgentIds(cfg));

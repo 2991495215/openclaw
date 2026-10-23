@@ -8,25 +8,28 @@ const TRAILING_DASH_RE = /-+$/;
 
 /** Normalizes an OpenClaw agent id to its filesystem-safe canonical form. */
 export function normalizeAgentId(value: string | undefined | null): string {
-  const result = normalizeAgentIdStrict(value);
-  return result.ok ? result.value : DEFAULT_AGENT_ID;
+  return normalizeAgentIdValue(value) || DEFAULT_AGENT_ID;
 }
 
 /** Normalizes an explicitly supplied agent id without falling back to the default agent. */
 export function normalizeAgentIdStrict(
   value: string | undefined | null,
 ): Result<string, "unrepresentable"> {
+  const agentId = normalizeAgentIdValue(value);
+  return agentId ? ok(agentId) : err("unrepresentable");
+}
+
+function normalizeAgentIdValue(value: string | undefined | null): string {
   const trimmed = (value ?? "").trim();
   const normalized = trimmed.toLowerCase();
   if (VALID_ID_RE.test(trimmed)) {
-    return ok(normalized);
+    return normalized;
   }
-  const agentId = normalized
+  return normalized
     .replace(INVALID_CHARS_RE, "-")
     .replace(LEADING_DASH_RE, "")
     .replace(TRAILING_DASH_RE, "")
     .slice(0, 64);
-  return agentId ? ok(agentId) : err("unrepresentable");
 }
 
 /** Returns whether a value is already a canonical agent-id input. */

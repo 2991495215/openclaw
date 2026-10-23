@@ -288,6 +288,13 @@ export function readAgentDatabaseAdmissionRefusal(
   );
 }
 
+/** Bind the state path, but read current refusals and preparation scope on every call. */
+export function createAgentDatabaseAdmissionRefusalReader(options: AdmissionOptions = {}) {
+  const key = stateKey(options);
+  return (agentId: string) =>
+    readSelectedAgentDatabaseAdmissionRefusal(key, normalizeAgentId(agentId), agentId);
+}
+
 function readSelectedAgentDatabaseAdmissionRefusal(
   key: string,
   agentId: string,

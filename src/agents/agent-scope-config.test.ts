@@ -54,6 +54,51 @@ const legacy = (list?: LegacyAgentListEntry[]): OpenClawConfigWithLegacyRoster =
 });
 
 describe("agent roster resolution", () => {
+  it("checks membership without projecting entries and observes roster replacement and removal", () => {
+    const entries: Record<string, unknown> = Object.create({ inherited: {} });
+    Object.defineProperty(entries, "hidden", { value: {} });
+    entries[" OPS "] = { id: "ignored" };
+    entries.main = {};
+    const cfg = { agents: { entries } };
+    for (const [id, expected] of [
+      ["ops", true],
+      ["main", true],
+      ["ignored", false],
+      ["hidden", false],
+      ["inherited", false],
+    ] as const) {
+      expect(agentRoster.hasAgentId(cfg, id), id).toBe(expected);
+    }
+    Object.defineProperty(entries.main, "name", {
+      enumerable: true,
+      get() {
+        throw new Error("membership must not project entries");
+      },
+    });
+    expect(agentRoster.hasAgentId(cfg, "main")).toBe(true);
+    delete entries.main;
+    expect(agentRoster.hasAgentId(cfg, "main")).toBe(false);
+    cfg.agents.entries = { replacement: {} };
+    expect(agentRoster.hasAgentId(cfg, "ops")).toBe(false);
+    expect(agentRoster.hasAgentId(cfg, "replacement")).toBe(true);
+  });
+
+  it.each([
+    [{}, "main", true],
+    [{}, "ops", false],
+    [{ agents: { entries: {} } }, "main", false],
+    [{ agents: { list: [] } }, "main", false],
+    [{ agents: { entries: undefined, list: [{ id: " OPS " }] } }, "ops", true],
+    [{ agents: { entries: {}, list: [{ id: "ops" }] } }, "ops", false],
+    [{ agents: { entries: { bad: null, array: [], number: 1 } } }, "bad", false],
+    [{ agents: { list: [null, 1, "ops", { id: " OPS " }] } }, "ops", true],
+    [{ agents: { list: [{}] } }, "main", true],
+    [{ agents: { list: [Object.assign([], { id: "array" })] } }, "array", true],
+    [{ agents: { entries: { " ": {} } } }, "main", true],
+  ] as const)("preserves raw roster membership semantics: %j / %s", (cfg, id, expected) => {
+    expect(agentRoster.hasAgentId(cfg, id)).toBe(expected);
+  });
+
   it.each([undefined, "testprof"])("keeps configured-agent guidance runnable: %s", (profile) => {
     const cfg = twoAgents();
     vi.stubEnv("OPENCLAW_PROFILE", profile);
