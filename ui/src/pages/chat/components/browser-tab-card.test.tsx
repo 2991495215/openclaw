@@ -238,10 +238,54 @@ async function card(
   flush();
   const element = view.container.querySelector<HTMLElement>("openclaw-browser-tab-card")!;
   cards.set(element, { props, update, unmount: view.unmount });
+  await waitForSolid(() =>
+    expect(element.querySelector<HTMLButtonElement>(".more")?.disabled).toBe(false),
+  );
   return element;
 }
 
 describe("browser tab card", () => {
+  it("keeps an empty host inert and retains the loaded card across preview updates", async () => {
+    const gateway = gatewayContext([], ["operator.read"], true);
+    let update!: (props: CardProps) => void;
+    const view = mountSolid(
+      () => {
+        const [current, setCurrent] = createSignal<CardProps>({ context: gateway.context });
+        update = setCurrent;
+        return <BrowserTabCardHost {...current()} />;
+      },
+      { container: container() },
+    );
+    flush();
+    const host = view.container.querySelector<HTMLElement>("openclaw-browser-tab-card")!;
+    expect(host.childElementCount).toBe(0);
+    expect(gateway.listeners.size).toBe(0);
+    expect(gateway.request).not.toHaveBeenCalled();
+    const props: CardProps = {
+      context: gateway.context,
+      latest: false,
+      preview: {
+        kind: "browser-tab",
+        target: "host",
+        profile: "managed",
+        targetId: "lazy",
+        url: "https://example.com",
+        title: "Initial title",
+      },
+    };
+    update(props);
+    flush();
+    expect(host.querySelector(".title")?.textContent).toBe("Initial title");
+    await waitForSolid(() =>
+      expect(host.querySelector<HTMLButtonElement>(".more")?.disabled).toBe(false),
+    );
+    const loaded = host.querySelector(".card");
+    update({ ...props, preview: { ...props.preview!, title: "New title" } });
+    flush();
+    expect(host.querySelector(".card")).toBe(loaded);
+    expect(host.querySelector(".title")?.textContent).toBe("New title");
+  });
+
   it("retains browser-title post text when metadata only supplies the author", async () => {
     vi.useFakeTimers();
     const gateway = gatewayContext([], ["operator.read"], true);

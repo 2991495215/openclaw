@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import "../../../test-helpers/load-styles.ts";
 import { cleanupSolid, mountSolid } from "../../../test-helpers/mount-solid.ts";
-import { flush } from "../../../test-helpers/solid-settle.ts";
+import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { BrowserTabCardHost } from "./browser-tab-card.tsx";
 
 afterEach(() => {
@@ -27,6 +27,15 @@ it("shows action icons and supports copy, external opening, and keyboard dismiss
   );
   flush();
   const card = view.container.querySelector<HTMLElement>("openclaw-browser-tab-card")!;
+  const pendingBounds = card.getBoundingClientRect();
+  await waitForSolid(() =>
+    expect(card.querySelector<HTMLButtonElement>(".more")?.disabled).toBe(false),
+  );
+  const loadedBounds = card.getBoundingClientRect();
+  expect({ width: loadedBounds.width, height: loadedBounds.height }).toEqual({
+    width: pendingBounds.width,
+    height: pendingBounds.height,
+  });
   const trigger = card.querySelector<HTMLButtonElement>(".more")!;
   const dropdown = card.querySelector<HTMLElement>('[role="menu"]')!;
   const copy = card.querySelector<HTMLElement>('[value="copy-url"]')!;
