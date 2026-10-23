@@ -56,9 +56,9 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 26,
   newBootJsRequests: 20,
-  // Claw review deferral: 1,414,530 B Chat; New Session stays within build variance.
+  // Claw review deferral reduces Chat to 1,402,489 B; New Session stays within variance.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_468_183,
+  chatBootJsGzipBytes: 1_455_673,
   newBootJsGzipBytes: 929_032,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.

@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315967,
-  "reason": "Retain the stricter startup baseline after Claw review integration with c64eaf54: matched builds measure 316245 B base and 316273 B candidate across 7 requests, a 28 B delta within64 B build variance. Chat cap ratcheted for1414530 B with current relative headroom; New Session remains within43 B variance.",
+  "startupJsGzipBytes": 315881,
+  "reason": "Retain the stricter main startup baseline; matched 2c5 comparison is 316173 to 316199 B (+26 B within variance), Chat 1403921 to 1402489 B at unchanged requests. Ratchet Chat with current relative headroom.",
   "updatedAt": "2026-10-23"
 }
