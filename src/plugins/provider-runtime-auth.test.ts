@@ -127,7 +127,9 @@ it.each(["caller", "credential", "current"] as const)(
     let current = true;
     const revoked = new Error("fixture exchange authority revoked");
     const assertCurrent = () => {
-      if (!current) throw revoked;
+      if (!current) {
+        throw revoked;
+      }
     };
     const prepare = vi.fn(async () => {
       entered.resolve();

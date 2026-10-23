@@ -973,12 +973,12 @@ describe("applyAuthHeaderOverride", () => {
         runtimeConfig.models.providers.google.request,
       );
       const protectedConfigured = applySecretRefHeaderSentinels(configured, sourceConfig);
-      const configuredAuth = getModelProviderRequestTransport(protectedConfigured)?.auth;
+      const protectedAuth = getModelProviderRequestTransport(protectedConfigured)?.auth;
       expectSecret(
-        configuredAuth?.mode === "authorization-bearer"
-          ? configuredAuth.token
-          : configuredAuth?.mode === "header"
-            ? configuredAuth.value
+        protectedAuth?.mode === "authorization-bearer"
+          ? protectedAuth.token
+          : protectedAuth?.mode === "header"
+            ? protectedAuth.value
             : undefined,
         "configured-source-token",
       );
