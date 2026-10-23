@@ -6,9 +6,9 @@ import {
   type AgentCredentialMap,
 } from "../../agents/agent-auth-credentials.js";
 import type { AuthProfileStore } from "../../agents/auth-profiles.js";
-import * as auth from "../../agents/auth-profiles.js";
 import { prepareSharedAuthStoreOwnershipForNative } from "../../agents/auth-profiles/path-resolve.native.js";
 import * as authRevisionRuntime from "../../agents/auth-profiles/runtime-snapshots.js";
+import * as auth from "../../agents/auth-profiles/store.js";
 import type { ModelCatalogEntry } from "../../agents/model-catalog.types.js";
 import { resolvePublishedModelCatalogOwner } from "../../agents/prepared-model-catalog-owner.js";
 import * as catalogRuntime from "../../agents/prepared-model-catalog.js";

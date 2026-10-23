@@ -374,6 +374,7 @@ export function createGatewayChatMetadataRuntime(params: {
   const readModelsList = async (
     request: PreparedModelsListRequest,
   ): Promise<ModelsListResult | undefined> => {
+    assertOpen();
     assertAgentDatabaseAdmitted(request.agentId);
     const agentId = normalizeAgentId(request.agentId);
     const key = JSON.stringify([
@@ -384,15 +385,20 @@ export function createGatewayChatMetadataRuntime(params: {
       request.readScope?.sessionKey,
       request.readScope?.sessionEntry,
     ]);
+    const modelRuntimeReplacement = getPendingPreparedModelRuntimeReplacement();
     const rebuilding =
       pending !== undefined ||
-      getPendingPreparedModelRuntimeReplacement() !== undefined ||
+      modelRuntimeReplacement !== undefined ||
       !current ||
       !authStoresCurrent(current.facts) ||
       current.facts.agents.some((agent) => !agent.owner.isCurrent());
     const retained = rebuilding ? await retainedModelsList(key, request) : undefined;
     if (retained) {
       return retained;
+    }
+    // The Gateway fallback can use this agent's surviving owner during another agent's reload.
+    if (modelRuntimeReplacement) {
+      return undefined;
     }
     let result: ModelsListResult | undefined;
     try {

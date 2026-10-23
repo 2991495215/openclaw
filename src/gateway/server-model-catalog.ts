@@ -14,6 +14,7 @@ import { isPreparedModelCatalogFull } from "../agents/prepared-model-runtime.ful
 // Gateway catalog reads use the atomic prepared runtime generation.
 import { getRuntimeConfig } from "../config/io.js";
 import type { PreparedGatewayModelCatalogSnapshot } from "./server-model-catalog-auth.js";
+import { capturePreparedModelCatalogFacts } from "./server-model-catalog-facts.js";
 import { createPreparedGatewayModelCatalog } from "./server-model-catalog-view.js";
 import type {
   GatewayModelCatalogSnapshot,
@@ -227,26 +228,31 @@ export async function readPreparedGatewayModelCatalogOwnerSnapshot(
   const {
     getPublishedPreparedModelCatalogOwnerSnapshot,
     getPendingPreparedModelRuntimeReplacement,
-    materializePreparedModelCatalogOwner,
   } = await import("../agents/prepared-model-catalog.js");
-  const replacement = getPendingPreparedModelRuntimeReplacement();
-  if (replacement) {
-    await replacement;
+  const readOwner = () =>
+    getPublishedPreparedModelCatalogOwnerSnapshot({
+      ...(params?.agentId ? { agentId: params.agentId } : {}),
+      ...(params?.agentDir ? { agentDir: params.agentDir } : {}),
+      config: (params?.getConfig ?? getRuntimeConfig)(),
+      ...(params?.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
+    });
+  let candidate = readOwner();
+  if (!candidate) {
+    const replacement = getPendingPreparedModelRuntimeReplacement();
+    if (replacement) {
+      await replacement;
+      candidate = readOwner();
+    }
   }
-  const config = (params?.getConfig ?? getRuntimeConfig)();
-  const candidate = getPublishedPreparedModelCatalogOwnerSnapshot({
-    ...(params?.agentId ? { agentId: params.agentId } : {}),
-    ...(params?.agentDir ? { agentDir: params.agentDir } : {}),
-    config,
-    ...(params?.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
-  });
   if (!candidate) {
     return undefined;
   }
-  const published = materializePreparedModelCatalogOwner(candidate);
-  const owner = resolvePublishedModelCatalogOwner(published);
+  const owner = resolvePublishedModelCatalogOwner({
+    ...candidate,
+    ...capturePreparedModelCatalogFacts(candidate),
+  });
   return projectPreparedGatewayModelCatalogSnapshot(
     owner,
-    getPreparedModelRuntimeAuthMaterializations(published),
+    getPreparedModelRuntimeAuthMaterializations(candidate),
   );
 }

@@ -1,18 +1,17 @@
 import { withAgentRosterFactsBatch } from "../../agents/agent-scope-config.js";
 import { listAgentIds, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
-import { getPreparedRuntimeAuthProfileStoreSnapshot } from "../../agents/auth-profiles.js";
 import { getRuntimeAuthProfileStoreMetadataRevision } from "../../agents/auth-profiles/runtime-snapshots.js";
 import {
   withPreparedModelRuntimeReadBatch,
   getPublishedPreparedModelCatalogOwnerSnapshot,
 } from "../../agents/prepared-model-catalog.js";
-import { getPreparedModelFullCatalogAuth } from "../../agents/prepared-model-runtime-auth.js";
 import { resolveRuntimeModelConfigCacheKey } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { getActivePluginRegistryVersion } from "../../plugins/runtime.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { getSkillsSnapshotVersion } from "../../skills/runtime/refresh-state.js";
 import { readAgentDatabaseAdmissionRefusal } from "../../state/agent-database-admission.js";
+import { capturePreparedModelCatalogFacts } from "../server-model-catalog-facts.js";
 import type { ChatMetadataProjectionFacts } from "./chat-metadata-session-projection.js";
 
 type PreparedAgentFacts = ChatMetadataProjectionFacts & {
@@ -67,31 +66,15 @@ export function captureGenerationFacts(config: OpenClawConfig): PreparedGenerati
             return [];
           }
           const workspaceDir = owner.workspaceDir ?? resolveAgentWorkspaceDir(config, agentId);
-          const fullModelCatalog = owner.readFullModelCatalog?.();
-          const fullCatalogAuth = fullModelCatalog
-            ? getPreparedModelFullCatalogAuth(fullModelCatalog)
-            : undefined;
-          if (fullModelCatalog && !fullCatalogAuth) {
-            throw new Error("prepared full model catalog omitted its auth generation");
-          }
-          const catalog = fullModelCatalog ?? owner.modelCatalog;
+          const catalogFacts = capturePreparedModelCatalogFacts(owner);
           return [
             {
               agentId,
               owner,
-              authStore: fullCatalogAuth?.authStore ??
-                getPreparedRuntimeAuthProfileStoreSnapshot(
-                  owner.agentDir,
-                  owner.inheritedAuthDir,
-                ) ?? {
-                  version: 1,
-                  profiles: {},
-                },
-              authModes: fullCatalogAuth?.authModes ?? owner.authModes,
+              ...catalogFacts,
               authStoreRevision: `${getRuntimeAuthProfileStoreMetadataRevision(owner.agentDir)}:${getRuntimeAuthProfileStoreMetadataRevision(owner.inheritedAuthDir)}`,
-              modelCatalog: catalog,
               // Failure is visible metadata; in-flight discovery does not invalidate usable rows.
-              catalogRefreshFailed: catalog.refreshFailed === true,
+              catalogRefreshFailed: catalogFacts.modelCatalog.refreshFailed === true,
               skillsVersion: getSkillsSnapshotVersion(workspaceDir),
             },
           ];

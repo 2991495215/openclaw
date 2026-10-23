@@ -1,10 +1,16 @@
 import { performance } from "node:perf_hooks";
 import { expect, it, vi } from "vitest";
 import { withinTest } from "../../../test/helpers/promise.js";
+import type { AuthProfileStore } from "../../agents/auth-profiles/types.js";
+import * as catalogRuntime from "../../agents/prepared-model-catalog.js";
+import { bindPreparedModelRuntimeAuth } from "../../agents/prepared-model-runtime-auth.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
+import { registerGatewayModelCatalogPrivateAccess } from "../server-model-catalog-auth.js";
+import { readPreparedGatewayModelCatalogOwnerSnapshot } from "../server-model-catalog.js";
 import { handleChatMetadataRequest } from "./chat-metadata-handler.js";
 import {
   chatMetadataCommandFields,
@@ -12,7 +18,143 @@ import {
   createChatMetadataOwner,
 } from "./chat-metadata-runtime.test-support.js";
 import * as modelLists from "./models-list-result.js";
+import {
+  createModelsListTestContext,
+  requestModelsList,
+} from "./models-list-result.openai-routes.test-support.js";
 import type { RespondFn } from "./types.js";
+
+it("serves a new model-list view from a healthy owner during a sibling replacement", async ({
+  signal,
+}) => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const config = {
+      agents: {
+        entries: { main: {} },
+        defaults: { model: "test/first", modelPolicy: { allow: ["test/*"] } },
+      },
+    };
+    const harness = createChatMetadataHarness(config);
+    const owner = {
+      ...createChatMetadataOwner(config, "first", {}, "test", "openai-completions"),
+      pluginRegistry: createEmptyPluginRegistry(),
+    };
+    harness.setOwner(owner);
+    const context = createModelsListTestContext({
+      cfg: config,
+      catalog: owner.modelCatalog.entries,
+      pluginRegistry: owner.pluginRegistry,
+      preparedAuthStore: { version: 1, profiles: {} },
+    });
+    context.readPreparedModelsList = harness.runtime.readModelsList;
+    const readPrepared = () =>
+      readPreparedGatewayModelCatalogOwnerSnapshot({ agentId: "main", getConfig: () => config });
+    registerGatewayModelCatalogPrivateAccess(context.loadGatewayModelCatalogSnapshot, {
+      readPrepared,
+      loadDeferred: async () => {
+        throw new Error("Reading a published owner must not activate catalog discovery");
+      },
+    });
+    const read = async (view: "configured" | "all") => {
+      const response = await requestModelsList(context, { agentId: "main", view });
+      expect(response.mock.calls[0]?.[0]).toBe(true);
+      expect(response.mock.calls[0]?.[1]).toMatchObject({
+        models: [expect.objectContaining({ id: "first" })],
+      });
+      return response.mock.calls[0]?.[1];
+    };
+    const replacement = createDeferredCore();
+    try {
+      await harness.runtime.refresh();
+      const cached = await read("configured");
+      using pending = vi
+        .spyOn(catalogRuntime, "getPendingPreparedModelRuntimeReplacement")
+        .mockReturnValue(replacement.promise);
+      harness.runtime.invalidate();
+      const currentAuth: AuthProfileStore = {
+        version: 1,
+        profiles: { "test:current": { type: "api_key", provider: "test", key: "synthetic" } },
+        order: { test: ["test:current"] },
+      };
+      harness.setAuthStore(currentAuth);
+      const materializations = [
+        {
+          provider: "test",
+          modelId: "first",
+          modelApi: "openai-completions",
+          modelBaseUrl: "https://example.test/v1",
+          requestTransportOverrides: "none" as const,
+          authMode: "api_key",
+          runtimeOwnerId: "openclaw",
+        },
+      ];
+      bindPreparedModelRuntimeAuth(owner, {
+        store: { version: 1, profiles: {} },
+        materializations,
+      });
+      const published = await withinTest(readPrepared(), signal);
+      expect(published?.authStore).toBe(currentAuth);
+      expect(published?.authMaterializations).toBe(materializations);
+      expect(pending).not.toHaveBeenCalled();
+      await withinTest(read("all"), signal);
+      expect(await read("configured")).toEqual(cached);
+    } finally {
+      replacement.resolve();
+      await harness.runtime.stop();
+    }
+  });
+});
+
+it("waits for a missing catalog owner and rereads its config after publication", async ({
+  signal,
+}) => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    let config: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const harness = createChatMetadataHarness(config);
+    harness.getPreparedOwner.mockReturnValue(undefined);
+    const replacement = createDeferredCore();
+    const entered = createDeferredCore();
+    using pending = vi
+      .spyOn(catalogRuntime, "getPendingPreparedModelRuntimeReplacement")
+      .mockImplementation(() => {
+        entered.resolve();
+        return replacement.promise;
+      });
+    const getConfig = vi.fn(() => config);
+    const reading = readPreparedGatewayModelCatalogOwnerSnapshot({ agentId: "main", getConfig });
+    let settled = false;
+    void reading.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    try {
+      await withinTest(entered.promise, signal);
+      expect(settled).toBe(false);
+      config = { agents: { entries: { main: { workspace: "/tmp/published-workspace" } } } };
+      const owner = createChatMetadataOwner(config, "published");
+      harness.getPreparedOwner.mockReturnValue(owner);
+      replacement.resolve();
+      await expect(withinTest(reading, signal)).resolves.toMatchObject({
+        config,
+        entries: [{ id: "published" }],
+      });
+      expect(getConfig).toHaveBeenCalledTimes(2);
+      harness.getPreparedOwner.mockReturnValue(undefined);
+      pending.mockReturnValue(undefined);
+      await expect(
+        readPreparedGatewayModelCatalogOwnerSnapshot({ getConfig }),
+      ).resolves.toBeUndefined();
+    } finally {
+      replacement.resolve();
+      await Promise.allSettled([reading]);
+      await harness.runtime.stop();
+    }
+  });
+});
 
 it("serves commands independently of another agent's remembered model list", async ({ signal }) => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
