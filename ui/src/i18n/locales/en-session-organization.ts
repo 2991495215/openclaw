@@ -1,5 +1,4 @@
 import type { TranslationMap } from "../lib/types.ts";
-import { registerSessionMachineEnglish } from "./en-session-machine.ts";
 import { en } from "./en.ts";
 
 // The ordered source retains hot labels by reference; menu and management copy loads on use.
@@ -52,11 +51,12 @@ const enSessionOrganization = {
     ownedBy: en.sessionsView.ownedBy,
     archivedBy: en.sessionsView.archivedBy,
     archiveReason: "Archive reason",
-    archiveReasonManual: en.sessionsView.archiveReasonManual,
-    archiveReasonAgeRetention: en.sessionsView.archiveReasonAgeRetention,
-    archiveReasonActiveSessionCap: en.sessionsView.archiveReasonActiveSessionCap,
-    archiveReasonStaleDashboard: en.sessionsView.archiveReasonStaleDashboard,
-    archiveReasonRestartRecovery: en.sessionsView.archiveReasonRestartRecovery,
+    archiveReasonManual: "Archived manually",
+    archiveReasonAgeRetention: "Automatically archived by age retention",
+    archiveReasonActiveSessionCap:
+      "Automatically archived because the active-session limit was reached",
+    archiveReasonStaleDashboard: "Automatically archived after dashboard inactivity",
+    archiveReasonRestartRecovery: "Archived when a replacement session was recovered",
     viewingNow: en.sessionsView.viewingNow,
     owners: en.sessionsView.owners,
     allOwners: en.sessionsView.allOwners,
@@ -234,7 +234,7 @@ const enSessionOrganization = {
     customIconHintNoShortcut: "Paste an emoji or SVG.",
     removeIcon: "Remove icon",
     pinSession: en.sessionsView.pinSession,
-    pinRootSessionsOnly: en.sessionsView.pinRootSessionsOnly,
+    pinRootSessionsOnly: "Only root sessions can be pinned; pin the parent session instead.",
     unpinSession: en.sessionsView.unpinSession,
     markUnread: "Mark as unread",
     markRead: "Mark as read",
@@ -252,9 +252,9 @@ const enSessionOrganization = {
     splitBelow: "Split below",
     workspaceEditors: "Workspace · editor",
     resetAppearance: "Reset to default",
-    copyTranscriptChanged: en.sessionsView.copyTranscriptChanged,
-    openWindowBlocked: en.sessionsView.openWindowBlocked,
-    splitUnavailable: en.sessionsView.splitUnavailable,
+    copyTranscriptChanged: "Conversation changed while copying. Try again.",
+    openWindowBlocked: "Allow pop-ups for this site, then try again.",
+    splitUnavailable: "Open a conversation on a wide screen to use split view.",
     openPullRequest: "Open PR",
     openInEditorMenu: "Open in",
     archiveSession: en.sessionsView.archiveSession,
@@ -279,8 +279,8 @@ const enSessionOrganization = {
     sessionNameInUse: "A session with this name already exists.",
     newGroupMoveSkipped:
       "Group created, but the move was skipped because the list changed. Move from the row menu.",
-    stopCloudWorkerConfirm: en.sessionsView.stopCloudWorkerConfirm,
-    stopCloudWorkerConfirmAction: en.sessionsView.stopCloudWorkerConfirmAction,
+    stopCloudWorkerConfirm: 'Stop the cloud worker for "{session}"?',
+    stopCloudWorkerConfirmAction: "Stop worker",
     stopCloudWorkerStale:
       'Gateway connection replaced before the cloud worker for "{session}" was stopped. Try again.',
     deleteSessionConfirm:
@@ -311,7 +311,7 @@ const enSessionOrganization = {
     archiveSessionCount: "Archive {count}",
     restoreSession: en.sessionsView.restoreSession,
     restoreSessionCount: "Restore {count}",
-    moveSession: registerSessionMachineEnglish.catalog.sessionsView.moveSession,
+    moveSession: "Move session…",
     moveSessionTitle: "Move session",
     moveSessionDescription: 'Choose where "{session}" should continue.',
     moveSessionNoReplayWarning:
@@ -320,12 +320,11 @@ const enSessionOrganization = {
       "The active turn will be interrupted. Partial output is not replayed; send the next turn again after the move.",
     moveSessionAction: "Move session",
     moveSessionCatalogFailed: "Could not load available destinations.",
-    moveSessionFailed: registerSessionMachineEnglish.catalog.sessionsView.moveSessionFailed,
-    moveSessionGatewayTarget:
-      registerSessionMachineEnglish.catalog.sessionsView.moveSessionGatewayTarget,
-    movingSession: registerSessionMachineEnglish.catalog.sessionsView.movingSession,
-    movingSessionGeneric: registerSessionMachineEnglish.catalog.sessionsView.movingSessionGeneric,
-    stopCloudWorker: en.sessionsView.stopCloudWorker,
+    moveSessionFailed: "Move failed",
+    moveSessionGatewayTarget: "Gateway",
+    movingSession: "Moving to {target}…",
+    movingSessionGeneric: "Moving session…",
+    stopCloudWorker: "Stop cloud worker…",
     initialTurnPausedByWorkerStop:
       "Worker stop requested. Review the initial message before retrying.",
     deleteSessionMenu: "Delete…",

@@ -227,18 +227,6 @@ export const en: TranslationMap & {
       | "createdBy"
       | "ownedBy"
       | "archivedBy"
-      | "archiveReasonManual"
-      | "archiveReasonAgeRetention"
-      | "archiveReasonActiveSessionCap"
-      | "archiveReasonStaleDashboard"
-      | "archiveReasonRestartRecovery"
-      | "pinRootSessionsOnly"
-      | "copyTranscriptChanged"
-      | "openWindowBlocked"
-      | "splitUnavailable"
-      | "stopCloudWorker"
-      | "stopCloudWorkerConfirm"
-      | "stopCloudWorkerConfirmAction"
       | "viewingNow"
       | "owners"
       | "allOwners"
@@ -793,12 +781,6 @@ export const en: TranslationMap & {
     createdBy: "Created by {name}",
     ownedBy: "Owned by {name}",
     archivedBy: "Archived by {name}",
-    archiveReasonManual: "Archived manually",
-    archiveReasonAgeRetention: "Automatically archived by age retention",
-    archiveReasonActiveSessionCap:
-      "Automatically archived because the active-session limit was reached",
-    archiveReasonStaleDashboard: "Automatically archived after dashboard inactivity",
-    archiveReasonRestartRecovery: "Archived when a replacement session was recovered",
     viewingNow: "viewing now",
     owners: "Owners",
     allOwners: "All owners",
@@ -873,14 +855,7 @@ export const en: TranslationMap & {
       cyan: "Cyan",
     },
     pinSession: "Pin session",
-    pinRootSessionsOnly: "Only root sessions can be pinned; pin the parent session instead.",
     unpinSession: "Unpin session",
-    copyTranscriptChanged: "Conversation changed while copying. Try again.",
-    openWindowBlocked: "Allow pop-ups for this site, then try again.",
-    splitUnavailable: "Open a conversation on a wide screen to use split view.",
-    stopCloudWorker: "Stop cloud worker…",
-    stopCloudWorkerConfirm: 'Stop the cloud worker for "{session}"?',
-    stopCloudWorkerConfirmAction: "Stop worker",
     forkedSession: "Forked session",
     archiveSession: "Archive session",
     restoreSession: "Restore session",
