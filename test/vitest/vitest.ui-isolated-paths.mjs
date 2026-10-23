@@ -30,6 +30,8 @@ export const uiIsolatedTestFiles = [
   "ui/src/components/mcp-app-view.test.ts",
   "ui/src/components/promise-modal-host-loading.test.ts",
   "ui/src/components/resizable-divider.test.ts",
+  // The deferred preview mock must not leak into other hovercard consumers.
+  "ui/src/components/session-progress-hovercard-code.test.tsx",
   "ui/src/components/sidebar-update-card.test.ts",
   "ui/src/components/tooltip-loading.test.ts",
   "ui/src/components/viewer-facepile.test.ts",

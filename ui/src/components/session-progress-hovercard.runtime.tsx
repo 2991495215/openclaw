@@ -1,11 +1,16 @@
 import type { ProgressCard, ProgressCardGetParams } from "@openclaw/gateway-protocol";
 import { render, spread } from "@solidjs/web";
-import { createMemo, onSettled, runWithOwner, Show } from "solid-js";
+import { createMemo, Errored, lazy, Loading, onSettled, runWithOwner, Show } from "solid-js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import { pathForRoute } from "../app-route-paths.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { resolveControlUiAvatarAuth } from "../app/control-ui-auth.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
+import {
+  isStaleChunkImportError,
+  retryControlUiImport,
+  retryStaleChunkReloadWhenReachable,
+} from "../app/stale-chunk-reload.ts";
 import { t } from "../i18n/index.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import { projectSource } from "../lib/reactive/projection.ts";
@@ -23,9 +28,13 @@ import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.
 import type { AppSidebarElement, AppSidebarMethods } from "./app-sidebar.tsx";
 import { registryFor } from "./overlay-registry.ts";
 import { personActivityRouting } from "./person-activity-link.ts";
-import { controlsForHovercard, HovercardControlsContext } from "./portaled-hovercard-focus.ts";
+import {
+  controlsForHovercard,
+  createHovercardControlRef,
+  HovercardControlsContext,
+} from "./portaled-hovercard-focus.ts";
 import { createPortaledHovercard, createPortaledHovercardOwner } from "./portaled-hovercard.ts";
-import { SessionHovercard, type SessionHovercardInput } from "./session-hovercard-solid.tsx";
+import type { SessionHovercardInput } from "./session-hovercard-solid.tsx";
 import { SessionLinkTitler } from "./session-link-titling.ts";
 import {
   SESSION_MENU_OPEN_EVENT,
@@ -39,6 +48,39 @@ const SKIP_DELAY_MS = 300;
 const CLOSE_DELAY_MS = 100;
 const EXIT_DURATION_MS = 100;
 let nextHovercardId = 0;
+
+// Session links load this provider for title hydration without opening a card.
+const SessionHovercard = lazy(
+  () => retryControlUiImport(() => import("./session-hovercard-solid.tsx")),
+  {
+    export: "SessionHovercard",
+  },
+);
+
+function SessionHovercardCodeState(props: {
+  settled: () => void;
+  retry?: () => void;
+  stale?: boolean;
+}) {
+  onSettled(props.settled);
+  return (
+    <div style={{ padding: "var(--space-4)" }} role={props.retry ? "alert" : "status"}>
+      <span>{t(props.retry ? "lazyView.errorTitle" : "common.loading")}</span>
+      <Show when={props.retry}>
+        {(retry) => (
+          <button
+            type="button"
+            class="btn btn--sm"
+            ref={createHovercardControlRef()}
+            onClick={() => retry()()}
+          >
+            {t(props.stale ? "common.reload" : "common.retry")}
+          </button>
+        )}
+      </Show>
+    </div>
+  );
+}
 
 function sessionHovercardMenuOpen(owner: HTMLElement): boolean {
   return [...registryFor(owner.ownerDocument).members.keys()].some(
@@ -448,7 +490,30 @@ function createSessionProgressHovercard(
         );
         return (
           <HovercardControlsContext value={controlsForHovercard(card)}>
-            <SessionHovercard {...read().input} />
+            <Errored
+              fallback={(error, reset) => (
+                <SessionHovercardCodeState
+                  settled={() => read().commit(card)}
+                  stale={isStaleChunkImportError(error())}
+                  retry={() => {
+                    void (async () => {
+                      const reloading =
+                        isStaleChunkImportError(error()) &&
+                        (await retryStaleChunkReloadWhenReachable({
+                          canReload: isCurrentCard,
+                        }).catch(() => false));
+                      if (isCurrentCard() && !reloading) {
+                        hovercard.renderContents(card, reset);
+                      }
+                    })();
+                  }}
+                />
+              )}
+            >
+              <Loading fallback={<SessionHovercardCodeState settled={() => read().commit(card)} />}>
+                <SessionHovercard {...read().input} onReady={() => read().commit(card)} />
+              </Loading>
+            </Errored>
           </HovercardControlsContext>
         );
       }, card),

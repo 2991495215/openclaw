@@ -1,5 +1,5 @@
 import type { ProgressCard } from "@openclaw/gateway-protocol";
-import { createMemo, For, Show, useContext } from "solid-js";
+import { createMemo, For, onSettled, Show, useContext } from "solid-js";
 import type { SessionParticipant } from "../../../packages/gateway-protocol/src/schema/session-participant.js";
 import type {
   ControlUiSessionPullRequest,
@@ -456,7 +456,9 @@ function PullRequestDetails(props: { snapshot?: ControlUiSessionPullRequestSnaps
   );
 }
 
-export function SessionHovercard(props: SessionHovercardInput) {
+export function SessionHovercard(props: SessionHovercardInput & { onReady?: () => void }) {
+  // The lazy renderer can settle after the portal's initial loading frame.
+  onSettled(() => onSettled(() => props.onReady?.()));
   const controls = useContext(HovercardControlsContext);
   const headsUp = createMemo(() =>
     progressCardHeadsUp(
