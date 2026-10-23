@@ -199,29 +199,50 @@ function prepareApproverRestrictedSuppression(
   return { cfg: input.cfg, accountId };
 }
 
-function createStandardNativeApprovalRouting(
+function createStandardNativeApprovalTargetOptions(
   channel: string,
   params: StandardNativeApprovalRoutingParams,
-): StandardNativeApprovalRouting {
+) {
   const targetResolvers = createNativeApprovalMessagingTargetResolvers({
     channel,
     normalizeTo: params.normalizeTo,
   });
-  const routeGates = createNativeApprovalChannelRouteGates({
+  const forwardingOptions: Pick<
+    Parameters<typeof createNativeApprovalForwardingFallbackSuppressor<NativeApprovalTarget>>[0],
+    "resolveAccountId" | "resolveForwardingTargetForMatch"
+  > = {
+    resolveAccountId: ({ forwardingTarget, request }) =>
+      forwardingTarget.accountId ?? normalizeOptionalString(request.request.turnSourceAccountId),
+    resolveForwardingTargetForMatch: ({ forwardingTarget, accountId }) => ({
+      ...forwardingTarget,
+      accountId,
+    }),
+  };
+  return {
     channel,
     defaultForwardingMode: params.defaultForwardingMode,
     isTransportEnabled: params.isTransportEnabled,
     listAccountIds: params.listAccountIds,
     resolveDefaultAccountId: params.resolveDefaultAccountId,
-    normalizeForwardTarget: targetResolvers.normalizeForwardTarget,
-    resolveTurnSourceTarget: targetResolvers.resolveTurnSourceTarget,
-  });
+    ...targetResolvers,
+    resolveApprovers: params.resolveApprovers,
+    mapApprover: (approver: string, input: Pick<NativeApprovalTarget, "accountId">) => {
+      const to = params.normalizeTo(approver);
+      return to ? { to, accountId: normalizeOptionalString(input.accountId) } : null;
+    },
+    ...forwardingOptions,
+  };
+}
+
+function createStandardNativeApprovalRouting(
+  channel: string,
+  params: StandardNativeApprovalRoutingParams,
+): StandardNativeApprovalRouting {
+  const targetOptions = createStandardNativeApprovalTargetOptions(channel, params);
+  const routeGates = createNativeApprovalChannelRouteGates(targetOptions);
   const resolveOriginTargetBase = createChannelNativeOriginTargetResolver({
-    channel,
+    ...targetOptions,
     shouldHandleRequest: routeGates.shouldHandleApprovalRequest,
-    resolveTurnSourceTarget: targetResolvers.resolveTurnSourceTarget,
-    resolveSessionTarget: targetResolvers.resolveSessionTarget,
-    normalizeTarget: targetResolvers.normalizeTarget,
   });
   const resolveOriginTarget = (input: Parameters<typeof resolveOriginTargetBase>[0]) => {
     const target = resolveOriginTargetBase(input);
@@ -234,23 +255,12 @@ function createStandardNativeApprovalRouting(
     return target;
   };
   const resolveApproverDmTargets = createChannelApproverDmTargetResolver({
+    ...targetOptions,
     shouldHandleRequest: routeGates.shouldHandleApprovalRequest,
-    resolveApprovers: params.resolveApprovers,
-    mapApprover: (approver, input) => {
-      const to = params.normalizeTo(approver);
-      return to ? { to, accountId: normalizeOptionalString(input.accountId) } : null;
-    },
   });
   const shouldSuppressForwardingFallback =
     createNativeApprovalForwardingFallbackSuppressor<NativeApprovalTarget>({
-      channel,
-      normalizeForwardTarget: targetResolvers.normalizeForwardTarget,
-      resolveAccountId: ({ forwardingTarget, request }) =>
-        forwardingTarget.accountId ?? normalizeOptionalString(request.request.turnSourceAccountId),
-      resolveForwardingTargetForMatch: ({ forwardingTarget, accountId }) => ({
-        ...forwardingTarget,
-        accountId,
-      }),
+      ...targetOptions,
       isSessionRouteEligible: routeGates.isSessionApprovalEligible,
       isExplicitTargetEligible:
         params.suppressExplicitTargetFallback === false
@@ -577,25 +587,11 @@ function createStandardNativeApprovalRoutingAsync(
   channel: string,
   params: StandardNativeApprovalRoutingParams,
 ): StandardNativeApprovalRoutingAsync {
-  const targetResolvers = createNativeApprovalMessagingTargetResolvers({
-    channel,
-    normalizeTo: params.normalizeTo,
-  });
-  const routeGates = createNativeApprovalChannelRouteGatesAsync({
-    channel,
-    defaultForwardingMode: params.defaultForwardingMode,
-    isTransportEnabled: params.isTransportEnabled,
-    listAccountIds: params.listAccountIds,
-    resolveDefaultAccountId: params.resolveDefaultAccountId,
-    normalizeForwardTarget: targetResolvers.normalizeForwardTarget,
-    resolveTurnSourceTarget: targetResolvers.resolveTurnSourceTarget,
-  });
+  const targetOptions = createStandardNativeApprovalTargetOptions(channel, params);
+  const routeGates = createNativeApprovalChannelRouteGatesAsync(targetOptions);
   const resolveOriginTargetBase = createChannelNativeOriginTargetResolverAsync({
-    channel,
+    ...targetOptions,
     shouldHandleRequest: routeGates.shouldHandleApprovalRequest,
-    resolveTurnSourceTarget: targetResolvers.resolveTurnSourceTarget,
-    resolveSessionTarget: targetResolvers.resolveSessionTarget,
-    normalizeTarget: targetResolvers.normalizeTarget,
   });
   const resolveOriginTarget = async (input: Parameters<typeof resolveOriginTargetBase>[0]) => {
     const target = await resolveOriginTargetBase(input);
@@ -608,23 +604,12 @@ function createStandardNativeApprovalRoutingAsync(
     return target;
   };
   const resolveApproverDmTargets = createChannelApproverDmTargetResolverAsync({
+    ...targetOptions,
     shouldHandleRequest: routeGates.shouldHandleApprovalRequest,
-    resolveApprovers: params.resolveApprovers,
-    mapApprover: (approver, input) => {
-      const to = params.normalizeTo(approver);
-      return to ? { to, accountId: normalizeOptionalString(input.accountId) } : null;
-    },
   });
   const shouldSuppressForwardingFallback =
     createNativeApprovalForwardingFallbackSuppressorAsync<NativeApprovalTarget>({
-      channel,
-      normalizeForwardTarget: targetResolvers.normalizeForwardTarget,
-      resolveAccountId: ({ forwardingTarget, request }) =>
-        forwardingTarget.accountId ?? normalizeOptionalString(request.request.turnSourceAccountId),
-      resolveForwardingTargetForMatch: ({ forwardingTarget, accountId }) => ({
-        ...forwardingTarget,
-        accountId,
-      }),
+      ...targetOptions,
       isSessionRouteEligible: routeGates.isSessionApprovalEligible,
       isExplicitTargetEligible:
         params.suppressExplicitTargetFallback === false
