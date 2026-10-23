@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 311234,
-  "reason": "Empty placement recovery: matched d78b148 build, Chat 1324200 to 1319799 B and New Session 814495 to 811891 B; startup 311189 to 311234 B within 64 B build variance, seven requests.",
+  "startupJsGzipBytes": 311084,
+  "reason": "Defer unused session recovery, delivery and preference code: matched 55477ab build, startup 311147 to 311084 B, Chat 1324214 to 1315637 B, New Session 814363 to 806611 B; requests unchanged at 7/22/16.",
   "updatedAt": "2026-10-23"
 }

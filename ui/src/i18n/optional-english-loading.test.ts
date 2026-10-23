@@ -35,3 +35,25 @@ it("loads optional English copy at each view boundary while keeping shared label
     expect(en.dashboardsPage).toBe(dashboards);
   }
 });
+
+it("loads session interaction settings copy before search reads it", async () => {
+  const { en, manager } = await loadI18n();
+  const chat = en.chat;
+  const labels = [
+    ["chat.sendShortcut", "Send shortcut"],
+    ["chat.followUpModeQueue", "Queue until the run ends"],
+    ["chat.catalogOpenTarget", "Open external sessions in"],
+  ] as const;
+  for (const [key] of labels) {
+    expect(manager.t(key)).toBe(key);
+  }
+  expect(manager.t("chat.sendShortcutModifierEnter")).toBe("⌘/Ctrl+Enter");
+  expect(manager.t("chat.followUpModeSteer")).toBe("Steer into the active run");
+  await manager.setLocale("de");
+  await import("../pages/config/settings-search.ts");
+  for (const [key, text] of labels) {
+    expect(manager.t(key)).toBe(text);
+  }
+  expect(en.chat).toBe(chat);
+  expect(manager.t("common.health")).toBe("Gesundheit");
+});

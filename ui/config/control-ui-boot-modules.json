@@ -1351,7 +1351,7 @@
   "ui/src/i18n/locales/en-code-blocks.ts",
   "ui/src/i18n/locales/en-file-preview.ts",
   "ui/src/i18n/locales/en-session-machine.ts",
-  "ui/src/i18n/locales/en-session-organization.ts",
+  "ui/src/i18n/locales/en-session-organization-core.ts",
   "ui/src/i18n/locales/en-session-people.ts",
   "ui/src/i18n/locales/en-session-skill-library.ts",
   "ui/src/lib/board/gateway-provider.ts",

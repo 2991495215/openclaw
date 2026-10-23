@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Empty placement recovery stays lazy: 1,319,799 B Chat / 811,891 B New.
-  // Preserve the prior relative headroom against the matched d78b148 build.
-  chatBootJsGzipBytes: 1_369_228,
-  newBootJsGzipBytes: 819_988,
+  // Session recovery, delivery and copy: 1,315,637 B Chat / 806,611 B New.
+  // Preserve main's relative headroom against the matched 55477ab build.
+  chatBootJsGzipBytes: 1_364_895,
+  newBootJsGzipBytes: 814_787,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,

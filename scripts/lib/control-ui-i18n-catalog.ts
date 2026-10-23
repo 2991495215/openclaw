@@ -232,6 +232,27 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       Object.assign(boardWidget, registerBoardWebsiteEnglish.catalog.board.widget);
     }
   }
+  const chat: TranslationMap = {};
+  for (const [key, value] of Object.entries(en.chat)) {
+    const settingsKeys: Array<keyof typeof registerSettingsEnglish.catalog.chat> =
+      key === "sendShortcutModifierEnter"
+        ? ["sendShortcut", "sendShortcutHint", "sendShortcutEnter"]
+        : key === "followUpModeSteer"
+          ? ["followUpMode", "followUpModeQueue", "followUpModeServer", "followUpModeLoading"]
+          : key === "catalogOutputTruncated"
+            ? [
+                "followUpModeOverriding",
+                "followUpModeReset",
+                "catalogOpenTarget",
+                "catalogOpenTargetViewer",
+                "catalogOpenTargetTerminal",
+              ]
+            : [];
+    for (const settingsKey of settingsKeys) {
+      chat[settingsKey] = registerSettingsEnglish.catalog.chat[settingsKey];
+    }
+    chat[key] = value;
+  }
   // Read fragment data without registering it into the shared runtime catalog.
   // en.ts's empty anchors retain source order for extracted whole subtrees.
   return mergeControlUiTranslationMaps(
@@ -255,7 +276,7 @@ export function loadControlUiSourceCatalog(): TranslationMap {
         autoSetup: registerPluginManagementEnglish.catalog.custodian.autoSetup,
       },
       chat: {
-        ...en.chat,
+        ...chat,
         ...registerChatSessionEnglish.catalog.chat,
         commands: registerCommandPaletteEnglish.catalog.chat.commands,
         welcome: registerCommandPaletteEnglish.catalog.chat.welcome,

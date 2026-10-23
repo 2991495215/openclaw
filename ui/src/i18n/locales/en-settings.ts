@@ -6,6 +6,21 @@ import { en } from "./en.ts";
 
 // Settings copy loads with its lazy page or search, not the startup shell.
 const enSettings = {
+  chat: {
+    sendShortcut: "Send shortcut",
+    sendShortcutHint:
+      "Desktop only. On mobile, Enter adds a new line; use the Send button to send.",
+    sendShortcutEnter: "Enter",
+    followUpMode: "Follow-ups while the agent is working",
+    followUpModeQueue: "Queue until the run ends",
+    followUpModeServer: "Server default ({mode})",
+    followUpModeLoading: "loading…",
+    followUpModeOverriding: "Overriding server default ({mode})",
+    followUpModeReset: "Reset to server default",
+    catalogOpenTarget: "Open external sessions in",
+    catalogOpenTargetViewer: "OpenClaw viewer",
+    catalogOpenTargetTerminal: "Terminal",
+  },
   agents: {
     createdBy: "Created by {id}",
     defaults: {
@@ -2216,6 +2231,7 @@ export const registerSettingsEnglish = Object.assign(
     Object.assign(en.configPage, enSettings.configPage);
     Object.assign(en.configView, enSettings.configView);
     Object.assign(en.updates, enSettings.updates);
+    Object.assign(en.chat, enSettings.chat);
   },
   { catalog: enSettings },
 );
