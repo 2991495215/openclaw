@@ -56,7 +56,9 @@ sender-specific restrictions, use an isolated thread where necessary and preserv
 the conversation's existing binding. A temporary first turn does not establish
 a permanent restricted binding. Verified subagent completions carrying inherited
 tool restrictions also use this temporary scope, so the next owner turn can
-resume the original thread. The completion still obeys its inherited restrictions;
+resume the original thread with the unseen completion input and answer as quoted
+context. A successful owner turn covers that delta so later turns do not replay it.
+The completion still obeys its inherited restrictions;
 the child's own persistent policy is unchanged.
 
 When a managed restricted thread's creation policy changes, or an older binding
