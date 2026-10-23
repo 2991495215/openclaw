@@ -1,7 +1,6 @@
 import type { UiCommandParams } from "@openclaw/gateway-protocol";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import type { GatewayBrowserClient, GatewayEventFrame, GatewayHelloOk } from "../api/gateway.ts";
-import type { GatewayAgentRow } from "../api/types.ts";
 import { isSessionRouteId, pathForAgentPanel } from "../app-route-paths.ts";
 import {
   BROWSER_PANEL_TOGGLE_EVENT,
