@@ -2,37 +2,45 @@
 
 # Entity profiles
 
-Answer "what do the sources establish about this entity?", not "what happened in
-the last call?".
+A profile reads like a briefing, not a scraped bio: what do the sources establish
+about this entity, and why does it matter? Facts are table stakes; texture
+(beliefs, current work, motivations) is the value.
 
 ## Sections
 
-- **Introduction:** supported identity, how they are known, continuing context.
-- **State:** the current situation in short `###` topics named for what they
-  cover. Most new sources change nothing here; their contribution is a Timeline
-  line. When a fact changes, rewrite the existing topic so it reads as current.
-  Never add a topic or paragraph named for a date, meeting or source.
-- **Timeline:** newest first, one line per event:
+- **Introduction:** one or two lines a teammate would need: who they are, how
+  they're known, why they matter. Never a placeholder ("Contact from the
+  network", "Is recorded in the roster").
+- **State:** the current situation in short `###` topics, one topic per subject.
+  Most new sources change nothing here; their contribution is a Timeline line.
+  When a fact changes, rewrite the existing topic so it reads as current. Never
+  add a topic or paragraph named for a date, meeting or source.
+- **Timeline:** newest first, one short line per event, not a copy of State:
   `- **YYYY-MM-DD** — what happened for this entity. [[source|Label · lines]]`
-  One short sentence about the event, not a copy of the State paragraph.
 
-Optional sections, only with evidence. Person: What They Believe, What They're
-Building, Motivations, Assessment, Relationship, Contact, Network, Open Threads.
-Company: Open Threads. Never fill headings with speculation or placeholders.
+Optional sections, only when the source supports them; omit the rest:
+
+- Person: What They Believe, What They're Building, What Motivates Them, Hobby
+  Horses, Communication Style, Assessment, Trajectory, Relationship, Contact,
+  Network, Open Threads.
+- Company: State covers what they do, stage, key people, key numbers and the
+  user's connection. Open Threads for active items.
+
+**Communication Style** records only what was observed directly or what they
+said about themselves; label each line observed, self-described or inferred. One
+data point is a Timeline entry, not a pattern.
 
 ## Rules
 
 - Every fact and Timeline line has an inline citation. Dates are event dates.
-- Write the introduction about the person or thing, not about the source
-  ("Works on guest access and RBAC", not "Is recorded in the attendee roster").
-  Follow [writing](writing.md); no email addresses in prose.
 - Unknown role, employer and surname stay absent. Populate ontology fields such
   as `role` only when the source establishes them.
 - Attribute beliefs to the speaker. Your assessment is not their belief.
-- Keep user-written assessments. Flag conflicts with both citations.
+- Never overwrite user-written assessments. Flag conflicts with both citations.
 - Different companies' feedback gets separate context, not a copied meeting blob.
 - A rerun or repeat report changes nothing; don't save a no-op.
 - Partial identity goes in structured `identity`, not only a parenthetical.
+- Follow [writing](writing.md); no email addresses in prose.
 
 ## Update an existing profile
 

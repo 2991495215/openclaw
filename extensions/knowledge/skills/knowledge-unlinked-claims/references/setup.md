@@ -20,7 +20,8 @@ directly or change configuration to work around it.
 
 ## Find records
 
-- `knowledge_grep` is the search tool, including for people and projects.
+- `knowledge_grep` is the search tool, including for people and projects. Try
+  spelling variants; a nonzero hit count is not an answer until you read the page.
 - `knowledge_lookup` resolves only an exact record ID, full title or declared
   alias. On `missing`, search with grep before concluding nothing exists.
 - Inspect candidates with `knowledge_record`. A matching name or email domain is a

@@ -72,7 +72,8 @@ the same entity.
 
 - Role or relationship: explicit passage, not implication.
 - Ownership: explicit ownership language; mentioning a name is not owning it.
-- New proper noun: search Knowledge for the spelling; otherwise label it unverified.
+- New proper noun: search Knowledge for the spelling; otherwise write it as
+  `Name (unverified spelling)` and give it no page or link.
 - Major life or deal event: verbatim support, checked against existing chronology.
 
 Surprising claims get more scrutiny. Keep conflicting accounts with both
@@ -87,9 +88,9 @@ Order: meeting page → entity pages → claims and edges → link edits.
 Batch related records ([publish](references/publish.md)).
 
 - Meeting page per [meeting page](references/meeting-page.md).
-- For each participant and substantive entity: find or create the page
-  ([identity](references/identity.md) says when), add the Timeline line, update
-  State only if meaning changed ([profiles](references/profiles.md)).
+- For each participant and substantive entity, run `knowledge-entities`: it
+  resolves the entity, decides whether it gets a page, and writes the profile and
+  Timeline line. It shares this skill's references, so it adds little reading.
 - Claims per [assertions](references/assertions.md): decisions, commitments,
   facts and one `source_event: true` event for the meeting itself, with all
   relevant `entities`. Other events keep their own dates.

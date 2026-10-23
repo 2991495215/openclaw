@@ -9,6 +9,10 @@ Write like a good human notetaker: short, specific, names first.
   not proof of…", "not independently verified" or "no deadline was stated" to
   ordinary items. Absent facts are simply absent.
 - **Let the verb carry certainty:** proposed, planned, agreed, reported, decided.
+  Attribute speculation as speculation, and never state an outcome or completion
+  the source doesn't show.
+- **Keep the specifics:** numbers, dates, amounts, names and who decided what,
+  exactly as the source states them.
 - **No notes to yourself.** Never write instructions, reminders or reasoning about
   your process into a page ("keep this chronology", "do not assign by guess",
   "withheld from profiles: …"). Withheld material and attribution reasoning live

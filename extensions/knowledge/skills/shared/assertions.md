@@ -24,6 +24,14 @@ sentence. The page stays the readable synthesis.
 
 - One correctable assertion per claim. The speaker goes in attribution, including
   unresolved labels like "Speaker 2".
+- **Holder is not subject.** The holder is whoever said or clearly implied it.
+  "Alice has a rescuer pattern" said by nobody is your analysis
+  (`agent_inference`), not Alice's belief.
+- A founder or employee speaking about their company is the holder, not the
+  company. Self-report is a strong individual signal, not verified fact.
+  Sharing or amplifying something is not endorsing every clause of it.
+- Skip trivia (handles, follower counts, obvious bio fields). A claim should
+  matter for some future question.
 - Proposals, jokes and provisional targets are not decisions or commitments.
 - Omit unknown owners and dates. A relative date needs a known source date and
   timezone. Date-only stays date-only; it is not midnight.
