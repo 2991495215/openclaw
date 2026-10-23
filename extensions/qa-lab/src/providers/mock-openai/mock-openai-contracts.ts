@@ -49,6 +49,11 @@ export type QaMockProviderDispatchResult = {
   responseKeepaliveMs?: number;
 };
 
+type MockStreamItemPosition = {
+  item_id: string;
+  output_index: number;
+};
+
 export type StreamEvent =
   | {
       type: "response.created";
@@ -76,53 +81,39 @@ export type StreamEvent =
       output_index: number;
       item: Record<string, unknown>;
     }
-  | {
+  | (MockStreamItemPosition & {
       type: "response.content_part.added" | "response.content_part.done";
-      item_id: string;
-      output_index: number;
       content_index: number;
       part: MockOutputText;
-    }
-  | {
+    })
+  | (MockStreamItemPosition & {
       type: "response.output_text.delta";
-      item_id: string;
-      output_index: number;
       content_index: number;
       delta: string;
-    }
-  | {
+    })
+  | (MockStreamItemPosition & {
       type: "response.output_text.done";
-      item_id: string;
-      output_index: number;
       content_index: number;
       text: string;
-    }
-  | {
+    })
+  | (MockStreamItemPosition & {
       type: "response.function_call_arguments.delta";
-      item_id: string;
-      output_index: number;
       delta: string;
-    }
-  | {
+    })
+  | (MockStreamItemPosition & {
       type: "response.function_call_arguments.done";
-      item_id: string;
-      output_index: number;
       name: string;
       arguments: string;
-    }
-  | {
+    })
+  | (MockStreamItemPosition & {
       type: "response.custom_tool_call_input.delta";
-      item_id: string;
       call_id: string;
-      output_index: number;
       delta: string;
-    }
-  | {
+    })
+  | (MockStreamItemPosition & {
       type: "response.custom_tool_call_input.done";
-      item_id: string;
-      output_index: number;
       input: string;
-    }
+    })
   | {
       type: "response.output_item.done";
       output_index: number;
