@@ -177,7 +177,7 @@ export function hiddenSessionCatalogPages(
 ) {
   const hiddenIds = new Set(hiddenCatalogIds);
   return catalogs.flatMap((catalog) => {
-    if (!hiddenIds.has(catalog.id) || catalog.error) {
+    if (!hiddenIds.has(catalog.id) || catalog.pending || catalog.error) {
       return [];
     }
     const hostIds = catalog.hosts

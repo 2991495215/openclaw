@@ -24,14 +24,30 @@ import {
 
 let loading: ReturnType<typeof createDeferred<void>>;
 let entered: ReturnType<typeof createDeferred<void>>;
+let replayFinished: ReturnType<typeof createDeferred<void>>;
 function delayPageRuntime() {
   loading = createDeferred();
   entered = createDeferred();
-  // mock-delay: Keep the production runtime intact; hold only module availability.
+  const completed = (replayFinished = createDeferred());
+  // mock-delay: Hold module availability and observe the real replay's terminal promise.
   vi.doMock("./app-sidebar-session-catalog-pages.runtime.ts", async (original) => {
     entered.resolve();
     await loading.promise;
-    return original();
+    const runtime =
+      await original<typeof import("./app-sidebar-session-catalog-pages.runtime.ts")>();
+    return {
+      ...runtime,
+      replayPublishedSessionCatalogHost(
+        params: Parameters<typeof runtime.replayPublishedSessionCatalogHost>[0],
+      ) {
+        const pending = runtime.replayPublishedSessionCatalogHost(params);
+        void pending.then(
+          () => completed.resolve(),
+          () => completed.resolve(),
+        );
+        return pending;
+      },
+    };
   });
   onTestFinished(() => loading.resolve());
 }
@@ -248,6 +264,7 @@ it("replays a published host after loading without overwriting a sibling publica
     },
   });
   loading.resolve();
+  await replayFinished.promise;
   await vi.dynamicImportSettled();
   await vi.advanceTimersByTimeAsync(0);
   expect(request).toHaveBeenCalledTimes(5);
@@ -283,6 +300,7 @@ it.each(["reset", "adoption"] as const)(
     }
     const discovery = vi.spyOn(owner, "sessionCatalogIdsWithoutVisibleRows");
     loading.resolve();
+    await replayFinished.promise;
     await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(0);
     expect(request).toHaveBeenCalledTimes(4);
