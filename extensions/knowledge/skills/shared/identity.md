@@ -2,14 +2,22 @@
 
 ## Resolve before asking
 
+When resolving many entities (a roster, a meeting's topics), resolve them all in
+one pass before drafting and keep the results in a work file (name → record ID,
+how it matched, confidence). Reuse that map; don't search the same name again.
+
 Run in order and stop at the first clear answer. Never ask the user "who is X?"
 when Knowledge or the source already says.
 
-1. Search with `knowledge_grep` (try spelling variants and synonyms), then read
-   the candidate pages and metadata. A hit count is not an answer; read the page.
-2. If the source has a stable account ID, `knowledge_lookup` its namespaced alias
-   (`email:<address>`, `github:<login>`, `discord:<user id>`, `slack:<user id>`).
-   One key on two pages means a duplicate.
+1. Exact lookup first. If the source has a stable account ID, `knowledge_lookup`
+   its namespaced alias (`email:<address>`, `github:<login>`, `discord:<user id>`,
+   `slack:<user id>`); one key on two pages means a duplicate. Otherwise
+   `knowledge_lookup` the full name or known alias. `found` is a candidate:
+   confirm it with `knowledge_record({id, view: "summary"})`.
+2. Only on `missing` or `ambiguous`, `knowledge_grep` with the expected `type`
+   and a small `limit` (about 5); try spelling variants and synonyms. A hit
+   count is not an answer; confirm candidates with a summary read. Read a full
+   body only for a page you will update, once.
 3. Check retained sources and context: `knowledge_connections` (`claims`,
    `incoming`, `outgoing`, `dependents`), `knowledge_timeline({entity: id})` and
    `knowledge_chronicle_last_seen`.
