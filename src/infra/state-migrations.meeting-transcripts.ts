@@ -546,24 +546,15 @@ export async function migrateLegacyMeetingTranscripts(params: {
           archiveRoot,
         });
       } catch (error) {
-        if (error instanceof LegacyMeetingTranscriptArchiveMovedError) {
-          return {
-            changes: [
-              ...recoveryChanges,
-              `Imported ${snapshots.length} meeting transcript session${snapshots.length === 1 ? "" : "s"} into shared SQLite state`,
-            ],
-            warnings: [
-              `Meeting transcript archive needs Doctor resume after moving the source tree: ${String(error)}`,
-            ],
-          };
-        }
         return {
           changes: [
             ...recoveryChanges,
             `Imported ${snapshots.length} meeting transcript session${snapshots.length === 1 ? "" : "s"} into shared SQLite state`,
           ],
           warnings: [
-            `Failed archiving verified legacy meeting transcripts; retained imported SQLite rows and source receipts for Doctor retry: ${String(error)}`,
+            error instanceof LegacyMeetingTranscriptArchiveMovedError
+              ? `Meeting transcript archive needs Doctor resume after moving the source tree: ${String(error)}`
+              : `Failed archiving verified legacy meeting transcripts; retained imported SQLite rows and source receipts for Doctor retry: ${String(error)}`,
           ],
         };
       }

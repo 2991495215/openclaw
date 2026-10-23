@@ -22,6 +22,7 @@ export function validateWorkerProviderContract(
     "prepareProvision",
     "listMachineOptions",
     "runSetupCommand",
+    "resolveSshIdentity",
   ] as const) {
     if (provider[method] !== undefined && typeof provider[method] !== "function") {
       return { ok: false, message: `worker provider registration ${method} must be a function` };
@@ -49,15 +50,6 @@ export function validateWorkerProviderContract(
       ok: false,
       message:
         "worker provider registration supportedExecutionModes must contain one current mode or both current modes in canonical order",
-    };
-  }
-  if (
-    provider.resolveSshIdentity !== undefined &&
-    typeof provider.resolveSshIdentity !== "function"
-  ) {
-    return {
-      ok: false,
-      message: "worker provider registration resolveSshIdentity must be a function",
     };
   }
   const id = normalizeCapabilityProviderId(provider.id);
