@@ -7,6 +7,7 @@ import { listen } from "../../../lib/reactive/listener.ts";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import { observeChatAttachmentViewport } from "./chat-attachment-viewport.ts";
 import { ChatImageActions } from "./chat-image-actions.tsx";
+import { imageTitle } from "./chat-image-lightbox.ts";
 import {
   MIN_CHAT_IMAGE_PREVIEW_WIDTH,
   resolveChatImagePreviewSize,
@@ -30,7 +31,7 @@ import {
   readCachedManagedImageUrl,
   resolveManagedImageResource,
 } from "./chat-message-image-loading.ts";
-import { imageTitle, openMessageImage, readImageOriginalBlob } from "./chat-message-image-open.ts";
+import { openMessageImage, readImageOriginalBlob } from "./chat-message-image-open.ts";
 import {
   buildAssistantAttachmentUrl,
   isCanonicalInboundMediaSource,
@@ -70,7 +71,7 @@ type ImagePresentation = {
   reason?: string;
 };
 
-function createMessageImagePresentation(props: MessageImageProps) {
+function createMessageImagePresentation(props: ImageProps) {
   let active = true;
   let currentImage: ImageBlock | undefined;
   let currentOptions: ImageRenderOptions | undefined;
@@ -612,9 +613,9 @@ export function MessageImages(props: MessageImagesProps): JSX.Element {
   );
 }
 
-type MessageImageProps = { image: ImageBlock; options: ImageRenderOptions };
+type ImageProps = { image: ImageBlock; options: ImageRenderOptions };
 
-function MessageImage(props: MessageImageProps): JSX.Element {
+function MessageImage(props: ImageProps): JSX.Element {
   const presented = useContext(ContentPresentation);
   // Parked content releases active image subscriptions.
   return (
@@ -624,7 +625,7 @@ function MessageImage(props: MessageImageProps): JSX.Element {
   );
 }
 
-function MessageImageContent(props: MessageImageProps): JSX.Element {
+function MessageImageContent(props: ImageProps): JSX.Element {
   const view = createMessageImagePresentation(props);
   return (
     <Show when={view.model().key} keyed>
@@ -716,10 +717,8 @@ function ImageFrame(props: {
 }
 
 /** Catalogs consume the same admitted image resource and viewer as transcript tiles. */
-type MessageImageActionProps = MessageImageProps & {
-  render: (action: () => MessageMediaAction) => JSX.Element;
-};
-export function MessageImageAction(props: MessageImageActionProps): JSX.Element {
+type ImageActionProps = ImageProps & { render: (action: () => MessageMediaAction) => JSX.Element };
+export function MessageImageAction(props: ImageActionProps): JSX.Element {
   // Match the transcript slot's retirement when its scope or policy changes.
   const scope = () =>
     JSON.stringify([

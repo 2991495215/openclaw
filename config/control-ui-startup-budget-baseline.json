@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 294961,
-  "reason": "Startup leaf icons, update classification, and lazy English: matched b5b24cf15c2 build 310773 to 294961 B gzip with 7 JS and 1 CSS request.",
+  "startupJsGzipBytes": 285513,
+  "reason": "Media helper extraction: matched 9dfbbc9 builds measured 285463 to 285513 B startup gzip with 7 JS and 1 CSS request; record the current candidate after earlier lazy-English savings.",
   "updatedAt": "2026-10-23"
 }
