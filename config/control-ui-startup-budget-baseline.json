@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 299798,
-  "reason": "Use byte-stable optimal gzip only for the canonical boot graph: matched 721d build 311566 to 299798 B startup; Chat 1333529 to 1284861 B and New Session 816308 to 786386 B; unchanged 7/22/16 JS requests.",
+  "startupJsGzipBytes": 299435,
+  "reason": "Boot-only one-iteration Zopfli: matched 72b4cdf build reduces startup from 311172 to 299435 B with seven JS requests.",
   "updatedAt": "2026-10-23"
 }
