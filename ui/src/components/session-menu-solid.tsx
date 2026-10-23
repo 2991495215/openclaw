@@ -1,4 +1,4 @@
-import { createMemo, createSignal, merge, onCleanup, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, merge, onSettled, Show } from "solid-js";
 import { t } from "../lib/reactive/i18n.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import type { SessionCreatedActor } from "../lib/session-owner.ts";
@@ -17,11 +17,16 @@ import {
 import { SessionMenuShortcut, useSessionMenuEntries } from "./session-menu-view.tsx";
 import { Icon } from "./solid/icon.tsx";
 import { pointMenuTriggerAttributes } from "./solid/menu-trigger.tsx";
-import { Menu, type MenuEntry, type MenuItem, type MenuHandle } from "./solid/menu.tsx";
+import {
+  createMenuControls,
+  Menu,
+  type MenuEntry,
+  type MenuItem,
+  type MenuHandle,
+} from "./solid/menu.tsx";
 
 /** Only resolved local worktree destinations are offered by the menu host. */
 export type SessionMenuWork = {
-  loading: boolean;
   pullRequestUrl: string | null;
   worktreePath: string | null;
 };
@@ -67,6 +72,7 @@ function SessionMenuContent(
   anchor: SessionMenuProps["anchor"],
 ) {
   const menuId = `session-menu-${++nextSessionMenuId}`;
+  const controls = createMenuControls();
   const [compactView, setCompactView] = createSignal<CompactSessionMenuView>("root");
   let menu: MenuHandle | undefined;
   const state = merge(props, {
@@ -104,7 +110,7 @@ function SessionMenuContent(
     (action) => props.onAction(action),
     close,
   );
-  const view = useSessionMenuEntries(actions, readState);
+  const view = useSessionMenuEntries(actions, readState, { controls });
   const shortcut = (event: KeyboardEvent) => {
     if (!actions.handleKeydown(event, view.appearance)) {
       activateMenuShortcut(menu?.overlay.surface, event);
@@ -112,7 +118,7 @@ function SessionMenuContent(
   };
   let stopShortcut: (() => void) | undefined;
   let stopAfterHide: (() => void) | undefined;
-  onCleanup(() => {
+  onSettled(() => () => {
     stopShortcut?.();
     stopAfterHide?.();
   });
@@ -259,6 +265,7 @@ function SessionMenuContent(
   };
   return (
     <Menu
+      controls={controls}
       id={menuId}
       class={["session-menu", { "session-menu--compact": props.compact }]}
       panelClass="session-menu__panel"

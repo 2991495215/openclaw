@@ -30,6 +30,7 @@ import {
 import { createGatewayBrowserClientFixture } from "./chat-pane.test-support.ts";
 import { applyChatPendingInputs } from "./chat-pending-inputs.ts";
 import { buildChatItems } from "./chat-thread-build.ts";
+import { createComposerQuestions } from "./components/chat-composer-questions.ts";
 import { ChatComposer, resetChatComposerState } from "./components/chat-composer.tsx";
 import { ChatHistoryBoundary } from "./components/chat-history-boundary.tsx";
 import { reduceChatSessionProjection } from "./history-merge.ts";
@@ -66,7 +67,7 @@ function historyPane(request = vi.fn(async () => historyPage())) {
 }
 
 function olderRequest(sessionKey: string, offset = 2) {
-  return { sessionKey, limit: 1000, maxBytes: 2 * 1024 * 1024, toolResultMaxChars: 2_000, offset };
+  return { sessionKey, limit: 1000, maxBytes: 3 * 1024 * 1024, toolResultMaxChars: 2_000, offset };
 }
 
 function pagination(totalMessages = 4, nextOffset?: number): ChatHistoryPagination {
@@ -192,7 +193,8 @@ it.each(["pending", "resolved"] as const)(
             pane.render();
             return pane.chatProps!;
           });
-          return createComponent(ChatComposer, merge(current));
+          const questions = createComposerQuestions(pane.presentationId, current);
+          return createComponent(ChatComposer, merge(current, { questions }));
         },
         { container, wrapper: createSolidApplicationContextProvider(context).wrapper },
       );
