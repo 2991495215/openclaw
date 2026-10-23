@@ -1638,7 +1638,7 @@ describe("chat loading skeleton", () => {
     expect(contextUsage?.closest(".agent-chat__composer-context")).not.toBeNull();
   });
 
-  it("keeps subscription usage and its navigation scoped to the configured base path", () => {
+  it("keeps subscription usage and its navigation scoped to the configured base path", async () => {
     const container = renderChatView({
       providerUsage: {
         basePath: "/rosita",
@@ -1670,9 +1670,10 @@ describe("chat loading skeleton", () => {
     // The session provider matches a plan-usage group, so dollar estimates
     // yield to the subscription windows.
     container.querySelector<HTMLElement>(".context-usage summary")!.click();
-    flush();
-    expect(container.querySelector("[data-chat-usage-provider='true']")?.textContent).toContain(
-      "OpenAI",
+    await waitForSolid(() =>
+      expect(container.querySelector("[data-chat-usage-provider='true']")?.textContent).toContain(
+        "OpenAI",
+      ),
     );
     const limitRow = container.querySelector(".context-usage__limit");
     expect(limitRow?.textContent?.replace(/\s+/g, " ").trim()).toBe("Weekly 72%");
