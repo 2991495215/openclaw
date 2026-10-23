@@ -1,7 +1,15 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { PluginInstance } from "../plugins/plugin-instance.js";
-import { copyAgentToolMetadata } from "./agent-tool-metadata.js";
+import {
+  bindAgentToolActionDescriptor,
+  bindAgentToolExecutionLocation,
+  bindGatewayToolPolicyControl,
+  copyAgentToolMetadata,
+  getAgentToolActionDescriptor,
+  getAgentToolExecutionLocation,
+  isGatewayToolPolicyControl,
+} from "./agent-tool-metadata.js";
 import { wrapToolWithAbortSignal } from "./agent-tools.abort.js";
 import {
   prepareBeforeToolCallExecutionParams as prepareParams,
@@ -11,6 +19,7 @@ import {
 import * as metadata from "./before-tool-call-metadata.js";
 import { getInternalToolExecutionPreparer as getPreparer } from "./runtime/internal-hooks.js";
 import { createStubTool } from "./test-helpers/agent-tool-stubs.js";
+import { bindAgentToolReplaySafety, isAgentToolReplaySafe } from "./tool-replay-safety.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import {
   getGatewayToolCallerIdentity as callerIdentity,
@@ -36,6 +45,25 @@ function createView(tool: AnyAgentTool) {
 }
 const expectRetired = (result: Promise<unknown>) =>
   expect(result).rejects.toThrow("reloaded or disabled");
+
+it("keeps action and replay metadata independent through canonical tool copies", () => {
+  const source = createTool();
+  const descriptor = { family: "tool", operation: "process" } as const;
+  bindAgentToolActionDescriptor(source, descriptor);
+  bindAgentToolReplaySafety(source, "bounded-read");
+  bindAgentToolExecutionLocation(source, { kind: "gateway" });
+  bindGatewayToolPolicyControl(source);
+  const copied = copyAgentToolMetadata(source, { ...source });
+  expect(getAgentToolActionDescriptor(copied)).toBe(descriptor);
+  expect(getAgentToolExecutionLocation(copied)).toEqual({ kind: "gateway" });
+  expect(isGatewayToolPolicyControl(copied)).toBe(true);
+  expect(isAgentToolReplaySafe(copied)).toBe(true);
+
+  bindAgentToolReplaySafety(copied, "dispatcher");
+  expect(isAgentToolReplaySafe(copied)).toBe(false);
+  expect(isAgentToolReplaySafe(source)).toBe(true);
+  expect(getAgentToolActionDescriptor(copied)).toBe(descriptor);
+});
 
 it.each(["execute", "prepare"] as const)("cancels guarded %s", async (phase) => {
   const entered = createDeferred();

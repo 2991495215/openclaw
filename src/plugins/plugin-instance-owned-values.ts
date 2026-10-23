@@ -21,6 +21,33 @@ export class PluginHostObject {
   }
 }
 
+export function createPluginHostMetadata<T>(): {
+  get(value: object): T | undefined;
+  set(value: object, metadata: T): void;
+} {
+  class Metadata extends PluginHostObject {
+    #value: T;
+
+    constructor(value: object, metadata: T) {
+      super(value);
+      this.#value = metadata;
+    }
+
+    static get(value: object): T | undefined {
+      return #value in value ? value.#value : undefined;
+    }
+
+    static set(value: object, metadata: T): void {
+      if (#value in value) {
+        value.#value = metadata;
+      } else {
+        void new Metadata(value, metadata);
+      }
+    }
+  }
+  return Metadata;
+}
+
 export class PluginFactoryBinding extends PluginHostObject {
   #factory: object;
 
