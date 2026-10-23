@@ -56,127 +56,20 @@ import { restartSentinelMocks } from "./server-startup-background.test-support.j
 import type { GatewayStartupModuleMocks } from "./server-startup-module-mocks.test-support.js";
 import "./server-startup-outcomes.test-support.js";
 import { markGatewayStartupMainSessionOrphans } from "./server-startup-observers.js";
-import { postAttachMocks as hoisted } from "./server-startup-post-attach.mocks.test-support.js";
 import {
   createStartupMethodUnlocker,
   registerGatewayStartupReadinessTests,
 } from "./server-startup-readiness.test-support.js";
 import { transcriptSidecarMocks } from "./server-startup-transcripts.test-support.js";
 
+const { postAttachMocks: hoisted } = await vi.hoisted(
+  () => import("./server-startup-post-attach.mocks.test-support.js"),
+);
+
 const { installGatewayStartupModuleMocks, installGatewayHookModuleLoad } =
   await import("./server-startup-module-mocks.test-support.js");
 
 type PluginHookGatewayStartEvent = Parameters<PluginHookHandlerMap["gateway_start"]>[0];
-
-vi.mock("../agents/subagents/registry/subagent-registry.js", () => ({
-  activateSubagentRegistry: hoisted.activateSubagentRegistry,
-}));
-
-vi.mock("../agents/main-session-recovery/main-session-restart-recovery.js", () => ({
-  scheduleRestartAbortedMainSessionRecovery: hoisted.scheduleRestartAbortedMainSessionRecovery,
-}));
-
-vi.mock("../agents/main-session-recovery/main-session-restart-recovery-marking.js", () => ({
-  markStartupOrphanedMainSessionsForRecovery: hoisted.markStartupOrphanedMainSessionsForRecovery,
-}));
-
-vi.mock("../config/paths.js", async () => {
-  const actual = await vi.importActual<typeof import("../config/paths.js")>("../config/paths.js");
-  return {
-    ...actual,
-    get STATE_DIR() {
-      return actual.resolveStateDir();
-    },
-    get CONFIG_PATH() {
-      return actual.resolveConfigPath();
-    },
-    resolveGatewayPort: vi.fn(() => 18789),
-  };
-});
-
-vi.mock("../hooks/gmail-watcher-lifecycle.js", () => ({
-  startGmailWatcherWithLogs: hoisted.startGmailWatcherWithLogs,
-}));
-
-vi.mock("../hooks/internal-hooks.js", () => ({
-  createInternalHookEvent: hoisted.createInternalHookEvent,
-  hasInternalHookListeners: hoisted.hasInternalHookListeners,
-  triggerInternalHook: hoisted.triggerInternalHook,
-}));
-
-vi.mock("../hooks/loader.js", () => ({
-  prepareInternalHooks: hoisted.prepareInternalHooks,
-}));
-
-vi.mock("../plugins/services.js", () => ({
-  startPluginServices: hoisted.startPluginServices,
-}));
-
-vi.mock("../acp/control-plane/manager.js", () => ({
-  getAcpSessionManager: vi.fn(() => ({
-    reconcilePendingSessionIdentities: hoisted.reconcilePendingSessionIdentities,
-  })),
-}));
-
-vi.mock("../acp/control-plane/manager.lifecycle.js", () => ({
-  disposeAcpSessionManagerInstance: vi.fn(async () => undefined),
-}));
-
-vi.mock("../acp/runtime/registry.js", () => ({
-  getAcpRuntimeBackend: hoisted.getAcpRuntimeBackend,
-}));
-
-vi.mock("./server-startup-log.js", () => ({
-  logGatewayStartup: hoisted.logGatewayStartup,
-}));
-
-vi.mock("../infra/update-startup.js", () => ({
-  createGatewayUpdateCheck: hoisted.createGatewayUpdateCheck,
-}));
-
-// mock-isolation: Config publication owns the current-config producer, not external auth discovery.
-vi.mock("./server-startup-model-runtime.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./server-startup-model-runtime.js")>();
-  return {
-    ...actual,
-    hydrateConfiguredExternalCliAuth: async ({ getConfig }) => getConfig(),
-  } satisfies typeof actual;
-});
-
-// mock-isolation: Sidecar scheduling does not own catalog or native-runtime preparation.
-vi.mock("../agents/prepared-model-catalog.js", () => ({
-  loadProviderScopedThinkingCatalog: vi.fn(async () => []),
-  loadPreparedModelCatalogOwnerSnapshot: async (options: unknown) => ({
-    modelCatalog: { entries: await hoisted.loadModelCatalog(options) },
-  }),
-}));
-
-vi.mock("../agents/model-selection.js", () => ({
-  getModelRefStatus: hoisted.getModelRefStatus,
-  isCliProvider: hoisted.isCliProvider,
-  resolveConfiguredModelRef: hoisted.resolveConfiguredModelRef,
-  resolveHooksGmailModel: hoisted.resolveHooksGmailModel,
-}));
-
-vi.mock("../agents/prepared-model-runtime.js", () => ({
-  publishPreparedModelRuntimeSnapshot: hoisted.prepareModelRuntimeSnapshot,
-  refreshPreparedModelRuntimeSnapshots: hoisted.refreshPreparedModelRuntimeSnapshots,
-}));
-
-vi.mock("../auto-reply/reply/get-reply-from-config.runtime.js", () => ({
-  getReplyFromConfig: vi.fn(),
-  prewarmConfigDrivenReplyRuntime: hoisted.prewarmConfigDrivenReplyRuntime,
-}));
-
-// mock-isolation: Startup owns the import, not WebSocket request execution.
-vi.mock("./server/ws-connection/message-handler.js", () => ({
-  attachGatewayWsMessageHandler: vi.fn(),
-}));
-
-// mock-isolation: Startup orchestration does not run independent background preparation.
-vi.mock("./server-startup-handler-prewarm.js", () => ({
-  scheduleGatewayPrewarm: () => [hoisted.scheduleGatewayHandlerPrewarm()],
-}));
 
 const { startGatewayPostAttachRuntime: startGatewayPostAttachRuntimeImpl } =
   await import("./server-startup-post-attach.js");
@@ -410,6 +303,8 @@ describe("startGatewayPostAttachRuntime", () => {
     hoisted.updateCheck.stop.mockClear();
     hoisted.logGatewayStartup.mockClear();
     hoisted.activateSubagentRegistry.mockClear();
+    hoisted.recoverExecExitNotifications.mockClear();
+    hoisted.recoverSessionSendDeliveries.mockClear();
     hoisted.markStartupOrphanedMainSessionsForRecovery.mockReset();
     hoisted.markStartupOrphanedMainSessionsForRecovery.mockResolvedValue({ marked: 0, skipped: 0 });
     hoisted.scheduleRestartAbortedMainSessionRecovery.mockClear();

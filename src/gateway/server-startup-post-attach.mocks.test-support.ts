@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { PluginServicesHandle } from "../plugins/services.js";
 
-export const postAttachMocks = vi.hoisted(() => {
+const postAttachMocks = vi.hoisted(() => {
   const startPluginServices = vi.fn<typeof import("../plugins/services.js").startPluginServices>(
     async (params) => {
       const handle: PluginServicesHandle = { reload: async () => {}, stop: async () => {} };
@@ -33,6 +33,8 @@ export const postAttachMocks = vi.hoisted(() => {
     settled,
   });
   const activateSubagentRegistry = vi.fn(() => createRecoveryProgress());
+  const recoverExecExitNotifications = vi.fn(() => createRecoveryProgress());
+  const recoverSessionSendDeliveries = vi.fn(() => createRecoveryProgress());
   const markStartupOrphanedMainSessionsForRecovery = vi.fn(async () => ({ marked: 0, skipped: 0 }));
   const scheduleRestartAbortedMainSessionRecovery = vi.fn();
   const getAcpRuntimeBackend = vi.fn<(id?: string) => unknown>(() => null);
@@ -77,6 +79,8 @@ export const postAttachMocks = vi.hoisted(() => {
     createGatewayUpdateCheck,
     logGatewayStartup,
     activateSubagentRegistry,
+    recoverExecExitNotifications,
+    recoverSessionSendDeliveries,
     createRecoveryProgress,
     markStartupOrphanedMainSessionsForRecovery,
     scheduleRestartAbortedMainSessionRecovery,
@@ -94,3 +98,126 @@ export const postAttachMocks = vi.hoisted(() => {
     scheduleGatewayHandlerPrewarm,
   };
 });
+
+export { postAttachMocks };
+
+vi.mock("../agents/subagents/registry/subagent-registry.js", () => ({
+  activateSubagentRegistry: postAttachMocks.activateSubagentRegistry,
+}));
+
+// mock-isolation: Startup orders recovery owners; their scanners have dedicated tests.
+vi.mock("../agents/bash-tools.exec-notify.js", () => ({
+  recoverExecExitNotifications: postAttachMocks.recoverExecExitNotifications,
+}));
+
+vi.mock("./session-send-recovery.js", () => ({
+  recoverSessionSendDeliveries: postAttachMocks.recoverSessionSendDeliveries,
+}));
+
+vi.mock("../agents/main-session-recovery/main-session-restart-recovery.js", () => ({
+  scheduleRestartAbortedMainSessionRecovery:
+    postAttachMocks.scheduleRestartAbortedMainSessionRecovery,
+}));
+
+vi.mock("../agents/main-session-recovery/main-session-restart-recovery-marking.js", () => ({
+  markStartupOrphanedMainSessionsForRecovery:
+    postAttachMocks.markStartupOrphanedMainSessionsForRecovery,
+}));
+
+vi.mock("../config/paths.js", async () => {
+  const actual = await vi.importActual<typeof import("../config/paths.js")>("../config/paths.js");
+  return {
+    ...actual,
+    get STATE_DIR() {
+      return actual.resolveStateDir();
+    },
+    get CONFIG_PATH() {
+      return actual.resolveConfigPath();
+    },
+    resolveGatewayPort: vi.fn(() => 18789),
+  };
+});
+
+vi.mock("../hooks/gmail-watcher-lifecycle.js", () => ({
+  startGmailWatcherWithLogs: postAttachMocks.startGmailWatcherWithLogs,
+}));
+
+vi.mock("../hooks/internal-hooks.js", () => ({
+  createInternalHookEvent: postAttachMocks.createInternalHookEvent,
+  hasInternalHookListeners: postAttachMocks.hasInternalHookListeners,
+  triggerInternalHook: postAttachMocks.triggerInternalHook,
+}));
+
+vi.mock("../hooks/loader.js", () => ({
+  prepareInternalHooks: postAttachMocks.prepareInternalHooks,
+}));
+
+vi.mock("../plugins/services.js", () => ({
+  startPluginServices: postAttachMocks.startPluginServices,
+}));
+
+vi.mock("../acp/control-plane/manager.js", () => ({
+  getAcpSessionManager: vi.fn(() => ({
+    reconcilePendingSessionIdentities: postAttachMocks.reconcilePendingSessionIdentities,
+  })),
+}));
+
+vi.mock("../acp/control-plane/manager.lifecycle.js", () => ({
+  disposeAcpSessionManagerInstance: vi.fn(async () => undefined),
+}));
+
+vi.mock("../acp/runtime/registry.js", () => ({
+  getAcpRuntimeBackend: postAttachMocks.getAcpRuntimeBackend,
+}));
+
+vi.mock("./server-startup-log.js", () => ({
+  logGatewayStartup: postAttachMocks.logGatewayStartup,
+}));
+
+vi.mock("../infra/update-startup.js", () => ({
+  createGatewayUpdateCheck: postAttachMocks.createGatewayUpdateCheck,
+}));
+
+// mock-isolation: Config publication owns the current-config producer, not external auth discovery.
+vi.mock("./server-startup-model-runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./server-startup-model-runtime.js")>();
+  return {
+    ...actual,
+    hydrateConfiguredExternalCliAuth: async ({ getConfig }) => getConfig(),
+  } satisfies typeof actual;
+});
+
+// mock-isolation: Sidecar scheduling does not own catalog or native-runtime preparation.
+vi.mock("../agents/prepared-model-catalog.js", () => ({
+  loadProviderScopedThinkingCatalog: vi.fn(async () => []),
+  loadPreparedModelCatalogOwnerSnapshot: async (options: unknown) => ({
+    modelCatalog: { entries: await postAttachMocks.loadModelCatalog(options) },
+  }),
+}));
+
+vi.mock("../agents/model-selection.js", () => ({
+  getModelRefStatus: postAttachMocks.getModelRefStatus,
+  isCliProvider: postAttachMocks.isCliProvider,
+  resolveConfiguredModelRef: postAttachMocks.resolveConfiguredModelRef,
+  resolveHooksGmailModel: postAttachMocks.resolveHooksGmailModel,
+}));
+
+vi.mock("../agents/prepared-model-runtime.js", () => ({
+  publishPreparedModelRuntimeSnapshot: postAttachMocks.prepareModelRuntimeSnapshot,
+  refreshPreparedModelRuntimeSnapshots: postAttachMocks.refreshPreparedModelRuntimeSnapshots,
+}));
+
+vi.mock("../auto-reply/reply/get-reply-from-config.runtime.js", () => ({
+  getReplyFromConfig: vi.fn(),
+  prewarmConfigDrivenReplyRuntime: postAttachMocks.prewarmConfigDrivenReplyRuntime,
+}));
+
+// mock-isolation: Startup owns the import, not WebSocket request execution.
+vi.mock("./server/ws-connection/message-handler.js", () => ({
+  attachGatewayWsMessageHandler: vi.fn(),
+}));
+
+// mock-isolation: Startup orchestration does not run independent background preparation.
+vi.mock("./server-startup-handler-prewarm.js", () => ({
+  scheduleGatewayPrewarm: () => [postAttachMocks.scheduleGatewayHandlerPrewarm()],
+}));

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
 import { captureSessionTarget } from "../../sessions/session-controller.lifecycle.js";
 import {
   claimSessionControllerTask,
@@ -105,6 +106,39 @@ it("moves the native continuation itself, preserving custody and target backlog"
 it("does not invent a mailbox for a sessionless source", async () => {
   const prepared = await prepareReplySourceInput({}, {}, undefined);
   expect(prepared.input).toBeUndefined();
+});
+
+it("preserves lifecycle cancellation before pending recovery without reserving input", async () => {
+  const recovery = createDeferred();
+  const caller = new AbortController();
+  const lifecycle = new AbortController();
+  const reason = new Error("source cancelled");
+  lifecycle.abort(reason);
+  try {
+    const prepared = await withAgentInputRecoveryContext(
+      () => ({
+        isPending: () => true,
+        waitForAgentInputRecovery: (_agentId, options) =>
+          racePromiseWithAbortSignal(recovery.promise, options?.signal),
+      }),
+      () =>
+        prepareReplySourceInput(
+          { SessionKey: key },
+          { session: { store: target.storeScope } },
+          {
+            abortSignal: caller.signal,
+            turnAdoptionLifecycle: { abortSignal: lifecycle.signal, onAdopted() {} },
+          },
+        ),
+    );
+    expect(caller.signal.aborted).toBe(false);
+    expect(prepared.options.abortSignal?.aborted).toBe(true);
+    expect(prepared.options.abortSignal?.reason).toBe(reason);
+    expect(prepared.input).toBeUndefined();
+    expect(getExistingSessionControllerMailbox(key, target)).toBeUndefined();
+  } finally {
+    recovery.resolve();
+  }
 });
 
 it("waits for only its agent's recovery before reserving fresh input", async () => {

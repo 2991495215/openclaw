@@ -141,6 +141,10 @@ export async function prepareReplySourceInput(
     (signal): signal is AbortSignal => signal !== undefined,
   );
   const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+  if (signal?.aborted) {
+    // Dispatch owns the skipped outcome for input cancelled before admission.
+    return { options: { ...prepared, abortSignal: signal }, created: false };
+  }
   const recovery = waitForAgentInputRecovery(agentId, { signal });
   if (recovery) {
     await recovery;
