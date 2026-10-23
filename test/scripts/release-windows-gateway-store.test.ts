@@ -7,6 +7,8 @@ import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
 const { gh } = vi.hoisted(() => ({ gh: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFileSync: gh }));
+const nativeProcess =
+  await vi.importActual<typeof import("node:child_process")>("node:child_process");
 
 const core = "openclaw/openclaw";
 const packaging = "openclaw/openclaw-windows-packaging";
@@ -28,6 +30,8 @@ type Fixture = {
   source?: Record<string, unknown>;
   build?: Record<string, unknown>;
   automatic?: boolean;
+  organizationAutomatic?: boolean;
+  largeHistory?: boolean;
   incompleteHistory?: boolean;
   expiredBundle?: boolean;
   ambiguousStore?: boolean;
@@ -140,13 +144,54 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
       };
     } else if (endpoint.includes("windows-gateway-store.yml/runs")) {
       value = {
-        workflow_runs: fixture.previous ?? [],
+        items: fixture.previous ?? [],
         total_count: fixture.incompleteHistory ? 1 : (fixture.previous?.length ?? 0),
       };
-    } else if (endpoint.includes("/actions/variables")) {
+      if (fixture.largeHistory) {
+        // Exercise the real Node stdout cap with a fixed oversized API fixture.
+        // gh's projection omits irrelevant commit metadata before it is buffered.
+        const history = [
+          {
+            id: 1,
+            display_title: "unrelated release",
+            event: "workflow_dispatch",
+            head_branch: "main",
+          },
+        ];
+        const payload = args.includes("--jq")
+          ? { items: history, total_count: 1 }
+          : [
+              {
+                workflow_runs: [
+                  {
+                    ...history[0],
+                    head_commit: { message: "x".repeat(1_100_000) },
+                  },
+                ],
+                total_count: 1,
+              },
+            ];
+        return nativeProcess.execFileSync(
+          process.execPath,
+          ["-e", "process.stdin.pipe(process.stdout)"],
+          {
+            input: JSON.stringify(payload),
+            encoding: "utf8",
+            env: {},
+          },
+        );
+      }
+    } else if (
+      endpoint.includes("/actions/variables") ||
+      endpoint.includes("/actions/organization-variables")
+    ) {
+      const automatic = endpoint.includes("/organization-variables")
+        ? fixture.organizationAutomatic
+        : fixture.automatic;
       value = {
-        variables: fixture.automatic ? [{ name: "MSSTORE_ENABLED", value: "true" }] : [],
-        total_count: fixture.automatic ? 1 : 0,
+        items:
+          automatic === undefined ? [] : [{ name: "MSSTORE_ENABLED", value: String(automatic) }],
+        total_count: automatic === undefined ? 0 : 1,
       };
     } else if (endpoint.endsWith("/git/ref/heads/main")) {
       value = { object: { sha: packagingHead } };
@@ -164,7 +209,7 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
       };
     } else if (endpoint.includes("/artifacts?")) {
       value = {
-        artifacts: [
+        items: [
           { name: "openclaw-source-resolution", expired: false },
           {
             name: "openclaw-gateway-msix-store-submission",
@@ -176,7 +221,7 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
     } else {
       throw new Error(`Unexpected endpoint: ${endpoint}`);
     }
-    return JSON.stringify(args.includes("--slurp") ? [value] : value);
+    return JSON.stringify(value);
   });
   await import("../../scripts/windows-gateway-store-release.mjs");
   return {
@@ -246,6 +291,18 @@ describe("Gateway Store release handoff", () => {
     });
   });
 
+  it("does not buffer oversized irrelevant run metadata while checking replay history", async () => {
+    const result = await run("request", { largeHistory: true });
+    expect(result.status).toBe(0);
+    expect(result.evidence).toMatchObject({ state: "requested", requestRunId: "41" });
+  });
+
+  it("honors a repository override disabling inherited automatic Store submission", async () => {
+    const result = await run("publish", { organizationAutomatic: true, automatic: false });
+    expect(result.status).toBe(0);
+    expect(result.evidence).toMatchObject({ state: "store-requested", storeRunId: "61" });
+  });
+
   it.each([
     { resolvedCommit: tooling },
     {
@@ -279,6 +336,7 @@ describe("Gateway Store release handoff", () => {
 
   it.each([
     { automatic: true },
+    { organizationAutomatic: true },
     { current: { run_attempt: 2 } },
     {
       previous: [

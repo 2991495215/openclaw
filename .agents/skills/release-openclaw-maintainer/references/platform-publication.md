@@ -162,8 +162,9 @@ Store publisher. Beta and extended-stable do not request Store publication.
 No sideload signing or packaging GitHub release is requested.
 
 The release GitHub App must be installed on core and packaging with Actions write,
-Contents read, and Variables read. Keep packaging's `MSSTORE_ENABLED` unset or
-disabled: its automatic `workflow_run` publisher would submit before this caller
+Contents read, and Variables read. Keep packaging's effective `MSSTORE_ENABLED`
+unset or disabled (including inherited organization variables): its automatic
+`workflow_run` publisher would submit before this caller
 checks the exact-source snapshot. Store credentials and the `microsoft-store`
 environment policy remain in packaging; this handoff does not add reviewer rules
 or move publishing to `openclaw/releases`.

@@ -39,7 +39,7 @@ function gh(args, input) {
   }
 }
 
-function api(endpoint, body, paginate = false) {
+function api(endpoint, body, selection) {
   return JSON.parse(
     gh(
       [
@@ -47,7 +47,7 @@ function api(endpoint, body, paginate = false) {
         "-H",
         "X-GitHub-Api-Version: 2026-03-10",
         endpoint,
-        ...(paginate ? ["--paginate", "--slurp"] : []),
+        ...(selection ? ["--jq", selection] : []),
         ...(body ? ["--method", "POST", "--input", "-"] : []),
       ],
       body ? JSON.stringify(body) : undefined,
@@ -56,14 +56,35 @@ function api(endpoint, body, paginate = false) {
 }
 
 function collection(endpoint, key) {
-  const pages = api(`${endpoint}?per_page=100`, undefined, true);
-  const values = pages.flatMap((page) => page[key]);
-  requireValue(
-    pages.length > 0 &&
-      pages.every((page) => Array.isArray(page[key]) && page.total_count <= values.length),
-    "GitHub history or artifact inventory is incomplete; refusing a potentially duplicate dispatch.",
-  );
-  return values;
+  const fields = {
+    workflow_runs: "{id,run_number,event,head_branch,display_title,status,conclusion}",
+    artifacts: "{name,expired}",
+    variables: '{name,value:(if .name == "MSSTORE_ENABLED" then .value else null end)}',
+  };
+  const values = [];
+  // Bound each subprocess response, not just the number of records: full run
+  // metadata can exhaust Node's stdout buffer long before history is complete.
+  for (let page = 1; ; page += 1) {
+    const result = api(
+      `${endpoint}?per_page=100&page=${page}`,
+      undefined,
+      `{total_count,items:[.${key}[]|${fields[key]}]}`,
+    );
+    requireValue(
+      Array.isArray(result.items) &&
+        Number.isSafeInteger(result.total_count) &&
+        result.total_count >= 0,
+      "GitHub history or artifact inventory is invalid.",
+    );
+    values.push(...result.items);
+    if (values.length >= result.total_count) {
+      return values;
+    }
+    requireValue(
+      result.items.length > 0,
+      "GitHub history or artifact inventory is incomplete; refusing a potentially duplicate dispatch.",
+    );
+  }
 }
 
 function record(fields) {
@@ -141,9 +162,15 @@ function dispatch(repository, workflow, inputs) {
 }
 
 function requireManualStoreMode() {
-  const variables = collection(`repos/${packaging}/actions/variables`, "variables");
+  // Repository values override shared organization variables in the publisher.
+  const variables = new Map(
+    [
+      ...collection(`repos/${packaging}/actions/organization-variables`, "variables"),
+      ...collection(`repos/${packaging}/actions/variables`, "variables"),
+    ].map(({ name, value }) => [name, value]),
+  );
   requireValue(
-    !variables.some(({ name, value }) => name === "MSSTORE_ENABLED" && value === "true"),
+    variables.get("MSSTORE_ENABLED") !== "true",
     "Packaging MSSTORE_ENABLED must remain disabled for the exact-source handoff; its automatic publisher would duplicate this request.",
   );
 }
