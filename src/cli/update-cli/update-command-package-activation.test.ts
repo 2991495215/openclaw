@@ -12,6 +12,11 @@ import {
   readPackageActivationReceipt,
   runPackageActivationRecovery,
 } from "../../infra/package-update-activation.js";
+import {
+  publicationActivation,
+  withPublicationFence,
+} from "../../infra/package-update-publication.test-support.js";
+import { createPackageSwapFixture } from "../../infra/package-update-swap.test-support.js";
 import * as packageTarget from "../../infra/update-check-package-target.js";
 import * as updateCheck from "../../infra/update-check.js";
 import * as updateGlobal from "../../infra/update-global.js";
@@ -25,7 +30,10 @@ import {
 import * as shared from "./shared.js";
 import { prepareUpdateCommand } from "./update-command-run.js";
 import { updateCommand } from "./update-command.js";
-import { createInterruptedPackagePublication } from "./update-package-publication.test-support.js";
+import {
+  createInterruptedPackagePublication,
+  preparePackagePublication,
+} from "./update-package-publication.test-support.js";
 
 const mocks = vi.hoisted(() => ({ root: vi.fn() }));
 vi.mock("./shared.js", async (original) => ({
@@ -62,6 +70,12 @@ function snapshot(root: string) {
     });
 }
 
+async function expectUnchanged(work: () => Promise<unknown>) {
+  const before = snapshot(fixtureRoot);
+  await work();
+  expect(snapshot(fixtureRoot)).toEqual(before);
+}
+
 function preparePreview(
   f: Pick<Awaited<ReturnType<typeof fixtures.prepare>>, "params" | "packageRoot">,
 ) {
@@ -77,9 +91,34 @@ function preparePreview(
   vi.spyOn(defaultRuntime, "writeJson").mockImplementation(() => undefined);
 }
 
+const preview = () => updateCommand({ dryRun: true, json: true, tag: "3.0.0" });
+
+function expectPreview(note: RegExp, targetVersion?: string) {
+  expect(defaultRuntime.writeJson).toHaveBeenCalledWith(
+    expect.objectContaining({
+      dryRun: true,
+      ...(targetVersion ? { targetVersion } : {}),
+      notes: expect.arrayContaining([expect.stringMatching(note)]),
+    }),
+  );
+}
+
+function writeRunnablePackage(root: string, entry = 'import "./dist/index.js";\n') {
+  fs.writeFileSync(path.join(root, "openclaw.mjs"), entry);
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      name: "openclaw",
+      version: "1.0.0",
+      type: "module",
+      bin: { openclaw: "openclaw.mjs" },
+    }),
+  );
+}
+
 describe.skipIf(process.platform === "win32")("package activation admission", () => {
   it.each(["prepared", "publishing", "publication-complete", "damaged candidate"] as const)(
-    "admits only a verified completed publication with the original lease (%s)",
+    "settles a verified installed candidate with the original lease (%s)",
     async (phase) => {
       const f = await createInterruptedPackagePublication(
         fixtureRoot,
@@ -95,11 +134,9 @@ describe.skipIf(process.platform === "win32")("package activation admission", ()
         fs.readFileSync(resolvePackageActivationJournalPath(f.anchor)),
       ];
       const before = retained();
-      if (phase !== "publication-complete") {
+      if (phase === "damaged candidate") {
         await expect(prepareUpdateCommand({ json: true })).rejects.toThrow(
-          phase === "damaged candidate"
-            ? "inventoried dist files changed"
-            : "openclaw update repair",
+          "inventoried dist files changed",
         );
         expect(retained()).toEqual(before);
         return;
@@ -132,6 +169,28 @@ describe.skipIf(process.platform === "win32")("package activation admission", ()
       ).toEqual(previous);
     },
   );
+  it("retires an untouched preparation before a new update without publishing its candidate", async () => {
+    const f = await createPackageSwapFixture(fixtureRoot);
+    writeRunnablePackage(f.packageRoot);
+    fs.unlinkSync(f.launcher);
+    fs.symlinkSync("../lib/node_modules/openclaw/openclaw.mjs", f.launcher);
+    await withPublicationFence(f.packageRoot, (fence) =>
+      preparePackagePublication(f, publicationActivation(fence)),
+    );
+    preparePreview(f);
+    const installed = snapshot(f.packageRoot);
+    const launcher = fs.readlinkSync(f.launcher);
+    await expectUnchanged(preview);
+    expectPreview(/Would settle.*publication-not-started/);
+
+    await expect(prepareUpdateCommand({ json: true })).resolves.toMatchObject({
+      discoveredRoot: f.packageRoot,
+    });
+
+    expect(snapshot(f.packageRoot)).toEqual(installed);
+    expect(fs.readlinkSync(f.launcher)).toEqual(launcher);
+    expect(readPackageActivationReceipt(f.packageRoot)).toMatchObject({ phase: "complete" });
+  });
   it.each(
     (["missing", "replaced"] as const).flatMap((lease) =>
       (["candidate", "previous", "damaged candidate"] as const).map((live) => ({ lease, live })),
