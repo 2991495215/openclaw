@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { MAX_TIMER_TIMEOUT_MS } from "openclaw/plugin-sdk/number-runtime";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addQaCredentialSet,
   diagnoseQaCredentialBroker,
@@ -12,6 +12,7 @@ import {
 
 const adminOptions = {
   siteUrl: "https://first-schnauzer-821.convex.site",
+  env: { OPENCLAW_QA_CONVEX_SECRET_MAINTAINER: "maint-secret" },
 };
 const payload = { groupId: "-100123", driverToken: "driver", sutToken: "sut" };
 const credential = {
@@ -23,9 +24,9 @@ const credential = {
   lastLeasedAtMs: 50,
 };
 function mockFetch(response: unknown, status = 200) {
-  return vi
-    .spyOn(globalThis, "fetch")
-    .mockImplementation(async (_input, _init) => jsonResponse(response, status));
+  return vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    jsonResponse(response, status),
+  );
 }
 
 function jsonResponse(response: unknown, status = 200) {
@@ -55,19 +56,8 @@ function requestBody(fetchImpl: ReturnType<typeof mockFetch>) {
 }
 
 describe("qa credential admin runtime", () => {
-  beforeEach(() => {
-    vi.stubEnv("OPENCLAW_QA_CONVEX_SECRET_MAINTAINER", "maint-secret");
-    vi.stubEnv("OPENCLAW_QA_CONVEX_SITE_URL", undefined);
-    vi.stubEnv("OPENCLAW_QA_CONVEX_ENDPOINT_PREFIX", undefined);
-    vi.stubEnv("OPENCLAW_QA_CREDENTIAL_OWNER_ID", undefined);
-    vi.stubEnv("OPENCLAW_QA_CREDENTIAL_HTTP_TIMEOUT_MS", undefined);
-    vi.stubEnv("OPENCLAW_QA_ALLOW_INSECURE_HTTP", undefined);
-    vi.stubEnv("OPENCLAW_QA_CONVEX_SECRET_CI", undefined);
-  });
-
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllEnvs();
   });
 
   it("adds a credential set through the admin endpoint", async () => {
@@ -82,6 +72,7 @@ describe("qa credential admin runtime", () => {
       note: "qa",
       actorId: "maintainer-local",
       ...adminOptions,
+      fetchImpl,
     });
 
     expect(result.credential).toMatchObject({
@@ -100,25 +91,28 @@ describe("qa credential admin runtime", () => {
   });
 
   it.each([
-    { options: {}, code: "MISSING_MAINTAINER_SECRET" },
+    { options: { env: {} }, code: "MISSING_MAINTAINER_SECRET" },
     { options: { siteUrl: "http://qa-cred.example.convex.site" }, code: "INVALID_SITE_URL" },
     { options: { endpointPrefix: "//evil.example" }, code: "INVALID_ARGUMENT" },
   ])("rejects invalid admin requests: $code", async ({ options, code }) => {
-    mockFetch({});
-    if (code === "MISSING_MAINTAINER_SECRET") {
-      vi.stubEnv("OPENCLAW_QA_CONVEX_SECRET_MAINTAINER", undefined);
-    }
-    await expectQaCredentialAdminError(listQaCredentialSets({ ...adminOptions, ...options }), code);
+    await expectQaCredentialAdminError(
+      listQaCredentialSets({ ...adminOptions, ...options, fetchImpl: vi.fn() }),
+      code,
+    );
   });
 
   it("caps oversized admin HTTP timeouts before creating abort signals", async () => {
     const timeoutController = new AbortController();
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
     const fetchImpl = mockFetch({ status: "ok", count: 0, credentials: [] });
-    vi.stubEnv("OPENCLAW_QA_CREDENTIAL_HTTP_TIMEOUT_MS", String(Number.MAX_SAFE_INTEGER));
 
     await listQaCredentialSets({
       siteUrl: adminOptions.siteUrl,
+      env: {
+        OPENCLAW_QA_CONVEX_SECRET_MAINTAINER: "maint-secret",
+        OPENCLAW_QA_CREDENTIAL_HTTP_TIMEOUT_MS: String(Number.MAX_SAFE_INTEGER),
+      },
+      fetchImpl,
     });
 
     expect(timeoutSpy).toHaveBeenCalledWith(MAX_TIMER_TIMEOUT_MS);
@@ -126,7 +120,7 @@ describe("qa credential admin runtime", () => {
   });
 
   it("surfaces broker error codes for remove", async () => {
-    mockFetch(
+    const fetchImpl = mockFetch(
       {
         status: "error",
         code: "LEASE_ACTIVE",
@@ -136,7 +130,7 @@ describe("qa credential admin runtime", () => {
     );
 
     await expectQaCredentialAdminError(
-      removeQaCredentialSet({ credentialId: "cred-1", ...adminOptions }),
+      removeQaCredentialSet({ credentialId: "cred-1", ...adminOptions, fetchImpl }),
       "LEASE_ACTIVE",
     );
   });
@@ -154,6 +148,7 @@ describe("qa credential admin runtime", () => {
       includePayload: true,
       limit: 5,
       ...adminOptions,
+      fetchImpl,
     });
 
     expect(result.credentials).toHaveLength(1);
@@ -204,11 +199,14 @@ describe("qa credential admin runtime", () => {
       server.listen(0, "127.0.0.1", resolve);
     });
     const port = (server.address() as AddressInfo).port;
-    vi.stubEnv("OPENCLAW_QA_ALLOW_INSECURE_HTTP", "1");
 
     try {
       const error = await listQaCredentialSets({
         siteUrl: `http://127.0.0.1:${port}`,
+        env: {
+          OPENCLAW_QA_ALLOW_INSECURE_HTTP: "1",
+          OPENCLAW_QA_CONVEX_SECRET_MAINTAINER: "maint-secret",
+        },
       }).then(
         () => undefined,
         (err: unknown) => err,
@@ -228,11 +226,15 @@ describe("qa credential admin runtime", () => {
   });
 
   it("doctors credential broker env without exposing secret values", async () => {
-    mockFetch({ status: "ok", count: 1, credentials: [credential] });
-    vi.stubEnv("OPENCLAW_QA_CONVEX_SECRET_CI", "ci-secret");
+    const fetchImpl = mockFetch({ status: "ok", count: 1, credentials: [credential] });
 
     const result = await diagnoseQaCredentialBroker({
       siteUrl: adminOptions.siteUrl,
+      env: {
+        OPENCLAW_QA_CONVEX_SECRET_CI: "ci-secret",
+        OPENCLAW_QA_CONVEX_SECRET_MAINTAINER: "maint-secret",
+      },
+      fetchImpl,
     });
 
     expect(result.status).toBe("pass");
