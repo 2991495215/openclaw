@@ -56,9 +56,9 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 26,
   newBootJsRequests: 20,
-  // Picker deferrals and native preloads: 1,414,864 B Chat and 915,265 B New Session.
+  // Panel renderer leaves: 1,409,828 B Chat; retain the New Session picker cap.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_469_628,
+  chatBootJsGzipBytes: 1_463_302,
   newBootJsGzipBytes: 929_032,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.

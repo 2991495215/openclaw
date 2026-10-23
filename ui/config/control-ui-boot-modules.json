@@ -1546,7 +1546,6 @@
   "ui/src/pages/chat/chat-pane-header-identity.ts",
   "ui/src/pages/chat/chat-pane-header-layout.ts",
   "ui/src/pages/chat/chat-pane-header-memo.ts",
-  "ui/src/pages/chat/chat-pane-header-panel-actions.ts",
   "ui/src/pages/chat/chat-pane-header-people.ts",
   "ui/src/pages/chat/chat-pane-header-view.tsx",
   "ui/src/pages/chat/chat-pane-header.ts",
