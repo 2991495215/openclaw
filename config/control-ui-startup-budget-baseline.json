@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 312986,
-  "reason": "Defer settings, activity, terminal, and preferences English at existing lazy owners. Matched 2c5b726d source baseline: startup 316173 B to 312986 B, seven JS requests unchanged; preserve main tool-row deferrals.",
+  "startupJsGzipBytes": 313199,
+  "reason": "Defer optional Settings, Preferences, Terminal, Activity, and update-detail English; remeasured with current main parser/emoji boundaries and matched build inputs",
   "updatedAt": "2026-10-23"
 }
