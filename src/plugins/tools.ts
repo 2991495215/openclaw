@@ -5,6 +5,7 @@ import { normalizeToolPolicyName } from "../agents/tool-policy.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import { captureAgentWorkspaceReadiness } from "../agents/workspace-readiness.js";
 import { normalizeConversationReadInvocationOrigin } from "../channels/plugins/conversation-read-origin.js";
+import { rethrowAfterCleanup } from "../infra/error-graph-internal.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   getLoadedRuntimePluginRegistry,
@@ -293,16 +294,11 @@ export async function acquirePluginToolInspectionRegistry(params: {
     setPluginRuntimeLoadContext(acquisition.registry, params.loadContext);
     return createPluginToolInspection(acquisition, selected);
   } catch (error) {
-    try {
-      await acquisition.release();
-    } catch (cleanupError) {
-      throw new AggregateError(
-        [error, cleanupError],
-        "Plugin tool inspection setup and cleanup failed",
-        { cause: cleanupError },
-      );
-    }
-    throw error;
+    return rethrowAfterCleanup(
+      error,
+      () => acquisition.release(),
+      "Plugin tool inspection setup and cleanup failed",
+    );
   }
 }
 

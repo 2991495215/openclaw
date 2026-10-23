@@ -6,6 +6,7 @@ import { isNixMode, resolveIsConfigReadOnly } from "../config/paths.js";
 import { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { clearGatewayAgentCliShim } from "../infra/openclaw-cli-shim.js";
 import { ensureOpenClawCliOnPath } from "../infra/path-env.js";
+import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { prepareRemoteModelCatalogStartupSnapshot } from "../model-catalog/remote-overlay.js";
 import {
@@ -303,14 +304,7 @@ async function createGatewayKernelWithSdkHost(
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
       }
-      if (cleanupErrors.length === 1) {
-        throw cleanupErrors[0];
-      }
-      if (cleanupErrors.length > 1) {
-        throw new AggregateError(cleanupErrors, "Gateway startup cleanup failed", {
-          cause: cleanupErrors[0],
-        });
-      }
+      throwSqliteLifecycleErrors(cleanupErrors, "Gateway startup cleanup failed");
     }
   });
 }

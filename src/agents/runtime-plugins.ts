@@ -3,6 +3,7 @@ import { projectRuntimeChangesOntoSource } from "../config/source-value-projecti
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { adoptRuntimeContextEngineRegistrations } from "../context-engine/registry.js";
 import { adoptRuntimeDecisionProviders } from "../decisions/registry-adoption.js";
+import { rethrowAfterCleanup } from "../infra/error-graph-internal.js";
 import {
   listLoadedRuntimePluginIds,
   listRuntimePluginIdsFromRegistry,
@@ -291,16 +292,11 @@ export async function acquireAgentRuntimePluginRegistry(
       releaseWork,
     };
   } catch (error) {
-    try {
-      await releaseRuntimePluginWork(acquired.release, releaseWork);
-    } catch (cleanupError) {
-      throw new AggregateError(
-        [error, cleanupError],
-        "Prepared registry acquisition and cleanup failed",
-        { cause: cleanupError },
-      );
-    }
-    throw error;
+    return rethrowAfterCleanup(
+      error,
+      () => releaseRuntimePluginWork(acquired.release, releaseWork),
+      "Prepared registry acquisition and cleanup failed",
+    );
   }
 }
 

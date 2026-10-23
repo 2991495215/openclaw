@@ -11,19 +11,27 @@ export async function settleWithCleanup<T>(
   cause: "cleanup" | "operation" = "cleanup",
 ): Promise<T> {
   const [outcome] = await Promise.allSettled([operation]);
-  const [cleanupOutcome] = await Promise.allSettled([(async () => cleanup())()]);
-  if (cleanupOutcome.status === "rejected") {
-    if (outcome.status === "rejected") {
-      throw new AggregateError([outcome.reason, cleanupOutcome.reason], message, {
-        cause: cause === "operation" ? outcome.reason : cleanupOutcome.reason,
-      });
-    }
-    throw cleanupOutcome.reason;
-  }
   if (outcome.status === "rejected") {
-    throw outcome.reason;
+    return rethrowAfterCleanup(outcome.reason, cleanup, message, cause);
   }
+  await cleanup();
   return outcome.value;
+}
+
+/** Clean up failed work without coercing the original thrown value. */
+export async function rethrowAfterCleanup(
+  error: unknown,
+  cleanup: () => void | Promise<void>,
+  message: string,
+  cause: "cleanup" | "operation" = "cleanup",
+): Promise<never> {
+  const [outcome] = await Promise.allSettled([(async () => cleanup())()]);
+  if (outcome.status === "rejected") {
+    throw new AggregateError([error, outcome.reason], message, {
+      cause: cause === "operation" ? error : outcome.reason,
+    });
+  }
+  throw error;
 }
 
 export function throwIfSettledRejected(

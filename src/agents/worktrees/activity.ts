@@ -1,3 +1,4 @@
+import { rethrowAfterCleanup } from "../../infra/error-graph-internal.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contract.js";
 import { runOutsideCommandProcessScope } from "../../process/exec-spawn.js";
 import { withWorktreeMutationLease } from "./allocation.js";
@@ -73,17 +74,14 @@ export async function acquireManagedWorktree(
             return { ...record, lastActiveAt };
           } catch (error) {
             if (acquired && !hasSqliteWorkerOutcomeUnknown(error)) {
-              try {
-                await runOutsideCommandProcessScope(() =>
-                  unlockWorktree(record, { beforeRun: guard.rollbackGuard }),
-                );
-              } catch (cleanupError) {
-                throw new AggregateError(
-                  [error, cleanupError],
-                  "Worktree activity publication and Git lock cleanup failed",
-                  { cause: cleanupError },
-                );
-              }
+              return rethrowAfterCleanup(
+                error,
+                () =>
+                  runOutsideCommandProcessScope(() =>
+                    unlockWorktree(record, { beforeRun: guard.rollbackGuard }),
+                  ),
+                "Worktree activity publication and Git lock cleanup failed",
+              );
             }
             throw error;
           }

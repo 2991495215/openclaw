@@ -15,6 +15,7 @@ import {
   isGatewayTransportError,
   type CallGatewayCliOptions,
 } from "../gateway/call.js";
+import { rethrowAfterCleanup } from "../infra/error-graph-internal.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import type {
   ActivateSetupInferenceParams,
@@ -174,19 +175,17 @@ export async function runRemoteGatewayInferenceOnboarding(
       }
     } catch (error) {
       if (!result?.done && (result !== undefined || !isGatewayClientRequestError(error))) {
-        try {
-          await request({
-            method: "wizard.cancel",
-            params: { sessionId, closeInput: true },
-            timeoutMs: activationTimeoutMs(params.kind),
-          });
-        } catch (cancelError) {
-          throw new AggregateError(
-            [error, cancelError],
-            "Remote activation failed and its setup session could not be closed.",
-            { cause: cancelError },
-          );
-        }
+        return rethrowAfterCleanup(
+          error,
+          async () => {
+            await request({
+              method: "wizard.cancel",
+              params: { sessionId, closeInput: true },
+              timeoutMs: activationTimeoutMs(params.kind),
+            });
+          },
+          "Remote activation failed and its setup session could not be closed.",
+        );
       }
       throw error;
     }
