@@ -7,15 +7,15 @@ import {
   ASSISTANT_ATTACHMENT_MEDIA_TICKET_MAX_REFRESH_RETRIES,
   ASSISTANT_ATTACHMENT_MEDIA_TICKET_REFRESH_SKEW_MS,
   ASSISTANT_ATTACHMENT_UNAVAILABLE_RETRY_MS,
-  isManagedOutgoingMediaSource,
   resolveAssistantAttachmentAvailability,
-  resolveManagedOutgoingMediaSessionKey,
   retryAssistantAttachmentAvailability,
 } from "./chat-message-attachment-availability.ts";
 import {
   applyResourceBasePath,
   buildAssistantAttachmentUrl,
   isLocalAssistantAttachmentSource,
+  isManagedOutgoingMediaSource,
+  resolveManagedOutgoingMediaSessionKey,
 } from "./chat-message-local-media.ts";
 import {
   isChatMediaResourceCurrent,

@@ -37,8 +37,7 @@ import type { AttachmentDownload } from "./chat-attachment-download.ts";
 import { FileDownloadButton } from "./chat-file-download-button.tsx";
 import type { FileViewControls } from "./chat-file-reader-controls.ts";
 import { FileSessionMenu } from "./chat-file-session-menu.tsx";
-import { openInlineChatImage } from "./chat-image-lightbox.ts";
-import { openResolvedImage } from "./chat-message-image-open.ts";
+import { openInlineChatImage, openResolvedImage } from "./chat-image-lightbox.ts";
 import { SidebarAttachment } from "./chat-sidebar-attachment.tsx";
 import type {
   AttachmentSidebarRuntime,

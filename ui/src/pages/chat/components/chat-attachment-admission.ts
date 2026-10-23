@@ -8,7 +8,7 @@ import { t } from "../../../i18n/index.ts";
 import type { ChatAttachment } from "../../../lib/chat/chat-types.ts";
 import { showToast } from "../../../lib/toast.ts";
 import { getChatAttachmentDataUrl } from "../attachment-payload-store.ts";
-import { canResizeChatAttachment } from "./chat-attachment-image.ts";
+import { canResizeChatAttachment } from "./chat-attachment-image-input.ts";
 
 export type ChatAttachmentLimits = {
   maxBytes: number;

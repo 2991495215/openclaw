@@ -456,24 +456,3 @@ function scheduleAssistantAttachmentRefresh(
     notifyChatMediaResourceSubscribers(resource);
   });
 }
-
-export function isManagedOutgoingMediaSource(source: string): boolean {
-  try {
-    const parsed = new URL(source, window.location.origin);
-    return (
-      parsed.origin === window.location.origin &&
-      parsed.pathname.startsWith("/api/chat/media/outgoing/")
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function resolveManagedOutgoingMediaSessionKey(source: string): string | null {
-  try {
-    const encodedSessionKey = new URL(source, window.location.origin).pathname.split("/")[5];
-    return encodedSessionKey ? decodeURIComponent(encodedSessionKey) : null;
-  } catch {
-    return null;
-  }
-}

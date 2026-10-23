@@ -9,7 +9,7 @@ import {
 import { admitAttachmentFiles, chatAttachmentBatchBytes } from "./chat-attachment-admission.ts";
 import type { ChatAttachmentControlsProps } from "./chat-attachment-controls.types.ts";
 import { currentAttachments } from "./chat-attachment-draft.ts";
-import { dataImageClipboardFile } from "./chat-attachment-image.ts";
+import { dataImageClipboardFile } from "./chat-attachment-image-input.ts";
 import { ChatAttachmentReadLifecycle, readChatAttachmentFile } from "./chat-attachment-reads.ts";
 import { encodeTextAsDataUrl } from "./chat-attachment-text.ts";
 

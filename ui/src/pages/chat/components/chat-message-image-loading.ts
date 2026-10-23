@@ -2,10 +2,10 @@ import type { ChatImageRenditionWidth } from "../../../../../src/shared/chat-ima
 import { fetchControlUiResource, subscribeBrowserAuthRestored } from "../../../app/browser-http.ts";
 import { buildChatMediaFetchHeaders } from "./chat-media-playback.ts";
 import {
+  applyResourceBasePath,
   isManagedOutgoingMediaSource,
   resolveManagedOutgoingMediaSessionKey,
-} from "./chat-message-attachment-availability.ts";
-import { applyResourceBasePath } from "./chat-message-local-media.ts";
+} from "./chat-message-local-media.ts";
 import {
   cacheManagedImageBlob,
   clearChatMediaResourceRefresh,

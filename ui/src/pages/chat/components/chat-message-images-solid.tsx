@@ -5,13 +5,13 @@ import { listen } from "../../../lib/reactive/listener.ts";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import { observeChatAttachmentViewport } from "./chat-attachment-viewport.ts";
 import { ChatImageActions } from "./chat-image-actions.tsx";
+import { imageTitle } from "./chat-image-lightbox.ts";
 import {
   MIN_CHAT_IMAGE_PREVIEW_WIDTH,
   resolveChatImagePreviewSize,
 } from "./chat-image-preview-size.ts";
 import { chatImageRenditionWidth } from "./chat-image-rendition.ts";
 import {
-  isManagedOutgoingMediaSource,
   loadAssistantAttachmentAvailability,
   reportAssistantImageFailure,
   resolveAssistantAttachmentAvailability,
@@ -28,11 +28,12 @@ import {
   readCachedManagedImageUrl,
   resolveManagedImageResource,
 } from "./chat-message-image-loading.ts";
-import { imageTitle, openMessageImage, readImageOriginalBlob } from "./chat-message-image-open.ts";
+import { openMessageImage, readImageOriginalBlob } from "./chat-message-image-open.ts";
 import {
   buildAssistantAttachmentUrl,
   isCanonicalInboundMediaSource,
   isLocalAssistantAttachmentSource,
+  isManagedOutgoingMediaSource,
 } from "./chat-message-local-media.ts";
 import {
   observeChatMediaResourceSubscriber,

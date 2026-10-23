@@ -13,7 +13,6 @@ import {
   chatAttachmentBatchBytes,
   type ChatAttachmentLimits,
 } from "./chat-attachment-admission.ts";
-import { resizeChatAttachmentImage } from "./chat-attachment-image.ts";
 
 const CHAT_ATTACHMENT_READ_TIMEOUT_MS = 15_000;
 
@@ -403,10 +402,16 @@ export function readChatAttachmentFile(
     };
     reads.updateProgress(entry, 0);
   } else if (imageLimit !== undefined && file.type.startsWith("image/") && file.size > imageLimit) {
-    void resizeChatAttachmentImage(file, imageLimit, preparation.signal, setProcessing).then(
-      readPreparedFile,
-      () => finish("error"),
-    );
+    void (async () => {
+      try {
+        const { resizeChatAttachmentImage } = await import("./chat-attachment-image.ts");
+        readPreparedFile(
+          await resizeChatAttachmentImage(file, imageLimit, preparation.signal, setProcessing),
+        );
+      } catch {
+        finish("error");
+      }
+    })();
   } else {
     readPreparedFile(file);
   }

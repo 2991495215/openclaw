@@ -2,26 +2,28 @@ import type { JSX as SolidJSX } from "@solidjs/web";
 import { For, Match, Show, Switch, createMemo, onCleanup, refresh } from "solid-js";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { CompactAttachmentCard } from "./chat-attachment-card-solid.tsx";
-import "./chat-audio-player.tsx";
-import "./chat-svg-attachment.tsx";
-import "./chat-video-player.tsx";
 import {
   isCrossOriginHttpSource,
   safeAttachmentHref,
   safePlainTextAttachmentHref,
   safeMediaAttachmentHref,
 } from "./chat-attachment-href.ts";
+import "./chat-audio-player.tsx";
+import "./chat-svg-attachment.tsx";
+import "./chat-video-player.tsx";
+import { openResolvedImage } from "./chat-image-lightbox.ts";
 import {
   shouldDeferAttachmentCard,
   type AttachmentAdmission,
 } from "./chat-message-attachment-admission-model.ts";
 import { ChatAttachmentAdmission } from "./chat-message-attachment-admission-solid.tsx";
-import { isManagedOutgoingMediaSource } from "./chat-message-attachment-availability.ts";
 import { resolveAttachmentSource, readAttachmentSource } from "./chat-message-attachment-source.ts";
 import { AssistantAttachmentStatusCard } from "./chat-message-attachment-status-solid.tsx";
 import { attachmentFailureReason } from "./chat-message-attachment-status.ts";
-import { openResolvedImage } from "./chat-message-image-open.ts";
-import { isLocalAssistantAttachmentSource } from "./chat-message-local-media.ts";
+import {
+  isLocalAssistantAttachmentSource,
+  isManagedOutgoingMediaSource,
+} from "./chat-message-local-media.ts";
 import {
   resolveAttachmentImageKind,
   observeChatMediaResourceSubscriber,
