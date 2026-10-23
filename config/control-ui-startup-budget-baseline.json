@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 294961,
-  "reason": "Startup leaf icons, update classification, and lazy English: matched b5b24cf15c2 build 310773 to 294961 B gzip with 7 JS and 1 CSS request.",
+  "startupJsGzipBytes": 284696,
+  "reason": "Pure MIME/retry initializers: matched b19bade build 285482 to 284696 B gzip with 7 JS and 1 CSS request.",
   "updatedAt": "2026-10-23"
 }
