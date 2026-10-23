@@ -3,6 +3,17 @@ import type { EngineConnection } from "../infra/sql-connection.js";
 import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 import type { DB } from "./openclaw-state-db.generated.js";
 
+const PUBLICATION_RECEIPT_COLUMNS = [
+  "session_key",
+  "agent_id",
+  "session_id",
+  "pull_request_url",
+  "branch",
+  "title",
+  "updated_at_ms",
+  "request_id",
+] as const;
+
 type TaskPublicationSession = {
   agentId: string;
   sessionKey: string;
@@ -49,16 +60,7 @@ export function readTaskPublicationReceipts(db: EngineConnection, input: TaskPub
     // Old receipts without a lifecycle sidecar can only match an originally absent revision.
     let selection = query
       .selectFrom(table)
-      .select([
-        "session_key",
-        "agent_id",
-        "session_id",
-        "pull_request_url",
-        "branch",
-        "title",
-        "updated_at_ms",
-        "request_id",
-      ])
+      .select(PUBLICATION_RECEIPT_COLUMNS)
       .where("status", "=", "published")
       .where("pull_request_url", "is not", null)
       .where("session_id", "in", sessionIds);
@@ -88,14 +90,7 @@ export function readTaskPublicationReceipts(db: EngineConnection, input: TaskPub
       query
         .selectFrom("github_repository_publication_requests")
         .select([
-          "session_key",
-          "agent_id",
-          "session_id",
-          "pull_request_url",
-          "branch",
-          "title",
-          "updated_at_ms",
-          "request_id",
+          ...PUBLICATION_RECEIPT_COLUMNS,
           "session_lifecycle_revision as lifecycle_revision",
         ])
         .where("status", "=", "published")
