@@ -13,17 +13,10 @@ describe("state-dir guard with a real token Gateway", () => {
   const token = "state-dir-test-token";
   let gateway: OpenClawTestInstance;
   let hello: GatewayHello | undefined;
-  const check = (authenticated = true) =>
-    checkCliGatewayStateDir({
-      command: "openclaw channels add",
-      config: {
-        gateway: {
-          mode: "local",
-          port: gateway.port,
-          auth: { mode: "token", ...(authenticated ? { token } : {}) },
-        },
-      },
-    });
+  const check = (authenticated = true) => {
+    vi.stubEnv("OPENCLAW_GATEWAY_TOKEN", authenticated ? token : undefined);
+    return checkCliGatewayStateDir({ command: "openclaw channels add" });
+  };
 
   const setCliStateDir = (stateDir: string) => {
     vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);

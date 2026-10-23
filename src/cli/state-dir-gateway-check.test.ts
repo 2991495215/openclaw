@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import * as dispatchConfig from "../config/gateway-dispatch-config.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 const mocks = vi.hoisted(() => ({
   callGateway: vi.fn(),
@@ -27,8 +29,10 @@ import { checkCliGatewayStateDir, compareCliGatewayStateDirs } from "./state-dir
 describe("state-dir-gateway-check", () => {
   const tempDirs = useAutoCleanupTempDirTracker(afterEach);
   let root: string;
-  const check = (config: Parameters<typeof checkCliGatewayStateDir>[0]["config"] = {}) =>
-    checkCliGatewayStateDir({ command: "openclaw configure", config });
+  const check = async (config: OpenClawConfig = {}) => {
+    using _ = vi.spyOn(dispatchConfig, "readGatewayDispatchConfig").mockReturnValue(config);
+    return await checkCliGatewayStateDir({ command: "openclaw configure" });
+  };
   const serviceEnv = (environment: NodeJS.ProcessEnv) =>
     mocks.readServiceCommand.mockResolvedValue({ environment });
 

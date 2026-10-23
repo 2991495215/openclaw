@@ -1,6 +1,5 @@
 import path from "node:path";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveGatewayService } from "../daemon/service.js";
 import {
   buildGatewayConnectionDetails,
@@ -108,11 +107,10 @@ export function compareCliGatewayStateDirs(params: {
 
 export async function checkCliGatewayStateDir(params: {
   command: string;
-  config?: OpenClawConfig;
 }): Promise<CliGatewayStateDirOutcome> {
   const cliStateDir = resolveStateDir(process.env);
   const cliConfigPath = resolveConfigPath(process.env);
-  const details = buildGatewayConnectionDetails({ config: params.config });
+  const details = buildGatewayConnectionDetails();
   if (!isLoopbackGatewayUrl(details.url)) {
     return {
       kind: "warn",
@@ -124,7 +122,6 @@ export async function checkCliGatewayStateDir(params: {
   let connectionError: unknown;
   try {
     await callGateway({
-      config: params.config,
       method: "status",
       params: { includeChannelSummary: false },
       scopes: [ADMIN_SCOPE],
@@ -168,7 +165,6 @@ export async function checkCliGatewayStateDir(params: {
   if (isGatewayCredentialsRequiredError(connectionError)) {
     const probe = await probeGateway({
       url: details.url,
-      config: params.config,
       timeoutMs: STATE_DIR_CHECK_TIMEOUT_MS,
       includeDetails: false,
       suppressStoredDeviceAuth: true,
