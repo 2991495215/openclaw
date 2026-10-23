@@ -72,7 +72,6 @@ export interface ReasoningTagTextPartitioner {
   hasPending(): boolean;
   /** Whether more input can change buffered Markdown or reasoning-tag ownership. */
   hasPendingSyntax(): boolean;
-  isInsideReasoning(): boolean;
 }
 
 /** Creates a block-incremental parser that emits only Markdown-stable text. */
@@ -549,9 +548,6 @@ export function createReasoningTagTextPartitioner(): ReasoningTagTextPartitioner
       return (
         pendingTagProbe !== undefined || heldBacktickStart !== undefined || reduction.depth > 0
       );
-    },
-    isInsideReasoning() {
-      return reduction.depth > 0;
     },
   };
 }
