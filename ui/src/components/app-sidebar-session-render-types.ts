@@ -192,6 +192,7 @@ export type SidebarSessionListHost = SessionListHost & {
       | "loadingMoreSessionCatalogIds"
     >;
   projectHomeSession(row: GatewaySessionRow, agentId: string): SidebarRecentSession;
+  resolvePersonalGroupSession?(key: string): SidebarRecentSession | undefined;
   reconciledSidebarZone(): {
     entries: readonly SidebarZoneEntry[];
     sessionRows: ReadonlyMap<string, SidebarRecentSession>;
