@@ -2,6 +2,12 @@ import path from "node:path";
 import { afterEach, beforeEach } from "vitest";
 import { createTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
+  appendTranscriptMessageSync,
+  replaceSessionEntrySync,
+} from "../config/sessions/session-accessor.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import {
   closeOpenClawAgentDatabasesAsync,
   closeOpenClawAgentDatabasesForTest,
 } from "../state/openclaw-agent-db.js";
@@ -42,4 +48,38 @@ export function useSessionStoreFixture(prefix: string): () => string {
     tempDirs.cleanup();
   });
   return () => storePath;
+}
+
+export function seedSessionEntries(storePath: string, entries: Record<string, SessionEntry>): void {
+  for (const [sessionKey, entry] of Object.entries(entries)) {
+    replaceSessionEntrySync({ sessionKey, storePath }, entry);
+  }
+}
+
+export function appendTranscriptMessages(params: {
+  sessionId: string;
+  sessionKey: string;
+  storePath: string;
+  messages: unknown[];
+  agentId?: string;
+}) {
+  const { messages, agentId, ...target } = params;
+  for (const message of messages) {
+    appendTranscriptMessageSync({ ...target, agentId: agentId ?? "main" }, { message });
+  }
+}
+
+export function createSingleAgentAvatarConfig(workspace: string): OpenClawConfig {
+  const main = { workspace, identity: { avatar: "avatar-link.png" } };
+  return { session: { mainKey: "main" }, agents: { entries: { main } } };
+}
+
+export function createModelDefaultsConfig(params: {
+  primary: string;
+  models?: Record<string, { agentRuntime?: { id: string } }>;
+  agentRuntime?: { id: string };
+}): OpenClawConfig {
+  const { primary, models, agentRuntime } = params;
+  const overrides = agentRuntime ? { [primary]: { agentRuntime } } : {};
+  return { agents: { defaults: { model: { primary }, models: { ...models, ...overrides } } } };
 }

@@ -1,9 +1,19 @@
 // Native process probes start their deadlines after the invocation owner prepares these modules.
 export const nativeProcessTestEntrypoints = {
-  updateCandidateIo: {
+  backupDatabaseDiscovery: {
     currentModuleUrl: import.meta.url,
-    sourceWorkerName: "update-candidate-io",
-    distWorkerPath: "infra/update-candidate-io.js",
+    sourceWorkerName: "backup-database-discovery",
+    distWorkerPath: "infra/backup-database-discovery.js",
+  },
+  databaseBackup: {
+    currentModuleUrl: import.meta.url,
+    sourceWorkerName: "../snapshot/database-backup",
+    distWorkerPath: "snapshot/database-backup.js",
+  },
+  updatePostgresState: {
+    currentModuleUrl: import.meta.url,
+    sourceWorkerName: "update-candidate-state.postgres",
+    distWorkerPath: "infra/update-candidate-state.postgres.js",
   },
   tailscale: {
     currentModuleUrl: import.meta.url,
@@ -15,10 +25,15 @@ export const nativeProcessTestEntrypoints = {
     sourceWorkerName: "diagnostics-timeline",
     distWorkerPath: "infra/diagnostics-timeline.js",
   },
-  fsSafeDefaults: {
+  fsSafeCore: {
     currentModuleUrl: import.meta.url,
-    sourceWorkerName: "fs-safe-defaults",
-    distWorkerPath: "infra/fs-safe-defaults.js",
+    sourceWorkerName: "fs-safe",
+    distWorkerPath: "infra/fs-safe.js",
+  },
+  fsSafeEnv: {
+    currentModuleUrl: import.meta.url,
+    sourceWorkerName: "fs-safe-env",
+    distWorkerPath: "infra/fs-safe-env.js",
   },
   memoryFsUtils: {
     currentModuleUrl: import.meta.url,

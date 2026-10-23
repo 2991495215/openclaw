@@ -1,4 +1,7 @@
-import { KEYBOARD_SHORTCUT_COMBOS as combos } from "../../lib/keyboard-shortcut-contract.ts";
+import {
+  matchesShortcutCombo,
+  KEYBOARD_SHORTCUT_COMBOS as combos,
+} from "../../lib/keyboard-shortcut-contract.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import type { SidebarSlotId } from "./sidebar-layout-types.ts";
 
@@ -23,7 +26,6 @@ export const SIDEBAR_PANEL_SHORTCUTS = {
   browser: panel("browser", combos.browserPanel, (c) => c.state?.browserPanelAvailable === true),
   workspace: panel("workspace", combos.workspaceFiles),
   companion: panel("companion", combos.sideChat),
-  tasks: panel("tasks", combos.tasksPanel),
   desktop: panel("desktop", combos.desktopPanel, (c) => c.desktopAvailable === true),
   discussion: panel(
     "discussion",
@@ -35,4 +37,17 @@ export const SIDEBAR_PANEL_SHORTCUTS = {
   conversation: undefined,
   "link-reader": undefined,
   portal: undefined,
+  subagents: undefined,
+  processes: undefined,
 };
+
+/** Keyboard and panel metadata use the same availability policy. */
+export function resolveSidebarPanelShortcut(
+  event: KeyboardEvent,
+  context: () => PanelContext,
+): SidebarSlotId | undefined {
+  const shortcut = Object.values(SIDEBAR_PANEL_SHORTCUTS).find(
+    (entry) => entry && matchesShortcutCombo(entry.combo, event),
+  );
+  return shortcut?.available(context()) ? shortcut.slot : undefined;
+}

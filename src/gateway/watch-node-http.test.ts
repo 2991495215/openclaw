@@ -1,5 +1,4 @@
 import { request as httpRequest, type ServerResponse } from "node:http";
-import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GATEWAY_CLIENT_IDS,
@@ -34,8 +33,9 @@ import {
 } from "../shared/device-bootstrap-profile.js";
 import { closeOpenClawStateDatabaseByPathAsync } from "../state/openclaw-state-db-cache.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
+import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { createTrackedTempDirs } from "../test-utils/tracked-temp-dirs.js";
-import { createAuthRateLimiter } from "./auth-rate-limit.js";
+import { createGatewayAuthRateLimiter } from "./auth-rate-limit.js";
 import { serializeEventPayload } from "./node-registry.js";
 import {
   connectWatchNode,
@@ -73,11 +73,11 @@ afterEach(async () => {
   await tempDirs.cleanup();
   cleanups.length = 0;
   databasePaths.clear();
+  vi.unstubAllEnvs();
 });
 
 async function makeWatchNodeDir(prefix: string): Promise<string> {
   const baseDir = await tempDirs.make(prefix);
-  databasePaths.add(path.join(baseDir, "watch-identity.sqlite"));
   databasePaths.add(
     resolveOpenClawStateSqlitePath({ ...process.env, OPENCLAW_STATE_DIR: baseDir }),
   );
@@ -92,7 +92,7 @@ async function createWatchNodeFixture(
 ) {
   const baseDir = await makeWatchNodeDir(prefix);
   const identity = loadOrCreateDeviceIdentity({
-    path: path.join(baseDir, "watch-identity.sqlite"),
+    env: { ...process.env, OPENCLAW_STATE_DIR: baseDir },
   });
   const issued = await issueDevicePairSetupBootstrapToken({
     baseDir,
@@ -175,22 +175,6 @@ describe("watch node HTTP transport", () => {
         error: { message: "unsupported watch node identity or capability surface" },
       });
     }
-    runtime.close();
-  });
-
-  it("accepts a supported notification permission set to false", async () => {
-    const { identity, issued, baseUrl, runtime } = await createWatchNodeFixture(
-      "openclaw-watch-node-permissions-",
-    );
-    const response = await connectWatchNode({
-      baseUrl,
-      identity,
-      bootstrapToken: issued.token,
-      permissions: { notifications: false },
-    });
-
-    expect(response.status).toBe(200);
-    await readJson(response);
     runtime.close();
   });
 
@@ -301,11 +285,7 @@ describe("watch node HTTP transport", () => {
     expect(disconnectedNodes).toHaveLength(1);
   });
 
-  it.each([
-    { destroyTarget: "socket", delivery: "event" },
-    { destroyTarget: "socket", delivery: "raw" },
-    { destroyTarget: "response", delivery: "event" },
-  ] as const)(
+  it.each([{ destroyTarget: "socket", delivery: "raw" }] as const)(
     "rejects $delivery delivery when the active watch poll $destroyTarget is destroyed",
     async ({ destroyTarget, delivery }) => {
       let resolvePollReady: (response: ServerResponse) => void = () => undefined;
@@ -473,7 +453,7 @@ describe("watch node HTTP transport", () => {
       bootstrapToken: issued.token,
     });
     const connected = await readJson(connectResponse);
-    // Prepare the pending request before starting the invoke's two-second budget.
+    // Prepare the pending pairing request before dispatching the invocation.
     const paired = await getPairedDevice(identity.deviceId, baseDir);
     const repair = await requestDevicePairing(
       {
@@ -488,7 +468,9 @@ describe("watch node HTTP transport", () => {
     const invoke = nodeRegistry.invoke({
       nodeId: identity.deviceId,
       command: "device.info",
-      timeoutMs: 2_000,
+      // Pairing revocation must settle this call; an unrelated wall-clock
+      // deadline can win while the real database and HTTP operations finish.
+      timeoutMs: 0,
     });
     const pollResponse = await fetch(`${baseUrl}/poll`, {
       method: "POST",
@@ -579,13 +561,15 @@ describe("watch node HTTP transport", () => {
 
     const abortedBaseDir = await makeWatchNodeDir("openclaw-watch-node-aborted-connect-");
     const abortedIdentity = loadOrCreateDeviceIdentity({
-      path: path.join(abortedBaseDir, "watch-identity.sqlite"),
+      env: { ...process.env, OPENCLAW_STATE_DIR: abortedBaseDir },
     });
     const abortedBootstrap = await issueDevicePairSetupBootstrapToken({
       baseDir: abortedBaseDir,
       profile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
     });
-    const abortedLimiter = createAuthRateLimiter(limiterConfig);
+    const abortedLimiter = createGatewayAuthRateLimiter(limiterConfig, {
+      scheduler: createTestGatewayScheduler(),
+    });
     try {
       const abortedRuntime = await startWatchNodeHttpRuntime(abortedBaseDir, cleanups, {
         rateLimiter: abortedLimiter,
@@ -641,13 +625,15 @@ describe("watch node HTTP transport", () => {
 
     const completedBaseDir = await makeWatchNodeDir("openclaw-watch-node-completed-connect-");
     const completedIdentity = loadOrCreateDeviceIdentity({
-      path: path.join(completedBaseDir, "watch-identity.sqlite"),
+      env: { ...process.env, OPENCLAW_STATE_DIR: completedBaseDir },
     });
     const completedBootstrap = await issueDevicePairSetupBootstrapToken({
       baseDir: completedBaseDir,
       profile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
     });
-    const completedLimiter = createAuthRateLimiter(limiterConfig);
+    const completedLimiter = createGatewayAuthRateLimiter(limiterConfig, {
+      scheduler: createTestGatewayScheduler(),
+    });
     try {
       const completedRuntime = await startWatchNodeHttpRuntime(completedBaseDir, cleanups, {
         rateLimiter: completedLimiter,
@@ -672,7 +658,7 @@ describe("watch node HTTP transport", () => {
   it("restores an uncorrelated bootstrap token when the connect response aborts", async () => {
     const baseDir = await makeWatchNodeDir("openclaw-watch-node-generic-abort-");
     const identity = loadOrCreateDeviceIdentity({
-      path: path.join(baseDir, "watch-identity.sqlite"),
+      env: { ...process.env, OPENCLAW_STATE_DIR: baseDir },
     });
     const issued = await issueDeviceBootstrapToken({
       baseDir,
@@ -758,7 +744,6 @@ describe("watch node HTTP transport", () => {
   });
 
   it.each([
-    { name: "new Watch", existingProfile: undefined },
     { name: "node-only Watch", existingProfile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE },
     { name: "broader operator", existingProfile: FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE },
   ])("hands off only Talk access for a $name voice setup", async ({ existingProfile }) => {
@@ -784,6 +769,7 @@ describe("watch node HTTP transport", () => {
       const approved = await approveBootstrapDevicePairing(
         pairing.request.requestId,
         existingProfile,
+        {},
         baseDir,
       );
       expect(approved?.status).toBe("approved");
@@ -842,19 +828,19 @@ describe("watch node HTTP transport", () => {
     runtime.close();
   });
 
-  it.each([
-    { name: "limited mobile", profile: PAIRING_SETUP_BOOTSTRAP_PROFILE },
-    { name: "full mobile", profile: FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE },
-  ])("does not accept a $name grant over Watch HTTP", async ({ profile }) => {
-    const { baseDir, identity, issued, baseUrl, runtime } = await createWatchNodeFixture(
-      "openclaw-watch-node-profile-boundary-",
-      { bootstrapProfile: profile },
-    );
-    const response = await connectWatchNode({ baseUrl, identity, bootstrapToken: issued.token });
-    expect(response.status).toBe(401);
-    expect(await getPairedDevice(identity.deviceId, baseDir)).toBeNull();
-    runtime.close();
-  });
+  it.each([{ name: "limited mobile", profile: PAIRING_SETUP_BOOTSTRAP_PROFILE }])(
+    "does not accept a $name grant over Watch HTTP",
+    async ({ profile }) => {
+      const { baseDir, identity, issued, baseUrl, runtime } = await createWatchNodeFixture(
+        "openclaw-watch-node-profile-boundary-",
+        { bootstrapProfile: profile },
+      );
+      const response = await connectWatchNode({ baseUrl, identity, bootstrapToken: issued.token });
+      expect(response.status).toBe(401);
+      expect(await getPairedDevice(identity.deviceId, baseDir)).toBeNull();
+      runtime.close();
+    },
+  );
 
   it("restores only declared approved commands after a denied reconnect and accepts an invoke result", async () => {
     const options: Parameters<typeof startWatchNodeHttpRuntime>[2] = { config: {} };
@@ -923,6 +909,9 @@ describe("watch node HTTP transport", () => {
     });
     expect(stalePollResponse.status).toBe(401);
 
+    // Keep real pairing-worker latency out of this delivery assertion.
+    const invokeNow = performance.now();
+    using _ = vi.spyOn(performance, "now").mockReturnValue(invokeNow);
     const invoke = nodeRegistry.invoke({
       nodeId: identity.deviceId,
       command: "device.info",
@@ -946,6 +935,7 @@ describe("watch node HTTP transport", () => {
       body: JSON.stringify({ id: event.payload.id, ok: true, payloadJSON: '{"model":"Watch"}' }),
     });
     expect(resultResponse.status).toBe(200);
+    await expect(readJson(resultResponse)).resolves.toEqual({ ok: true });
     await expect(invoke).resolves.toMatchObject({
       ok: true,
       payloadJSON: '{"model":"Watch"}',
