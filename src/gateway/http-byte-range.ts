@@ -59,12 +59,11 @@ function parseByteRange(value: string, size: number): ByteSlice | "invalid" | "u
 export function resolveByteResponse(params: {
   file: Pick<FileIdentity, "size">;
   validators?: ReturnType<typeof createImmutableFileValidators>;
-  nowMs?: number;
   method?: string;
   request?: Pick<IncomingMessage, "headers" | "headersDistinct">;
 }) {
   const etag = params.validators?.etag;
-  const originatedAtMs = params.nowMs ?? Date.now();
+  const originatedAtMs = Date.now();
   // Filesystem clocks may lead this host; validators cannot postdate message origination.
   const lastModifiedMs = params.validators
     ? Math.floor(Math.min(params.validators.mtimeMs, originatedAtMs) / 1_000) * 1_000
