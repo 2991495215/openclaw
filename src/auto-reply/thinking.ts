@@ -365,11 +365,10 @@ export function listThinkingLevelLabels(
 export function formatThinkingLevels(
   provider?: string | null,
   model?: string | null,
-  separator = ", ",
   catalog?: ThinkingCatalogEntry[],
   agentRuntime?: string | null,
 ): string {
-  return listThinkingLevelLabels(provider, model, catalog, agentRuntime).join(separator);
+  return listThinkingLevelLabels(provider, model, catalog, agentRuntime).join(", ");
 }
 
 /** Resolve the default thinking level for a provider/model pair. */

@@ -357,7 +357,6 @@ export async function prepareAgentCommandExecution(
   const thinkingLevelsHint = formatThinkingLevels(
     configuredModel.provider,
     configuredModel.model,
-    ", ",
     configuredThinkingCatalog.length > 0 ? configuredThinkingCatalog : undefined,
     configuredThinkingRuntime,
   );
