@@ -7,6 +7,7 @@ import {
 import { isRecord, isStringArray } from "@openclaw/normalization-core/record-coerce";
 import { Check } from "typebox/schema";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
+import { createObjectIdAllocator } from "./object-id.js";
 
 type LocalRefResolution =
   | {
@@ -17,8 +18,7 @@ type LocalRefResolution =
     }
   | { found: false };
 type JsonSchemaNode = JsonSchemaValue | JsonSchemaNode[];
-const schemaResourceIds = new WeakMap<object, number>();
-let nextSchemaResourceId = 1;
+const getSchemaResourceId = createObjectIdAllocator(1);
 const schemaMapKeywords = new Set([
   "$defs",
   "definitions",
@@ -97,11 +97,7 @@ function schemaResourceRefKey(
   if (!isRecord(resourceRoot)) {
     return `boolean:${String(resourceRoot)}:${baseId ?? ""}:${ref}`;
   }
-  let id = schemaResourceIds.get(resourceRoot);
-  if (id === undefined) {
-    id = nextSchemaResourceId++;
-    schemaResourceIds.set(resourceRoot, id);
-  }
+  const id = getSchemaResourceId(resourceRoot);
   return `schema:${id}:${baseId ?? ""}:${ref}`;
 }
 
