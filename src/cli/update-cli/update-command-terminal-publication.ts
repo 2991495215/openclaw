@@ -205,6 +205,17 @@ export async function publishSettledUpdateCommandResult(
   );
 }
 
+export function shouldPropagatePostUpdateException(
+  error: unknown,
+  activationVerified: boolean,
+): boolean {
+  return (
+    (error instanceof UpdateCommandFailure &&
+      (!activationVerified || error.result.reason !== "wrapper-retirement-failed")) ||
+    hasCommandProcessCleanupError(error)
+  );
+}
+
 export function createPostUpdateExceptionResult(
   params: Pick<FinishUpdateParams, "result" | "root" | "startedAt">,
   error: unknown,
@@ -223,7 +234,7 @@ export function createPostUpdateExceptionResult(
           cause.result.recovery?.serviceRestartSafe !== false),
     ) &&
     error instanceof Error &&
-    !(params.result.recovery?.serviceRestartSafe === false && params.result.recovery.dataAtRisk)
+    params.result.recovery?.serviceRestartSafe !== false
   ) {
     // Only known maintenance failures qualify; health does not grant authority.
     const warning = `Gateway activation verified; post-update maintenance needs attention: ${message}`;

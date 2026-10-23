@@ -5,7 +5,6 @@ import { buildControlPlaneUpdateRestartHealthPendingResult } from "../../infra/u
 import { recordUpdateRunStep } from "../../infra/update-run-ledger.js";
 import { isUpdateGatewayReadinessPending } from "../../infra/update-run-step.js";
 import type { UpdateRunResult } from "../../infra/update-runner-types.js";
-import { hasCommandProcessCleanupError } from "../../process/exec-result.js";
 import { defaultRuntime } from "../../runtime.js";
 import { classifyUpdateOutcome, isVerifiedUpdateRollback } from "../../shared/update-outcome.js";
 import { convergeUpdatePlugins } from "./update-command-convergence.js";
@@ -53,6 +52,7 @@ import {
   captureUpdateFinalization,
   createPostUpdateExceptionResult,
   publishSettledUpdateCommandResult,
+  shouldPropagatePostUpdateException,
   bindUpdateFinalizationFailure,
   withUpdateProgressSettlement,
 } from "./update-command-terminal-publication.js";
@@ -706,11 +706,7 @@ async function finishSettledUpdate(
           cause: error,
         });
       }
-      if (
-        (error instanceof UpdateCommandFailure &&
-          (!activationVerified || error.result.reason !== "wrapper-retirement-failed")) ||
-        hasCommandProcessCleanupError(error)
-      ) {
+      if (shouldPropagatePostUpdateException(error, activationVerified)) {
         // Unsettled commands may still change files. Keep intent/material for fenced reconciliation.
         throw error;
       }
