@@ -1,13 +1,22 @@
 import { expect, it, vi } from "vitest";
+import { createDeferred } from "../../../test/helpers/promise.js";
 import { createApplicationConfigCapability } from "../app/config.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
 import { initializeControlUiPlugin } from "./control-ui-loader.ts";
 import { type ControlUiPluginOwner, ControlUiPluginRuntime } from "./control-ui-runtime.ts";
 
+const { preloadReplacement } = vi.hoisted(() => ({ preloadReplacement: vi.fn() }));
+vi.mock("./control-ui-surface.solid.tsx", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./control-ui-surface.solid.tsx")>();
+  return { ...actual, PluginReplacement: { preload: preloadReplacement } };
+});
+
 it.each(["load", "error", "abort"] as const)(
-  "fetches assets concurrently and gates activation on CSS %s",
+  "gates activation on replacement readiness and CSS %s",
   async (result) => {
+    const viewReady = createDeferred();
+    preloadReplacement.mockReturnValue(viewReady.promise);
     const prefix = "/__openclaw__/plugins/control-ui/fixture/one/";
     const entryUrl = new URL(`${prefix}${result}.js`, window.location.href).href;
     const activate = vi.fn();
@@ -73,6 +82,9 @@ it.each(["load", "error", "abort"] as const)(
         firstStyle.dispatchEvent(new Event(result));
       }
       if (result === "load") {
+        await vi.dynamicImportSettled();
+        expect(activate.mock.calls.length).toBe(0);
+        viewReady.resolve();
         expect(await pending).toBe(owner);
         expect(activate).toHaveBeenCalledOnce();
       } else {
@@ -83,6 +95,8 @@ it.each(["load", "error", "abort"] as const)(
       }
       expect(styles.map((style) => style.media)).toEqual(["not all", "not all"]);
     } finally {
+      viewReady.resolve();
+      preloadReplacement.mockReset();
       dispose();
       runtime.dispose();
       await outcome;

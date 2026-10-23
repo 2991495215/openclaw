@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type {
   ControlUiReplacement,
   ControlUiSurfaceProps,
@@ -11,7 +11,7 @@ import { createApplicationContextProvider } from "../test-helpers/application-co
 import { mountSolid } from "../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../test-helpers/solid-application-context.tsx";
 import { flush } from "../test-helpers/solid-settle.ts";
-import { PluginSurface } from "./control-ui-view.solid.tsx";
+import { PluginReplacement, PluginSurface } from "./control-ui-surface.solid.tsx";
 import {
   composerProps,
   createViewRuntime as createRuntime,
@@ -19,6 +19,9 @@ import {
   replacement,
 } from "./control-ui-view.test-support.ts";
 import "./control-ui-contributions.solid.tsx";
+
+// Direct-registration fixtures bypass activation's preload gate.
+beforeAll(() => PluginReplacement.preload());
 
 const pluginView = (host: HTMLElement) =>
   host.querySelector<HTMLElementTagNameMap["openclaw-plugin-view"]>("openclaw-plugin-view")!;

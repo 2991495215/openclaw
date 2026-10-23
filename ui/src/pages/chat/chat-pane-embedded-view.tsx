@@ -10,7 +10,6 @@ import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { ContentPresentation } from "../../lib/solid/presentation.ts";
 import type { ElementProperties } from "../../types/solid-elements.d.ts";
 import type { SidebarPanelDefinitionParams, SidebarPanelData } from "./chat-pane-embedded-types.ts";
-import { EmbeddedPluginPanel } from "./chat-pane-plugin-panel.tsx";
 import { usePanePresentation } from "./chat-pane-presentation.ts";
 import { ChatBoardPanel } from "./chat-pane-surfaces.tsx";
 import { resolveChatAttachmentLimits } from "./components/chat-attachment-admission.ts";
@@ -64,6 +63,9 @@ const Processes = lazy(() => import("./components/chat-processes-panel.tsx"), {
 });
 const LinkReader = lazy(() => import("../../components/link-reader-panel.tsx"), {
   export: "LinkReaderPanel",
+});
+const EmbeddedPluginPanel = lazy(() => import("./chat-pane-plugin-panel.tsx"), {
+  export: "EmbeddedPluginPanel",
 });
 
 function TerminalPanel(props: Props) {

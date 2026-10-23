@@ -1,18 +1,21 @@
 import { createSignal, onCleanup } from "solid-js";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ControlUiReplacement } from "../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../app/context.ts";
 import { useApplication } from "../lib/reactive/context.ts";
 import { mountSolid } from "../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../test-helpers/solid-application-context.tsx";
 import { flush, waitForSolid } from "../test-helpers/solid-settle.ts";
-import { PluginSurface } from "./control-ui-view.solid.tsx";
+import { PluginReplacement, PluginSurface } from "./control-ui-surface.solid.tsx";
 import {
   composerProps,
   createViewRuntime,
   recordReplacement,
   replacement,
 } from "./control-ui-view.test-support.ts";
+
+// Direct-registration fixtures bypass activation's preload gate.
+beforeAll(() => PluginReplacement.preload());
 
 function runtime(initial?: ControlUiReplacement) {
   return createViewRuntime(initial, {
@@ -39,7 +42,12 @@ describe("native plugin surface", () => {
     function DefaultView() {
       contexts.push(useApplication());
       onCleanup(disposed);
-      return <button onClick={click}>{label()}</button>;
+      return (
+        <>
+          <button onClick={click}>{label()}</button>
+          <input aria-label="Draft" />
+        </>
+      );
     }
     const view = mountSolid(
       () => (
@@ -78,6 +86,18 @@ describe("native plugin surface", () => {
     expect(view.getByRole("button", { name: "Second" })).toBe(delegated);
     delegated.click();
     expect(click).toHaveBeenCalledTimes(2);
+    const draft = view.getByRole<HTMLInputElement>("textbox", { name: "Draft" });
+    draft.value = "Retained draft";
+    const containerParent = view.container.parentNode!;
+    const disposalsBeforeParking = disposed.mock.calls.length;
+    const parking = document.createDocumentFragment();
+    parking.append(view.container);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(disposed).toHaveBeenCalledTimes(disposalsBeforeParking);
+    containerParent.appendChild(view.container);
+    expect(view.getByRole("textbox", { name: "Draft" })).toBe(draft);
+    expect(draft.value).toBe("Retained draft");
     fail = true;
     source.invalidate();
     await waitForSolid(() =>

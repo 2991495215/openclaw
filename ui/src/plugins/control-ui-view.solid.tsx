@@ -1,14 +1,6 @@
 import type { BoardGetParams } from "@openclaw/gateway-protocol";
 import { insert, type JSX } from "@solidjs/web";
-import {
-  createRoot,
-  createSignal,
-  getOwner,
-  onSettled,
-  runWithOwner,
-  Show,
-  useContext,
-} from "solid-js";
+import { createRoot, createSignal, getOwner, onSettled, runWithOwner, Show } from "solid-js";
 import type {
   ControlUiSurface,
   ControlUiSurfaceProps,
@@ -18,10 +10,7 @@ import type {
 import { useOptionalApplication } from "../lib/reactive/context.ts";
 import { t } from "../lib/reactive/i18n.ts";
 import { listen } from "../lib/reactive/listener.ts";
-import { createParkedProjection } from "../lib/reactive/parked-projection.ts";
-import { projectOwner } from "../lib/reactive/projection.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.ts";
-import { ContentPresentation } from "../lib/solid/presentation.ts";
 import type { ControlUiRegistration } from "./control-ui-capability.ts";
 import { observeSolidBridgeProperties } from "./control-ui-properties.ts";
 import { scopeControlUiHost } from "./control-ui-scope.ts";
@@ -339,27 +328,19 @@ export const PluginView = defineSolidBridge<
   methods: { focus: (host, options) => views.get(host)?.focus(options) },
 });
 
-/** Native callers keep built-in views in their Solid owner, including plugin delegation. */
-export function PluginSurface<S extends ControlUiSurface>(props: {
+export type PluginReplacementProps<S extends ControlUiSurface> = {
   surface: S;
   props: ControlUiSurfaceProps[S];
   renderDefault: () => JSX.Element;
   renderCompanion?: () => JSX.Element;
   presented?: boolean;
-  enabled?: boolean;
   replacementRef?: (element: HTMLElement) => void | (() => void);
-}) {
+};
+
+/** Delegated built-in views share the retained replacement's Solid owner. */
+export function PluginReplacement<S extends ControlUiSurface>(props: PluginReplacementProps<S>) {
   // Delegated mounts run later inside a foreign plugin and retain the host's owner.
   const owner = getOwner();
-  const context = useOptionalApplication();
-  const runtime = context && projectOwner(context.plugins, (source) => source);
-  const contentPresented = useContext(ContentPresentation);
-  const presented = () => (props.presented ?? true) && contentPresented();
-  const selected = createParkedProjection(
-    () =>
-      props.enabled === false ? undefined : runtime?.read().selectedReplacement(props.surface),
-    presented,
-  );
   const mount = (target: HTMLElement, view: () => JSX.Element) =>
     runWithOwner(owner, () =>
       createRoot((dispose) => {
@@ -384,27 +365,20 @@ export function PluginSurface<S extends ControlUiSurface>(props: {
   }
   const mountDefault = (target: HTMLElement) => mount(target, DefaultView);
   const mountCompanion = (target: HTMLElement) => mount(target, () => props.renderCompanion?.());
-  function ReplacementView() {
-    let host!: HTMLElement;
-    onSettled(() => props.replacementRef?.(host));
-    return (
-      <PluginView
-        ref={(element) => {
-          host = element;
-        }}
-        data-plugin-composer={props.surface === "composer" ? "" : undefined}
-        surface={props.surface}
-        props={props.props}
-        presented={presented()}
-        mountDefaultView={mountDefault}
-        mountReplacementCompanion={mountCompanion}
-      />
-    );
-  }
+  let host!: HTMLElement;
+  onSettled(() => props.replacementRef?.(host));
   return (
-    <Show when={selected()} fallback={props.renderDefault()}>
-      <ReplacementView />
-    </Show>
+    <PluginView
+      ref={(element) => {
+        host = element;
+      }}
+      data-plugin-composer={props.surface === "composer" ? "" : undefined}
+      surface={props.surface}
+      props={props.props}
+      presented={props.presented ?? true}
+      mountDefaultView={mountDefault}
+      mountReplacementCompanion={mountCompanion}
+    />
   );
 }
 

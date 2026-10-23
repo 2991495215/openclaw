@@ -12,7 +12,7 @@ import { resolveToolCardDisplay, resolveToolCardOutcome } from "../../../lib/cha
 import { resolveToolDisplayIdentity } from "../../../lib/chat/tool-display-identity.ts";
 import { pathDisplayName } from "../../../lib/path-display.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
-import { PluginSurface } from "../../../plugins/control-ui-view.solid.tsx";
+import { PluginSurface } from "../../../plugins/control-ui-surface.solid.tsx";
 import { BrowserTabCardHost } from "./browser-tab-card.tsx";
 import { DiffStatChips } from "./chat-diff-stat.solid.tsx";
 import { ChatImportBoundary } from "./chat-import-boundary.tsx";
