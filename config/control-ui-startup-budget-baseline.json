@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315052,
-  "reason": "Defer optional English catalogs at existing consumers; matched d3359fe4 fixed-input build",
+  "startupJsGzipBytes": 311348,
+  "reason": "Optional Usage catalogs on pinned 721d: matched startup 311566 to 311348 B; Chat 1333529 to 1322681 B and New Session 816308 to 811334 B; unchanged 7/22/16 JS requests.",
   "updatedAt": "2026-10-23"
 }
