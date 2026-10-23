@@ -2800,6 +2800,8 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
+      - *qualification_evidence_verifier_checkout
+
       - name: Download immutable release execution plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -2982,6 +2984,7 @@ jobs:
           PREPARED_DOCKER_RUN_ATTEMPT: ${{ needs.prepare_docker_release.outputs.prepared_run_attempt }}
           PREPARED_DOCKER_ARTIFACT_NAME: ${{ needs.prepare_docker_release.outputs.prepared_artifact_name }}
           PREPARED_DOCKER_MANIFEST_SHA256: ${{ needs.prepare_docker_release.outputs.prepared_manifest_sha256 }}
+          OPENCLAW_RELEASE_CI_SUMMARY_VALIDATOR: ${{ fromJSON(needs.resolve_target.outputs.source_admission_json || '{}').qualificationAdmission != null && format('{0}/qualification-verifier/scripts/release-ci-summary.mjs', github.workspace) || format('{0}/scripts/release-ci-summary.mjs', github.workspace) }}
         run: node scripts/full-release-validation-state.mjs write-manifest
 
       - name: Validate release validation manifest

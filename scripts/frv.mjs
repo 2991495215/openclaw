@@ -1920,6 +1920,7 @@ export async function continueFailed(plan, rootRunId, reader, options = {}) {
       runKeys.set(producer.runId, `artifact:${producer.request.stage}`);
     }
     status = await inspectRecovery(plan, artifactProducers, client, { operationDeadline });
+    await assertFailedArtifactProducersAreReusable(plan, status, client, operationDeadline);
     for (const child of status.children) {
       const expectedAttempt = ownedAttempts.get(child.runId);
       if (expectedAttempt !== undefined) {
@@ -3138,7 +3139,7 @@ function failedJobEvent(owner, job, attempt) {
   const runner = job.runner_name ? ` / ${job.runner_name}` : "";
   const blocker = owner.startsWith("artifact:") ? " blocker:" : "";
   return [
-    `job:${job.id}`,
+    `job:${job.id}:${job.name}`,
     `${owner}${blocker} job "${job.name}" ${job.conclusion} (attempt ${job.run_attempt ?? attempt}; runner ${labels}${runner})`,
     job.html_url,
   ];

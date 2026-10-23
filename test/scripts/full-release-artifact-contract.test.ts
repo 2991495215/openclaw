@@ -440,6 +440,14 @@ describe("retained publication admission", () => {
       const writer = workflow.jobs.summary.steps.find(
         (step: { name: string }) => step.name === "Write release validation manifest",
       );
+      expect(writer.env.OPENCLAW_RELEASE_CI_SUMMARY_VALIDATOR).toBe(
+        "${{ fromJSON(needs.resolve_target.outputs.source_admission_json || '{}').qualificationAdmission != null && format('{0}/qualification-verifier/scripts/release-ci-summary.mjs', github.workspace) || format('{0}/scripts/release-ci-summary.mjs', github.workspace) }}",
+      );
+      expect(
+        workflow.jobs.summary.steps.some(
+          (step: { name?: string }) => step.name === "Checkout admitted qualification verifier",
+        ),
+      ).toBe(true);
       const directory = directories.make("publication-fresh-manifest-");
       const planPath = join(directory, "plan.json");
       const drainPath = join(directory, "drain.json");
