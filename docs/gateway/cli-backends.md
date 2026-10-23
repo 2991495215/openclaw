@@ -138,6 +138,10 @@ requests. Compatible agent turns share one warm Claude Code subprocess.
 A changed model, system prompt, or tool policy starts a
 new subprocess. Persisted Claude session IDs still provide
 conversation continuity when the Gateway or subprocess restarts.
+Caller-surface tools (`screen`, `show_widget`, `suggest_task`, and
+`dismiss_task`) can appear or disappear between Control UI, channel, and
+completion turns without resetting that persisted session. Their change still
+restarts the warm process so Claude receives the current tool catalog.
 
 For local plugin-managed turns, prompt-build hook context stays private: Claude
 receives it as a native hook attachment, while OpenClaw history preserves the original user message. The
