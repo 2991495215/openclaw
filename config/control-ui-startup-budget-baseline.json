@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315881,
-  "reason": "Closed dialog deferrals preserve the stricter 315881 B startup baseline; matched current-main builds measure 316334 to 316356 B startup, 1349135 B Chat and 823357 B New Session.",
+  "startupJsGzipBytes": 313194,
+  "reason": "Defer Settings, Terminal, Activity, preferences and update-detail English until their existing lazy owners load; matched 82c builds reduce startup from 316324 B to 313194 B, Chat to 1345889 B and New Session to 820166 B with unchanged requests.",
   "updatedAt": "2026-10-23"
 }
