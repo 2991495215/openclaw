@@ -144,6 +144,7 @@ process.emit = function(event, ...args) {
     const recoveryEntered = createDeferredCore();
     const releaseRecovery = createDeferredCore();
     const savedInputStarted = createDeferredCore();
+    const freshInputStarted = createDeferredCore();
     const releaseSavedInput = createDeferredCore();
     const requests: Array<{ authorization: string | undefined; body: string }> = [];
     const ownerInputOrder: string[] = [];
@@ -180,6 +181,8 @@ process.emit = function(event, ...args) {
         if (ownerInput === "SAVED_OWNER") {
           savedInputStarted.resolve();
           await withinTest(releaseSavedInput.promise, signal);
+        } else if (ownerInput === "FRESH_OWNER") {
+          freshInputStarted.resolve();
         }
         response.writeHead(200, { "content-type": "text/event-stream" });
         response.end(catalogReply("inherited-auth", "fixture", `${ownerInput ?? "INHERITOR"}_OK`));
@@ -484,6 +487,7 @@ process.emit = function(event, ...args) {
         expect(ownerInputOrder).toEqual(["SAVED_OWNER"]);
         releaseSavedInput.resolve();
         expect(await rpc.wait(owner.sourceRunId)).toMatchObject({ status: "ok" });
+        await withinTest(freshInputStarted.promise, signal);
         expect(await rpc.wait(fresh.runId)).toMatchObject({ status: "ok" });
         expect(ownerInputOrder).toEqual(["SAVED_OWNER", "FRESH_OWNER"]);
         expect(ownerAuthorizations).toEqual([`Bearer ${inheritedKey}`, `Bearer ${inheritedKey}`]);
