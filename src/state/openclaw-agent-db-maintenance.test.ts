@@ -170,6 +170,7 @@ describe("asynchronous agent database maintenance admission", () => {
     expect(Atomics.load(new Int32Array(second.validation.valid), 0)).toBe(1);
     expect(Atomics.load(new Int32Array(third.validation.valid), 0)).toBe(1);
     vi.mocked(fork).mockClear();
+    const scans = vi.spyOn(integrityWorker, "assertSqliteIntegrityInWorker");
     const entry = resolveRuntimeProcessEntrypointUrl("sqliteIntegrity").href;
     const children = () =>
       vi.mocked(fork).mock.calls.flatMap((args, index) => {
@@ -186,6 +187,12 @@ describe("asynchronous agent database maintenance admission", () => {
       expect(Atomics.load(new Int32Array(second.validation.valid), 0)).toBe(0);
       expect(Atomics.load(new Int32Array(third.validation.valid), 0)).toBe(0);
       await migrateOpenClawAgentDatabaseForMaintenance(f.options, maintenance);
+      const scansForFirst = () =>
+        scans.mock.calls.filter(([pathname]) => pathname === f.options.pathname);
+      expect(scansForFirst()).toHaveLength(1);
+      // A later unchanged phase under this same custody must not rescan every page.
+      await migrateOpenClawAgentDatabaseForMaintenance(f.options, maintenance);
+      expect(scansForFirst()).toHaveLength(1);
       await withAgentDatabaseMaintenanceLease({ env: f.env }, async (nested) => {
         await migrateOpenClawAgentDatabaseForMaintenance(second, nested);
       });
