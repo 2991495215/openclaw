@@ -5,6 +5,7 @@ import { mkdir, writeFile, readFile, rm, rename, symlink } from "node:fs/promise
 import path from "node:path";
 import { Check } from "typebox/value";
 import { expect, it, vi } from "vitest";
+import type { VaultAccess } from "./access.js";
 import { GitHistory } from "./git-history.js";
 import { SqliteIdentityStore } from "./identity-store.js";
 import { Receipt, GitStatus } from "./mutation-contract.js";
@@ -51,13 +52,15 @@ async function fixture() {
     operatorRead: true,
     writesEnabled: true,
   };
-  const access = { scope: { visibility: "private" }, agentId: "main", assertCurrent() {} };
+  const access: VaultAccess = {
+    scope: { visibility: "private" },
+    agentId: "main",
+    assertCurrent() {},
+  };
   const store = new SqliteIdentityStore(config.statePath);
   const service = new KnowledgeStorage(config, store);
   const read = async (id: any) =>
-    service.run(access as any, async (vault) =>
-      (await vault.scan()).records.find((r) => r.id === id),
-    );
+    service.run(access, async (vault) => (await vault.scan()).records.find((r) => r.id === id));
   return { base, root, config, access, store, service, read };
 }
 const edit = (record: any) => ({
@@ -72,11 +75,11 @@ const edit = (record: any) => ({
 it("default repository, exact grouped content, clean index, actor, and one commit per publication", async () => {
   const f = await fixture(),
     input = { ...draft(), source: { text: "Evidence bytes\n", attribution: "Source" } };
-  const saved = await f.service.save(input, f.access as any, "operator");
+  const saved = await f.service.save(input, f.access, "operator");
   expect(Check(Receipt, saved)).toBeTruthy();
   expect(saved.git!.state, JSON.stringify(saved)).toBe("committed");
   expect(git(f.root, "rev-list", "--count", "HEAD")).toBe("1");
-  const sourceId = ((await f.read(saved.id)) as any).metadata.evidence[0].source;
+  const sourceId = (await f.read(saved.id))!.metadata.evidence![0]!.source;
   expect(sourceId).toMatch(/^[a-f0-9]{64}$/);
   expect(
     git(f.root, "ls-tree", "-r", "--name-only", "HEAD").split("\n").toSorted(defaultOrder),
@@ -92,14 +95,14 @@ it("default repository, exact grouped content, clean index, actor, and one commi
   ).toBe(await readFile(path.join(f.root, "private", saved.path), "utf8"));
   expect(git(f.root, "diff", "--cached", "--name-only")).toBe("");
   expect(git(f.root, "log", "-1", "--format=%B")).toMatch(/operator/);
-  const next = await f.service.save(edit(await f.read(saved.id)), f.access as any, "agent");
+  const next = await f.service.save(edit(await f.read(saved.id)), f.access, "agent");
   expect(next.git!.state).toBe("committed");
   expect(git(f.root, "rev-list", "--count", "HEAD")).toBe("2");
-  expect(
-    await new KnowledgeStorage(f.config).save(input, f.access as any, "operator"),
-  ).toStrictEqual(saved);
+  expect(await new KnowledgeStorage(f.config).save(input, f.access, "operator")).toStrictEqual(
+    saved,
+  );
   expect(git(f.root, "rev-list", "--count", "HEAD")).toBe("2");
-  expect(Check(GitStatus, f.service.history(f.access as any, {}).git)).toBeTruthy();
+  expect(Check(GitStatus, f.service.history(f.access, {}).git)).toBeTruthy();
   expect(git(f.root, "remote")).toBe("");
 });
 
@@ -112,36 +115,33 @@ it("missing Git is nonfatal and later availability catches up every version in o
     new GitHistory(f.root, path.join(f.base, "missing-git")),
   );
   const input = draft(),
-    first = await unavailable.save(input, f.access as any, "agent");
+    first = await unavailable.save(input, f.access, "agent");
   expect(first.state).toBe("published");
   expect(first.git!.state).toBe("unavailable");
   expect(existsSync(path.join(f.root, ".git"))).toBe(false);
-  const record = await unavailable.run(
-    f.access as any,
-    async (vault) => (await vault.scan()).records[0],
-  );
-  const second = await unavailable.save(edit(record), f.access as any, "agent");
+  const record = await unavailable.run(f.access, async (vault) => (await vault.scan()).records[0]);
+  const second = await unavailable.save(edit(record), f.access, "agent");
   expect(second.state).toBe("published");
-  const resumed = f.service.resume(f.access as any, input.requestId);
+  const resumed = f.service.resume(f.access, input.requestId);
   expect(resumed.git!.state).toBe("committed");
   expect(git(f.root, "rev-list", "--count", "HEAD")).toBe("2");
   expect(git(f.root, "show", `HEAD^:private/${first.path}`)).toMatch(/First bytes/);
   expect(git(f.root, "show", `HEAD:private/${first.path}`)).toMatch(/Second bytes/);
-  expect(f.service.history(f.access as any, {}).git.pending).toBe(0);
+  expect(f.service.history(f.access, {}).git.pending).toBe(0);
 });
 
 it("existing repo staging, unrelated dirty files, and same-path staged bytes survive", async () => {
   const f = await fixture(),
-    first = await f.service.save(draft(), f.access as any, "agent");
+    first = await f.service.save(draft(), f.access, "agent");
   await writeFile(path.join(f.root, "unrelated.txt"), "staged content");
   git(f.root, "add", "unrelated.txt");
   await writeFile(path.join(f.root, "unrelated.txt"), "unstaged content");
   const record = await f.read(first.id),
     full = path.join(f.root, "private", first.path);
-  await writeFile(full, (record as any).raw.replace("First bytes.", "Manually staged."));
+  await writeFile(full, record!.raw.replace("First bytes.", "Manually staged."));
   git(f.root, "add", `private/${first.path}`);
-  await writeFile(full, (record as any).raw);
-  const receipt = await f.service.save(edit(record), f.access as any, "agent");
+  await writeFile(full, record!.raw);
+  const receipt = await f.service.save(edit(record), f.access, "agent");
   expect(receipt.git!.state).toBe("committed");
   expect(git(f.root, "show", ":unrelated.txt")).toBe("staged content");
   expect(git(f.root, "show", `:private/${first.path}`)).toMatch(/Manually staged/);
@@ -158,10 +158,10 @@ for (const stage of ["before-git-ref", "after-git-ref"]) {
         throw new Error("injected checkpoint failure");
       }
     });
-    const receipt = await broken.save(input, f.access as any, "agent");
+    const receipt = await broken.save(input, f.access, "agent");
     expect(receipt.state).toBe("published");
     expect(receipt.git!.state).toBe("pending");
-    expect(f.service.resume(f.access as any, input.requestId).git!.state).toBe("committed");
+    expect(f.service.resume(f.access, input.requestId).git!.state).toBe("committed");
     expect(git(f.root, "rev-list", "--count", "HEAD")).toBe("1");
     expect(git(f.root, "diff", "--cached", "--name-only")).toBe("");
   });
@@ -182,15 +182,15 @@ it("process death after atomic Git ref update recovers from SQLite rollback with
     child.stdin.end(JSON.stringify({ config: f.config, input }));
   });
   expect(code).toBe(77);
-  expect(f.service.resume(f.access as any, input.requestId).git!.state).toBe("committed");
+  expect(f.service.resume(f.access, input.requestId).git!.state).toBe("committed");
   expect(git(f.root, "rev-list", "--count", "HEAD")).toBe("1");
   expect(git(f.root, "diff", "--cached", "--name-only")).toBe("");
 });
 
 it("external edits are one observed batch; rename and deletion keep per-file history", async () => {
   const f = await fixture(),
-    a = await f.service.save(draft(), f.access as any, "agent"),
-    b = await f.service.save(draft(), f.access as any, "agent");
+    a = await f.service.save(draft(), f.access, "agent"),
+    b = await f.service.save(draft(), f.access, "agent");
   for (const r of [a, b]) {
     const p = path.join(f.root, "private", r.path);
     await writeFile(p, (await readFile(p, "utf8")).replace("First bytes.", "External bytes."));
@@ -222,27 +222,26 @@ it("scope isolation: shared reads checkpoint neither private files nor private p
     undefined,
     new GitHistory(f.root, path.join(f.base, "missing-git")),
   );
-  const secret = await offline.save(draft(), f.access as any, "agent");
-  const shared = {
+  const secret = await offline.save(draft(), f.access, "agent");
+  const shared: VaultAccess = {
     scope: { visibility: "conversation", sessionId: randomUUID() },
+    agentId: "main",
     assertCurrent() {},
   };
-  const receipt = await f.service.save(draft(), shared as any, "agent");
+  const receipt = await f.service.save(draft(), shared, "agent");
   expect(receipt.git!.state).toBe("committed");
   expect(git(f.root, "ls-tree", "-r", "--name-only", "HEAD")).not.toMatch(/private/);
-  expect(f.service.history(shared as any, {}).git.pending).toBe(0);
-  expect(f.service.history(f.access as any, {}).mutations[0]!.git!.state).toBe("unavailable");
-  expect(f.service.resume(f.access as any, secret.requestId).git!.state).toBe("committed");
+  expect(f.service.history(shared, {}).git.pending).toBe(0);
+  expect(f.service.history(f.access, {}).mutations[0]!.git!.state).toBe("unavailable");
+  expect(f.service.resume(f.access, secret.requestId).git!.state).toBe("committed");
 });
 
 it("read-only stores never initialize Git; parent repositories are not adopted", async () => {
   const f = await fixture();
-  await new KnowledgeStorage({ ...f.config, writesEnabled: false }).run(f.access as any, (v) =>
-    v.scan(),
-  );
+  await new KnowledgeStorage({ ...f.config, writesEnabled: false }).run(f.access, (v) => v.scan());
   expect(existsSync(path.join(f.root, ".git"))).toBe(false);
   git(f.base, "init", "--quiet");
-  const saved = await f.service.save(draft(), f.access as any, "agent");
+  const saved = await f.service.save(draft(), f.access, "agent");
   expect(saved.git!.state).toBe("committed");
   expect(git(f.root, "rev-parse", "--show-toplevel")).toBe(realpathSync(f.root));
   expect(git(f.base, "ls-files")).toBe("");
@@ -250,25 +249,25 @@ it("read-only stores never initialize Git; parent repositories are not adopted",
 
 it("repository lock and detached HEAD report history gaps without rejecting published writes", async () => {
   const f = await fixture(),
-    first = await f.service.save(draft(), f.access as any, "agent");
+    first = await f.service.save(draft(), f.access, "agent");
   const record = await f.read(first.id);
   git(f.root, "checkout", "--detach", "--quiet");
   const input = edit(record),
-    saved = await f.service.save(input, f.access as any, "agent");
+    saved = await f.service.save(input, f.access, "agent");
   expect(saved.state).toBe("published");
   expect(saved.git!.state).toBe("pending");
   git(f.root, "checkout", "--quiet", "main");
   await writeFile(path.join(f.root, ".git", "index.lock"), "someone else");
-  expect(f.service.resume(f.access as any, input.requestId).git!.state).toBe("pending");
+  expect(f.service.resume(f.access, input.requestId).git!.state).toBe("pending");
   expect(await readFile(path.join(f.root, ".git", "index.lock"), "utf8")).toBe("someone else");
   await rm(path.join(f.root, ".git", "index.lock"));
-  expect(f.service.resume(f.access as any, input.requestId).git!.state).toBe("committed");
+  expect(f.service.resume(f.access, input.requestId).git!.state).toBe("committed");
   expect(git(f.root, "rev-list", "--count", "HEAD")).toBe("2");
 });
 
 it("Git uses exact publication bytes despite a subsequent editor write and never invokes hooks", async () => {
   const f = await fixture(),
-    first = await f.service.save(draft(), f.access as any, "agent");
+    first = await f.service.save(draft(), f.access, "agent");
   const record = await f.read(first.id),
     marker = path.join(f.base, "hook-ran");
   await mkdir(path.join(f.root, ".git", "hooks"), { recursive: true });
@@ -282,11 +281,11 @@ it("Git uses exact publication bytes despite a subsequent editor write and never
     if (stage === "before-git-ref") {
       writeFileSync(
         path.join(f.root, "private", first.path),
-        (record as any).raw.replace("First bytes.", "Later external write."),
+        record!.raw.replace("First bytes.", "Later external write."),
       );
     }
   });
-  const saved = await service.save(edit(record), f.access as any, "agent");
+  const saved = await service.save(edit(record), f.access, "agent");
   expect(saved.git!.state).toBe("committed");
   expect(git(f.root, "show", `HEAD:private/${first.path}`)).toMatch(/Second bytes/);
   expect(await readFile(path.join(f.root, "private", first.path), "utf8")).toMatch(
@@ -302,7 +301,7 @@ it("unsafe Git directory is a visible nonfatal checkpoint failure and is never f
     outside = path.join(f.base, "outside");
   await mkdir(outside);
   await symlink(outside, path.join(f.root, ".git"));
-  const saved = await f.service.save(draft(), f.access as any, "agent");
+  const saved = await f.service.save(draft(), f.access, "agent");
   expect(saved.state).toBe("published");
   expect(saved.git!.state).toBe("pending");
   expect(existsSync(path.join(outside, "HEAD"))).toBe(false);
@@ -314,14 +313,14 @@ it("read-side Git observes safe malformed Markdown and ontology without followin
   await writeFile(path.join(f.root, "private", ".extra.md"), "Hidden note\n");
   await writeFile(path.join(f.root, "private", "ontology.yaml"), "broken: [yaml\n");
   await symlink(path.join(f.root, "vault.json"), path.join(f.root, "private", "unsafe.md"));
-  const result = await f.service.run(f.access as any, (v) => v.scan());
-  expect((result as any).issues.length).toBeTruthy();
+  const result = await f.service.run(f.access, (v) => v.scan());
+  expect(result.issues.length).toBeTruthy();
   expect(git(f.root, "ls-tree", "-r", "--name-only", "HEAD").split("\n")).toStrictEqual([
     "private/.extra.md",
     "private/broken.md",
     "private/ontology.yaml",
   ]);
-  expect(f.service.history(f.access as any, {}).git.state).toBe("committed");
+  expect(f.service.history(f.access, {}).git.state).toBe("committed");
 });
 
 it("observation re-resolves source descriptors when an external edit adds a record citation", async () => {
@@ -329,13 +328,13 @@ it("observation re-resolves source descriptors when an external edit adds a reco
   const f = await fixture(),
     saved = await f.service.save(
       { ...draft(), source: { text: "Evidence bytes\n", attribution: "Source" } },
-      f.access as any,
+      f.access,
       "agent",
     );
   // Settle every stamp so observation caches this record's dependencies.
   const clock = vi.spyOn(Date, "now").mockImplementation(() => 4102444800000);
   afterTest(() => clock.mockRestore());
-  const { source: first, ...origin } = ((await f.read(saved.id)) as any).metadata.evidence[0];
+  const { source: first, ...origin } = (await f.read(saved.id))!.metadata.evidence![0]!;
   await f.read(saved.id);
   const second = describeSource({ ...origin, attribution: "Second origin" });
   expect(second.id).not.toBe(first);
@@ -348,9 +347,9 @@ it("observation re-resolves source descriptors when an external edit adds a reco
     file,
     raw.replace(`  - source: ${first}\n`, `  - source: ${second.id}\n  - source: ${first}\n`),
   );
-  expect(
-    ((await f.read(saved.id)) as any).metadata.evidence.map((e: any) => e.attribution),
-  ).toStrictEqual(["Second origin", "Source"]);
+  expect((await f.read(saved.id))!.metadata.evidence!.map((e: any) => e.attribution)).toStrictEqual(
+    ["Second origin", "Source"],
+  );
   expect(
     git(f.root, "ls-tree", "-r", "--name-only", "HEAD")
       .split("\n")

@@ -11,6 +11,7 @@ import {
   access,
 } from "node:fs/promises";
 import path from "node:path";
+import type { FeatureOperation } from "openclaw/plugin-sdk/feature-contract";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { contract } from "./contract.js";
@@ -18,7 +19,8 @@ import { SqliteIdentityStore } from "./identity-store.js";
 import { sampleVaultRoot } from "./plugin-files.js";
 import { RealVault } from "./real-vault.js";
 import { createKnowledgeService } from "./service.js";
-import { accessFor, apiFor, useTestTempDirs } from "./test-support.js";
+import type { Manifest } from "./store-manifest.js";
+import { accessFor, apiFor, useTestTempDirs, type TestStoreConfig } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
 
@@ -28,18 +30,19 @@ async function fixture() {
   const root = path.join(base, "vault");
   await mkdir(root);
   const sessionId = randomUUID();
-  const manifest = {
+  const manifest: Manifest = {
     format: "knowledge-vault-v2",
     vaultId: randomUUID(),
     generation: 0,
     publicationId: randomUUID(),
   };
   await writeFile(path.join(root, "vault.json"), JSON.stringify(manifest));
-  const config = {
+  const config: TestStoreConfig = {
     root,
     statePath: path.join(base, "knowledge.sqlite"),
     vaultId: manifest.vaultId,
     publicationId: manifest.publicationId,
+    writesEnabled: false,
     operatorRead: true,
   };
   async function partition(relative: any, scope: any, title: any) {
@@ -70,7 +73,7 @@ async function fixture() {
     "SHARED SENTINEL",
   );
   const store = new SqliteIdentityStore(config.statePath);
-  const api = apiFor(base, config as any, { agents: ["main", "other"] });
+  const api = apiFor(base, config, { agents: ["main", "other"] });
   const owner: any = {
     source: "tool",
     api,
@@ -111,9 +114,9 @@ const invokeAll = async (service: any, ctx: any) =>
         .filter(([name]) =>
           ["status", "records", "record", "ontology", "diagnostics"].includes(name),
         )
-        .map(async ([name, op]) => [
+        .map(async ([name]) => [
           name,
-          await (op as any)(name === "record" ? { id: "sample_person_alex" } : {}, ctx),
+          await service[name](name === "record" ? { id: "sample_person_alex" } : {}, ctx),
         ]),
     ),
   );
@@ -123,7 +126,10 @@ it("UI and owner-private tool read identical private records through the same se
   for (const ctx of [f.owner, f.operator]) {
     const output = await invokeAll(f.service, ctx);
     for (const [name, value] of Object.entries(output)) {
-      expect(Check((contract.operations as any)[name].output, value), name).toBeTruthy();
+      expect(
+        Check(contract.operations[name as keyof typeof contract.operations].output, value),
+        name,
+      ).toBeTruthy();
     }
     expect(output.status.store).toBe("ready");
     expect(output.status.writesEnabled).toBe(false);
@@ -200,8 +206,9 @@ it("missing, foreign, and revoked tool authority fails for every operation", asy
     },
   ]) {
     for (const [name, op] of Object.entries(f.service)) {
+      // One probe input for every operation, deliberately invalid for most; authority fails first.
       await expect(async () =>
-        op((name === "record" ? { id: "sample_person_alex" } : {}) as any, {
+        op((name === "record" ? { id: "sample_person_alex" } : {}) as never, {
           ...f.owner,
           tool: { ...f.owner.tool, ...override },
         }),
@@ -373,7 +380,7 @@ it("a moved store is unavailable, never replaced; reordered manifest keys are im
 
 it("authority and identity are rechecked after asynchronous reads", async () => {
   const f = await fixture(),
-    real = new RealVault(f.config as any, f.store);
+    real = new RealVault(f.config, f.store);
   await expect(
     real.run(accessFor(f.owner), async (vault) => {
       const result = await vault.list({});
@@ -445,8 +452,8 @@ it("identity bindings persist across connections and competing registrations nev
     rival = { ...f.manifest, publicationId: randomUUID() };
   const key = `store:${randomUUID()}`;
   const results = await Promise.all([
-    f.store.registerIfAbsent(key, f.manifest as any),
-    new SqliteIdentityStore(f.config.statePath).registerIfAbsent(key, rival as any),
+    f.store.registerIfAbsent(key, f.manifest),
+    new SqliteIdentityStore(f.config.statePath).registerIfAbsent(key, rival),
   ]);
   expect(results).toStrictEqual([true, false]);
   expect(await new SqliteIdentityStore(f.config.statePath).lookup(key)).toStrictEqual(f.manifest);
@@ -466,11 +473,17 @@ it("unrelated/corrupt operational databases and database links fail closed witho
 it("build metadata retains the real-vault configuration contract", async () => {
   const { default: entry } = await import("./index.js");
   const { getToolPluginMetadata } = await import("openclaw/plugin-sdk/tool-plugin");
-  expect((entry.configSchema.jsonSchema!.properties as any).stores.patternProperties).toBeTruthy();
-  expect((entry.configSchema.jsonSchema!.properties as any).vault).toBe(undefined);
+  // JSON-schema metadata is untyped; the built config schema's properties are object schemas.
+  const properties = entry.configSchema.jsonSchema!.properties as Record<
+    string,
+    Record<string, unknown>
+  >;
+  expect(properties.stores!.patternProperties).toBeTruthy();
+  expect(properties.vault).toBe(undefined);
   expect(getToolPluginMetadata(entry)!.configSchema).toStrictEqual(entry.configSchema.jsonSchema);
   expect(getToolPluginMetadata(entry)!.tools.length).toBe(
-    Object.values(contract.operations).filter((operation) => (operation as any).tool).length,
+    Object.values<FeatureOperation>(contract.operations).filter((operation) => operation.tool)
+      .length,
   );
 });
 
@@ -485,8 +498,8 @@ it("all opt-in inspection views retain conversation scope and authority", async 
   for (const input of [
     { id: "sample_person_alex", view: "raw" },
     { id: "sample_person_alex", includeMetadata: true, includeReferences: true },
-  ]) {
-    const result = await f.service.record(input as any, f.owner);
+  ] as const) {
+    const result = await f.service.record(input, f.owner);
     expect(Check(contract.operations.record.output, result)).toBeTruthy();
     expect(JSON.stringify(result)).toMatch(/SHARED SENTINEL/);
     expect(JSON.stringify(result)).not.toMatch(/PRIVATE SENTINEL/);
@@ -496,8 +509,8 @@ it("all opt-in inspection views retain conversation scope and authority", async 
     { view: "definitions", includeRecords: true },
     { view: "sources" },
     { view: "diagnostics" },
-  ]) {
-    const result = await f.service.ontology(input as any, f.owner);
+  ] as const) {
+    const result = await f.service.ontology(input, f.owner);
     expect(Check(contract.operations.ontology.output, result)).toBeTruthy();
     expect(JSON.stringify(result)).not.toMatch(/PRIVATE/);
   }

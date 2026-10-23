@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, rm, rename, symlink } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { expect, it } from "vitest";
-import { DraftStore } from "./drafts.js";
+import { DraftStore, type EditorDraft } from "./drafts.js";
 import { LiveState } from "./live-state.js";
 import { createKnowledgeService } from "./service.js";
 import { apiFor, afterTest, useTestTempDirs } from "./test-support.js";
@@ -138,10 +138,8 @@ it("retired services fence new and in-flight operations, leaving no accepted wri
   f.services[0].stop();
   await expect(f.service.status({}, f.context)).rejects.toThrow(/reloaded/);
   await expect(f.service.save_page(request, f.context)).rejects.toThrow(/reloaded/);
-  for (const operation of ["grep", "lookup"]) {
-    await expect((f.service as any)[operation]({ query: "Fenced" }, f.context)).rejects.toThrow(
-      /reloaded/,
-    );
+  for (const operation of ["grep", "lookup"] as const) {
+    await expect(f.service[operation]({ query: "Fenced" }, f.context)).rejects.toThrow(/reloaded/);
   }
 });
 
@@ -153,7 +151,7 @@ it("draft recovery isolates vault/agent/scope and preserves exact uncertain-save
     removeItem: (k: any) => values.delete(k),
   };
   const identity = { agent: "main", vault: "one", scope: "private" };
-  const draft = {
+  const draft: EditorDraft = {
     version: 1,
     key: randomUUID(),
     title: "Unsaved",
@@ -170,7 +168,7 @@ it("draft recovery isolates vault/agent/scope and preserves exact uncertain-save
       type: "note",
     },
   };
-  new DraftStore(identity, storage).write(draft as any);
+  new DraftStore(identity, storage).write(draft);
   expect(new DraftStore(identity, storage).read()).toStrictEqual(draft);
   for (const changed of [{ vault: "two" }, { agent: "other" }, { scope: "conversation:other" }]) {
     expect(new DraftStore({ ...identity, ...changed }, storage).read()).toBe(undefined);
@@ -195,7 +193,8 @@ it("corrupt/oversized draft and unavailable storage fail explicitly without clea
   expect(() => store.read()).toThrow();
   raw = "x".repeat(400001);
   expect(() => store.read()).toThrow(/large/);
-  expect(() => store.write({ version: 1 } as any)).toThrow(/quota/);
+  // The write fails in storage, so a minimal draft is enough.
+  expect(() => store.write({ version: 1 } as EditorDraft)).toThrow(/quota/);
 });
 
 it("browser vault precondition cannot redirect a retained draft to a replacement vault", async () => {

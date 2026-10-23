@@ -4,6 +4,7 @@ import { mkdir, writeFile, readFile, rm, rename } from "node:fs/promises";
 import path from "node:path";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
+import type { VaultAccess } from "./access.js";
 import { contract } from "./contract.js";
 import { SqliteIdentityStore } from "./identity-store.js";
 import { createKnowledgeService } from "./service.js";
@@ -258,7 +259,8 @@ it("write authority, scope isolation, missing conversation creation and disabled
   ).rejects.toThrow(/disabled/);
 });
 
-async function childWrite(f: any, input: any, crashAt: any) {
+type ChildResult = { code: number | null; stdout: string; stderr: string };
+async function childWrite(f: any, input: any, crashAt?: string): Promise<ChildResult> {
   const { spawn } = await import("node:child_process");
   const source = `
     const { KnowledgeStorage } = await import(${JSON.stringify(sourceModule("storage"))});
@@ -269,7 +271,7 @@ async function childWrite(f: any, input: any, crashAt: any) {
     try { console.log(JSON.stringify(await publisher.save(input,{scope:{visibility:'private'},agentId:'main',assertCurrent(){}},'agent'))); }
     catch(e) { console.error(e.message); process.exitCode=1; }
   `;
-  return new Promise((resolve) => {
+  return new Promise<ChildResult>((resolve) => {
     const child = spawn(process.execPath, childEvalArgs(source), {
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -291,7 +293,7 @@ it("actual process death with a live SQLite transaction and two stage hardlinks 
     input = draft();
   await f.service.status({}, f.owner);
   const killed = await childWrite(f, input, "after-link:vault.json");
-  expect((killed as any).code).toBe(77);
+  expect(killed.code).toBe(77);
   const receipt = await f.service.save_page(input, f.owner);
   expect(receipt.state).toBe("published");
   expect((await f.service.records({}, f.owner)).total).toBe(1);
@@ -302,12 +304,9 @@ it("cross-process publishers fence competing edits and never lose the winner", a
     created = await f.service.save_page(draft(), f.owner);
   const r = (await f.service.record({ id: created.id }, f.owner)).record;
   const inputs = [edit(r, { body: "Writer one" }), edit(r, { body: "Writer two" })];
-  const results = await Promise.all(inputs.map((input) => (childWrite as any)(f, input)));
-  expect(
-    results.filter((result) => (result as any).code === 0).length,
-    JSON.stringify(results),
-  ).toBe(1);
-  const winner = JSON.parse(results.find((result) => (result as any).code === 0).stdout);
+  const results = await Promise.all(inputs.map((input) => childWrite(f, input)));
+  expect(results.filter((result) => result.code === 0).length, JSON.stringify(results)).toBe(1);
+  const winner = JSON.parse(results.find((result) => result.code === 0)!.stdout);
   expect(winner.state).toBe("published");
   const current = (await f.service.record({ id: created.id }, f.owner)).record;
   expect(current!.hash).toBe(winner.hash);
@@ -334,8 +333,9 @@ it("authority expires after acceptance: no new files; original scope can resume"
   const f = await fixture(),
     input = draft();
   let current = true;
-  const access = {
+  const access: VaultAccess = {
     scope: { visibility: "private" },
+    agentId: "main",
     assertCurrent() {
       if (!current) {
         throw new Error("revoked");
@@ -347,7 +347,7 @@ it("authority expires after acceptance: no new files; original scope can resume"
       current = false;
     }
   });
-  await expect(publisher.save(input, access as any, "agent")).rejects.toThrow(/revoked/);
+  await expect(publisher.save(input, access, "agent")).rejects.toThrow(/revoked/);
   expect((await f.service.history({}, f.operator)).mutations[0]!.state).toBe("accepted");
   expect((await f.service.save_page(input, f.owner)).state).toBe("published");
 });

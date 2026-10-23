@@ -194,7 +194,7 @@ it("relink ignores claims that knowledge_remember did not save", async () => {
       claim_kind: "event",
       assertion_origin: "source",
       attribution: "Synthetic",
-      evidence: [{ ...upload.evidence, start_line: 1, end_line: 1 } as any],
+      evidence: [{ ...upload.evidence!, start_line: 1, end_line: 1 }],
     },
     f.owner,
   );

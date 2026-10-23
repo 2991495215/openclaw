@@ -1,5 +1,8 @@
 import { projectRuntimeToolInputSchema } from "openclaw/plugin-sdk/agent-harness-runtime";
-import { validateJsonSchemaValue } from "openclaw/plugin-sdk/json-schema-runtime";
+import {
+  validateJsonSchemaValue,
+  type JsonSchemaObject,
+} from "openclaw/plugin-sdk/json-schema-runtime";
 import { normalizeOpenAIStrictCompatSchema } from "openclaw/plugin-sdk/provider-tools";
 import { Check } from "typebox/value";
 import { expect, expectTypeOf, it } from "vitest";
@@ -50,25 +53,30 @@ it("batch schema retains closed, kind-specific inputs and nested evidence throug
   expect(projected.violations).toStrictEqual([]);
   const accepts = (input: any) => {
     const local = Check(BatchInput, input);
-    const host = validateJsonSchemaValue({ schema: projected.schema as any, value: input }).ok;
+    // The host projection of an object schema is itself a JSON-schema object.
+    const schema = projected.schema as JsonSchemaObject;
+    const host = validateJsonSchemaValue({ schema, value: input }).ok;
     expect(host, "host and backend validation must agree").toBe(local);
     return local;
   };
-  const annotated = structuredClone(page);
-  (annotated.input as any).identity = {
-    status: "partial",
-    context: "Two possible speakers",
-    candidates: [{ id: "@person", basis: "Name", evidence: [evidence] }],
-  };
-  (annotated.input as any).attribution_confidence = {
-    level: "medium",
-    basis: "Transcript",
-    evidence: [evidence],
-  };
-  (annotated.input as any).continuity = [
-    { id: "@prior", relation: "updates", basis: "New notes", evidence: [evidence] },
-  ];
-  (annotated.input as any).record_class = "fixture";
+  const annotated = structuredClone({
+    ...page,
+    input: {
+      ...page.input,
+      identity: {
+        status: "partial",
+        context: "Two possible speakers",
+        candidates: [{ id: "@person", basis: "Name", evidence: [evidence] }],
+      },
+      attribution_confidence: {
+        level: "medium",
+        basis: "Transcript",
+        evidence: [evidence],
+      },
+      continuity: [{ id: "@prior", relation: "updates", basis: "New notes", evidence: [evidence] }],
+      record_class: "fixture",
+    },
+  });
   expect(accepts(batch([annotated, claim, relationship]))).toBeTruthy();
   const emptyAttachments = structuredClone(page);
   emptyAttachments.input.attachments = [];
@@ -134,25 +142,25 @@ function codexShape(schema: any) {
   // Installed Codex 0.155.1 retains minItems, unlike the older sibling checkout.
   for (const key of ["type", "enum", "required", "$ref", "minItems"]) {
     if (key in schema) {
-      (result as any)[key] = schema[key];
+      result[key] = schema[key];
     }
   }
   if ("const" in schema) {
     result.enum = [schema.const];
   }
-  if (!(result as any).type && (result as any).enum && !(result as any).$ref) {
+  if (!result.type && result.enum && !result.$ref) {
     result.type = "string";
   }
   for (const key of ["properties", "$defs", "definitions"]) {
     if (schema[key]) {
-      (result as any)[key] = Object.fromEntries(
+      result[key] = Object.fromEntries(
         Object.entries(schema[key]).map(([name, child]) => [name, codexShape(child)]),
       );
     }
   }
   for (const key of ["anyOf", "oneOf", "allOf"]) {
     if (schema[key]) {
-      (result as any)[key] = schema[key].map(codexShape);
+      result[key] = schema[key].map(codexShape);
     }
   }
   if (schema.items) {
@@ -164,8 +172,8 @@ function codexShape(schema: any) {
         ? schema.additionalProperties
         : codexShape(schema.additionalProperties);
   }
-  if ((result as any).type === "object") {
-    (result as any).properties ??= {};
+  if (result.type === "object") {
+    result.properties ??= {};
   }
   return result;
 }
@@ -180,7 +188,7 @@ it("projected batch schema stays below the host compaction budget with resolvabl
     if (node.$ref) {
       references++;
       expect(node.$ref).toMatch(/^#\/\$defs\/\w+$/);
-      const target = (projected as any).$defs[node.$ref.split("/").at(-1)];
+      const target = projected.$defs[node.$ref.split("/").at(-1)];
       expect(target, `unresolved ${node.$ref}`).toBeTruthy();
       const { $ref: _ref, ...siblings } = node;
       return { ...expand(target), ...siblings };

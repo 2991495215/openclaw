@@ -5,8 +5,8 @@ import { contract } from "./contract.js";
 import { jsonRoundTrip } from "./test-support.js";
 import { SampleVault } from "./vault.js";
 
-const checked = (op: any, result: any) => {
-  expect(Check((contract.operations as any)[op].output, result)).toBeTruthy();
+const checked = (op: keyof typeof contract.operations, result: any) => {
+  expect(Check(contract.operations[op].output, result)).toBeTruthy();
   expect(result, "Card responses must be JSON-safe before host serialization").toStrictEqual(
     jsonRoundTrip(result),
   );
@@ -18,7 +18,7 @@ it("claim cards use one scan per page, preserve pagination and omit evidence/ful
     data = await vault.scan();
   const claim = data.records.find((r) => r.id === "sample_claim_pilot");
   const records = Array.from({ length: 55 }, (_, i) => ({
-    ...claim,
+    ...claim!,
     id: i === 0 ? claim!.id : `sample_claim_${i}`,
     body: "x".repeat(5000),
     metadata: {
@@ -27,7 +27,7 @@ it("claim cards use one scan per page, preserve pagination and omit evidence/ful
       custom_note: "Not card data",
     },
   }));
-  data.records = [...data.records.filter((r) => r.kind !== "claim"), ...records] as any;
+  data.records = [...data.records.filter((r) => r.kind !== "claim"), ...records];
   let scans = 0;
   vault.scan = async () => {
     scans++;
@@ -75,11 +75,11 @@ it("card projection preserves eligibility, filtering and entity/owner grouping d
   const data = await vault.scan();
   const claim = data.records.find((r) => r.id === "sample_claim_pilot");
   for (const target of claim!.metadata.entities!) {
-    const input = { id: target, direction: "claims" };
-    const plain = checked("connections", connections(data, input as any));
+    const input = { id: target, direction: "claims" } as const;
+    const plain = checked("connections", connections(data, input));
     const enriched = checked(
       "connections",
-      connections(data, { ...input, view: "full", includeCards: true } as any),
+      connections(data, { ...input, view: "full", includeCards: true }),
     );
     expect(enriched.snapshot).toBe(plain.snapshot);
     expect(enriched.total).toBe(plain.total);
@@ -107,11 +107,11 @@ it("relationship browse batches deduplicated eligible endpoints in one scan per 
   const edge = data.records.find((r) => r.kind === "relationship");
   expect(edge).toBeTruthy();
   const edges = Array.from({ length: 55 }, (_, i) => ({
-    ...edge,
+    ...edge!,
     id: `edge_${i}`,
     metadata: { ...edge!.metadata, id: `edge_${i}` },
   }));
-  data.records = [...data.records.filter((r) => r.kind !== "relationship"), ...edges] as any;
+  data.records = [...data.records.filter((r) => r.kind !== "relationship"), ...edges];
   let scans = 0;
   vault.scan = async () => {
     scans++;
@@ -158,7 +158,7 @@ it("relationship browse batches deduplicated eligible endpoints in one scan per 
   ).toBeTruthy();
   target!.lifecycle = "active";
   target!.metadata.lifecycle = "active";
-  data.records.push({ ...target, path: "duplicate.md" } as any);
+  data.records.push({ ...target!, path: "duplicate.md" });
   expect(
     !(
       await vault.list({ kind: "relationship", lifecycle: "all", includeEndpoints: true })
@@ -173,36 +173,34 @@ it("connection pages batch only current unambiguous endpoints on the requested p
   const data = await new SampleVault().scan();
   const edge = data.records.find((r) => r.kind === "relationship");
   const input = {
-    id: edge!.metadata.from,
+    id: edge!.metadata.from!,
     direction: "outgoing",
     includeEndpoints: true,
     limit: 1,
-  };
-  const first = checked("connections", connections(data, input as any));
+  } as const;
+  const first = checked("connections", connections(data, input));
   expect(new Set(first.endpoints.map((r: any) => r.id))).toStrictEqual(
     new Set([edge!.metadata.from, edge!.metadata.to]),
   );
   expect(
     first.endpoints.every((r: any) => r.body === undefined && r.evidence === undefined),
   ).toBeTruthy();
-  expect(connections(data, { ...input, includeEndpoints: false } as any).endpoints).toBe(undefined);
-  expect(connections(data, { ...input, offset: 100 } as any).endpoints).toStrictEqual([]);
+  expect(connections(data, { ...input, includeEndpoints: false }).endpoints).toBe(undefined);
+  expect(connections(data, { ...input, offset: 100 }).endpoints).toStrictEqual([]);
   const target = data.records.find((r) => r.id === edge!.metadata.to);
   target!.lifecycle = "withdrawn";
   target!.metadata.lifecycle = "withdrawn";
   expect(
-    !checked(
-      "connections",
-      connections(data, { ...input, historical: true } as any),
-    ).endpoints.some((r: any) => r.id === target!.id),
+    !checked("connections", connections(data, { ...input, historical: true })).endpoints.some(
+      (r: any) => r.id === target!.id,
+    ),
   ).toBeTruthy();
   target!.lifecycle = "active";
   target!.metadata.lifecycle = "active";
-  data.records.push({ ...target, path: "duplicate.md" } as any);
+  data.records.push({ ...target!, path: "duplicate.md" });
   expect(
-    !checked(
-      "connections",
-      connections(data, { ...input, historical: true } as any),
-    ).endpoints.some((r: any) => r.id === target!.id),
+    !checked("connections", connections(data, { ...input, historical: true })).endpoints.some(
+      (r: any) => r.id === target!.id,
+    ),
   ).toBeTruthy();
 });

@@ -4,6 +4,7 @@ import path from "node:path";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { contract } from "./contract.js";
+import type { RememberInput } from "./remember-contract.js";
 import { createKnowledgeService } from "./service.js";
 import { apiFor, useTestTempDirs, defaultOrder } from "./test-support.js";
 
@@ -157,13 +158,13 @@ it("remember rejects agent inference, oversized excerpts and missing request IDs
     f.remember([{ text: "No id.", kind: "fact" }], { requestId: undefined }),
   ).rejects.toThrow(/requires requestId/);
   const flush = { ...f.owner, tool: { ...f.owner.tool, memoryFlush: { flushId: "flush-1" } } };
-  const input = {
+  const input: RememberInput = {
     attribution: "flush",
     excerpt: "User: keep it.",
     items: [{ text: "Keep it.", kind: "preference" }],
   };
-  const saved = await f.service.remember(input as any, flush),
-    retried = await f.service.remember(input as any, flush);
+  const saved = await f.service.remember(input, flush),
+    retried = await f.service.remember(input, flush);
   expect(saved.items[0]!.status).toBe("inserted");
   expect(retried.items).toStrictEqual(saved.items);
 });

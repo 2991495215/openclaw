@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, readFile, rm, rename, link, symlink } from "node:fs/promises";
 import path from "node:path";
+import type { FeatureClient } from "openclaw/plugin-sdk/feature-contract";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { stringify } from "yaml";
 import { contract } from "./contract.js";
 import { SqliteIdentityStore } from "./identity-store.js";
 import { isFullHit } from "./retrieval-contract.js";
-import { loadSearch } from "./retrieval-view.js";
+import { loadSearch, type SearchState } from "./retrieval-view.js";
 import { keywordExpression } from "./retrieval.js";
 import { createKnowledgeService } from "./service.js";
-import { apiFor, useTestTempDirs, defaultOrder } from "./test-support.js";
+import { apiFor, useTestTempDirs, defaultOrder, type TestStoreConfig } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
 
@@ -28,14 +29,15 @@ async function fixture() {
   await mkdir(root);
   await mkdir(path.join(root, "private"));
   await writeFile(path.join(root, "vault.json"), JSON.stringify(manifest));
-  const config = {
+  const config: TestStoreConfig = {
     root,
     statePath: path.join(base, "state.sqlite"),
     vaultId: manifest.vaultId,
     publicationId: manifest.publicationId,
+    writesEnabled: false,
     operatorRead: true,
   };
-  const api = apiFor(base, config as any);
+  const api = apiFor(base, config);
   const owner: any = {
     source: "tool",
     api,
@@ -117,7 +119,7 @@ it("UI and tool share FTS title/alias/body retrieval, literal modes and stable c
     ["orchid", "title"],
     ["purple flower", "aliases"],
     ["distinctive", "body"],
-  ] as any[]) {
+  ] as const) {
     const result = await f.service.grep({ query, detail: "full" }, f.owner),
       ui = await f.service.grep({ query }, f.operator),
       compact = await f.service.grep({ query }, f.owner);
@@ -324,19 +326,15 @@ it("identity mismatch and revoked authority reject retrieval without cached fall
       },
     },
   };
-  for (const op of ["grep", "lookup"]) {
-    await expect((f.service as any)[op]({ query: "secretword" }, revoked)).rejects.toThrow(
-      /revoked/,
-    );
+  for (const op of ["grep", "lookup"] as const) {
+    await expect(f.service[op]({ query: "secretword" }, revoked)).rejects.toThrow(/revoked/);
   }
   await writeFile(
     path.join(f.root, "vault.json"),
     JSON.stringify({ ...f.manifest, generation: 1, publicationId: randomUUID() }),
   );
-  for (const op of ["grep", "lookup"]) {
-    await expect((f.service as any)[op]({ query: "secretword" }, f.owner)).rejects.toThrow(
-      /identity/,
-    );
+  for (const op of ["grep", "lookup"] as const) {
+    await expect(f.service[op]({ query: "secretword" }, f.owner)).rejects.toThrow(/identity/);
   }
 });
 
@@ -369,7 +367,7 @@ it("bounded contextual snippets have truthful original Markdown lines", async ()
   expect(
     raw
       .split("\n")
-      .slice(snippet.startLine! - 1, snippet.endLine as any)
+      .slice(snippet.startLine! - 1, snippet.endLine!)
       .join("\n")
       .includes(snippet.text),
   ).toBeTruthy();
@@ -419,13 +417,14 @@ it("ranking emphasizes titles, deterministic pagination and scoped index reuse",
 
 it("native search client passes explicit typed mode and filters to the shared operations", async () => {
   const calls: any = [],
+    // loadSearch only calls invoke; the fake records requests and its outputs are never read.
     feature = {
       invoke: async (name: any, input: any) => {
         calls.push({ name, input });
         return {};
       },
-    };
-  const state = {
+    } as FeatureClient<typeof contract>;
+  const state: SearchState = {
     query: "name",
     mode: "phrase",
     lifecycle: "active",
@@ -434,8 +433,8 @@ it("native search client passes explicit typed mode and filters to the shared op
     tag: "team",
     offset: 20,
   };
-  await loadSearch(feature as any, state as any);
-  await loadSearch(feature as any, { ...state, mode: "exact" } as any);
+  await loadSearch(feature, state);
+  await loadSearch(feature, { ...state, mode: "exact" });
   expect(calls[0].name).toBe("grep");
   expect(calls[0].input.mode).toBe("phrase");
   expect(calls[0].input.acceptance).toBe(undefined);
@@ -443,7 +442,9 @@ it("native search client passes explicit typed mode and filters to the shared op
   expect(calls[1].name).toBe("lookup");
   expect(calls[1].input.mode).toBe(undefined);
   for (const { name, input } of calls) {
-    expect(Check((contract.operations as any)[name].input, input)).toBeTruthy();
+    expect(
+      Check(contract.operations[name as keyof typeof contract.operations].input, input),
+    ).toBeTruthy();
   }
 });
 
@@ -475,10 +476,8 @@ it("published pages are immediately searchable without approval; restored genera
   const raw = (await service.record({ id: receipt.id, view: "raw" }, f.owner)).record!.raw;
   expect(raw).not.toMatch(/acceptance:/);
   await writeFile(path.join(f.root, "vault.json"), JSON.stringify(f.manifest));
-  for (const op of ["grep", "lookup"]) {
-    await expect((service as any)[op]({ query: "newlypublishedword" }, f.owner)).rejects.toThrow(
-      /identity/,
-    );
+  for (const op of ["grep", "lookup"] as const) {
+    await expect(service[op]({ query: "newlypublishedword" }, f.owner)).rejects.toThrow(/identity/);
   }
 });
 
@@ -513,7 +512,7 @@ it("editing a legacy page removes approval metadata through journaled publicatio
       expectedRevision: previous!.revision,
       expectedHash: previous!.hash,
       title: previous!.title,
-      body: previous!.body as any,
+      body: previous!.body!,
     },
     f.owner,
   );
@@ -522,13 +521,15 @@ it("editing a legacy page removes approval metadata through journaled publicatio
     await service.record({ id: previous!.id, view: "raw", includeMetadata: true }, f.owner)
   ).record;
   expect(current!.raw).not.toMatch(/acceptance:/);
-  expect((current!.metadata! as any).custom_note).toBe("Preserve me");
+  // Authored metadata keys outside the contract survive the edit.
+  const metadata: Record<string, unknown> = current!.metadata!;
+  expect(metadata.custom_note).toBe("Preserve me");
   expect(current!.revision).toBe(previous!.revision + 1);
   expect((await service.grep({ query: "Original body" }, f.owner)).total).toBe(1);
-  for (const op of ["grep", "lookup"]) {
-    expect(
-      Check((contract.operations as any)[op].input, { query: "Legacy", acceptance: "candidate" }),
-    ).toBe(false);
+  for (const op of ["grep", "lookup"] as const) {
+    expect(Check(contract.operations[op].input, { query: "Legacy", acceptance: "candidate" })).toBe(
+      false,
+    );
   }
 });
 

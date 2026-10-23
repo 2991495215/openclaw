@@ -57,11 +57,11 @@ async function fixture() {
   return { root, vault: new SampleVault(root) };
 }
 async function hashes(root: any) {
-  const out = {};
+  const out: Record<string, string> = {};
   for (const e of await readdir(root, { recursive: true, withFileTypes: true })) {
     if (e.isFile()) {
       const p = path.join(e.parentPath, e.name);
-      (out as any)[path.relative(root, p)] = digest(await readFile(p, "utf8"));
+      out[path.relative(root, p)] = digest(await readFile(p, "utf8"));
     }
   }
   return out;
@@ -287,7 +287,7 @@ it("effective fingerprint changes for inherited/borrowed edits, not YAML key ord
   await sourceWrite(root, "ontologies/parent.yaml", parent);
   await sourceWrite(root, "ontology.yaml", manifest("local", [], { extends: "parent" }));
   const first = (await vault.scan()).ontology!.fingerprint;
-  (parent.definitions[0]! as any).fields = [{ name: "role", label: "Role", type: "string" }];
+  parent.definitions[0]!.fields = [{ name: "role", label: "Role", type: "string" }];
   await sourceWrite(root, "ontologies/parent.yaml", parent);
   const second = (await vault.scan()).ontology!.fingerprint;
   expect(first).not.toBe(second);
@@ -305,7 +305,7 @@ it("effective fingerprint changes for inherited/borrowed edits, not YAML key ord
     }),
   );
   const third = (await vault.scan()).ontology!.fingerprint;
-  (parent.definitions[0]! as any).directory = "changed/";
+  parent.definitions[0]!.directory = "changed/";
   await sourceWrite(root, "ontologies/parent.yaml", parent);
   expect((await vault.scan()).ontology!.fingerprint).not.toBe(third);
 });

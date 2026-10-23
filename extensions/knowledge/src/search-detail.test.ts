@@ -1,3 +1,4 @@
+import type { FeatureInvocationContext } from "openclaw/plugin-sdk/feature-plugin";
 import { Value } from "typebox/value";
 import { expect, it } from "vitest";
 import { ToolSearchOutput, type FullHit, type SearchOutput } from "./retrieval-contract.js";
@@ -45,8 +46,9 @@ const output = (hits: FullHit[]): SearchOutput => ({
   total: hits.length,
   index: { state: "ready", lag: false, snapshot: null, message: "" },
 });
-const tool = { source: "tool" } as any,
-  ui = { source: "session-action" } as any;
+// searchDetail reads only the caller source from its invocation context.
+const tool = { source: "tool" } as FeatureInvocationContext,
+  ui = { source: "session-action" } as FeatureInvocationContext;
 
 it("agent calls get compact, schema-valid hits that keep the match and a default limit", async () => {
   const seen: any[] = [];
@@ -70,7 +72,7 @@ it("agent calls get compact, schema-valid hits that keep the match and a default
     snippet: { field: "body", text: expect.stringContaining("MATCH") },
     matches: ["body"],
   });
-  expect((result.hits[0] as any).snippet.text.length).toBe(COMPACT_SNIPPET_CHARS);
+  expect(result.hits[0]!.snippet.text.length).toBe(COMPACT_SNIPPET_CHARS);
   expect(Value.Check(ToolSearchOutput, result)).toBe(true);
 });
 

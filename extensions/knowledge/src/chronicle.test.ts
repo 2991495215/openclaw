@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { stringify } from "yaml";
+import type { SinceInput, TimelineInput } from "./chronicle-contract.js";
 import { contract } from "./contract.js";
 import { createKnowledgeService } from "./service.js";
 import { returnedRecords } from "./session-activity.js";
@@ -39,12 +40,12 @@ async function fixture() {
   ];
   async function put(
     id: any,
-    metadata = {},
+    metadata: { kind?: string; type?: string; [field: string]: unknown } = {},
     partition = "private",
     body = "Launch review evidence",
   ) {
-    const kind = (metadata as any).kind ?? "page",
-      type = (metadata as any).type ?? "note";
+    const kind = metadata.kind ?? "page",
+      type = metadata.type ?? "note";
     const dir =
       kind === "claim"
         ? "claims"
@@ -256,7 +257,7 @@ it("pagination detects edits, external changes reconcile, partial index loss reb
   expect(
     ids(
       await f.service.timeline(
-        { order: "asc", offset: page.nextOffset as any, snapshot: page.snapshot, limit: 1 },
+        { order: "asc", offset: page.nextOffset!, snapshot: page.snapshot, limit: 1 },
         f.owner,
       ),
     ),
@@ -364,7 +365,8 @@ it("high precision storage dates remain queryable and equivalent source instants
   expect(returnedRecords(last)).toStrictEqual([
     { id: "event_offset", revision: last.last!.record.revision },
   ]);
-  await expect(f.service.chronicle_since({} as any, f.owner)).rejects.toThrow(/Invalid/);
+  // Deliberately omits the required `since`.
+  await expect(f.service.chronicle_since({} as SinceInput, f.owner)).rejects.toThrow(/Invalid/);
 });
 
 it("unprovisioned operator temporal reads stay empty without creating storage", async () => {
@@ -378,9 +380,9 @@ it("unprovisioned operator temporal reads stay empty without creating storage", 
     ["chronicle_day", { date: "2026-10-04" }],
     ["chronicle_since", { since: "2026-10-04" }],
     ["chronicle_last_seen", { entity: "person_missing" }],
-  ] as [string, any][]) {
-    const result = await (service as any)[op](input, operator);
-    expect(Check((contract.operations as any)[op].output, result)).toBeTruthy();
+  ] as ["timeline" | "chronicle_day" | "chronicle_since" | "chronicle_last_seen", any][]) {
+    const result: { last?: unknown; total?: unknown } = await service[op](input, operator);
+    expect(Check(contract.operations[op].output, result)).toBeTruthy();
     expect(op === "chronicle_last_seen" ? result.last : result.total).toBe(
       op === "chronicle_last_seen" ? null : 0,
     );
@@ -390,7 +392,8 @@ it("unprovisioned operator temporal reads stay empty without creating storage", 
     service.chronicle_day({ date: "2026-10-04", timezone: "Not/AZone" }, operator),
   ).rejects.toThrow();
   await expect(service.timeline({ since: "2026-02-30" }, operator)).rejects.toThrow();
-  await expect(service.chronicle_since({} as any, operator)).rejects.toThrow();
+  // Deliberately omits the required `since`.
+  await expect(service.chronicle_since({} as SinceInput, operator)).rejects.toThrow();
 });
 
 it("source summaries are page-local, deduplicated, snapshot fenced and lifecycle aware", async () => {
@@ -414,19 +417,19 @@ it("source summaries are page-local, deduplicated, snapshot fenced and lifecycle
       source_page: "meeting_shared",
     }),
   );
-  const input = {
+  const input: TimelineInput = {
     entity: "person_alice",
     includeSources: true,
     eligibility: "include_inactive",
     limit: 1,
   };
-  const first = await f.service.timeline(input as any, f.owner);
+  const first = await f.service.timeline(input, f.owner);
   expect(first.sources!.length).toBe(1);
   expect(first.sources![0]!.title).toBe("Shared source");
   expect(first.items[0]!.record.lifecycle).toBe("active");
   expect(Check(contract.operations.timeline.output, first)).toBeTruthy();
   const second = await f.service.timeline(
-    { ...input, offset: first.nextOffset as any, snapshot: first.snapshot } as any,
+    { ...input, offset: first.nextOffset!, snapshot: first.snapshot },
     f.owner,
   );
   expect(second.items[0]!.record.lifecycle).toBe("superseded");
@@ -434,12 +437,9 @@ it("source summaries are page-local, deduplicated, snapshot fenced and lifecycle
   expect(second.sources!.length).toBe(1);
   expect(second.nextOffset).toBe(null);
   await expect(
-    f.service.timeline(
-      { ...input, includeSources: false, snapshot: first.snapshot } as any,
-      f.owner,
-    ),
+    f.service.timeline({ ...input, includeSources: false, snapshot: first.snapshot }, f.owner),
   ).rejects.toThrow(/restart/);
-  const both = await f.service.timeline({ ...input, limit: 100 } as any, f.owner);
+  const both = await f.service.timeline({ ...input, limit: 100 }, f.owner);
   expect(both.sources!.length).toBe(1);
   expect((await f.service.timeline({ entity: "person_alice" }, f.owner)).sources).toBe(undefined);
   const last = await f.service.chronicle_last_seen(
@@ -464,7 +464,10 @@ it("source summaries are page-local, deduplicated, snapshot fenced and lifecycle
       f.service.chronicle_last_seen({ entity: "person_alice", ...bad }, f.owner),
     ).rejects.toThrow(/Invalid/);
   }
-  await expect(f.service.timeline({ historical: true } as any, f.owner)).rejects.toThrow(/Invalid/);
+  // `historical` is deliberately not a timeline field.
+  await expect(f.service.timeline({ historical: true } as TimelineInput, f.owner)).rejects.toThrow(
+    /Invalid/,
+  );
 });
 
 it("temporal source summaries fit the full response budget and never skip rows", async () => {
@@ -512,16 +515,21 @@ it("query freshness distinguishes reused scans and query execution without legac
     ["records", {}],
     ["lookup", { query: "event_current" }],
     ["grep", { query: "launch" }],
-  ] as [string, any][]) {
-    const result = await (f.service as any)[method](input, f.owner);
+  ] as ["timeline" | "records" | "lookup" | "grep", any][]) {
+    // The fields this test reads across the four outputs; legacy ones must be absent.
+    const result: {
+      checkedAt?: unknown;
+      freshness: { queriedAt: string; scannedAt: string; indexedAt?: string };
+      index?: Record<string, unknown>;
+    } = await f.service[method](input, f.owner);
     expect(result.checkedAt).toBe(undefined);
     expect(
       Date.parse(result.freshness.queriedAt) >= Date.parse(result.freshness.scannedAt),
     ).toBeTruthy();
-    expect(Check((contract.operations as any)[method].output, result)).toBeTruthy();
+    expect(Check(contract.operations[method].output, result)).toBeTruthy();
     if (method === "grep") {
       expect(result.freshness.indexedAt).toBeTruthy();
-      expect(result.index.indexedAt).toBe(undefined);
+      expect(result.index!.indexedAt).toBe(undefined);
     }
   }
 });

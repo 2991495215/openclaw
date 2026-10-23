@@ -3,6 +3,9 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { memoryFixture } from "./memory-provider.test-support.js";
+import type { Recall } from "./model.js";
+import type { RecallInput } from "./mutation-contract.js";
+import type { Stores } from "./stores.js";
 import { afterTest, useTestTempDirs, defaultOrder } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
@@ -13,7 +16,7 @@ it("shared search/get/health roundtrip uses native publication, provenance and r
     "Orchid decision",
     "Choose SQLite\nBecause local persistence matters.",
   );
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   expect(provider.capabilities).toStrictEqual({
     sources: ["memory"],
     pagination: true,
@@ -54,14 +57,14 @@ it("conversation audiences never acquire private scope", async () => {
   };
   f.setAudience(conversation);
   await f.save("Conversation sentinel");
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   const group = await provider.search({ query: "sentinel" });
   expect(group.hits.length).toBe(1);
   expect(group.hits[0].excerpt).toMatch(/Conversation/);
   expect(JSON.stringify(await provider.health())).not.toMatch(/Private/);
   f.setAudience({ kind: "owner-private", agentId: "main" });
   await expect(provider.search({ query: "sentinel" })).rejects.toThrow(/authority/);
-  const nonowner = await (f.open as any)({
+  const nonowner = await f.open({
     ...f.context,
     authority: { ...f.context.authority, audience: conversation },
   });
@@ -75,7 +78,7 @@ it("operator authorization and missing, foreign, host, and sandbox audience reje
     ...f.context,
     authority: { kind: "operator", connId: "real-connection", scopes: ["operator.read"] },
   };
-  const operatorProvider = (await (f.open as any)(operator)).provider;
+  const operatorProvider = (await f.open(operator)).provider;
   expect((await operatorProvider.search({ query: "Private" })).hits.length).toBe(1);
   await expect(operatorProvider.candidates({ kind: "trigger" })).rejects.toThrow(/owner-private/);
   for (const authority of [
@@ -86,23 +89,19 @@ it("operator authorization and missing, foreign, host, and sandbox audience reje
     { ...f.context.authority, audience: undefined },
     { ...f.context.authority, audience: { kind: "owner-private", agentId: "other" } },
   ]) {
-    await expect((f.open as any)({ ...f.context, authority })).rejects.toThrow(
-      /authority|memory audience/,
-    );
+    await expect(f.open({ ...f.context, authority })).rejects.toThrow(/authority|memory audience/);
   }
-  await expect((f.open as any)(f.context, "other")).rejects.toThrow(/authority/);
-  await expect((f.open as any)({ ...f.context, assertCurrent: undefined })).rejects.toThrow(
-    /authority/,
-  );
+  await expect(f.open(f.context, "other")).rejects.toThrow(/authority/);
+  await expect(f.open({ ...f.context, assertCurrent: undefined })).rejects.toThrow(/authority/);
   const restricted = await memoryFixture(tempDirs, { operatorRead: false });
-  await expect((restricted.open as any)(operator)).rejects.toThrow(/authority/);
+  await expect(restricted.open(operator)).rejects.toThrow(/authority/);
 });
 
 it("host status receives health only and every other host purpose is denied", async () => {
   const f = await memoryFixture(tempDirs);
   await f.save("Private status sentinel");
   const host = { ...f.context, authority: { kind: "host", operation: "status" } };
-  const { provider } = await f.open(host as any, "main", "status");
+  const { provider } = await f.open(host, "main", "status");
   const health = await provider.health();
   expect(Object.keys(health).toSorted(defaultOrder)).toStrictEqual(["message", "status"]);
   expect(health.status).toBe("ready");
@@ -117,7 +116,7 @@ it("host status receives health only and every other host purpose is denied", as
   await provider.close();
   await expect(provider.health()).rejects.toThrow(/closed/);
   for (const purpose of [undefined, "default", "cli"]) {
-    await expect(f.open(host as any, "main", purpose)).rejects.toThrow(/authority/);
+    await expect(f.open(host, "main", purpose)).rejects.toThrow(/authority/);
   }
 });
 
@@ -143,11 +142,12 @@ it("host readiness redacts all states and storage errors while preserving lease 
       return operation();
     },
   };
+  // Mirrors the Stores members the provider uses; the stub has no registry or runtimes.
   const stores = {
     policy: { operatorRead: false },
     incarnation: 0,
-    assertLive() {},
-    async open(principal: any) {
+    assertLive(_epoch: number) {},
+    async open(principal: any, _options: { provision: boolean }): Promise<unknown> {
       return {
         kind: "ready",
         runtime,
@@ -168,7 +168,7 @@ it("host readiness redacts all states and storage errors while preserving lease 
       }
     },
   };
-  const { provider } = await createKnowledgeMemoryRuntime(stores as any).open({
+  const { provider } = await createKnowledgeMemoryRuntime(stores as Stores).open({
     cfg: {},
     agentId: "main",
     purpose: "status",
@@ -178,7 +178,7 @@ it("host readiness redacts all states and storage errors while preserving lease 
     [true, 0, "ready"],
     [true, 1, "degraded"],
     [false, 0, "unavailable"],
-  ] as any[]) {
+  ] as const) {
     facts = { ontology, issues, records: 42 };
     expect(await provider!.health()).toStrictEqual({
       status,
@@ -198,18 +198,18 @@ it("host readiness redacts all states and storage errors while preserving lease 
 it("queued result release revalidates authority, cancellation and service incarnation", async () => {
   const f = await memoryFixture(tempDirs);
   await f.save("Orchid note");
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   const pending = provider.search({ query: "Orchid" });
   f.revoke();
   await expect(pending).rejects.toThrow(/revoked/);
   await provider.close();
   const g = await memoryFixture(tempDirs),
     controller = new AbortController();
-  const lease = (await (g.open as any)({ ...g.context, signal: controller.signal })).provider;
+  const lease = (await g.open({ ...g.context, signal: controller.signal })).provider;
   controller.abort();
   await expect(lease.health()).rejects.toThrow();
   await lease.close();
-  const old = (await (g.open as any)()).provider;
+  const old = (await g.open()).provider;
   const lifecycle = g.services.find((s: any) => s.id === "knowledge:live-state");
   lifecycle.stop();
   lifecycle.start();
@@ -221,7 +221,7 @@ it("cursor preserves query/scope/snapshot and revision fences reject stale reads
   const f = await memoryFixture(tempDirs);
   const saved = await f.save("Orchid one");
   await f.save("Orchid two");
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   const page = await provider.search({ query: "Orchid", maxResults: 1 });
   expect(page.coverage).toBe("partial");
   expect(page.nextCursor).toBeTruthy();
@@ -272,7 +272,7 @@ it("cursor preserves query/scope/snapshot and revision fences reject stale reads
 
 it("native mutation and shared reads use one operation queue; errors do not poison it", async () => {
   const f = await memoryFixture(tempDirs),
-    { provider } = await (f.open as any)();
+    { provider } = await f.open();
   const results = await Promise.allSettled(
     Array.from({ length: 6 }, (_, i) => [
       f.save(`Concurrent ${i}`),
@@ -290,7 +290,7 @@ it("native mutation and shared reads use one operation queue; errors do not pois
 it("unsupported corpus/project filters are explicit, mixed corpus is partial", async () => {
   const f = await memoryFixture(tempDirs);
   await f.save("Orchid note");
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   await expect(provider.search({ query: "Orchid", sources: ["sessions"] })).rejects.toThrow(
     /transcripts/,
   );
@@ -331,19 +331,21 @@ it("knowledge_recall sets and clears service approval with exact replay", async 
   expect(receipt.revision).toBe(before!.revision + 1);
   expect(await f.service.recall(input, f.tool)).toStrictEqual(receipt);
   let current = (await f.service.record({ id: saved.id, includeMetadata: true }, f.tool)).record;
-  expect((current!.metadata!.recall as any).approved_by).toBe("owner-private");
-  expect(Number.isFinite(Date.parse((current!.metadata!.recall as any).approved_at))).toBeTruthy();
-  expect((current!.metadata!.recall as any).summary).toBe(input.set.summary);
-  const clear = {
+  // Envelope keeps authored recall blocks unvalidated; this one is the service-issued approval.
+  const recall = current!.metadata!.recall as Recall;
+  expect(recall.approved_by).toBe("owner-private");
+  expect(Number.isFinite(Date.parse(recall.approved_at))).toBeTruthy();
+  expect(recall.summary).toBe(input.set.summary);
+  const clear: RecallInput = {
     requestId: randomUUID(),
     id: saved.id,
     expectedRevision: current!.revision,
     expectedHash: current!.hash,
     clear: true,
   };
-  const cleared = await f.service.recall(clear as any, f.tool);
+  const cleared = await f.service.recall(clear, f.tool);
   expect(cleared.revision).toBe(current!.revision + 1);
-  expect(await f.service.recall(clear as any, f.tool)).toStrictEqual(cleared);
+  expect(await f.service.recall(clear, f.tool)).toStrictEqual(cleared);
   current = (await f.service.record({ id: saved.id, includeMetadata: true }, f.tool)).record;
   expect(current!.metadata!.recall).toBe(undefined);
 });
@@ -440,7 +442,7 @@ it("automatic candidates select by kind, inject summary only and order determini
     triggers: ["trigger phrase"],
     importance: 5,
   });
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   const triggers = await provider.candidates({ kind: "trigger" });
   const tied = [project.id, trigger.id].toSorted(defaultOrder);
   expect(triggers.hits.map((hit: any) => hit.reference.id)).toStrictEqual([both.id, ...tied]);
@@ -468,7 +470,7 @@ it("automatic candidates select by kind, inject summary only and order determini
     sessionKey: "agent:main:group",
     sessionId: f.sessionId,
   });
-  const conversationProvider = (await (f.open as any)()).provider;
+  const conversationProvider = (await f.open()).provider;
   expect(await conversationProvider.candidates({ kind: "trigger" })).toStrictEqual({
     hits: [],
     coverage: "complete",
@@ -521,7 +523,7 @@ it("automatic candidates exclude withdrawn, superseded and invalid recall blocks
     current!.raw!.replace("approved_by: owner-private", "approved_by: forged"),
   );
 
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   expect((await provider.candidates({ kind: "trigger" })).hits).toStrictEqual([]);
   const inspected = await f.service.record({ id: invalid.id }, f.tool);
   expect(inspected.record).toBeTruthy();
@@ -532,7 +534,7 @@ it("automatic candidates exclude withdrawn, superseded and invalid recall blocks
 it("withdrawn records stay unavailable after external restoration; fixtures are excluded", async () => {
   const f = await memoryFixture(tempDirs);
   const saved = await f.save("Orchid note");
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   const hit = (await provider.search({ query: "Orchid" })).hits[0];
   const detail = await f.service.record({ id: saved.id, view: "raw" }, f.tool);
   await f.service.withdraw(
@@ -548,7 +550,7 @@ it("withdrawn records stay unavailable after external restoration; fixtures are 
   );
   expect((await provider.search({ query: "Orchid" })).hits.length).toBe(0);
   expect(await provider.get({ reference: hit.reference })).toStrictEqual({ status: "not_found" });
-  await writeFile(path.join(f.root, "private", detail.record!.path), detail.record!.raw as any);
+  await writeFile(path.join(f.root, "private", detail.record!.path), detail.record!.raw!);
   expect(await provider.get({ reference: hit.reference })).toStrictEqual({ status: "not_found" });
   const fixtureRecord = await f.save("Synthetic fixture");
   const fixtureDetail = await f.service.record({ id: fixtureRecord.id, view: "raw" }, f.tool);
@@ -567,7 +569,7 @@ it("withdrawn records stay unavailable after external restoration; fixtures are 
 
 it("retirement drains the shared lane, rollback resumes, close-all fences retained handles", async () => {
   const f = await memoryFixture(tempDirs),
-    { provider } = await (f.open as any)(),
+    { provider } = await f.open(),
     runtime = f.capability!.providerRuntime;
   const retirement = runtime.prepareReload({ retireRuntime: true, retiringEmbeddingProviders: [] });
   await expect(provider.health()).rejects.toThrow(/retiring/);
@@ -576,5 +578,5 @@ it("retirement drains the shared lane, rollback resumes, close-all fences retain
   expect((await provider.health()).status).toBe("ready");
   await runtime.closeAllMemorySearchManagers();
   await expect(provider.health()).rejects.toThrow(/closed/);
-  expect((await (await (f.open as any)()).provider.health()).status).toBe("ready");
+  expect((await (await f.open()).provider.health()).status).toBe("ready");
 });

@@ -89,7 +89,7 @@ async function foundation() {
   f.fingerprint = (await f.service.ontology({}, f.owner)).fingerprint;
   f.pages = {};
   for (const type of ["person", "project", "meeting"]) {
-    (f as any).pages[type] = await f.service.save_page({ ...draft(), title: type, type }, f.owner);
+    f.pages[type] = await f.service.save_page({ ...draft(), title: type, type }, f.owner);
   }
   f.source = await f.service.attach(
     {
@@ -106,34 +106,34 @@ async function foundation() {
     f.owner,
   );
   f.evidence = {
-    ...(f as any).source.evidence,
+    ...f.source.evidence,
     start_line: 1,
     end_line: 1,
     quote: "We chose option B.",
   };
   f.claim = (extra = {}) => ({
     requestId: randomUUID(),
-    expectedOntologyFingerprint: (f as any).fingerprint,
+    expectedOntologyFingerprint: f.fingerprint,
     title: "Option B decision",
     body: "Alex chose option B.",
     claim_kind: "decision",
     assertion_origin: "source",
     attribution: "Alex, meeting transcript line 1",
-    evidence: [(f as any).evidence],
-    entities: [(f as any).pages.project.id],
-    dependencies: [(f as any).pages.meeting.id],
+    evidence: [f.evidence],
+    entities: [f.pages.project.id],
+    dependencies: [f.pages.meeting.id],
     ...extra,
   });
   f.edge = (extra = {}) => ({
     requestId: randomUUID(),
-    expectedOntologyFingerprint: (f as any).fingerprint,
+    expectedOntologyFingerprint: f.fingerprint,
     title: "Meeting discusses project",
     body: "Explicit meeting/project connection",
-    from: (f as any).pages.meeting.id,
-    to: (f as any).pages.project.id,
+    from: f.pages.meeting.id,
+    to: f.pages.project.id,
     label: "discusses",
     attribution: "Meeting transcript",
-    evidence: [(f as any).evidence],
+    evidence: [f.evidence],
     ...extra,
   });
   return f;
@@ -141,22 +141,22 @@ async function foundation() {
 
 it("structured UI/agent service parity: decision, owned commitment, event, edge and exact evidence", async () => {
   const f = await foundation();
-  const decision = await f.service.create_claim((f as any).claim(), f.owner);
+  const decision = await f.service.create_claim(f.claim(), f.owner);
   const commitment = await f.service.create_claim(
-    (f as any).claim({
+    f.claim({
       title: "Deliver",
       claim_kind: "commitment",
-      owner: (f as any).pages.person.id,
+      owner: f.pages.person.id,
       due_at: "2026-09-25",
       occurred_at: "2026-09-23T10:30:00-07:00",
     }),
     f.operator,
   );
   const event = await f.service.create_claim(
-    (f as any).claim({ title: "Historical event", claim_kind: "event", occurred_at: "2020-02-29" }),
+    f.claim({ title: "Historical event", claim_kind: "event", occurred_at: "2020-02-29" }),
     f.owner,
   );
-  const edge = await f.service.create_relationship((f as any).edge(), f.operator);
+  const edge = await f.service.create_relationship(f.edge(), f.operator);
   for (const receipt of [decision, commitment, event, edge]) {
     expect(receipt.state).toBe("published");
     expect(Check(contract.operations.create_claim.output, receipt)).toBeTruthy();
@@ -171,31 +171,27 @@ it("structured UI/agent service parity: decision, owned commitment, event, edge 
   }
   const m = (await f.service.record({ id: commitment.id, includeMetadata: true }, f.owner)).record!
     .metadata;
-  expect(m!.owner).toBe((f as any).pages.person.id);
+  expect(m!.owner).toBe(f.pages.person.id);
   expect(m!.due_at).toBe("2026-09-25");
   expect(m!.occurred_at).toBe("2026-09-23T10:30:00-07:00");
   const outgoing = await f.service.connections(
-    { id: (f as any).pages.meeting.id, direction: "outgoing" },
+    { id: f.pages.meeting.id, direction: "outgoing" },
     f.owner,
   );
   expect(Check(contract.operations.connections.output, outgoing)).toBeTruthy();
   expect(outgoing.connections[0]!.record.id).toBe(edge.id);
   expect(
-    (
-      await f.service.connections(
-        { id: (f as any).pages.project.id, direction: "incoming" },
-        f.operator,
-      )
-    ).connections[0]!.from,
-  ).toBe((f as any).pages.meeting.id);
+    (await f.service.connections({ id: f.pages.project.id, direction: "incoming" }, f.operator))
+      .connections[0]!.from,
+  ).toBe(f.pages.meeting.id);
   const reverse = await f.service.connections(
-    { id: (f as any).pages.meeting.id, direction: "dependents", limit: 1 },
+    { id: f.pages.meeting.id, direction: "dependents", limit: 1 },
     f.owner,
   );
   expect(reverse.total).toBe(3);
   expect(reverse.nextOffset).toBe(1);
   expect(
-    (await f.service.connections({ id: (f as any).pages.person.id, direction: "claims" }, f.owner))
+    (await f.service.connections({ id: f.pages.person.id, direction: "claims" }, f.owner))
       .connections[0]!.record.id,
   ).toBe(commitment.id);
 });
@@ -205,7 +201,7 @@ it("all claim kinds roundtrip; contradictions and uncertain attribution are not 
   for (const claim_kind of ["fact", "preference", "decision", "commitment", "event", "belief"]) {
     for (const assertion_origin of ["source", "user_belief", "agent_inference"]) {
       const receipt = await f.service.create_claim(
-        (f as any).claim({ claim_kind, assertion_origin, attribution: "Unresolved Speaker 2" }),
+        f.claim({ claim_kind, assertion_origin, attribution: "Unresolved Speaker 2" }),
         f.owner,
       );
       const r = (await f.service.record({ id: receipt.id, includeMetadata: true }, f.owner)).record;
@@ -215,7 +211,7 @@ it("all claim kinds roundtrip; contradictions and uncertain attribution are not 
     }
   }
   const opposite = await f.service.create_claim(
-    (f as any).claim({ body: "Speaker 2 rejects option B." }),
+    f.claim({ body: "Speaker 2 rejects option B." }),
     f.owner,
   );
   expect((await f.service.records({ kind: "claim" }, f.owner)).total).toBe(19);
@@ -227,7 +223,7 @@ it("all claim kinds roundtrip; contradictions and uncertain attribution are not 
 it("automatic recall approval rejects source and agent-inference claims", async () => {
   const f = await foundation();
   for (const assertion_origin of ["source", "agent_inference"]) {
-    const receipt = await f.service.create_claim((f as any).claim({ assertion_origin }), f.owner);
+    const receipt = await f.service.create_claim(f.claim({ assertion_origin }), f.owner);
     const record = (await f.service.record({ id: receipt.id }, f.owner)).record;
     await expect(
       f.service.recall(
@@ -243,7 +239,7 @@ it("automatic recall approval rejects source and agent-inference claims", async 
     ).rejects.toThrow(/externally sourced or agent-inferred/);
   }
   const receipt = await f.service.create_claim(
-    (f as any).claim({
+    f.claim({
       assertion_origin: "user_belief",
       attribution: "Josh, direct owner statement",
     }),
@@ -263,11 +259,11 @@ it("automatic recall approval rejects source and agent-inference claims", async 
   expect(approved.state).toBe("published");
 });
 
-for (const operation of ["create_claim", "create_relationship"]) {
+for (const operation of ["create_claim", "create_relationship"] as const) {
   for (const stage of ["after-accept", "after-link:vault.json", "before-receipt"]) {
     it(`${operation}: interrupted ${stage}, replacement retry and changed payload`, async () => {
       const f = await foundation(),
-        input = operation === "create_claim" ? (f as any).claim() : (f as any).edge();
+        input = operation === "create_claim" ? f.claim() : f.edge();
       const publisher = new KnowledgeStorage(f.config, f.store, (where) => {
         if (where === stage) {
           throw new Error("crash");
@@ -275,12 +271,12 @@ for (const operation of ["create_claim", "create_relationship"]) {
       });
       const method = operation === "create_claim" ? "createClaim" : "createRelationship";
       await expect(publisher[method](input, f.access(), "agent")).rejects.toThrow(/crash/);
-      const resumed = await (createKnowledgeService(f.api) as any)[operation](input, f.owner);
+      const resumed = await createKnowledgeService(f.api)[operation](input, f.owner);
       expect(resumed.state).toBe("published");
-      expect(await (f.service as any)[operation](input, f.owner)).toStrictEqual(resumed);
-      await expect(
-        (f.service as any)[operation]({ ...input, title: "Different" }, f.owner),
-      ).rejects.toThrow(/different payload/);
+      expect(await f.service[operation](input, f.owner)).toStrictEqual(resumed);
+      await expect(f.service[operation]({ ...input, title: "Different" }, f.owner)).rejects.toThrow(
+        /different payload/,
+      );
       await expect(
         f.service.save_page({ ...draft(), requestId: input.requestId }, f.owner),
       ).rejects.toThrow(/different payload/);
@@ -300,15 +296,15 @@ it("malformed writes and references fail before acceptance with no source mutati
   const f = await foundation();
   for (const change of [
     { evidence: [] },
-    { evidence: [{ ...(f as any).evidence, quote: "not in source" }] },
-    { evidence: [{ ...(f as any).evidence, end_line: 999 }] },
+    { evidence: [{ ...f.evidence, quote: "not in source" }] },
+    { evidence: [{ ...f.evidence, end_line: 999 }] },
     { claim_kind: undefined },
     { assertion_origin: undefined },
     { attribution: " " },
     { body: " " },
     { expectedOntologyFingerprint: "0".repeat(64) },
     { entities: [randomUUID()] },
-    { owner: (f as any).pages.person.id },
+    { owner: f.pages.person.id },
     { due_at: "2026-09-30" },
     { occurred_at: "2026-02-30" },
     { occurred_at: "2026-09-23T10:00:00" },
@@ -317,35 +313,35 @@ it("malformed writes and references fail before acceptance with no source mutati
     { lifecycle: "withdrawn" },
     { id: randomUUID() },
   ]) {
-    const input = (f as any).claim(change);
+    const input = f.claim(change);
     await expect(f.service.create_claim(input, f.owner)).rejects.toThrow();
     expect((await f.service.mutation({ requestId: input.requestId }, f.owner)).receipt).toBe(null);
   }
-  const c = await f.service.create_claim((f as any).claim(), f.owner);
+  const c = await f.service.create_claim(f.claim(), f.owner);
+  await expect(f.service.create_relationship(f.edge({ from: c.id }), f.owner)).rejects.toThrow(
+    /pages/,
+  );
   await expect(
-    f.service.create_relationship((f as any).edge({ from: c.id }), f.owner),
-  ).rejects.toThrow(/pages/);
-  await expect(
-    f.service.create_relationship((f as any).edge({ label: "not_declared" }), f.owner),
+    f.service.create_relationship(f.edge({ label: "not_declared" }), f.owner),
   ).rejects.toThrow(/ontology/);
-  await expect(
-    f.service.create_relationship((f as any).edge({ label: "leads" }), f.owner),
-  ).rejects.toThrow(/endpoint-type/);
+  await expect(f.service.create_relationship(f.edge({ label: "leads" }), f.owner)).rejects.toThrow(
+    /endpoint-type/,
+  );
   expect((await f.service.records({ kind: "relationship" }, f.owner)).total).toBe(0);
 });
 
 it("temporal active retrieval and connections agree; explicit history keeps expired assertions", async () => {
   const f = await foundation();
   const expired = await f.service.create_claim(
-    (f as any).claim({ expires_at: "2000-01-01T00:00:00Z" }),
+    f.claim({ expires_at: "2000-01-01T00:00:00Z" }),
     f.owner,
   );
   const future = await f.service.create_relationship(
-    (f as any).edge({ valid_from: "2099-01-01T00:00:00Z" }),
+    f.edge({ valid_from: "2099-01-01T00:00:00Z" }),
     f.owner,
   );
   const ended = await f.service.create_claim(
-    (f as any).claim({ valid_until: "2000-01-01T00:00:00Z" }),
+    f.claim({ valid_until: "2000-01-01T00:00:00Z" }),
     f.owner,
   );
   for (const r of [expired, future, ended]) {
@@ -355,26 +351,25 @@ it("temporal active retrieval and connections agree; explicit history keeps expi
     );
     expect((await f.service.record({ id: r.id }, f.owner)).record).toBeTruthy();
     await expect(
-      f.service.create_claim((f as any).claim({ dependencies: [r.id] }), f.owner),
+      f.service.create_claim(f.claim({ dependencies: [r.id] }), f.owner),
     ).rejects.toThrow(/unavailable/);
   }
   expect((await f.service.grep({ query: "option" }, f.owner)).total).toBe(0);
   expect((await f.service.grep({ query: "option", lifecycle: "all" }, f.owner)).total).toBe(2);
-  expect((await f.service.connections({ id: (f as any).pages.project.id }, f.owner)).total).toBe(0);
+  expect((await f.service.connections({ id: f.pages.project.id }, f.owner)).total).toBe(0);
   expect(
-    (await f.service.connections({ id: (f as any).pages.project.id, historical: true }, f.owner))
-      .total,
+    (await f.service.connections({ id: f.pages.project.id, historical: true }, f.owner)).total,
   ).toBe(3);
 });
 
 it("metadata omission preserves, empty clears, authored fields/comments survive, aliases stay ambiguous", async () => {
   const f = await foundation();
-  let r = (await f.service.record({ id: (f as any).pages.person.id }, f.owner)).record;
+  let r = (await f.service.record({ id: f.pages.person.id }, f.owner)).record;
   await f.service.save_page(
     edit(r, {
       aliases: ["Alex"],
       tags: ["team"],
-      dependencies: [(f as any).pages.meeting.id],
+      dependencies: [f.pages.meeting.id],
       fields: { role: "Engineer" },
     }),
     f.owner,
@@ -383,7 +378,7 @@ it("metadata omission preserves, empty clears, authored fields/comments survive,
   await f.service.save_page(edit(r, { title: "Alex person" }), f.owner);
   let m = (await f.service.record({ id: r!.id, includeMetadata: true }, f.owner)).record!.metadata;
   expect(m!.aliases).toStrictEqual(["Alex"]);
-  expect(m!.dependencies).toStrictEqual([(f as any).pages.meeting.id]);
+  expect(m!.dependencies).toStrictEqual([f.pages.meeting.id]);
   await f.service.save_page({ ...draft(), aliases: ["Alex"] }, f.owner);
   expect((await f.service.lookup({ query: "Alex" }, f.owner)).outcome).toBe("ambiguous");
   r = (await f.service.record({ id: r!.id }, f.owner)).record;
@@ -397,27 +392,25 @@ it("metadata omission preserves, empty clears, authored fields/comments survive,
 
 it("new mutations and connections obey scope, read-only authority and historical withdrawal ledger", async () => {
   const f = await foundation(),
-    input = (f as any).claim(),
+    input = f.claim(),
     receipt = await f.service.create_claim(input, f.owner);
   const sequence = (await f.service.history({ id: receipt.id }, f.owner)).entries[0]!.sequence;
   const readOnly = {
     ...f.operator,
     action: { client: { connId: "readonly", scopes: ["operator.read"] } },
   };
-  await expect(f.service.create_claim((f as any).claim(), readOnly)).rejects.toThrow(/authority/);
+  await expect(f.service.create_claim(f.claim(), readOnly)).rejects.toThrow(/authority/);
   const original = await readFile(path.join(f.root, "private", receipt.path), "utf8");
   await writeFile(
     path.join(f.root, "private", receipt.path),
     original.replace("lifecycle: active", "lifecycle: withdrawn"),
   );
   expect(
-    (await f.service.connections({ id: (f as any).pages.project.id, historical: true }, f.owner))
-      .total,
+    (await f.service.connections({ id: f.pages.project.id, historical: true }, f.owner)).total,
   ).toBe(0);
   await writeFile(path.join(f.root, "private", receipt.path), original);
   expect(
-    (await f.service.connections({ id: (f as any).pages.project.id, historical: true }, f.owner))
-      .total,
+    (await f.service.connections({ id: f.pages.project.id, historical: true }, f.owner)).total,
   ).toBe(0);
   f.setAudience({
     kind: "conversation",
@@ -425,13 +418,10 @@ it("new mutations and connections obey scope, read-only authority and historical
     sessionKey: "agent:main:group",
     sessionId: randomUUID(),
   });
-  await expect(f.service.create_claim((f as any).claim(), f.owner)).rejects.toThrow(/unavailable/);
-  await expect(f.service.create_relationship((f as any).edge(), f.owner)).rejects.toThrow(
-    /unavailable/,
-  );
+  await expect(f.service.create_claim(f.claim(), f.owner)).rejects.toThrow(/unavailable/);
+  await expect(f.service.create_relationship(f.edge(), f.owner)).rejects.toThrow(/unavailable/);
   expect(
-    (await f.service.connections({ id: (f as any).pages.project.id, historical: true }, f.owner))
-      .total,
+    (await f.service.connections({ id: f.pages.project.id, historical: true }, f.owner)).total,
   ).toBe(0);
   expect((await f.service.revision({ sequence }, f.owner)).raw).toBe(null);
 });
@@ -439,9 +429,8 @@ it("new mutations and connections obey scope, read-only authority and historical
 for (const target of ["reference", "evidence"]) {
   it(`fences ${target} changes between preview and acceptance`, async () => {
     const f = await foundation(),
-      input = (f as any).claim();
-    const relative =
-      target === "reference" ? (f as any).pages.project.path : (f as any).evidence.path;
+      input = f.claim();
+    const relative = target === "reference" ? f.pages.project.path : f.evidence.path;
     const full = path.join(f.root, "private", relative),
       original = await readFile(full, "utf8");
     const publisher = new KnowledgeStorage(f.config, f.store, (stage) => {

@@ -22,10 +22,8 @@ it("EvidenceInspector matches inspectEvidence for every citation shape", async (
     for (const [name, bytes] of Object.entries(files)) {
       await writeFile(path.join(root, name), bytes);
     }
-    const sha = (name: any) =>
-      createHash("sha256")
-        .update((files as any)[name])
-        .digest("hex");
+    const sha = (name: keyof typeof files) =>
+      createHash("sha256").update(files[name]).digest("hex");
     const cite = (name: any, extra = {}) => ({ path: name, sha256: sha(name), ...extra });
     const citations = [
       cite("artifacts/crlf.txt"),
@@ -51,7 +49,8 @@ it("EvidenceInspector matches inspectEvidence for every citation shape", async (
       try {
         return { value: run() };
       } catch (error) {
-        return { error: (error as any).message };
+        // Both inspectors throw Error instances.
+        return { error: (error as Error).message };
       }
     };
     const inspector = new EvidenceInspector(root);

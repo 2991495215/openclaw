@@ -296,8 +296,8 @@ it("Discrawl adapter resolves a stable channel and emits deterministic attachmen
     ["start", "2026-09-27T07:00:00.000000000Z"],
     ["last", "2026-09-28T06:59:59.999999999Z"],
     ["end", "2026-09-28T07:00:00.000000000Z"],
-  ]) {
-    (insert.run as any)(id, "10", "20", "40", "default", at, null, null, id, id, null, 0, 0);
+  ] as const) {
+    insert.run(id, "10", "20", "40", "default", at, null, null, id, id, null, 0, 0);
   }
   boundaryDb.close();
   run(
@@ -345,8 +345,8 @@ it("Discrawl adapter includes child threads only when asked", async () => {
     ["1", "20"],
     ["2", "21"],
     ["3", "22"],
-  ]) {
-    (db.prepare("INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run as any)(
+  ] as const) {
+    db.prepare("INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(
       id,
       "10",
       channel,

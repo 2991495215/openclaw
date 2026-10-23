@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
+import type { FeatureOperation } from "openclaw/plugin-sdk/feature-contract";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { contract } from "./contract.js";
@@ -8,6 +9,7 @@ import plugin from "./index.js";
 import { buildKnowledgeMemoryPrompt } from "./memory-prompt.js";
 import { memoryFixture } from "./memory-provider.test-support.js";
 import { deriveMemoryFlushRequestId } from "./service.js";
+import type { Stores } from "./stores.js";
 import {
   hostApi,
   sessionActions,
@@ -23,21 +25,24 @@ it("entry retains native tools, denies untrusted provider callers and prompt hon
   let capability;
   const names: any = [],
     services = [];
-  plugin.register({
-    ...hostApi(base).api,
-    registerMemoryCapability(c: any) {
-      capability = c;
-    },
-    registerService(s: any) {
-      services.push(s);
-    },
-    ...sessionActions(),
-    registerTool(_f: any, options: any) {
-      names.push(options!.name);
-    },
-  } as any);
+  plugin.register(
+    hostApi(base, {
+      extra: {
+        registerMemoryCapability(c: any) {
+          capability = c;
+        },
+        registerService(s: any) {
+          services.push(s);
+        },
+        ...sessionActions(),
+        registerTool(_f: any, options: any) {
+          names.push(options!.name);
+        },
+      },
+    }).api,
+  );
   expect(names.length).toBe(
-    Object.values(contract.operations).filter((o) => (o as any).tool).length,
+    Object.values<FeatureOperation>(contract.operations).filter((o) => o.tool).length,
   );
   expect(capability!.recallToolNames).toStrictEqual([
     "knowledge_grep",
@@ -82,6 +87,8 @@ it("entry registers without reading the host runtime, as CLI metadata loading re
     },
   );
   let capability: any;
+  // CLI metadata loading hands registration a deliberately partial API; no single
+  // OpenClawPluginApi assertion accepts it (the shared service/session helpers are narrower).
   plugin.register({
     id: "knowledge",
     pluginConfig: {},
@@ -92,7 +99,7 @@ it("entry registers without reading the host runtime, as CLI metadata loading re
     registerService: stopAtTestEnd,
     ...sessionActions(),
     registerTool() {},
-  } as any);
+  } as never);
   expect(capability!.providerRuntime).toBeTruthy();
 });
 
@@ -213,11 +220,14 @@ it("grep and lookup expose empty and usable evidence for Active Memory", async (
   const factories = new Map();
   plugin.register({
     ...f.api,
-    ...sessionActions(),
+    session: {
+      ...f.api.session,
+      controls: { ...f.api.session?.controls, ...sessionActions().session.controls },
+    },
     registerTool(factory: any, options: any) {
       factories.set(options!.name, factory);
     },
-  } as any);
+  });
   // The feature adapter must expose the page count in both transcript details and JSON text.
   const assertCount = async (name: any, input: any, count: any, total: any) => {
     const tool = factories.get(name)(f.tool.tool),
@@ -239,8 +249,8 @@ it("grep and lookup expose empty and usable evidence for Active Memory", async (
 
 it("prompt routes all workflows, obeys citation settings and omits disabled save guidance", async () => {
   const tools = new Set(
-    Object.values(contract.operations).flatMap((o) =>
-      (o as any).tool ? [(o as any).tool.name] : [],
+    Object.values<FeatureOperation>(contract.operations).flatMap((o) =>
+      o.tool ? [o.tool.name] : [],
     ),
   );
   const full = buildKnowledgeMemoryPrompt({ availableTools: tools }).join("\n");
@@ -301,8 +311,8 @@ it("prompt routes all workflows, obeys citation settings and omits disabled save
 
 it("prompt names repository project keys only for remote keys, gated by the tools that use them", () => {
   const tools = new Set(
-    Object.values(contract.operations).flatMap((o) =>
-      (o as any).tool ? [(o as any).tool.name] : [],
+    Object.values<FeatureOperation>(contract.operations).flatMap((o) =>
+      o.tool ? [o.tool.name] : [],
     ),
   );
   const prompt = (projectKey: any, available = tools) =>
@@ -356,11 +366,12 @@ it("index failure is not empty success and late backend results are fenced", asy
       return operation();
     },
   };
+  // Mirrors the Stores members the provider uses; the stub has no registry or runtimes.
   const stores = {
     policy: { operatorRead: true },
     incarnation: 0,
-    assertLive() {},
-    async open(principal: any) {
+    assertLive(_epoch: number) {},
+    async open(principal: any, _options: { provision: boolean }): Promise<unknown> {
       return {
         kind: "ready",
         runtime,
@@ -387,7 +398,7 @@ it("index failure is not empty success and late backend results are fenced", asy
       }
     },
   };
-  const { provider } = await createKnowledgeMemoryRuntime(stores as any).open({
+  const { provider } = await createKnowledgeMemoryRuntime(stores as Stores).open({
     cfg: {},
     agentId: "main",
     context,
@@ -416,7 +427,7 @@ it("large provider reads follow advertised line continuations beyond 100000 and 
     filename,
     raw.slice(0, -"Evidence-backed durable note".length) + "short\n".repeat(100300) + "needle",
   );
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   const result = await provider.search({ query: "needle" });
   expect(result.hits[0].excerpt).toMatch(/Opening excerpt \(not the match location\)/);
   const first = await provider.get({
@@ -442,6 +453,8 @@ it("recall keys and whole candidate responses stay bounded with honest partial c
   await f.recall(saved, { summary: "approved", projects: ["x".repeat(500)] });
   const original = (await f.service.record({ id: saved.id, metadataView: "full" }, f.tool)).record;
   const metadata = original!.metadata;
+  // f.recall above wrote an approved recall block.
+  const recall = metadata!.recall as Record<string, unknown>;
   // Many individually bounded records still exceed one response; use authored
   // synthetic fixtures to exercise the production scan/worker/provider chain.
   for (let n = 0; n < 35; n++) {
@@ -451,7 +464,7 @@ it("recall keys and whole candidate responses stay bounded with honest partial c
       id,
       title: "Candidate " + n,
       recall: {
-        ...(metadata as any).recall,
+        ...recall,
         projects: Array.from({ length: 20 }, (_, i) => String(i) + "é".repeat(498)),
         summary: "Approved " + n,
       },
@@ -461,7 +474,7 @@ it("recall keys and whole candidate responses stay bounded with honest partial c
       "---\n" + stringify(m) + "---\nbody",
     );
   }
-  const { provider } = await (f.open as any)();
+  const { provider } = await f.open();
   const result = await provider.candidates({ kind: "project", limit: 200 });
   expect(result.hits.length > 0 && result.hits.length < 36).toBeTruthy();
   expect(result.coverage).toBe("partial");
@@ -475,7 +488,7 @@ it("recall keys and whole candidate responses stay bounded with honest partial c
     m = {
       ...metadata,
       id,
-      recall: { ...(metadata as any).recall, projects: ["x".repeat(1000000)] },
+      recall: { ...recall, projects: ["x".repeat(1000000)] },
     };
   await writeFile(
     path.join(f.root, "private", path.dirname(saved.path), id + ".md"),

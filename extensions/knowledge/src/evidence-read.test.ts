@@ -6,6 +6,7 @@ import { expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { ATTACHMENT_CHUNK_BYTES } from "./attachment-contract.js";
 import { contract } from "./contract.js";
+import type { AnnotateInput } from "./mutation-contract.js";
 import { createKnowledgeService } from "./service.js";
 import { storeFixture, toolContext, useTestTempDirs, jsonRoundTrip } from "./test-support.js";
 
@@ -165,10 +166,7 @@ it("long Unicode lines paginate in UTF-16 units without scalar splits or range l
     inputFor(saved, evidence, { cursor: first.nextCursor, maxChars: 256 }),
     f.owner,
   );
-  const repeated = await restarted.evidence_read(
-    { ...input, cursor: first.nextCursor as any },
-    f.owner,
-  );
+  const repeated = await restarted.evidence_read({ ...input, cursor: first.nextCursor! }, f.owner);
   expect(omitted, "omitted bounds survive service restart").toStrictEqual(repeated);
   expect(omitted.offset).toBe(255);
   expect(omitted.text.startsWith("🌱")).toBeTruthy();
@@ -264,12 +262,12 @@ it("malformed, cross-source, cross-record and changed-range cursors are rejected
     { path: other.path, sha256: other.sha256 },
   ]) {
     await expect(
-      f.service.evidence_read({ ...input, cursor, ...changed } as any, f.owner),
+      f.service.evidence_read({ ...input, cursor: cursor!, ...changed }, f.owner),
     ).rejects.toThrow(/cursor/i);
   }
   // Cursors select positions, never authority: malformed offsets and positions
   // halfway through a surrogate pair must fail even with valid source identity.
-  const position = JSON.parse((Buffer.from as any)(cursor, "base64url").toString("utf8"));
+  const position = JSON.parse(Buffer.from(cursor!, "base64url").toString("utf8"));
   for (const changed of [
     { offset: -1 },
     { offset: 1.5 },
@@ -330,7 +328,7 @@ it("private and conversation passages cannot share access or continuation cursor
   expect(first.nextCursor).toBeTruthy();
   for (const context of [group, otherGroup]) {
     await expect(
-      f.service.evidence_read({ ...input, cursor: first.nextCursor as any }, context),
+      f.service.evidence_read({ ...input, cursor: first.nextCursor! }, context),
     ).rejects.toThrow(/unavailable/i);
   }
   const shared = await upload(f, "SHARED ".repeat(100), {}, group),
@@ -342,15 +340,15 @@ it("private and conversation passages cannot share access or continuation cursor
   await expect(f.service.evidence_read(sharedInput, f.owner)).rejects.toThrow(/unavailable/i);
   await expect(f.service.evidence_read(sharedInput, otherGroup)).rejects.toThrow(/unavailable/i);
   await expect(
-    f.service.evidence_read({ ...sharedInput, cursor: first.nextCursor as any }, group),
+    f.service.evidence_read({ ...sharedInput, cursor: first.nextCursor! }, group),
   ).rejects.toThrow(/cursor/i);
   // Retain record/source identity but author valid conversation metadata.
   // Simply copying private metadata is correctly rejected before cursor checks.
   const record = (await f.service.record({ id: saved.id, view: "raw" }, f.owner)).record;
   const scopeRoot = path.join(f.root, "conversations", sessionId);
-  const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(record!.raw as any);
+  const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(record!.raw!);
   expect(frontmatter).toBeTruthy();
-  const metadata = parse(frontmatter![1] as any);
+  const metadata = parse(frontmatter![1]!);
   metadata.scope = { visibility: "conversation", sessionId };
   const scopedRaw =
     "---\n" + stringify(metadata) + "---\n" + record!.raw!.slice(frontmatter![0].length);
@@ -372,7 +370,7 @@ it("private and conversation passages cannot share access or continuation cursor
   );
   expect((await f.service.evidence_read(input, group)).text).toBe(first.text);
   await expect(
-    f.service.evidence_read({ ...input, cursor: first.nextCursor as any }, group),
+    f.service.evidence_read({ ...input, cursor: first.nextCursor! }, group),
   ).rejects.toThrow(/cursor/i);
 });
 
@@ -393,13 +391,10 @@ it("every continuation rechecks live invocation and audience authority", async (
       },
     };
     await expect(
-      f.service.evidence_read({ ...input, cursor: first.nextCursor as any }, revoked),
+      f.service.evidence_read({ ...input, cursor: first.nextCursor! }, revoked),
     ).rejects.toThrow(/revoked/);
   }
-  const next = await f.service.evidence_read(
-    { ...input, cursor: first.nextCursor as any },
-    f.owner,
-  );
+  const next = await f.service.evidence_read({ ...input, cursor: first.nextCursor! }, f.owner);
   expect(next.offset).toBe(first.text.length);
 });
 
@@ -426,10 +421,10 @@ it("withdrawal blocks new and continuing reads even after stale record restorati
     ).rejects.toThrow(/unavailable/i);
   }
   // Durable tombstones must dominate an externally restored pre-withdrawal file.
-  await writeFile(path.join(f.root, "private", before!.path), before!.raw as any);
+  await writeFile(path.join(f.root, "private", before!.path), before!.raw!);
   const restarted = createKnowledgeService(f.api);
   await expect(
-    restarted.evidence_read({ ...input, cursor: first.nextCursor as any }, f.owner),
+    restarted.evidence_read({ ...input, cursor: first.nextCursor! }, f.owner),
   ).rejects.toThrow(/unavailable/i);
   expect(await readFile(path.join(f.root, "private", evidence.path))).toStrictEqual(
     Buffer.from("withdraw me ".repeat(100)),
@@ -445,14 +440,14 @@ it("source tampering beyond the requested range invalidates first and continuati
   const first = await f.service.evidence_read(input, f.owner),
     file = path.join(f.root, "private", evidence.path);
   await writeFile(file, original.slice(0, -4) + "FAIL");
-  for (const extra of [{}, { cursor: first.nextCursor }]) {
-    await expect(f.service.evidence_read({ ...input, ...extra } as any, f.owner)).rejects.toThrow(
+  for (const extra of [{}, { cursor: first.nextCursor! }]) {
+    await expect(f.service.evidence_read({ ...input, ...extra }, f.owner)).rejects.toThrow(
       /hash|unavailable/i,
     );
   }
   await writeFile(file, original);
   expect(
-    (await f.service.evidence_read({ ...input, cursor: first.nextCursor as any }, f.owner)).offset,
+    (await f.service.evidence_read({ ...input, cursor: first.nextCursor! }, f.owner)).offset,
   ).toBe(256);
 });
 
@@ -544,7 +539,7 @@ it("annotation-only identity and attribution sources are readable", async () => 
         evidence: [evidence],
       },
     },
-  ] as any[]) {
+  ] satisfies AnnotateInput["annotations"][]) {
     const before = (await f.service.record({ id: saved.id }, f.owner)).record;
     await f.service.annotate(
       {

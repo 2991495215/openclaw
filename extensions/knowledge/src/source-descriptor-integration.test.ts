@@ -14,11 +14,14 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { parse, stringify } from "yaml";
 import { fileStamp } from "./evidence-files.js";
-import { GitUnavailable } from "./git-history.js";
+import { GitHistory, GitUnavailable } from "./git-history.js";
 import { SqliteIdentityStore } from "./identity-store.js";
+import type { BatchInput } from "./ingestion-contract.js";
 import { inspectRecord } from "./inspection.js";
+import type { Envelope, LoadedRecord } from "./model.js";
 import { describeSource, compactEvidence } from "./source-descriptors.js";
 import { encodeRecordEvidence, hydrateMetadata, readSourceDescriptor } from "./source-records.js";
+import type { PublicationHook } from "./storage-types.js";
 import { KnowledgeStorage } from "./storage.js";
 import {
   createVault,
@@ -27,18 +30,17 @@ import {
   useTestTempDirs,
   defaultOrder,
 } from "./test-support.js";
-import { SampleVault, digest } from "./vault.js";
+import { SampleVault, digest, type ScanCache } from "./vault.js";
 
 const tempDirs = useTestTempDirs();
 
 // Keep every publication local to the fixture, without invoking Git or workers.
-const noGit = {
-  checkpoint() {
+class NoGit extends GitHistory {
+  override checkpoint(): never {
     throw new GitUnavailable("Git deliberately disabled in descriptor tests.");
-  },
-};
-const frontmatter = (raw: any) =>
-  parse(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw)![1] as any);
+  }
+}
+const frontmatter = (raw: any) => parse(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw)![1]!);
 const draft = (title: any, attachments: any[] = []) => ({
   requestId: randomUUID(),
   title,
@@ -64,7 +66,8 @@ async function fixture() {
     store = new SqliteIdentityStore(f.config.statePath);
   const access = plainAccess(),
     scoped = path.join(f.root, "private");
-  const storage = (hook: any) => new KnowledgeStorage(f.config, store, hook, noGit as any);
+  const storage = (hook?: PublicationHook) =>
+    new KnowledgeStorage(f.config, store, hook, new NoGit(f.root));
   return {
     ...f,
     base,
@@ -72,7 +75,7 @@ async function fixture() {
     access,
     scoped,
     storage,
-    writer: (storage as any)(),
+    writer: storage(),
     read: (relative: any) => readFile(path.join(scoped, relative), "utf8"),
   };
 }
@@ -94,8 +97,13 @@ async function original(root: any, name = "meeting") {
 }
 
 // Authored records let tests exercise raw YAML and the scanner independently.
-function authored(evidence: any, overrides = {}, body = "Exact authored body.\n") {
-  const metadata = {
+// Metadata keeps unknown authored fields, so tests can read them back.
+function authored(
+  evidence: any,
+  overrides = {},
+  body = "Exact authored body.\n",
+): LoadedRecord & { metadata: Record<string, unknown> } {
+  const metadata: Envelope = {
     format: "knowledge-record-v1",
     id: "descriptor_note",
     revision: 1,
@@ -179,7 +187,7 @@ it("same source deduplicates across records and a multi-source batch retains eve
     f.access,
     async (vault: any) => (await vault.scan()).ontology!.fingerprint,
   );
-  const input = {
+  const input: BatchInput = {
     requestId: randomUUID(),
     expectedVaultId: f.config.vaultId,
     expectedOntologyFingerprint: fingerprint,
@@ -194,7 +202,7 @@ it("same source deduplicates across records and a multi-source batch retains eve
       },
     })),
   };
-  const batch = await f.writer.batch(input as any, f.access, "agent"),
+  const batch = await f.writer.batch(input, f.access, "agent"),
     plan = planFor(f, input.requestId);
   expect(batch.state).toBe("published");
   expect(batch.items!.length).toBe(3);
@@ -241,7 +249,7 @@ it("encoding preserves exact body, unknown YAML, and all supported annotation ev
     .replace("custom:\n", "# authored comment\ncustom:\n")
     .replace("title: Descriptor note", 'title: "Descriptor note"');
   const before = structuredClone(record),
-    encoded = encodeRecordEvidence(record as any, () => {
+    encoded = encodeRecordEvidence(record, () => {
       throw new Error("Unexpected legacy descriptor read");
     });
   expect(record, "encoding does not mutate the caller").toStrictEqual(before);
@@ -251,7 +259,7 @@ it("encoding preserves exact body, unknown YAML, and all supported annotation ev
   expect(encoded.record.raw.includes('title: "Descriptor note"')).toBeTruthy();
   const rawMetadata = frontmatter(encoded.record.raw),
     source = describeSource(evidence);
-  expect(rawMetadata.custom).toStrictEqual((record.metadata as any).custom);
+  expect(rawMetadata.custom).toStrictEqual(record.metadata.custom);
   expect(Object.keys(encoded.descriptors)).toStrictEqual([source.path]);
   const citation = { source: source.id, start_line: 1, end_line: 1, quote: passage.quote };
   for (const citations of [
@@ -262,9 +270,12 @@ it("encoding preserves exact body, unknown YAML, and all supported annotation ev
   ]) {
     expect(citations).toStrictEqual([citation]);
   }
-  const hydrated = hydrateMetadata(rawMetadata, (relative) => encoded.descriptors[relative] as any);
+  const hydrated: Record<string, unknown> = hydrateMetadata(
+    rawMetadata,
+    (relative) => encoded.descriptors[relative]!,
+  );
   expect(hydrated.evidence).toStrictEqual([{ ...passage, source: source.id }]);
-  expect((hydrated as any).custom).toStrictEqual((record.metadata as any).custom);
+  expect(hydrated.custom).toStrictEqual(record.metadata.custom);
   expect(encoded.record.hash).toBe(digest(encoded.record.raw));
 });
 
@@ -272,7 +283,7 @@ it("descriptor tamper, deletion and reappearance invalidate whole-scan and parse
   const f = await fixture(),
     evidence = await original(f.scoped),
     { source, record } = await install(f.scoped, evidence);
-  const cache = {},
+  const cache: ScanCache = {},
     vault = new SampleVault(f.scoped, f.access.scope, false, undefined, cache);
   const recordStamp = fileStamp(f.scoped, record.path),
     descriptorFile = path.join(f.scoped, source.path);
@@ -282,23 +293,19 @@ it("descriptor tamper, deletion and reappearance invalidate whole-scan and parse
   const initial = await vault.scan();
   expect(initial.records[0]!.valid).toBe(true);
   expect(await vault.scan(), "whole-scan cache is genuinely warm").toBe(initial);
-  expect(
-    (cache as any).files.get(record.path).record,
-    "parsed-file cache is genuinely warm",
-  ).toBeTruthy();
-  const initialTree = (cache as any).entry.tree;
+  expect(cache.files!.get(record.path)!.record, "parsed-file cache is genuinely warm").toBeTruthy();
+  const initialTree = cache.entry!.tree;
   await writeFile(descriptorFile, source.raw.replace("Recorder original", "Recorder tampered"));
   const changed = await vault.scan();
   expect(changed).not.toBe(initial);
-  expect(
-    (cache as any).entry.tree,
-    "descriptor-only mutation is outside the record tree stamp",
-  ).toBe(initialTree);
+  expect(cache.entry!.tree, "descriptor-only mutation is outside the record tree stamp").toBe(
+    initialTree,
+  );
   expect(changed.records.length).toBe(0);
   expect(
     changed.issues.some((issue) => issue.path === record.path && issue.code === "invalid-record"),
   ).toBeTruthy();
-  expect((cache as any).files.get(record.path).record, "stale parsed evidence was discarded").toBe(
+  expect(cache.files!.get(record.path)!.record, "stale parsed evidence was discarded").toBe(
     undefined,
   );
   await writeFile(descriptorFile, source.raw);
@@ -310,7 +317,7 @@ it("descriptor tamper, deletion and reappearance invalidate whole-scan and parse
   expect(missing.records.length).toBe(0);
   expect(missing.issues.some((issue) => issue.code === "invalid-record")).toBeTruthy();
   expect(
-    (cache as any).files.has(record.path),
+    cache.files!.has(record.path),
     "missing dependencies must not create settled negative cache entries",
   ).toBe(false);
   await writeFile(descriptorFile, source.raw);
@@ -331,7 +338,7 @@ it("scope is checked before hydration and a descriptor cannot resolve from a sib
     scope: { visibility: "conversation", sessionId: "11111111-1111-1111-1111-111111111111" },
   });
   await rm(path.join(f.scoped, source.path));
-  const cache = {},
+  const cache: ScanCache = {},
     vault = new SampleVault(f.scoped, f.access.scope, false, undefined, cache);
   const clock = vi.spyOn(Date, "now").mockImplementation(() => 4102444800000);
   afterTest(() => clock.mockRestore());
@@ -339,10 +346,10 @@ it("scope is checked before hydration and a descriptor cannot resolve from a sib
   expect(wrong.records.length).toBe(0);
   expect(wrong.issues[0]!.message).toMatch(/scope.*does not match/);
   expect(
-    (cache as any).files.get("notes/descriptor.md").descriptors.size,
+    cache.files!.get("notes/descriptor.md")!.descriptors.size,
     "no descriptor was consulted for a foreign-scope record",
   ).toBe(0);
-  expect((cache as any).entry.evidence.size).toBe(0);
+  expect(cache.entry!.evidence.size).toBe(0);
   // A correctly scoped record still cannot borrow an identically named sibling sidecar.
   const conversation = path.join(f.root, "conversations/22222222-2222-2222-2222-222222222222");
   await mkdir(path.join(conversation, "artifacts/sources"), { recursive: true });
@@ -411,7 +418,7 @@ it("interrupted publication fences a reused descriptor and refuses completion wi
   const manifestBefore = await readFile(path.join(f.root, "vault.json"), "utf8");
   const tampered = source.raw.replace("Recorder original", "Recorder tampered");
   await writeFile(path.join(f.scoped, source.path), tampered);
-  const resumed = (f.storage as any)().resume(f.access, input.requestId);
+  const resumed = f.storage().resume(f.access, input.requestId);
   expect(resumed.state).toBe("conflict");
   expect(
     await f.read(source.path),
@@ -422,7 +429,7 @@ it("interrupted publication fences a reused descriptor and refuses completion wi
     "replay rejects the dependency before installing the proposed record",
   ).toBe(originalRaw);
   expect(await readFile(path.join(f.root, "vault.json"), "utf8")).toBe(manifestBefore);
-  expect((f.storage as any)().resume(f.access, input.requestId)).toStrictEqual(resumed);
+  expect(f.storage().resume(f.access, input.requestId)).toStrictEqual(resumed);
   await expect(f.writer.run(f.access, (vault: any) => vault.scan())).rejects.toThrow(
     /publication pending or conflicted/i,
   );

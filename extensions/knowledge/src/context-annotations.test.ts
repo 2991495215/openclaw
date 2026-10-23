@@ -75,7 +75,7 @@ async function setup() {
       { requestId: randomUUID(), title, type, body: `Source context for ${title}.` },
       f.owner,
     );
-  f.source = await (f as any).page("Meeting A");
+  f.source = await f.page("Meeting A");
   const upload = await f.service.attach(
     {
       requestId: randomUUID(),
@@ -95,14 +95,14 @@ async function setup() {
     f.service.create_claim(
       {
         requestId: randomUUID(),
-        expectedOntologyFingerprint: (f as any).fingerprint,
+        expectedOntologyFingerprint: f.fingerprint,
         title: "Investigate",
         body: "Alex will investigate.",
         claim_kind: "commitment",
         assertion_origin: "source",
         attribution: "Alex, source line 1",
-        evidence: (f as any).evidence,
-        source_page: (f as any).source.id,
+        evidence: f.evidence,
+        source_page: f.source.id,
         ...extra,
       },
       f.owner,
@@ -129,12 +129,12 @@ async function setup() {
 
 it("context annotations preserve assertion text/lifecycle, append evidence, and fence retries/conflicts", async () => {
   const f = await setup(),
-    original = await (f as any).claim();
-  const second = await (f as any).claim({
+    original = await f.claim();
+  const second = await f.claim({
     body: "Alex reaffirmed the investigation.",
     title: "Reaffirmed investigation",
   });
-  const { input, result } = await (f as any).annotate(
+  const { input, result } = await f.annotate(
     second.id,
     {
       continuity: [
@@ -142,11 +142,11 @@ it("context annotations preserve assertion text/lifecycle, append evidence, and 
           id: original.id,
           relation: "reaffirms",
           basis: "Explicit reaffirmation in the next source line",
-          evidence: (f as any).evidence,
+          evidence: f.evidence,
         },
       ],
     },
-    { addEvidence: (f as any).evidence },
+    { addEvidence: f.evidence },
   );
   const read = await f.service.record(
     { id: second.id, includeMetadata: true, includeEvidence: true },
@@ -161,7 +161,7 @@ it("context annotations preserve assertion text/lifecycle, append evidence, and 
   const reverse = await f.service.record({ id: original.id, includeEvidence: true }, f.owner);
   expect(reverse.relatedStatements![0]!.record.id).toBe(second.id);
   expect(reverse.relatedStatements![0]!.incoming).toBe(true);
-  expect(reverse.relatedStatements![0]!.source!.id).toBe((f as any).source.id);
+  expect(reverse.relatedStatements![0]!.source!.id).toBe(f.source.id);
   const inventory = await f.service.records({ kind: "claim", query: "reaffirmed" }, f.owner);
   expect(inventory.total).toBe(1);
   expect(inventory.facets!.kinds.commitment).toBe(2);
@@ -185,9 +185,9 @@ it("context annotations preserve assertion text/lifecycle, append evidence, and 
 
 it("uncertain identity and attribution retain evidence; cross-scope guesses and forged evidence are rejected", async () => {
   const f = await setup(),
-    person = await (f as any).page("Alex", "person"),
-    candidate = await (f as any).page("Alex Candidate", "person");
-  await (f as any).annotate(person.id, {
+    person = await f.page("Alex", "person"),
+    candidate = await f.page("Alex Candidate", "person");
+  await f.annotate(person.id, {
     identity: {
       status: "partial",
       context: "Source handle only",
@@ -195,36 +195,34 @@ it("uncertain identity and attribution retain evidence; cross-scope guesses and 
         {
           id: candidate.id,
           basis: "Possible spelling match; not a resolved identity",
-          evidence: (f as any).evidence,
+          evidence: f.evidence,
         },
       ],
     },
   });
-  const claim = await (f as any).claim();
-  await (f as any).annotate(claim.id, {
+  const claim = await f.claim();
+  await f.annotate(claim.id, {
     attribution_confidence: {
       level: "medium",
       basis: "Direct roll call; source track remains uncertain",
-      evidence: (f as any).evidence,
+      evidence: f.evidence,
     },
   });
   await expect(
-    (f as any).annotate(person.id, {
+    f.annotate(person.id, {
       identity: {
         status: "partial",
         context: "Unknown",
-        candidates: [
-          { id: randomUUID(), basis: "Guessed hidden person", evidence: (f as any).evidence },
-        ],
+        candidates: [{ id: randomUUID(), basis: "Guessed hidden person", evidence: f.evidence }],
       },
     }),
   ).rejects.toThrow(/reference/);
   await expect(
-    (f as any).annotate(claim.id, {
+    f.annotate(claim.id, {
       attribution_confidence: {
         level: "high",
         basis: "Bad evidence",
-        evidence: [{ ...(f as any).evidence[0], sha256: "0".repeat(64) }],
+        evidence: [{ ...f.evidence[0], sha256: "0".repeat(64) }],
       },
     }),
   ).rejects.toThrow(/hash|match/i);
@@ -241,13 +239,13 @@ it("uncertain identity and attribution retain evidence; cross-scope guesses and 
 
 it("fixture classification consistently removes records from current views without erasing exact/history access", async () => {
   const f = await setup(),
-    claim = await (f as any).claim({ title: "Fixture canary" });
-  await (f as any).annotate(claim.id, { record_class: "fixture" });
+    claim = await f.claim({ title: "Fixture canary" });
+  await f.annotate(claim.id, { record_class: "fixture" });
   expect((await f.service.records({ kind: "claim" }, f.owner)).total).toBe(0);
   expect((await f.service.lookup({ query: "Fixture canary" }, f.owner)).total).toBe(0);
   expect((await f.service.grep({ query: "Fixture canary" }, f.owner)).total).toBe(0);
   expect(
-    (await f.service.connections({ id: (f as any).source.id }, f.owner)).connections.some(
+    (await f.service.connections({ id: f.source.id }, f.owner)).connections.some(
       (r: any) => r.record.id === claim.id,
     ),
   ).toBe(false);
@@ -266,26 +264,26 @@ it("fixture classification consistently removes records from current views witho
 
 it("new records with shared annotation evidence serialize without YAML aliases and remain readable", async () => {
   const f = await setup(),
-    person = await (f as any).page("Alex", "person"),
-    company = await (f as any).page("Example", "company");
+    person = await f.page("Alex", "person"),
+    company = await f.page("Example", "company");
   const confidence = {
     level: "high",
     basis: "Explicit self-introduction",
-    evidence: (f as any).evidence,
+    evidence: f.evidence,
   };
-  const claim = await (f as any).claim({ attribution_confidence: confidence });
+  const claim = await f.claim({ attribution_confidence: confidence });
   const relationship = await f.service.create_relationship(
     {
       requestId: randomUUID(),
-      expectedOntologyFingerprint: (f as any).fingerprint,
+      expectedOntologyFingerprint: f.fingerprint,
       from: person.id,
       to: company.id,
       label: "works_at",
       title: "Alex works at Example",
       body: "Alex reports working at Example.",
       attribution: "Isolated synthetic source",
-      evidence: (f as any).evidence,
-      attribution_confidence: confidence as any,
+      evidence: f.evidence,
+      attribution_confidence: confidence,
     },
     f.owner,
   );
@@ -295,8 +293,8 @@ it("new records with shared annotation evidence serialize without YAML aliases a
       type: "person",
       title: "Another person",
       body: "Source-qualified profile.",
-      attachments: (f as any).evidence,
-      attribution_confidence: confidence as any,
+      attachments: f.evidence,
+      attribution_confidence: confidence,
     },
     f.owner,
   );
@@ -315,15 +313,15 @@ it("new records with shared annotation evidence serialize without YAML aliases a
       read.record!.metadata!.attribution_confidence!.evidence,
     );
   }
-  const next = await (f as any).claim(),
-    third = await (f as any).claim();
+  const next = await f.claim(),
+    third = await f.claim();
   const continuity = [next, third].map((r) => ({
     id: r.id,
     relation: "reaffirms",
     basis: "Same source context",
-    evidence: (f as any).evidence,
+    evidence: f.evidence,
   }));
-  await (f as any).annotate(claim.id, { continuity });
+  await f.annotate(claim.id, { continuity });
   expect(
     (
       await f.service.record(
@@ -333,14 +331,14 @@ it("new records with shared annotation evidence serialize without YAML aliases a
     ).record!.metadata!.continuity!.length,
   ).toBe(2);
   const saved = (await f.service.record({ id: page.id }, f.owner)).record;
-  const candidate = await (f as any).page("Alex candidate", "person");
+  const candidate = await f.page("Alex candidate", "person");
   const identity = {
     status: "partial",
     context: "Unresolved source name",
     candidates: [person, candidate].map((r) => ({
       id: r.id,
       basis: "Possible name match",
-      evidence: (f as any).evidence,
+      evidence: f.evidence,
     })),
   };
   await f.service.save_page(
@@ -364,21 +362,21 @@ it("new records with shared annotation evidence serialize without YAML aliases a
 
 it("source groups are counted before pagination; repeated saves and new activity do not split a source group", async () => {
   const f = await setup(),
-    sourceB = await (f as any).page("Meeting B");
-  await (f as any).claim({ source_page: sourceB.id, title: "Other source commitment" });
+    sourceB = await f.page("Meeting B");
+  await f.claim({ source_page: sourceB.id, title: "Other source commitment" });
   for (let i = 0; i < 23; i++) {
-    await (f as any).claim({ title: `Meeting A commitment ${i}` });
+    await f.claim({ title: `Meeting A commitment ${i}` });
   }
   const first = await f.service.recent({ groupBySource: true, limit: 1 }, f.owner);
   expect(Check(contract.operations.recent.output, first)).toBeTruthy();
   expect(first.items.length).toBe(1);
-  expect(first.items[0]!.group!.source.id).toBe((f as any).source.id);
+  expect(first.items[0]!.group!.source.id).toBe(f.source.id);
   expect(first.items[0]!.group!.counts.commitment).toBe(23);
   expect(first.items[0]!.group!.total, "Source page and twenty-three distinct claims").toBe(24);
   const continuation = await f.service.recent(
     {
       groupBySource: true,
-      sourceId: (f as any).source.id,
+      sourceId: f.source.id,
       recordOffset: first.items[0]!.group!.nextRecordOffset,
       upperSequence: first.upperSequence,
     },
@@ -394,13 +392,13 @@ it("source groups are counted before pagination; repeated saves and new activity
     ).size,
   ).toBe(24);
   expect(first.items[0]!.group!.records.some((r: any) => r.card?.body)).toBeTruthy();
-  await (f as any).claim({ title: "New activity after the pinned upper sequence" });
+  await f.claim({ title: "New activity after the pinned upper sequence" });
   const next = await f.service.recent(
     {
       groupBySource: true,
       limit: 1,
       upperSequence: first.upperSequence,
-      beforeSequence: first.nextBefore as any,
+      beforeSequence: first.nextBefore,
     },
     f.owner,
   );
@@ -411,27 +409,27 @@ it("source groups are counted before pagination; repeated saves and new activity
 
 it("Recent batches attendee summaries only for the current group page", async () => {
   const f = await setup(),
-    person = await (f as any).page("Alex", "person");
+    person = await f.page("Alex", "person");
   for (let i = 0; i < 21; i++) {
     await f.service.create_relationship(
       {
         requestId: randomUUID(),
-        expectedOntologyFingerprint: (f as any).fingerprint,
+        expectedOntologyFingerprint: f.fingerprint,
         title: `Attendance ${i}`,
         body: "Alex attended.",
         from: person.id,
-        to: (f as any).source.id,
+        to: f.source.id,
         label: "attended",
-        evidence: (f as any).evidence,
+        evidence: f.evidence,
         attribution: "Synthetic fixture",
-        source_page: (f as any).source.id,
+        source_page: f.source.id,
       },
       f.owner,
     );
   }
   const input = {
     groupBySource: true,
-    sourceId: (f as any).source.id,
+    sourceId: f.source.id,
     includeEndpoints: true,
     limit: 1,
   };
@@ -440,12 +438,10 @@ it("Recent batches attendee summaries only for the current group page", async ()
   const group = first.items[0]!.group;
   expect(group!.records.length).toBe(20);
   expect(new Set(group!.endpoints!.map((r: any) => r.id))).toStrictEqual(
-    new Set([person.id, (f as any).source.id]),
+    new Set([person.id, f.source.id]),
   );
   expect(
-    group!.endpoints!.every(
-      (r: any) => (r as any).body === undefined && (r as any).evidence === undefined,
-    ),
+    group!.endpoints!.every((r: any) => r.body === undefined && r.evidence === undefined),
   ).toBeTruthy();
   const next = await f.service.recent(
     { ...input, recordOffset: group!.nextRecordOffset, upperSequence: first.upperSequence },
@@ -453,7 +449,7 @@ it("Recent batches attendee summaries only for the current group page", async ()
   );
   expect(next.items[0]!.group!.records.length).toBe(2);
   expect(new Set(next.items[0]!.group!.endpoints!.map((r: any) => r.id))).toStrictEqual(
-    new Set([person.id, (f as any).source.id]),
+    new Set([person.id, f.source.id]),
   );
   expect(
     (await f.service.recent({ ...input, includeEndpoints: false }, f.owner)).items[0]!.group!
@@ -479,12 +475,12 @@ it("Recent batches attendee summaries only for the current group page", async ()
 
 it("entity annotations link a claim by ID without changing its assertion, and reject non-pages, withdrawn pages and page targets", async () => {
   const f = await setup(),
-    alex = await (f as any).page("Alex", "person"),
-    sam = await (f as any).page("Sam", "person"),
-    claim = await (f as any).claim();
+    alex = await f.page("Alex", "person"),
+    sam = await f.page("Sam", "person"),
+    claim = await f.claim();
   const before = (await f.service.record({ id: claim.id, includeMetadata: true }, f.owner)).record;
   expect(before!.metadata!.entities).toBe(undefined);
-  const { input } = await (f as any).annotate(
+  const { input } = await f.annotate(
     claim.id,
     {},
     { entities: [alex.id], reason: "Relink unique subject" },
@@ -506,12 +502,8 @@ it("entity annotations link a claim by ID without changing its assertion, and re
   await expect(
     f.service.annotate({ ...input, requestId: randomUUID(), entities: [sam.id] }, f.owner),
   ).rejects.toThrow(/conflict/);
-  await expect((f as any).annotate(claim.id, {}, { entities: [claim.id] })).rejects.toThrow(
-    /active pages/,
-  );
-  await expect((f as any).annotate(alex.id, {}, { entities: [sam.id] })).rejects.toThrow(
-    /require a claim/,
-  );
+  await expect(f.annotate(claim.id, {}, { entities: [claim.id] })).rejects.toThrow(/active pages/);
+  await expect(f.annotate(alex.id, {}, { entities: [sam.id] })).rejects.toThrow(/require a claim/);
   const samRecord = (await f.service.record({ id: sam.id }, f.owner)).record;
   await f.service.withdraw(
     {
@@ -523,10 +515,8 @@ it("entity annotations link a claim by ID without changing its assertion, and re
     },
     f.owner,
   );
-  await expect((f as any).annotate(claim.id, {}, { entities: [sam.id] })).rejects.toThrow(
-    /active pages/,
-  );
-  await (f as any).annotate(claim.id, {}, { entities: [] });
+  await expect(f.annotate(claim.id, {}, { entities: [sam.id] })).rejects.toThrow(/active pages/);
+  await f.annotate(claim.id, {}, { entities: [] });
   expect(
     (await f.service.record({ id: claim.id, includeMetadata: true }, f.owner)).record!.metadata!
       .entities,

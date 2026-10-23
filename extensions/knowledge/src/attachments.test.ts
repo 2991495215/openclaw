@@ -13,7 +13,6 @@ import {
   accessFor,
   apiFor,
   sessionActions,
-  stopAtTestEnd,
   useTestTempDirs,
   jsonRoundTrip,
 } from "./test-support.js";
@@ -101,7 +100,7 @@ it("large Unicode source survives chunking, bounded preview, restart, search and
   expect(read.evidence![0]!.excerptTruncated).toBe(true);
   expect(Check(contract.operations.record.output, read)).toBeTruthy();
   const chunks = [];
-  let offset = 0;
+  let offset: number | null = 0;
   do {
     const result = await service.attachment(
       { id: receipt.id, path: evidence.path, sha256: evidence.sha256, offset },
@@ -109,7 +108,7 @@ it("large Unicode source survives chunking, bounded preview, restart, search and
     );
     expect(Check(contract.operations.attachment.output, result)).toBeTruthy();
     chunks.push(Buffer.from(result.data, "base64"));
-    offset = result.nextOffset as any;
+    offset = result.nextOffset;
   } while (offset !== null);
   expect(Buffer.concat(chunks)).toStrictEqual(bytes);
   const search = await service.grep({ query: "ordinary" }, f.owner);
@@ -154,7 +153,7 @@ it("more than twenty sources save and enumerate without truncating stored eviden
   expect(first.evidence!.length).toBe(20);
   expect(first.nextEvidenceOffset).toBe(20);
   const second = await f.service.record(
-    { includeEvidence: true, id: saved.id, evidenceOffset: first.nextEvidenceOffset as any },
+    { includeEvidence: true, id: saved.id, evidenceOffset: first.nextEvidenceOffset! },
     f.owner,
   );
   expect(second.evidence!.length).toBe(7);
@@ -332,12 +331,17 @@ it("native feature adapter accepts full-size upload and download chunks", async 
   plugin.register({
     ...f.api,
     id: "knowledge",
-    registerService: stopAtTestEnd,
     registerTool() {},
-    ...sessionActions((action) => {
-      actions.set(action.id, action);
-    }),
-  } as any);
+    session: {
+      ...f.api.session,
+      controls: {
+        ...f.api.session?.controls,
+        ...sessionActions((action) => {
+          actions.set(action.id, action);
+        }).session.controls,
+      },
+    },
+  });
   const invoke = async (name: any, payload: any) => {
     const response = await actions.get(name).handler({ ...f.owner.action, payload });
     expect(response.ok, response.error).toBe(true);
@@ -378,12 +382,14 @@ it("agent download JSON survives the dynamic-tool response budget with continuat
   plugin.register({
     ...f.api,
     id: "knowledge",
-    registerService: stopAtTestEnd,
-    ...sessionActions(),
+    session: {
+      ...f.api.session,
+      controls: { ...f.api.session?.controls, ...sessionActions().session.controls },
+    },
     registerTool(factory: any, options: any) {
       factories.set(options!.name, factory);
     },
-  } as any);
+  });
   const tool = factories.get("knowledge_attachment")({
     agentId: "main",
     sessionId,

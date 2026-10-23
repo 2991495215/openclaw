@@ -69,7 +69,8 @@ async function fixture() {
   host.api.logger = {
     info: (m: any) => logs.push(m),
     warn: (m: any) => logs.push(`WARN ${m}`),
-  } as any;
+    error() {},
+  };
   const boot = async (scheduler: any) => {
     lifecycles.length = 0;
     const service = createKnowledgeService(host.api);
@@ -203,13 +204,13 @@ it("disabled maintenance, invalid schedules and write-disabled installs schedule
     [{ enabled: false }, true, /^$/],
     [{ schedule: "not a cron" }, true, /five fields/],
     [{}, false, /^$/],
-  ]) {
+  ] as const) {
     const base = tempDirs.make("knowledge-maintenance-off-");
 
     const host = hostApi(base, { policy: { writesEnabled, operatorRead: true, maintenance } }),
       lifecycles: any = [];
     host.api.registerService = (s) => lifecycles.push(s);
-    host.api.logger = { info() {}, warn() {} } as any;
+    host.api.logger = { info() {}, warn() {}, error() {} };
     const service = createKnowledgeService(host.api),
       scheduler = fakeScheduler(Date.now());
     await lifecycles[0].start({ scheduler });
@@ -217,7 +218,7 @@ it("disabled maintenance, invalid schedules and write-disabled installs schedule
     expect(scheduler.jobs.size).toBe(0);
     const status = await service.maintenance_status({}, operatorContext(host.api));
     expect(status.nextRunAt).toBe(null);
-    expect(status.configError ?? "").toMatch(expected as any);
+    expect(status.configError ?? "").toMatch(expected);
   }
 });
 
@@ -234,7 +235,7 @@ it("a pass that leaves private claims unlinked queues the review automation once
   adopt(host.stateRoot, "agent:main", own.config);
   const lifecycles: any = [];
   host.api.registerService = (s) => lifecycles.push(s);
-  host.api.logger = { info() {}, warn() {} } as any;
+  host.api.logger = { info() {}, warn() {}, error() {} };
   const service = createKnowledgeService(host.api),
     scheduler = fakeScheduler(Date.parse("2026-10-22T10:20:00Z"));
   const calls: any[] = [];

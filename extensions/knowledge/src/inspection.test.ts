@@ -1,5 +1,6 @@
 import { cp, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
+import type { FeatureClient } from "openclaw/plugin-sdk/feature-contract";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { contract } from "./contract.js";
@@ -11,9 +12,14 @@ import { SampleVault } from "./vault.js";
 
 const tempDirs = useTestTempDirs();
 
-const checked = (operation: any, result: any) => {
+// inspectRecord reads only detail(); these fakes stand in for a scanned vault.
+const detailVault = (
+  detail: (id: string, evidenceOffset: number, evidenceLimit: number) => Promise<unknown>,
+) => ({ detail }) as SampleVault;
+
+const checked = (operation: keyof typeof contract.operations, result: any) => {
   expect(
-    Check((contract.operations as any)[operation].output, result),
+    Check(contract.operations[operation].output, result),
     JSON.stringify(result).slice(0, 300),
   ).toBeTruthy();
   return result;
@@ -167,20 +173,20 @@ it("ontology pages are exhaustive and the UI follows all pages", async () => {
   expect(names.length).toBe(19);
   expect(new Set(names).size).toBe(19);
   // Force a small page size to exercise the real UI continuation helper.
+  // loadVocabulary only calls invoke("ontology"); the fake serves it from the sample vault.
   const feature = {
     invoke: async (_: any, input: any) => inspectOntology(vault, { ...input, limit: 3 }),
-  };
-  expect((await loadVocabulary(feature as any)).definitions.length).toBe(19);
-  expect((await loadVocabulary(feature as any, true)).definitions.length).toBe(38);
+  } as FeatureClient<typeof contract>;
+  expect((await loadVocabulary(feature)).definitions.length).toBe(19);
+  expect((await loadVocabulary(feature, true)).definitions.length).toBe(38);
   let calls = 0;
   await expect(
     loadVocabulary({
-      invoke: async (_: any, input: any) =>
-        ({
-          ...(await inspectOntology(vault, { ...input, limit: 3 } as any)),
-          fingerprint: String(calls++),
-        }) as any,
-    } as any),
+      invoke: async (_: any, input: any) => ({
+        ...(await inspectOntology(vault, { ...input, limit: 3 })),
+        fingerprint: String(calls++),
+      }),
+    } as FeatureClient<typeof contract>),
   ).rejects.toThrow(/changed while loading/);
 });
 
@@ -287,8 +293,8 @@ it("record byte limit traverses escaped Unicode text losslessly", async () => {
   expect(raw).toBe(original);
 });
 
-const fake2 = (detail: any, extra: any) => ({
-  detail: async () => ({
+const fake2 = (detail: any, extra: any) =>
+  detailVault(async () => ({
     ...structuredClone(detail),
     record: {
       ...structuredClone(detail.record),
@@ -298,8 +304,7 @@ const fake2 = (detail: any, extra: any) => ({
         ...extra,
       }),
     },
-  }),
-});
+  }));
 it("compact metadata preserves uncertainty without nested evidence; explicit selectors and oversized full metadata", async () => {
   const vault = new SampleVault(),
     detail = await vault.detail("sample_claim_pilot");
@@ -323,8 +328,8 @@ it("compact metadata preserves uncertainty without nested evidence; explicit sel
   metadata.fields = { huge: "x".repeat(40000) };
   detail.record!.metadata = JSON.stringify(metadata);
   detail.record!.attributionConfidence = metadata.attribution_confidence;
-  const fake = { detail: async () => structuredClone(detail) };
-  const result = checked("record", await inspectRecord(fake as any, { id: detail.record!.id }));
+  const fake = detailVault(async () => structuredClone(detail));
+  const result = checked("record", await inspectRecord(fake, { id: detail.record!.id }));
   expect(result.record.metadata.attribution_confidence.level).toBe("low");
   expect(result.record.metadata.identity.candidates[0].basis).toBe("Unresolved match");
   expect(!JSON.stringify(result).includes("secret-evidence")).toBeTruthy();
@@ -334,14 +339,14 @@ it("compact metadata preserves uncertainty without nested evidence; explicit sel
     "oversized compact fields are omitted, not fatal",
   ).toBeTruthy();
   await expect(
-    inspectRecord(fake as any, {
+    inspectRecord(fake, {
       id: detail.record!.id,
       metadataView: "compact",
       includeMetadata: false,
     }),
   ).rejects.toThrow(/not both/);
   await expect(
-    inspectRecord(fake as any, { id: detail.record!.id, view: "summary", metadataView: "full" }),
+    inspectRecord(fake, { id: detail.record!.id, view: "summary", metadataView: "full" }),
   ).rejects.toThrow(/exceeds response budget/);
   // Expanded evidence descriptors drop from full metadata instead of failing the read.
   const many = JSON.parse(detail.record!.metadata);
@@ -354,15 +359,13 @@ it("compact metadata preserves uncertainty without nested evidence; explicit sel
     start_line: i + 1,
     end_line: i + 2,
   }));
-  const evidenceHeavy = {
-    detail: async () => ({
-      ...structuredClone(detail),
-      record: { ...structuredClone(detail.record), metadata: JSON.stringify(many) },
-    }),
-  };
+  const evidenceHeavy = detailVault(async () => ({
+    ...structuredClone(detail),
+    record: { ...structuredClone(detail.record), metadata: JSON.stringify(many) },
+  }));
   const heavy = checked(
     "record",
-    await inspectRecord(evidenceHeavy as any, {
+    await inspectRecord(evidenceHeavy, {
       id: detail.record!.id,
       view: "summary",
       metadataView: "full",
@@ -373,7 +376,7 @@ it("compact metadata preserves uncertainty without nested evidence; explicit sel
   expect(heavy.record.metadata.identity.status).toBe("partial");
   const small = checked(
     "record",
-    await inspectRecord(fake2(detail, { aliases: ["Pilot"], fields: { role: "Lead" } }) as any, {
+    await inspectRecord(fake2(detail, { aliases: ["Pilot"], fields: { role: "Lead" } }), {
       id: detail.record!.id,
     }),
   );
@@ -396,22 +399,20 @@ it("byte-bounded evidence pages preserve every locator and make progress", async
     attribution: "x".repeat(1000),
     quote: "🦞".repeat(1500),
   }));
-  const fake = {
-    detail: async (_: any, start: any, limit: any) => ({
-      ...structuredClone(detail),
-      evidence: evidence.slice(start, start + limit),
-      evidenceTotal: evidence.length,
-      sourceFiles: [],
-      identityEvidence: [],
-      relatedStatements: [],
-    }),
-  };
+  const fake = detailVault(async (_: any, start: any, limit: any) => ({
+    ...structuredClone(detail),
+    evidence: evidence.slice(start, start + limit),
+    evidenceTotal: evidence.length,
+    sourceFiles: [],
+    identityEvidence: [],
+    relatedStatements: [],
+  }));
   let offset = 0;
   const paths = [];
   do {
     const result = checked(
       "record",
-      await inspectRecord(fake as any, {
+      await inspectRecord(fake, {
         id: detail.record!.id,
         view: "summary",
         includeEvidence: true,

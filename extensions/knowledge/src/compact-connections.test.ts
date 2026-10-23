@@ -2,7 +2,9 @@ import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { ConnectionsOutput } from "./connections-contract.js";
 import { connections, CONNECTION_RESPONSE_BYTES } from "./connections.js";
-const rec = (id: any, extra = {}) => ({
+import type { Envelope, LoadedRecord } from "./model.js";
+import type { ScanResult } from "./vault.js";
+const rec = (id: string, extra: Partial<Envelope> = {}): LoadedRecord => ({
   id,
   title: id,
   kind: "page",
@@ -14,9 +16,10 @@ const rec = (id: any, extra = {}) => ({
   valid: true,
   body: "",
   raw: "",
-  metadata: { lifecycle: "active", ...extra },
+  // Fixture metadata carries only the envelope fields connections read.
+  metadata: { lifecycle: "active", ...extra } as Envelope,
 });
-const fixture = (count = 1) => ({
+const fixture = (count = 1): ScanResult => ({
   records: [
     rec("a"),
     rec("b"),
@@ -37,7 +40,10 @@ const fixture = (count = 1) => ({
       type: "attended",
     })),
   ],
+  ontology: null,
+  sources: [],
   issues: [],
+  checkedAt: "",
 });
 const checked = (r: any) => {
   expect(Check(ConnectionsOutput, r)).toBeTruthy();
@@ -46,8 +52,8 @@ const checked = (r: any) => {
 };
 it("compact default retains uncertainty and graph identity without evidence; rich response remains explicit", () => {
   const data = fixture();
-  const small = checked(connections(data as any, { id: "a", includeEndpoints: true })),
-    full = checked(connections(data as any, { id: "a", view: "full", includeEndpoints: true }));
+  const small = checked(connections(data, { id: "a", includeEndpoints: true })),
+    full = checked(connections(data, { id: "a", view: "full", includeEndpoints: true }));
   expect(small.snapshot).toBe(full.snapshot);
   expect(small.total).toBe(full.total);
   expect(small.connections[0].from).toBe("a");
@@ -69,7 +75,7 @@ it("byte-bounded pages remain valid and exhaustive with Unicode, escaping and de
     const ids = [];
     do {
       const page = checked(
-        connections(data as any, { id: "a", view, includeEndpoints: true, limit: 100, offset }),
+        connections(data, { id: "a", view, includeEndpoints: true, limit: 100, offset }),
       );
       expect(page.connections.length).toBeTruthy();
       expect(page.connections.length < 80).toBeTruthy();
@@ -86,7 +92,7 @@ it("byte-bounded pages remain valid and exhaustive with Unicode, escaping and de
 });
 it("one oversized full row fails explicitly; default still works", () => {
   const data = fixture();
-  (data.records[2]!.metadata as any).attribution_confidence.evidence[0].quote = "x".repeat(30000);
-  expect(() => connections(data as any, { id: "a", view: "full" })).toThrow(/response budget/);
-  expect(checked(connections(data as any, { id: "a" })).connections.length).toBe(1);
+  data.records[2]!.metadata.attribution_confidence!.evidence[0]!.quote = "x".repeat(30000);
+  expect(() => connections(data, { id: "a", view: "full" })).toThrow(/response budget/);
+  expect(checked(connections(data, { id: "a" })).connections.length).toBe(1);
 });

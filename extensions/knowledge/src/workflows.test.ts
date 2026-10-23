@@ -5,13 +5,7 @@ import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { contract } from "./contract.js";
 import plugin from "./index.js";
-import {
-  apiFor,
-  sessionActions,
-  stopAtTestEnd,
-  useTestTempDirs,
-  defaultOrder,
-} from "./test-support.js";
+import { apiFor, sessionActions, useTestTempDirs, defaultOrder } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
 
@@ -46,24 +40,26 @@ async function fixture() {
     actions = new Map();
     plugin.register({
       ...api,
-      registerService: stopAtTestEnd,
       registerTool() {},
-      ...sessionActions((action) => {
-        actions.set(action.id, action);
-      }),
-    } as any);
+      session: {
+        ...api.session,
+        controls: {
+          ...api.session?.controls,
+          ...sessionActions((action) => {
+            actions.set(action.id, action);
+          }).session.controls,
+        },
+      },
+    });
   }
   restart();
-  async function call(name: any, payload = {}) {
-    expect(Check((contract.operations as any)[name].input, payload), `${name} input`).toBeTruthy();
+  async function call(name: keyof typeof contract.operations, payload = {}) {
+    expect(Check(contract.operations[name].input, payload), `${name} input`).toBeTruthy();
     const response = await actions
       .get(name)
       .handler({ payload, client: { connId: "workflow-trial", scopes: ["operator.write"] } });
     expect(response.ok, response.error).toBe(true);
-    expect(
-      Check((contract.operations as any)[name].output, response.result),
-      `${name} output`,
-    ).toBeTruthy();
+    expect(Check(contract.operations[name].output, response.result), `${name} output`).toBeTruthy();
     return response.result;
   }
   async function attach(bytes: any, filename: any) {
@@ -95,6 +91,8 @@ async function fixture() {
   return { call, attach, save, restart, root, vaultId };
 }
 const digest = (bytes: any) => createHash("sha256").update(bytes).digest("hex");
+// Reads a settled call already asserted to have fulfilled.
+const value = <T>(result: PromiseSettledResult<T>) => (result as PromiseFulfilledResult<T>).value;
 const source = (name: any) =>
   readFile(new URL(`../test-fixtures/workflows/${name}`, import.meta.url));
 
@@ -116,8 +114,8 @@ it("concurrent service calls publish once, allow reads, and recover after a reje
   expect(results.filter((r) => r.status === "rejected").map((r) => r.reason.message)).toStrictEqual(
     [],
   );
-  const receipts = results.slice(0, 4).map((r) => (r as any).value);
-  expect((results[5] as any)!.value).toStrictEqual(receipts[0]);
+  const receipts = results.slice(0, 4).map((r) => value(r));
+  expect(value(results[5]!)).toStrictEqual(receipts[0]);
   expect((await f.call("records")).total).toBe(4);
   const current = receipts[0];
   const edit = {
@@ -135,9 +133,9 @@ it("concurrent service calls publish once, allow reads, and recover after a reje
     f.call("save_page", inputs[1]),
   ]);
   expect(afterConflict[0].status).toBe("rejected");
-  expect((afterConflict[0] as any).reason.message).toMatch(/Edit conflict/);
-  expect((afterConflict[1] as any).value.record.body).toBe("Updated person");
-  expect((afterConflict[2] as any).value).toStrictEqual(receipts[1]);
+  expect((afterConflict[0] as PromiseRejectedResult).reason.message).toMatch(/Edit conflict/);
+  expect(value(afterConflict[1]).record.body).toBe("Updated person");
+  expect(value(afterConflict[2])).toStrictEqual(receipts[1]);
   expect((await f.call("records")).total).toBe(4);
 });
 
@@ -158,7 +156,7 @@ it("document port: original retention, locators, entity reuse, readback and unce
     "Morgan Hale",
     "person",
     "Project lead at Northstar Labs. [Source: project-brief.txt, line 2]",
-    [{ ...original, start_line: 2, end_line: 2 } as any],
+    [{ ...original, start_line: 2, end_line: 2 }],
   );
   const lookup = await f.call("lookup", { query: "Morgan Hale", type: "person" });
   expect(lookup.outcome).toBe("found");

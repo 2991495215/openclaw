@@ -2,6 +2,7 @@ import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { contract } from "./contract.js";
 import { hostJsonBoundary } from "./host-json-test-support.js";
+import type { LoadedRecord } from "./model.js";
 import { SampleVault } from "./vault.js";
 // Exercise the host's actual boundary through the SDK, not a copy of our budget helper.
 const isHostJson = hostJsonBoundary();
@@ -21,8 +22,8 @@ async function fixture(count: any, evidenceCount: any, body: any, quote = "") {
     end_line: 2,
     ...(quote ? { quote } : {}),
   }));
-  const claims = Array.from({ length: count }, (_, i) => ({
-    ...template,
+  const claims = Array.from({ length: count }, (_, i): LoadedRecord => ({
+    ...template!,
     id: i === 0 ? template!.id : `claim_${String(i).padStart(3, "0")}`,
     title: `Claim ${i}`,
     body,
@@ -31,7 +32,7 @@ async function fixture(count: any, evidenceCount: any, body: any, quote = "") {
       attribution_confidence: { level: "medium", basis: "Synthetic attribution", evidence },
     },
   }));
-  data.records = [...data.records.filter((r) => r.kind !== "claim"), ...claims] as any;
+  data.records = [...data.records.filter((r) => r.kind !== "claim"), ...claims];
   let scans = 0;
   vault.scan = async () => {
     scans++;
@@ -110,11 +111,11 @@ it("relationship endpoint payload participates in the Browse budget", async () =
   data.records = [
     ...data.records.filter((r) => r.kind !== "relationship"),
     ...Array.from({ length: 3 }, (_, i) => ({
-      ...edge,
+      ...edge!,
       id: `edge_${i}`,
       metadata: { ...edge!.metadata, from: endpoints[0]!.id, to: endpoints[1]!.id },
     })),
-  ] as any;
+  ];
   const seen = [];
   let offset = 0;
   do {

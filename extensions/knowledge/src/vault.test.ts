@@ -17,11 +17,11 @@ async function fixture() {
   return { root, vault: new SampleVault(root) };
 }
 async function hashes(root: any) {
-  const found = {};
+  const found: Record<string, string> = {};
   for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
     if (entry.isFile()) {
       const p = path.join(entry.parentPath, entry.name);
-      (found as any)[path.relative(root, p)] = digest(await readFile(p, "utf8"));
+      found[path.relative(root, p)] = digest(await readFile(p, "utf8"));
     }
   }
   return found;
@@ -49,13 +49,13 @@ it("representative vault: records, ontology, diagnostics, citations, and zero wr
 });
 it("bounded listing supports exhaustive pagination, aliases and kind filters", async () => {
   const vault = new SampleVault();
-  let offset = 0;
+  let offset: number | null = 0;
   const rows = [];
   do {
     const result = await vault.list({ offset, limit: 3 });
     expect(Check(contract.operations.records.output, result)).toBeTruthy();
     rows.push(...result.records);
-    offset = result.nextOffset as any;
+    offset = result.nextOffset;
   } while (offset !== null);
   expect(rows.length).toBe(7);
   expect(new Set(rows.map((r) => r.path)).size).toBe(7);

@@ -1,11 +1,19 @@
 import { expect, it } from "vitest";
 import { connections } from "./connections.js";
 import { markdown, extractLinks, resolveLinks, wikiHref } from "./markdown-links.js";
+import type { Envelope, LoadedRecord } from "./model.js";
 import { recordPath } from "./record-path.js";
 import { useTestTempDirs } from "./test-support.js";
+import type { ScanResult } from "./vault.js";
 
 const tempDirs = useTestTempDirs();
-const record = (id: any, title: any, path: any, body = "", extra = {}) => ({
+const record = (
+  id: string,
+  title: string,
+  path: string,
+  body = "",
+  extra: Partial<Envelope> = {},
+): LoadedRecord => ({
   id,
   title,
   path,
@@ -17,7 +25,8 @@ const record = (id: any, title: any, path: any, body = "", extra = {}) => ({
   valid: true,
   lifecycle: "active",
   revision: 1,
-  metadata: { aliases: [], lifecycle: "active", ...extra },
+  // Fixture metadata carries only the envelope fields link resolution reads.
+  metadata: { aliases: [], lifecycle: "active", ...extra } as Envelope,
 });
 
 it("Markdown tokenization excludes code, escapes, HTML, images and generated backlinks", () => {
@@ -72,7 +81,7 @@ it("current path, title, alias and old ID paths resolve; ambiguity never chooses
     "a",
     "missing",
   ]);
-  (other.metadata as any).aliases = ["Alex"];
+  other.metadata.aliases = ["Alex"];
   expect(resolveLinks(source, [alex, other])[0]!.status).toBe("ambiguous");
   expect(resolveLinks(source, [other])[1]!.status).toBe("missing");
   alex.path = "people/renamed.md";
@@ -89,20 +98,24 @@ it("derived backlinks deduplicate passages, reflect edits, exclude unavailable r
   const edge = {
     ...record("edge", "Works with", "relationships/works.md"),
     kind: "relationship",
-    metadata: { lifecycle: "active", from: "a", to: "s", label: "works_with" },
+    metadata: { lifecycle: "active", from: "a", to: "s", label: "works_with" } as Envelope,
   };
   const hidden = record("h", "Hidden", "people/hidden.md", "[[Alex]]", { record_class: "fixture" });
-  const data = { records: [a, s, edge, hidden], issues: [] };
-  const c = connections(data as any, { id: "a" });
+  const data: ScanResult = {
+    records: [a, s, edge, hidden],
+    ontology: null,
+    sources: [],
+    issues: [],
+    checkedAt: "",
+  };
+  const c = connections(data, { id: "a" });
   expect(c.connections.filter((r) => r.direction === "backlinks").length).toBe(1);
   expect(c.connections.filter((r) => r.direction === "outgoing").length).toBe(1);
-  expect(connections(data as any, { id: "s", direction: "links" }).connections[0]!.record.id).toBe(
-    "a",
-  );
-  expect(connections(data as any, { id: "a" }, new Set(["s"])).total).toBe(0);
+  expect(connections(data, { id: "s", direction: "links" }).connections[0]!.record.id).toBe("a");
+  expect(connections(data, { id: "a" }, new Set(["s"])).total).toBe(0);
   s.body = "No longer linked.";
-  expect(connections(data as any, { id: "a", direction: "backlinks" }).total).toBe(0);
-  expect(connections(data as any, { id: "a", direction: "outgoing" }).total).toBe(1);
+  expect(connections(data, { id: "a", direction: "backlinks" }).total).toBe(0);
+  expect(connections(data, { id: "a", direction: "outgoing" }).total).toBe(1);
 });
 it("unsafe or external destinations never resolve as local records", () => {
   const a = record("a", "Alex", "people/alex.md");

@@ -3,11 +3,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { memoryPrincipal } from "./access.js";
+import type { MemoryCallerContext } from "./memory-provider-types.js";
 import { createKnowledgeService } from "./service.js";
 import { accessFor, apiFor, useTestTempDirs } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
 
+type SessionAuthority = Extract<MemoryCallerContext["authority"], { kind: "session" }>;
 const memoryScope = (context: any, agent = "main") => memoryPrincipal(context, agent, true)().scope;
 
 function authority(...args: any[]) {
@@ -36,7 +38,7 @@ function authority(...args: any[]) {
       assertMemoryAudienceCurrent,
     },
   };
-  const memory = {
+  const memory: MemoryCallerContext = {
     authority: {
       kind: "session",
       sessionKey: "agent:main:test",
@@ -86,16 +88,17 @@ it("missing, foreign, sandboxed, host, and revoked authority is denied", () => {
   const foreign = authority({ kind: "owner-private", agentId: "other" });
   expect(foreign.access().agentId).toBe("other");
   expect(() => memoryScope(foreign.memory, "main")).toThrow(/authority/);
-  const sandboxed = (authority as any)();
-  sandboxed.memory.authority.sandboxed = true;
+  const sandboxed = authority();
+  // authority() always builds a session authority.
+  (sandboxed.memory.authority as SessionAuthority).sandboxed = true;
   expect(() => memoryScope(sandboxed.memory)).toThrow(/authority/);
-  const host = (authority as any)();
-  host.memory.authority = { kind: "host", operation: "bootstrap" as any };
+  const host = authority();
+  host.memory.authority = { kind: "host", operation: "bootstrap" };
   expect(() => memoryScope(host.memory)).toThrow(/authority/);
-  for (const revoke of ["revokeInvocation", "revokeAudience"]) {
-    const f = (authority as any)(),
+  for (const revoke of ["revokeInvocation", "revokeAudience"] as const) {
+    const f = authority(),
       access = f.access();
-    (f as any)[revoke]();
+    f[revoke]();
     expect(access.assertCurrent).toThrow(/revoked/);
   }
 });

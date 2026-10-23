@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { readdir, readFile, rename, access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
+import type { Principal } from "./access.js";
 import { contract } from "./contract.js";
 import { createKnowledgeService } from "./service.js";
 import { StoreRegistry } from "./store-registry.js";
-import { storesRevision } from "./stores-config.js";
+import { parsePolicy, storesRevision, type StoresSection } from "./stores-config.js";
 import { Stores } from "./stores.js";
 import {
   hostApi,
@@ -18,6 +20,12 @@ import {
 } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
+
+type Service = ReturnType<typeof createKnowledgeService>;
+// agent_query returns `unknown`; the proxy has already validated it against this operation's schema.
+type Output<Op extends keyof Service> = Awaited<ReturnType<Service[Op]>>;
+// The host's config mutation callback, which these tests drive directly.
+type Mutate = Parameters<OpenClawPluginApi["runtime"]["config"]["mutateConfigFile"]>[0]["mutate"];
 
 // Every scenario starts from an empty Knowledge state root: stores exist only
 // once an agent uses one, exactly as on a fresh install.
@@ -44,7 +52,7 @@ async function fixture(options = {}) {
   const titles = async (agent: any) =>
     (await service.records({}, as(agent))).records.map((r) => r.title).toSorted(defaultOrder);
   const snapshot = () => service.stores_snapshot({}, admin);
-  const change = async (agent: any, requested: any, expectedRevision: any) => {
+  const change = async (agent: any, requested: any, expectedRevision?: string) => {
     const input = {
       requestId: randomUUID(),
       expectedRevision: expectedRevision ?? (await snapshot()).revision,
@@ -60,7 +68,23 @@ async function fixture(options = {}) {
     return { input, result };
   };
   const storesDir = () => readdir(path.join(host.stateRoot, "stores")).catch(() => []);
-  return { ...host, base, service, admin, reader, as, save, titles, snapshot, change, storesDir };
+  // The fixture host types plugin config loosely; these tests only author valid store sections.
+  const storesSection = () =>
+    host.host.config.plugins.entries.knowledge.config.stores as StoresSection;
+  return {
+    ...host,
+    base,
+    service,
+    admin,
+    reader,
+    as,
+    save,
+    titles,
+    snapshot,
+    change,
+    storesDir,
+    storesSection,
+  };
 }
 const entry = (snapshot: any, binding: any) =>
   snapshot.stores.find((s: any) => s.binding === binding);
@@ -91,7 +115,7 @@ it("passive discovery never creates storage", async () => {
       (await f.service.agent_query(
         { agent: "research", operation: "records", input: {} },
         f.reader,
-      )) as any
+      )) as Output<"records">
     ).total,
   ).toBe(0);
   expect(
@@ -99,7 +123,7 @@ it("passive discovery never creates storage", async () => {
       (await f.service.agent_query(
         { agent: "research", operation: "status", input: {} },
         f.reader,
-      )) as any
+      )) as Output<"status">
     ).store,
   ).toBe("unprovisioned");
   expect(await f.storesDir()).toStrictEqual([]);
@@ -154,7 +178,7 @@ it("a provisioned store that disappears is unavailable, never recreated empty", 
   const f = await fixture();
   await f.save("main", "Kept");
   const [dir] = await f.storesDir();
-  await rename(path.join(f.stateRoot, "stores", dir as any), path.join(f.base, "moved-away"));
+  await rename(path.join(f.stateRoot, "stores", dir!), path.join(f.base, "moved-away"));
   const fresh = createKnowledgeService(f.api);
   await expect(
     fresh.save_page(
@@ -183,7 +207,7 @@ it("share existing: same identity and records; members read and update through o
   const f = await fixture();
   await f.save("main", "Before sharing");
   const before = await f.service.status({}, f.as("main"));
-  const { result } = await (f.change as any)("main", {
+  const { result } = await f.change("main", {
     kind: "share_existing",
     label: "Personal",
     agents: ["research"],
@@ -217,7 +241,7 @@ it("use own after sharing: joiner resumes its old store; originating sharer gets
   await f.save("research", "Research own");
   expect(
     (
-      await (f.change as any)("main", {
+      await f.change("main", {
         kind: "share_existing",
         label: "Team",
         agents: ["research"],
@@ -225,10 +249,10 @@ it("use own after sharing: joiner resumes its old store; originating sharer gets
     ).result.outcome,
   ).toBe("applied");
   expect(await f.titles("research")).toStrictEqual(["Shared seed"]);
-  const back = await (f.change as any)("research", { kind: "use_own" });
+  const back = await f.change("research", { kind: "use_own" });
   expect(back.result.outcome, back.result.message).toBe("applied");
   expect(await f.titles("research")).toStrictEqual(["Research own"]);
-  const own = await (f.change as any)("main", { kind: "use_own" });
+  const own = await f.change("main", { kind: "use_own" });
   expect(own.result.outcome).toBe("applied");
   expect(entry(own.result.snapshot, "agent:main").state).toBe("unprovisioned");
   // Zero members: the named store is retained with its data and stays assignable.
@@ -236,9 +260,9 @@ it("use own after sharing: joiner resumes its old store; originating sharer gets
   expect(team.members).toStrictEqual([]);
   expect(team.state).toBe("ready");
   expect(await f.titles("main")).toStrictEqual([]);
-  expect(
-    (await (f.change as any)("ops", { kind: "use_named", store: "team" })).result.outcome,
-  ).toBe("applied");
+  expect((await f.change("ops", { kind: "use_named", store: "team" })).result.outcome).toBe(
+    "applied",
+  );
   expect(await f.titles("ops")).toStrictEqual(["Shared seed"]);
 });
 
@@ -246,16 +270,16 @@ it("switching named stores leaves one assignment and the former store untouched"
   const f = await fixture();
   await f.save("main", "Alpha");
   await f.save("ops", "Beta");
-  await (f.change as any)("main", { kind: "share_existing", label: "A", agents: ["research"] });
-  const b = await (f.change as any)("ops", {
+  await f.change("main", { kind: "share_existing", label: "A", agents: ["research"] });
+  const b = await f.change("ops", {
     kind: "share_existing",
     label: "B",
     agents: ["main"],
   });
   expect(b.result.outcome, b.result.message).toBe("applied");
-  const stores = f.host.config.plugins.entries.knowledge.config.stores;
-  expect((stores as any).a.agents).toStrictEqual(["research"]);
-  expect((stores as any).b.agents).toStrictEqual(["ops", "main"]);
+  const stores = f.storesSection();
+  expect(stores.a!.agents).toStrictEqual(["research"]);
+  expect(stores.b!.agents).toStrictEqual(["ops", "main"]);
   expect(await f.titles("main")).toStrictEqual(["Beta"]);
   expect(await f.titles("research")).toStrictEqual(["Alpha"]);
 });
@@ -308,7 +332,7 @@ it("an operator whose access ends before the config write changes nothing", asyn
   expect(f.writes).toHaveLength(writes);
   expect(f.host.config).toStrictEqual(before);
   // The refused request does not block a current administrator.
-  const next = await (f.change as any)("main", {
+  const next = await f.change("main", {
     kind: "share_existing",
     label: "A",
     agents: ["research"],
@@ -322,7 +346,7 @@ it("validation, stale revisions and non-admin callers never partially apply", as
   const stale = (await f.snapshot()).revision;
   expect(
     (
-      await (f.change as any)("research", {
+      await f.change("research", {
         kind: "share_existing",
         label: "Nope",
         agents: ["main"],
@@ -330,17 +354,17 @@ it("validation, stale revisions and non-admin callers never partially apply", as
     ).result.outcome,
     "unprovisioned source",
   ).toBe("invalid");
+  expect((await f.change("main", { kind: "use_named", store: "missing" })).result.outcome).toBe(
+    "invalid",
+  );
+  expect((await f.change("main", { kind: "use_own" })).result.outcome).toBe("invalid");
   expect(
-    (await (f.change as any)("main", { kind: "use_named", store: "missing" })).result.outcome,
-  ).toBe("invalid");
-  expect((await (f.change as any)("main", { kind: "use_own" })).result.outcome).toBe("invalid");
-  expect(
-    (await (f.change as any)("main", { kind: "share_existing", label: "Team", agents: ["ghost"] }))
-      .result.outcome,
+    (await f.change("main", { kind: "share_existing", label: "Team", agents: ["ghost"] })).result
+      .outcome,
   ).toBe("invalid");
   expect(
     (
-      await (f.change as any)("main", {
+      await f.change("main", {
         kind: "share_existing",
         label: "Team",
         agents: ["research"],
@@ -362,9 +386,7 @@ it("validation, stale revisions and non-admin callers never partially apply", as
   expect(denied.outcome).toBe("forbidden");
   expect((await f.service.stores_snapshot({}, f.reader)).canChange).toBe(false);
   await expect(f.service.stores_snapshot({}, f.as("main"))).rejects.toThrow(/operators/);
-  expect((Object.keys as any)(f.host.config.plugins.entries.knowledge.config.stores)).toStrictEqual(
-    ["team"],
-  );
+  expect(Object.keys(f.storesSection())).toStrictEqual(["team"]);
 });
 
 it("a concurrent config edit inside the write is a conflict, not an overwrite", async () => {
@@ -376,7 +398,7 @@ it("a concurrent config edit inside the write is a conflict, not an overwrite", 
     f.host.config.plugins.entries.knowledge.config.stores = { other: { agents: ["ops"] } };
     return original(params);
   };
-  const { result } = await (f.change as any)("main", {
+  const { result } = await f.change("main", {
     kind: "share_existing",
     label: "Team",
     agents: ["research"],
@@ -390,7 +412,7 @@ it("a concurrent config edit inside the write is a conflict, not an overwrite", 
 it("repeated request IDs replay the outcome; reuse for another change is rejected", async () => {
   const f = await fixture();
   await f.save("main", "Seed");
-  const { input, result } = await (f.change as any)("main", {
+  const { input, result } = await f.change("main", {
     kind: "share_existing",
     label: "Team",
     agents: ["research"],
@@ -417,7 +439,7 @@ it("a crash between the config write and registry settlement reconciles to one o
     await original(params);
     throw new Error("process died");
   };
-  const { input, result } = await (f.change as any)("main", {
+  const { input, result } = await f.change("main", {
     kind: "share_existing",
     label: "Team",
     agents: ["research"],
@@ -438,10 +460,14 @@ it("a journaled change whose write never landed settles as not applied after res
   await f.save("main", "Seed");
   // Reads (which abort inside mutate) still work; any write fails before persisting.
   f.api.runtime.config.mutateConfigFile = async ({ mutate }) => {
-    await mutate(structuredClone(f.host.config) as any, {} as any);
+    // The fixture's host config and an empty context stand in for the host's richer types.
+    await mutate(
+      structuredClone(f.host.config) as Parameters<Mutate>[0],
+      {} as Parameters<Mutate>[1],
+    );
     throw new Error("disk full");
   };
-  const { input, result } = await (f.change as any)("main", {
+  const { input, result } = await f.change("main", {
     kind: "share_existing",
     label: "Team",
     agents: ["research"],
@@ -458,7 +484,7 @@ it("host publication lag after a save is not mistaken for an external edit", asy
   await f.save("main", "Seed");
   expect(
     (
-      await (f.change as any)("main", {
+      await f.change("main", {
         kind: "share_existing",
         label: "Team",
         agents: ["research"],
@@ -474,12 +500,12 @@ it("host publication lag after a save is not mistaken for an external edit", asy
 it("external configuration edits apply in-process; invalid membership makes affected agents unavailable", async () => {
   const f = await fixture();
   await f.save("main", "Seed");
-  await (f.change as any)("main", { kind: "share_existing", label: "Team", agents: ["research"] });
+  await f.change("main", { kind: "share_existing", label: "Team", agents: ["research"] });
   f.host.config = structuredClone(f.host.config);
-  (f.host.config.plugins.entries.knowledge.config.stores as any).team.agents.push("ops");
+  f.storesSection().team!.agents.push("ops");
   expect(await f.titles("ops")).toStrictEqual(["Seed"]);
   f.host.config = structuredClone(f.host.config);
-  (f.host.config.plugins.entries.knowledge.config.stores as any).other = { agents: ["ops"] };
+  f.storesSection().other = { agents: ["ops"] };
   await expect(f.titles("ops")).rejects.toThrow(/assignment is invalid/);
   const snap = await f.snapshot();
   expect(snap.agents.find((a) => a.id === "ops")!.issue).toMatch(/more than one store/);
@@ -489,18 +515,25 @@ it("external configuration edits apply in-process; invalid membership makes affe
 it("the cutover fences old-assignment access before applying and after", async () => {
   const f = await fixture();
   await f.save("research", "Research own");
-  const stores = new Stores(f.api, { operatorRead: true, writesEnabled: true } as any, () => {});
+  const stores = new Stores(
+    f.api,
+    parsePolicy({ operatorRead: true, writesEnabled: true }),
+    () => {},
+  );
   afterTest(() => stores.stop());
-  const principal = () => ({ agentId: "research", scope: { visibility: "private" } });
-  const opened = await stores.open(principal as any, { provision: false });
+  const principal = (): Principal => ({ agentId: "research", scope: { visibility: "private" } });
+  const opened = await stores.open(principal, { provision: false });
   expect(opened.kind).toBe("ready");
-  (opened as any).access.assertCurrent();
+  if (opened.kind !== "ready") {
+    throw new Error("expected a ready store");
+  }
+  opened.access.assertCurrent();
   let fencedDuringApply;
   f.host.config = structuredClone(f.host.config);
   f.host.config.plugins.entries.knowledge.config.stores = { team: { agents: ["research"] } };
   await stores.cutover(["research"], async () => {
     try {
-      (opened as any).access.assertCurrent();
+      opened.access.assertCurrent();
       fencedDuringApply = false;
     } catch {
       fencedDuringApply = true;
@@ -512,11 +545,10 @@ it("the cutover fences old-assignment access before applying and after", async (
     );
   });
   expect(fencedDuringApply, "queued or in-flight work fails while the change applies").toBe(true);
-  expect(
-    () => (opened as any).access.assertCurrent(),
-    "old-assignment access never resumes",
-  ).toThrow(/assignment changed/);
-  const next = await stores.open(principal as any, { provision: false });
+  expect(() => opened.access.assertCurrent(), "old-assignment access never resumes").toThrow(
+    /assignment changed/,
+  );
+  const next = await stores.open(principal, { provision: false });
   expect(next.kind, "the new assignment resolves to the named store").toBe("unprovisioned");
 });
 
@@ -527,7 +559,9 @@ it("operator proxy is operator-only and validates inner operations", async () =>
     { agent: "research", operation: "records", input: {} },
     f.reader,
   );
-  expect((rows as any).records.map((r: any) => r.title)).toStrictEqual(["Visible to operator"]);
+  expect((rows as Output<"records">).records.map((r) => r.title)).toStrictEqual([
+    "Visible to operator",
+  ]);
   expect(
     (await f.service.records({}, f.reader)).total,
     "default operator view is the default agent",
@@ -561,10 +595,10 @@ it("recovery keeps a shared store bound to its data even when other edits confli
     await original(params);
     // Before settlement, someone else edits another part of the stores section.
     f.host.config = structuredClone(f.host.config);
-    (f.host.config.plugins.entries.knowledge.config.stores as any).other = { agents: ["ops"] };
+    f.storesSection().other = { agents: ["ops"] };
     throw new Error("process died");
   };
-  const { result } = await (f.change as any)("main", {
+  const { result } = await f.change("main", {
     kind: "share_existing",
     label: "Team",
     agents: ["research"],
@@ -572,9 +606,7 @@ it("recovery keeps a shared store bound to its data even when other edits confli
   f.api.runtime.config.mutateConfigFile = original;
   expect(result.outcome).toBe("conflict");
   expect(
-    await (createKnowledgeService(f.api).records({}, f.as("research")) as any).then((r: any) =>
-      r.records.map((x: any) => x.title),
-    ),
+    (await createKnowledgeService(f.api).records({}, f.as("research"))).records.map((x) => x.title),
   ).toStrictEqual(["Seed"]);
   expect((await f.storesDir()).length, "no empty replacement store").toBe(1);
 });
@@ -637,7 +669,7 @@ it("several agents without a default: operators must choose; tools are unaffecte
       (await f.service.agent_query(
         { agent: "research", operation: "records", input: {} },
         f.reader,
-      )) as any
+      )) as Output<"records">
     ).total,
   ).toBe(1);
   expect((await f.service.status({}, f.as("main"))).store).toBe("unprovisioned");

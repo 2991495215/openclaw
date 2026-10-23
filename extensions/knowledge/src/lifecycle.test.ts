@@ -88,7 +88,7 @@ async function foundation() {
   f.fingerprint = (await f.service.ontology({}, f.owner)).fingerprint;
   f.pages = {};
   for (const type of ["person", "project", "meeting"]) {
-    (f as any).pages[type] = await f.service.save_page({ ...draft(), title: type, type }, f.owner);
+    f.pages[type] = await f.service.save_page({ ...draft(), title: type, type }, f.owner);
   }
   f.source = await f.service.attach(
     {
@@ -105,34 +105,34 @@ async function foundation() {
     f.owner,
   );
   f.evidence = {
-    ...(f as any).source.evidence,
+    ...f.source.evidence,
     start_line: 1,
     end_line: 1,
     quote: "We chose option B.",
   };
   f.claim = (extra = {}) => ({
     requestId: randomUUID(),
-    expectedOntologyFingerprint: (f as any).fingerprint,
+    expectedOntologyFingerprint: f.fingerprint,
     title: "Option B decision",
     body: "Alex chose option B.",
     claim_kind: "decision",
     assertion_origin: "source",
     attribution: "Alex, meeting transcript line 1",
-    evidence: [(f as any).evidence],
-    entities: [(f as any).pages.project.id],
-    dependencies: [(f as any).pages.meeting.id],
+    evidence: [f.evidence],
+    entities: [f.pages.project.id],
+    dependencies: [f.pages.meeting.id],
     ...extra,
   });
   f.edge = (extra = {}) => ({
     requestId: randomUUID(),
-    expectedOntologyFingerprint: (f as any).fingerprint,
+    expectedOntologyFingerprint: f.fingerprint,
     title: "Meeting discusses project",
     body: "Explicit meeting/project connection",
-    from: (f as any).pages.meeting.id,
-    to: (f as any).pages.project.id,
+    from: f.pages.meeting.id,
+    to: f.pages.project.id,
     label: "discusses",
     attribution: "Meeting transcript",
-    evidence: [(f as any).evidence],
+    evidence: [f.evidence],
     ...extra,
   });
   return f;
@@ -161,7 +161,7 @@ const withdrawal = (r: any) => ({
 
 it("recent groups exact lifecycle publications before paging, suppresses inactive assertions, and pins new activity", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner);
+    original = await f.service.create_claim(f.claim(), f.owner);
   const dependent = await f.service.save_page(
     { ...draft(), title: "Dependent summary", dependencies: [original.id] },
     f.owner,
@@ -229,10 +229,9 @@ it("recent groups exact lifecycle publications before paging, suppresses inactiv
 
 it("recent distinguishes imports from writes and rechecks dependency eligibility on each page", async () => {
   const f = await foundation(),
-    claim = await f.service.create_claim((f as any).claim(), f.owner);
+    claim = await f.service.create_claim(f.claim(), f.owner);
   const before = await f.service.recent({}, f.owner);
-  const record = (await f.service.record({ id: (f as any).pages.person.id, view: "raw" }, f.owner))
-    .record;
+  const record = (await f.service.record({ id: f.pages.person.id, view: "raw" }, f.owner)).record;
   const raw = record!
     .raw!.replace(record!.id, randomUUID())
     .replace("title: person", "title: Imported person");
@@ -244,17 +243,17 @@ it("recent distinguishes imports from writes and rechecks dependency eligibility
     raw.replace("Imported person", "Edited import"),
   );
   expect((await f.service.recent({}, f.owner)).items[0]!.change).toBe("external");
-  await f.service.withdraw(withdrawal((f as any).pages.project), f.owner);
+  await f.service.withdraw(withdrawal(f.pages.project), f.owner);
   const pinned = await f.service.recent({ upperSequence: before.upperSequence }, f.owner);
   expect(
-    pinned.items.some((r: any) => r.id === claim.id || r.id === (f as any).pages.project.id),
+    pinned.items.some((r: any) => r.id === claim.id || r.id === f.pages.project.id),
     "pinning order never pins stale content visibility",
   ).toBe(false);
 });
 
 it("correction is one logical batch preserving originals, evidence, provenance, chains and unresolved impact", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner);
+    original = await f.service.create_claim(f.claim(), f.owner);
   const dependent = await f.service.save_page(
     { ...draft(), title: "Derived summary", dependencies: [original.id] },
     f.owner,
@@ -339,7 +338,7 @@ for (const stage of [
 ]) {
   it(`correction recovery at ${stage} never exposes a half-applied catalog`, async () => {
     const f = await foundation(),
-      original = await f.service.create_claim((f as any).claim(), f.owner),
+      original = await f.service.create_claim(f.claim(), f.owner),
       input = correction(f, original);
     let written = 0;
     const publisher = new KnowledgeStorage(f.config, f.store, (where) => {
@@ -360,14 +359,12 @@ for (const stage of [
       ["record", { id: original.id }],
       ["grep", { query: "option" }],
       ["lookup", { query: original.id }],
-      ["connections", { id: (f as any).pages.project.id }],
+      ["connections", { id: f.pages.project.id }],
       ["ontology", {}],
       ["status", {}],
       ["recent", {}],
     ] as [string, any][]) {
-      await expect((f.service as any)[method](arg, f.owner)).rejects.toThrow(
-        /pending|identity|storage/,
-      );
+      await expect(f.service[method](arg, f.owner)).rejects.toThrow(/pending|identity|storage/);
     }
     const recovered = await createKnowledgeService(f.api).correct(input, f.owner);
     expect(recovered.state).toBe("published");
@@ -381,11 +378,10 @@ for (const stage of [
 
 it("withdrawal durably hides pages and transitive dependents, preserves evidence/history and exact retry", async () => {
   const f = await foundation(),
-    claim = await f.service.create_claim((f as any).claim(), f.owner),
-    edge = await f.service.create_relationship((f as any).edge(), f.owner);
-  const original = (
-    await f.service.record({ id: (f as any).pages.project.id, view: "raw" }, f.owner)
-  ).record;
+    claim = await f.service.create_claim(f.claim(), f.owner),
+    edge = await f.service.create_relationship(f.edge(), f.owner);
+  const original = (await f.service.record({ id: f.pages.project.id, view: "raw" }, f.owner))
+    .record;
   const input = withdrawal(original),
     receipt = await f.service.withdraw(input, f.owner);
   expect(receipt.operation).toBe("withdraw");
@@ -396,7 +392,7 @@ it("withdrawal durably hides pages and transitive dependents, preserves evidence
   for (const id of [original!.id, claim.id, edge.id]) {
     expect((await f.service.lookup({ query: id }, f.owner)).total).toBe(0);
   }
-  expect((await f.service.connections({ id: (f as any).pages.meeting.id }, f.owner)).total).toBe(0);
+  expect((await f.service.connections({ id: f.pages.meeting.id }, f.owner)).total).toBe(0);
   expect((await f.service.records({}, f.owner)).total).toBe(2);
   await writeFile(path.join(f.root, "private", original!.path), original!.raw);
   f.store.withDatabase((db: any) => {
@@ -415,7 +411,7 @@ it("withdrawal durably hides pages and transitive dependents, preserves evidence
   expect(inspection.record!.lifecycle).toBe("withdrawn");
   expect(inspection.record!.metadata!.lifecycle_change!.reason).toBe(input.reason);
   const evidence = await restored.attachment(
-    { id: claim.id, path: (f as any).evidence.path, sha256: (f as any).evidence.sha256 },
+    { id: claim.id, path: f.evidence.path, sha256: f.evidence.sha256 },
     f.owner,
   );
   expect(evidence.data).toBeTruthy();
@@ -423,9 +419,9 @@ it("withdrawal durably hides pages and transitive dependents, preserves evidence
 
 it("one relationship correction/withdrawal never affects another edge sharing endpoints", async () => {
   const f = await foundation(),
-    one = await f.service.create_relationship((f as any).edge(), f.owner),
-    two = await f.service.create_relationship((f as any).edge(), f.owner);
-  const { requestId, expectedOntologyFingerprint, ...replacement } = (f as any).edge({
+    one = await f.service.create_relationship(f.edge(), f.owner),
+    two = await f.service.create_relationship(f.edge(), f.owner);
+  const { requestId, expectedOntologyFingerprint, ...replacement } = f.edge({
     body: "Corrected explicit edge",
   });
   const correctionInput = {
@@ -436,9 +432,9 @@ it("one relationship correction/withdrawal never affects another edge sharing en
     replacement: { kind: "relationship", ...replacement },
   };
   const corrected = await f.service.correct(correctionInput, f.owner);
-  expect((await f.service.connections({ id: (f as any).pages.meeting.id }, f.owner)).total).toBe(2);
+  expect((await f.service.connections({ id: f.pages.meeting.id }, f.owner)).total).toBe(2);
   await f.service.withdraw(withdrawal(corrected), f.owner);
-  expect((await f.service.connections({ id: (f as any).pages.meeting.id }, f.owner)).total).toBe(1);
+  expect((await f.service.connections({ id: f.pages.meeting.id }, f.owner)).total).toBe(1);
   expect((await f.service.lookup({ query: two.id }, f.owner)).total).toBe(1);
   expect(
     (await f.service.record({ id: one.id, includeMetadata: true }, f.owner)).record!.metadata!
@@ -448,7 +444,7 @@ it("one relationship correction/withdrawal never affects another edge sharing en
 
 it("invalid, stale, hidden and wrong-kind corrections fail before receipt; no browser lifecycle writes", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner),
+    original = await f.service.create_claim(f.claim(), f.owner),
     input = correction(f, original);
   const dependent = await f.service.save_page({ ...draft(), dependencies: [original.id] }, f.owner);
   for (const change of [
@@ -460,7 +456,7 @@ it("invalid, stale, hidden and wrong-kind corrections fail before receipt; no br
     { replacement: { ...input.replacement, dependencies: [original.id] } },
     { replacement: { ...input.replacement, dependencies: [dependent.id] } },
     { expectedOntologyFingerprint: "0".repeat(64) },
-    { ...target((f as any).pages.project) },
+    { ...target(f.pages.project) },
     { replacement: { ...input.replacement, lifecycle: "withdrawn" } },
   ]) {
     const bad = { ...input, ...change, requestId: randomUUID() };
@@ -482,7 +478,7 @@ it("invalid, stale, hidden and wrong-kind corrections fail before receipt; no br
 
 it("changed payload replay and concurrent edits preserve conflicts and proposed material", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner),
+    original = await f.service.create_claim(f.claim(), f.owner),
     input = correction(f, original);
   const file = path.join(f.root, "private", original.path),
     before = await readFile(file, "utf8");
@@ -506,7 +502,7 @@ it("changed payload replay and concurrent edits preserve conflicts and proposed 
 for (const stage of ["after-accept", "after-link:vault.json", "before-receipt"]) {
   it(`withdrawal resumes safely after ${stage}`, async () => {
     const f = await foundation(),
-      original = await f.service.create_claim((f as any).claim(), f.owner),
+      original = await f.service.create_claim(f.claim(), f.owner),
       input = withdrawal(original);
     const publisher = new KnowledgeStorage(f.config, f.store, (where) => {
       if (where === stage) {
@@ -525,7 +521,7 @@ for (const stage of ["after-accept", "after-link:vault.json", "before-receipt"])
 
 it("withheld derived pages can be repaired explicitly, without silently redirecting evidence", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner);
+    original = await f.service.create_claim(f.claim(), f.owner);
   const dependent = await f.service.save_page({ ...draft(), dependencies: [original.id] }, f.owner);
   const corrected = await f.service.correct(correction(f, original), f.owner);
   expect((await f.service.lookup({ query: dependent.id }, f.owner)).total).toBe(0);
@@ -540,7 +536,7 @@ it("withheld derived pages can be repaired explicitly, without silently redirect
 
 it("pre-upgrade withdrawal guards apply to records and counts even if only stale active files remain", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner);
+    original = await f.service.create_claim(f.claim(), f.owner);
   f.store.withDatabase((db: any) =>
     db
       .prepare("INSERT INTO keyword_withdrawals_v1 VALUES (?,?)")
@@ -555,7 +551,7 @@ it("pre-upgrade withdrawal guards apply to records and counts even if only stale
 
 it("lifecycle writes recheck current authority before publishing accepted intent", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner),
+    original = await f.service.create_claim(f.claim(), f.owner),
     input = correction(f, original);
   const publisher = new KnowledgeStorage(f.config, f.store, (where) => {
     if (where === "after-accept") {
@@ -575,7 +571,7 @@ it("lifecycle writes recheck current authority before publishing accepted intent
 
 it("withdrawing a superseded original dominates its correction guard without withdrawing replacement", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner),
+    original = await f.service.create_claim(f.claim(), f.owner),
     corrected = await f.service.correct(correction(f, original), f.owner);
   const old = (await f.service.record({ id: original.id, includeMetadata: true }, f.owner)).record;
   const withdrawalInput = withdrawal(old);
@@ -588,8 +584,8 @@ it("withdrawing a superseded original dominates its correction guard without wit
 
 it("withdrawal remains possible when original evidence goes missing", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner);
-  await rm(path.join(f.root, "private", (f as any).evidence.path));
+    original = await f.service.create_claim(f.claim(), f.owner);
+  await rm(path.join(f.root, "private", f.evidence.path));
   const record = (await f.service.record({ id: original.id, includeMetadata: true }, f.owner))
     .record;
   expect(record!.valid).toBe(false);
@@ -602,7 +598,7 @@ it("withdrawal remains possible when original evidence goes missing", async () =
 
 it("lifecycle mutations preserve authored YAML comments, unknown metadata and original text", async () => {
   const f = await foundation(),
-    original = await f.service.create_claim((f as any).claim(), f.owner);
+    original = await f.service.create_claim(f.claim(), f.owner);
   const file = path.join(f.root, "private", original.path),
     before = await readFile(file, "utf8");
   await writeFile(

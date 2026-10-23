@@ -87,9 +87,9 @@ async function valid(value: any) {
 for (const [name, evidenceCount, body] of [
   ["nodes", 10, "Synthetic claim."],
   ["bytes", 1, "界".repeat(4000)],
-]) {
+] as const) {
   it(`Recent paginates ${name} without skipping or duplicating source groups`, async () => {
-    const { db, active } = fixture(10, 20, evidenceCount as any, body as any);
+    const { db, active } = fixture(10, 20, evidenceCount, body);
     const seen = [];
     let beforeSequence, upperSequence;
     do {

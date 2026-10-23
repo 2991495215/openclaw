@@ -4,8 +4,11 @@ import path from "node:path";
 import { Check } from "typebox/value";
 import { expect, it } from "vitest";
 import { parse } from "yaml";
-import { ReconcileEvidenceOutput } from "./evidence-reconciliation-contract.js";
-import { GitUnavailable } from "./git-history.js";
+import {
+  ReconcileEvidenceOutput,
+  type ReconcileEvidenceInput,
+} from "./evidence-reconciliation-contract.js";
+import { GitHistory, GitUnavailable } from "./git-history.js";
 import { SqliteIdentityStore } from "./identity-store.js";
 import { KnowledgeStorage } from "./storage.js";
 import { createVault, plainAccess, useTestTempDirs, jsonRoundTrip } from "./test-support.js";
@@ -13,24 +16,27 @@ import { digest } from "./vault.js";
 
 const tempDirs = useTestTempDirs();
 
-const noGit = {
-  checkpoint() {
+class NoGit extends GitHistory {
+  override checkpoint(): never {
     throw new GitUnavailable("Disabled in migration fixture");
-  },
-};
-const meta = (raw: any) => parse(/^---\n([\s\S]*?)\n---\n/.exec(raw)![1] as any);
+  }
+}
+const meta = (raw: any) => parse(/^---\n([\s\S]*?)\n---\n/.exec(raw)![1]!);
 
 async function fixture() {
   const base = tempDirs.make("knowledge-source-migration-");
 
   const f = await createVault(base),
     db = new SqliteIdentityStore(f.config.statePath);
-  const storage = new KnowledgeStorage(f.config, db, undefined, noGit as any),
+  const storage = new KnowledgeStorage(f.config, db, undefined, new NoGit(f.root)),
     access = plainAccess();
   const scoped = path.join(f.root, "private");
   const scan = () => storage.run(access, (vault) => vault.scan());
   const record = async (id: any) => (await scan()).records.find((r) => r.id === id);
-  const input = async (id: any, extra = {}) => {
+  const input = async (
+    id: any,
+    extra: Partial<ReconcileEvidenceInput> = {},
+  ): Promise<ReconcileEvidenceInput> => {
     const current = await record(id),
       data = await scan();
     return {
@@ -102,24 +108,24 @@ it("preview is read-only; expanded and compact migrations preserve semantics, au
   const descriptorsBefore = await readdir(path.join(f.scoped, "artifacts/sources"));
   const historyBefore = f.storage.history(f.access, { id: saved.id }).entries;
   const previewInput = await f.input(saved.id, { representation: "expanded" });
-  const preview = await f.storage.reconcileEvidence(previewInput as any, f.access);
+  const preview = await f.storage.reconcileEvidence(previewInput, f.access);
   expect(Check(ReconcileEvidenceOutput, preview)).toBeTruthy();
   expect(preview.state).toBe("preview");
   expect((await f.record(saved.id))!.hash).toBe(before!.hash);
   expect(f.storage.history(f.access, { id: saved.id }).entries.length).toBe(historyBefore.length);
   expect(await readdir(path.join(f.scoped, "artifacts/sources"))).toStrictEqual(descriptorsBefore);
   const apply = { ...previewInput, dryRun: false },
-    expanded = await f.storage.reconcileEvidence(apply as any, f.access);
+    expanded = await f.storage.reconcileEvidence(apply, f.access);
   expect(expanded.state).toBe("published");
   expect(Check(ReconcileEvidenceOutput, expanded)).toBeTruthy();
-  expect(await f.storage.reconcileEvidence(apply as any, f.access)).toStrictEqual(expanded);
+  expect(await f.storage.reconcileEvidence(apply, f.access)).toStrictEqual(expanded);
   const full = await f.record(saved.id);
   expect(meta(full!.raw).evidence[0].path).toBeTruthy();
   expect(full!.body).toBe(before!.body);
   expect(semantic(full!.metadata)).toStrictEqual(semantic(before!.metadata));
   expect(full!.writtenByAgentId, "representation conversion is not a new author").toBe("main");
   const compact = await f.storage.reconcileEvidence(
-    (await f.input(saved.id, { dryRun: false })) as any,
+    await f.input(saved.id, { dryRun: false }),
     f.access,
   );
   expect(compact.revision).toBe(before!.revision + 2);
@@ -145,7 +151,7 @@ it("reviewed current set replacement retains annotation support, other records, 
   const before = await f.record(saved.id),
     sourcePaths = [a.path, b.path];
   const receipt = await f.storage.reconcileEvidence(
-    (await f.input(saved.id, { evidence: [], dryRun: false })) as any,
+    await f.input(saved.id, { evidence: [], dryRun: false }),
     f.access,
   );
   const after = await f.record(saved.id);
@@ -175,13 +181,13 @@ it("stale revision/hash, ontology/vault and scope fences reject before mutation"
     { expectedOntologyFingerprint: "0".repeat(64) },
     { expectedVaultId: randomUUID() },
   ]) {
-    await expect(
-      f.storage.reconcileEvidence({ ...input, ...change } as any, f.access),
-    ).rejects.toThrow(/changed|conflict/i);
+    await expect(f.storage.reconcileEvidence({ ...input, ...change }, f.access)).rejects.toThrow(
+      /changed|conflict/i,
+    );
   }
   await expect(
     f.storage.reconcileEvidence(
-      input as any,
+      input,
       plainAccess({ visibility: "conversation", sessionId: randomUUID() }),
     ),
   ).rejects.toThrow(/unavailable|scope/i);
@@ -209,10 +215,7 @@ it("expanded dry run refuses an oversized rollback without discarding compact su
   );
   const before = await f.record(saved.id);
   await expect(
-    f.storage.reconcileEvidence(
-      (await f.input(saved.id, { representation: "expanded" })) as any,
-      f.access,
-    ),
+    f.storage.reconcileEvidence(await f.input(saved.id, { representation: "expanded" }), f.access),
   ).rejects.toThrow(/exceeds record limits/);
   expect((await f.record(saved.id))!.hash).toBe(before!.hash);
   expect(before!.metadata.evidence!.length).toBe(100);
@@ -238,9 +241,9 @@ it("deleting a reused descriptor before acceptance rejects without publication",
         unlinkSync(descriptor);
       }
     },
-    noGit as any,
+    new NoGit(f.root),
   );
-  await expect(writer.reconcileEvidence(input as any, f.access)).rejects.toThrow(
+  await expect(writer.reconcileEvidence(input, f.access)).rejects.toThrow(
     /ENOENT|missing|unavailable/i,
   );
   expect(await readFile(path.join(f.scoped, before!.path), "utf8")).toBe(before!.raw);

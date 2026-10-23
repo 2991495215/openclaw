@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { expect, it } from "vitest";
 import { editBody } from "./body-edit.js";
 import { capacityFixture } from "./capacity-test-support.js";
+import type { Envelope } from "./model.js";
 import { createKnowledgeService } from "./service.js";
 import { operations } from "./storage-host.js";
 import { KnowledgeStorage } from "./storage.js";
@@ -18,6 +19,8 @@ import {
 } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
+// The open envelope schema does not model the body_change record that body edits add.
+type BodyChanged = Envelope & { body_change: { reason: string } };
 
 /** Fresh complete fences for one synthetic active-page edit. */
 async function input(f: any, overrides = {}) {
@@ -56,7 +59,7 @@ it("bounded edits grow a page beyond input size, preserve metadata/evidence and 
   expect(after!.raw).toMatch(/# authored comment/);
   expect(after!.raw).toMatch(/custom: preserve-me/);
   expect(after!.metadata.evidence).toStrictEqual(baseline!.metadata.evidence);
-  expect((after!.metadata as any).body_change.reason).toBe(request.reason);
+  expect((after!.metadata as BodyChanged).body_change.reason).toBe(request.reason);
   expect(await f.storage.editBody(request, f.access)).toStrictEqual(saved);
   await expect(
     f.storage.editBody({ ...request, replacement: "different" }, f.access),

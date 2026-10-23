@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
+import type { Evidence } from "./model.js";
 import {
   describeSource,
   compactEvidence,
@@ -25,9 +26,9 @@ const read = (path: any) => {
 it("source identity is canonical, passage-independent and origin-sensitive", () => {
   const passage = { ...origin, start_line: 2, end_line: 3, quote: "verbatim" };
   expect(describeSource(passage)).toStrictEqual(retained);
-  expect(describeSource(Object.fromEntries(Object.entries(origin).toReversed()) as any).id).toBe(
-    retained.id,
-  );
+  expect(
+    describeSource(Object.fromEntries(Object.entries(origin).toReversed()) as typeof origin).id,
+  ).toBe(retained.id);
   for (const change of [
     { attribution: "Other origin" },
     { path: "artifacts/other.txt" },
@@ -110,7 +111,8 @@ it("only defined evidence locations are transformed, without mutation", () => {
   let visits = 0;
   const changed = mapMetadataEvidence(metadata, (evidence) => {
     visits++;
-    return compactEvidence(evidence as any).citation;
+    // mapMetadataEvidence hands each evidence entry over untyped.
+    return compactEvidence(evidence as Evidence).citation;
   });
   expect(visits).toBe(4);
   expect(metadata).toStrictEqual(before);

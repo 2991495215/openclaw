@@ -34,14 +34,14 @@ it("near-limit records scan, publish annotations, retain history and page recove
   expect(changed.state).toBe("published");
   expect((await f.record())!.body).toBe(before!.body);
   const head = f.storage.history(f.access, { id: before!.id }).entries[0];
-  let offset = 0,
+  let offset: number | null = 0,
     restored = "";
   do {
     const page = f.storage.revision(f.access, head!.sequence, { offset, maxChars: 65536 });
     expect(Check(contract.operations.revision.output, page)).toBeTruthy();
     expect(withinBudget(page)).toBeTruthy();
     restored += page.raw;
-    offset = page.content!.nextOffset as any;
+    offset = page.content!.nextOffset;
   } while (offset !== null);
   expect(restored).toBe((await f.record())!.raw);
   const detail = f.storage.mutation(f.access, changed.requestId);
@@ -49,7 +49,7 @@ it("near-limit records scan, publish annotations, retain history and page recove
   expect(withinBudget(detail)).toBeTruthy();
   expect(detail.files[0]!.content.proposed.nextOffset! > 0).toBeTruthy();
   const next = f.storage.mutation(f.access, changed.requestId, {
-    charOffset: detail.files[0]!.content.proposed.nextOffset as any,
+    charOffset: detail.files[0]!.content.proposed.nextOffset!,
   });
   expect(next.files[0]!.content.proposed.offset).toBe(detail.files[0]!.content.proposed.nextOffset);
   const content = await f.storage.run(f.access, (vault) =>
@@ -84,13 +84,13 @@ it("durable bytes accept exact boundary and reject one byte over independently o
 
 it("text windows preserve Unicode and bound JSON escapes", () => {
   const text = "😀\u0000".repeat(40000);
-  let offset = 0,
+  let offset: number | null = 0,
     restored = "";
   do {
     const page = textWindow(text, offset, 65536);
     expect(Buffer.byteLength(JSON.stringify(page.text)) <= 24576).toBeTruthy();
     restored += page.text;
-    offset = page.content.nextOffset as any;
+    offset = page.content.nextOffset;
   } while (offset !== null);
   expect(restored).toBe(text);
   expect(() => textWindow(text, 1)).toThrow(/Unicode/);
@@ -126,16 +126,16 @@ it("large full-record keyword matches keep ranking and label non-localized previ
 it("publication keeps auxiliary and descriptor limits through staging and retained copies", async () => {
   const f = await capacityFixture(tempDirs, 1000),
     files = new PublicationFiles(f.root);
-  const cases = [
+  const cases: [string, number][] = [
     ["private/ontology.yaml", 65536],
     ["private/artifacts/inline.md", 65536],
     ["private/artifacts/sources/" + "a".repeat(64) + ".json", 8192],
   ];
   for (const [target, limit] of cases) {
-    const before = "x".repeat(limit as any),
-      after = "y".repeat(limit as any);
-    files.exclusive(target as any, before);
-    expect(files.read(target as any)).toBe(before);
+    const before = "x".repeat(limit),
+      after = "y".repeat(limit);
+    files.exclusive(target, before);
+    expect(files.read(target)).toBe(before);
     const change = {
       path: target,
       before,
@@ -143,21 +143,21 @@ it("publication keeps auxiliary and descriptor limits through staging and retain
       stage: target + ".stage",
       backup: target + ".before",
     };
-    files.publish(change as any, () => {});
-    expect(files.read(target as any)).toBe(after);
+    files.publish(change, () => {});
+    expect(files.read(target)).toBe(after);
     expect(() =>
       files.exclusive(
         target + ".other",
         before + "x",
-        (target as any)!.includes("/sources/") ? "source-descriptor" : "auxiliary",
+        target.includes("/sources/") ? "source-descriptor" : "auxiliary",
       ),
     ).toThrow(/byte limit/);
     await writeFile(pathFor(f, target), after + "x");
-    expect(() => files.read(target as any)).toThrow(/Unsafe/);
-    expect(() => files.publish(change as any, () => {})).toThrow(/Unsafe/);
+    expect(() => files.read(target)).toThrow(/Unsafe/);
+    expect(() => files.publish(change, () => {})).toThrow(/Unsafe/);
     await writeFile(pathFor(f, target), after);
     await writeFile(pathFor(f, change.backup), before + "x");
-    expect(() => files.publish(change as any, () => {})).toThrow(/Unsafe/);
+    expect(() => files.publish(change, () => {})).toThrow(/Unsafe/);
     const fresh = {
       ...change,
       path: target + ".fresh",
@@ -166,9 +166,9 @@ it("publication keeps auxiliary and descriptor limits through staging and retain
       backup: target + ".fresh-before",
     };
     // Use another canonical destination of the same role and a staged oversize payload.
-    fresh.path = (target as any)!.includes("/sources/")
-      ? (target as any)!.replace("aaaa", "bbbb")
-      : (target as any)!.replace("ontology.yaml", "other.yaml");
+    fresh.path = target.includes("/sources/")
+      ? target.replace("aaaa", "bbbb")
+      : target.replace("ontology.yaml", "other.yaml");
     if (fresh.path === target) {
       fresh.path = target.replace("inline.md", "other.md");
     }
