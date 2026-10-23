@@ -1,99 +1,117 @@
 /* @vitest-environment jsdom */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginDiscoveryEntry } from "../../lib/plugins/index.ts";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../../test/helpers/promise.ts";
+import { matrixDiscoveryPlugin } from "../../test-helpers/plugins-e2e-fixtures.test-support.ts";
 
 const fetchIcon = vi.hoisted(() => vi.fn());
+// mock-isolation: control icon fetch settlement without real browser Blob or network I/O.
+vi.mock("./icon-loader.ts", () => ({ fetchCatalogIconBlobUrl: fetchIcon }));
 
-vi.mock("./icon-loader.ts", () => ({
-  fetchCatalogIconBlobUrl: (...args: unknown[]) => fetchIcon(...args),
-}));
-
-const { CatalogIconController } = await import("./catalog-icon-controller.ts");
-
+const { PluginIconOwner } = await import("./plugin-icon-owner.ts");
+const imageUrl = "https://cdn.example.com/test.png";
 const entry = {
-  id: "ch_dGVzdA",
-  catalog: {
-    name: "Test",
-    official: false,
-    categories: ["tools"],
-    imageUrl: "https://cdn.example.com/test.png",
-  },
-  local: {
-    present: false,
-    installed: false,
-    enabled: false,
-    state: "not-installed",
-    action: "install",
-  },
-} satisfies PluginDiscoveryEntry;
+  ...matrixDiscoveryPlugin,
+  catalog: { ...matrixDiscoveryPlugin.catalog, imageUrl },
+};
 
-describe("CatalogIconController", () => {
-  beforeEach(() => fetchIcon.mockReset());
+let controller: InstanceType<typeof PluginIconOwner>;
+const events: string[] = [];
+const published = vi.fn(() => events.push("urls"));
+const settled = () => vi.waitFor(() => expect(controller.isLoading(imageUrl)).toBe(false));
 
-  it("publishes proxied catalog icons and revokes them when the entry leaves", async () => {
-    fetchIcon.mockResolvedValue("blob:test-icon");
-    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    const published: Array<Record<string, string>> = [];
-    const controller = new CatalogIconController({
-      getFetchContext: () => ({
-        gatewayUrl: "ws://localhost",
-        resourceBasePath: "",
-        auth: {},
-      }),
-      isConnected: () => true,
-      onUrlsChange: (urls) => published.push(urls),
-    });
-
-    controller.sync([entry]);
-    expect(controller.isLoading(entry.catalog.imageUrl)).toBe(true);
-    await vi.waitFor(() =>
-      expect(published.at(-1)).toEqual({
-        "https://cdn.example.com/test.png": "blob:test-icon",
-      }),
-    );
-
-    expect(controller.isLoading(entry.catalog.imageUrl)).toBe(false);
-    controller.sync([]);
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:test-icon");
-    expect(published.at(-1)).toEqual({});
+beforeEach(() => {
+  fetchIcon.mockReset();
+  published.mockClear();
+  events.length = 0;
+  controller = new PluginIconOwner({
+    kind: "catalog",
+    getFetchContext: () => ({ gatewayUrl: "ws://localhost", resourceBasePath: "", auth: {} }),
+    isConnected: () => true,
+    onUrlsChange: published,
+    onLoadingChange: () => events.push("loading"),
   });
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
-  it("does not retain an aborted request as a permanent miss", async () => {
-    let rejectFirst: ((error: Error) => void) | undefined;
-    fetchIcon
-      .mockImplementationOnce(
-        () =>
-          new Promise<string>((_resolve, reject) => {
-            rejectFirst = reject;
-          }),
-      )
-      .mockResolvedValueOnce("blob:retried-icon");
-    const published: Array<Record<string, string>> = [];
-    const controller = new CatalogIconController({
-      getFetchContext: () => ({
-        gatewayUrl: "ws://localhost",
-        resourceBasePath: "",
-        auth: {},
-      }),
-      isConnected: () => true,
-      onUrlsChange: (urls) => published.push(urls),
-    });
+it("publishes proxied catalog icons and revokes them when the entry leaves", async () => {
+  fetchIcon.mockResolvedValue("blob:icon");
+  const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 
-    controller.sync([entry]);
-    expect(controller.isLoading(entry.catalog.imageUrl)).toBe(true);
-    await vi.waitFor(() => expect(fetchIcon).toHaveBeenCalledTimes(1));
-    controller.reset();
-    expect(controller.isLoading(entry.catalog.imageUrl)).toBe(false);
-    rejectFirst?.(new Error("aborted"));
-    await vi.waitFor(() => expect(fetchIcon).toHaveBeenCalledTimes(1));
+  controller.syncCatalog([entry], [], new Set());
+  expect(fetchIcon).not.toHaveBeenCalled();
+  controller.syncCatalog([entry], [], new Set([entry.id]));
+  expect(controller.isLoading(imageUrl)).toBe(true);
+  await vi.waitFor(() => expect(published).toHaveBeenLastCalledWith({ [imageUrl]: "blob:icon" }));
 
-    controller.sync([entry]);
-    expect(controller.isLoading(entry.catalog.imageUrl)).toBe(true);
-    await vi.waitFor(() =>
-      expect(published.at(-1)).toEqual({
-        "https://cdn.example.com/test.png": "blob:retried-icon",
-      }),
-    );
+  expect(controller.isLoading(imageUrl)).toBe(false);
+  controller.syncCatalog([entry], [], new Set());
+  expect(revokeObjectURL).not.toHaveBeenCalled();
+  controller.syncCatalog([entry], [], new Set([entry.id]));
+  expect(fetchIcon).toHaveBeenCalledOnce();
+  controller.syncCatalog([]);
+  expect(revokeObjectURL).toHaveBeenCalledWith("blob:icon");
+  expect(published).toHaveBeenLastCalledWith({});
+});
+
+it.each(["empty", "error"])("retains a %s miss across removal until reset", async (kind) => {
+  fetchIcon.mockImplementationOnce(() =>
+    kind === "empty" ? Promise.resolve(null) : Promise.reject(new Error("failed")),
+  );
+  controller.syncCatalog([entry]);
+  await settled();
+  controller.syncCatalog([]);
+  controller.syncCatalog([entry]);
+  expect(fetchIcon).toHaveBeenCalledOnce();
+  controller.reset();
+  fetchIcon.mockResolvedValueOnce(null);
+  controller.syncCatalog([entry]);
+  expect(fetchIcon).toHaveBeenCalledTimes(2);
+  await settled();
+});
+
+it.each(["success", "error"])("retires late %s without timing out", async (outcome) => {
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => events.push(`revoke:${url}`));
+  fetchIcon.mockResolvedValueOnce("blob:first");
+  controller.syncCatalog([entry]);
+  await settled();
+  vi.useFakeTimers();
+  const pending = createDeferred<string>();
+  const slow = "https://cdn.example.com/slow.png";
+  let signal!: AbortSignal;
+  fetchIcon.mockImplementationOnce((params: { signal: AbortSignal }) => {
+    signal = params.signal;
+    signal.addEventListener("abort", () => events.push("abort"));
+    return pending.promise;
   });
+  controller.syncCatalog([entry], [slow]);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(signal.aborted).toBe(false);
+  expect(controller.isLoading(slow)).toBe(true);
+  events.length = 0;
+  controller.syncCatalog([]);
+  expect(events).toEqual(["revoke:blob:first", "abort", "loading", "urls"]);
+  controller.reset();
+  events.length = 0;
+  if (outcome === "success") {
+    pending.resolve("blob:late");
+  } else {
+    pending.reject(new Error("aborted"));
+  }
+  await vi.advanceTimersByTimeAsync(0);
+  expect(events).toEqual(outcome === "success" ? ["revoke:blob:late"] : []);
+  expect(published).toHaveBeenLastCalledWith({});
+  events.length = 0;
+  controller.reset();
+  controller.reset();
+  expect(events).toEqual(["loading", "loading"]);
+  fetchIcon.mockResolvedValueOnce("blob:retry");
+  controller.syncCatalog([], [slow]);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(fetchIcon).toHaveBeenCalledTimes(3);
+  expect(published).toHaveBeenLastCalledWith({ [slow]: "blob:retry" });
+  controller.reset();
 });

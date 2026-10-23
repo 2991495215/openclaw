@@ -97,10 +97,8 @@ struct HealthStoreStateTests {
             let state = AppState(preview: true)
             state.connectionMode = mode
             state.isPaused = true
-            try Self.withSnapshot([:], order: [], lastError: healthError) { store in
-                // Assert the inputs, leaving the same capture usable against the original implementation.
-                // The regression tests below assert the corrected presentation independently.
-                try #require(store.snapshot?.ok == true)
+            try Self.withSnapshot([:], order: [], coreReady: true, lastError: healthError) { store in
+                try #require(store.snapshot?.ok == true && store.snapshot?.coreReady == true)
                 try #require(store.snapshot?.channels.isEmpty == true)
                 try #require(store.lastError == healthError)
                 try Self.render(
@@ -164,32 +162,59 @@ struct HealthStoreStateTests {
         #expect(store.summaryLine == "Health check pending")
     }
 
-    @Test(arguments: [[], ["telegram"]])
-    @MainActor func `successful health without channels reports healthy`(order: [String]) throws {
-        try Self.withSnapshot([:], order: order) { store in
-            #expect(store.state == .ok)
-            #expect(store.summaryLine == "Gateway healthy")
+    @Test(arguments: [nil, false, true] as [Bool?], [[], ["telegram"]])
+    @MainActor func `connected gateway reports readiness without a selectable channel`(
+        coreReady: Bool?, order: [String]) throws
+    {
+        try Self.withSnapshot([:], order: order, coreReady: coreReady) { store in
+            let connection = DebugSettings.gatewayStatus(
+                mode: .remote, hostsLocalGateway: false, localStatus: .stopped, connectionState: .connected)
+            #expect(connection.label == "Connected")
+            #expect(store.snapshot?.ok == true)
+            #expect(store.snapshot?.coreReady == coreReady)
+            switch coreReady {
+            case true?:
+                #expect(store.state == .ok)
+                #expect(store.summaryLine == "Gateway ready")
+            case false?:
+                #expect(store.state == .degraded("Gateway not ready"))
+                #expect(store.summaryLine == "Gateway not ready")
+            case nil:
+                #expect(store.state == .unknown)
+                #expect(store.state.tint == Color.secondary)
+                #expect(store.summaryLine == "Health received; readiness not reported")
+            }
         }
     }
 
     @Test @MainActor func `failed health without channels reports degraded`() throws {
-        try Self.withSnapshot([:], order: [], ok: false) { store in
-            #expect(store.state == .degraded("health probe failed"))
-            #expect(store.summaryLine == "Health check failed: health probe failed")
+        try Self.withSnapshot([:], order: [], ok: false, coreReady: true) { store in
+            #expect(store.state == .degraded("health check failed"))
+            #expect(store.summaryLine == "Health check failed: health check failed")
         }
     }
 
     @Test @MainActor func `health without channels or overall status remains unknown`() throws {
-        try Self.withSnapshot([:], order: [], ok: nil) { store in
+        try Self.withSnapshot([:], order: [], ok: nil, coreReady: true) { store in
             #expect(store.state == .unknown)
             #expect(store.summaryLine == "Health check pending")
         }
     }
 
     @Test @MainActor func `health error overrides a successful snapshot without channels`() throws {
-        try Self.withSnapshot([:], order: [], lastError: "Connection closed") { store in
+        try Self.withSnapshot([:], order: [], coreReady: true, lastError: "Connection closed") { store in
             #expect(store.state == .degraded("Connection closed"))
             #expect(store.summaryLine == "Health check failed: Connection closed")
+        }
+    }
+
+    @Test(arguments: [nil, false, true] as [Bool?])
+    @MainActor func `overall status does not replace selected channel health`(ok: Bool?) throws {
+        try Self.withSnapshot([
+            "telegram": ["running": true, "connected": true, "lifecycle": "ready"],
+        ], ok: ok, coreReady: false) { store in
+            #expect(store.state == .ok)
+            #expect(store.summaryLine == "Telegram ready")
         }
     }
 
@@ -218,7 +243,7 @@ struct HealthStoreStateTests {
                 Issue.record("Expected degraded state when probe fails for linked channel")
             }
 
-            #expect(store.summaryLine.contains("probe degraded"))
+            #expect(store.summaryLine.contains("check degraded"))
         }
     }
 
@@ -479,6 +504,7 @@ struct HealthStoreStateTests {
         _ channels: [String: [String: Any]],
         order: [String] = ["telegram"],
         ok: Bool? = true,
+        coreReady: Bool? = nil,
         lastError: String? = nil,
         body: @MainActor (HealthStore) throws -> Void) throws
     {
@@ -501,6 +527,7 @@ struct HealthStoreStateTests {
             "sessions": ["path": "/tmp/sessions.json", "count": 0, "recent": []],
         ]
         if let ok { fixture["ok"] = ok }
+        if let coreReady { fixture["coreReady"] = coreReady }
         let data = try JSONSerialization.data(withJSONObject: fixture)
         let snap = try #require(decodeHealthSnapshot(from: data))
         let store = HealthStore.shared

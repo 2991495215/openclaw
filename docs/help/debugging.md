@@ -102,9 +102,9 @@ Add gateway CLI flags after `gateway:watch` and they pass through on each restar
 When you run `pnpm openclaw`, `pnpm dev`, or a Gateway development runner from
 a checkout, the runner selects that checkout's plugins ahead of tracked global
 copies with the same id. Built plugin output remains preferred when available,
-including for separately published checkout plugins and Doctor's provider/tool
-checks. Source-only plugins still load from the checkout. Rebuild to pick up
-source changes when using built output. Intentional source-entry selections and
+including for separately published checkout plugins, Doctor contracts, and Doctor's
+provider/tool checks. Source-only plugins still load from the checkout. Rebuild to
+pick up source changes when using built output. Intentional source-entry selections and
 mounted source overlays keep using source instead of their compiled peers.
 
 This selection is separate from the `--dev` profile. It does not grant trusted
@@ -232,6 +232,16 @@ OPENCLAW_TRACE_SYNC_IO=1 pnpm openclaw gateway --force
 ```
 
 `pnpm gateway:watch` leaves this flag disabled by default for the watched Gateway child. Set `OPENCLAW_TRACE_SYNC_IO=1` when you want sync I/O trace output in watch mode too.
+
+For Gateway startup phase timings, set `OPENCLAW_GATEWAY_STARTUP_TRACE=1`.
+Per-plugin `plugins.gateway-load.plugin.<id>` details separate config validation
+(`configValidationMs`), artifact selection and entry-path checks
+(`artifactPreparationMs`), source capture and module evaluation (`loadMs`), and
+registration (`registerMs`). `loadAndRegisterMs` covers loading and registration;
+it excludes config validation and artifact preparation. These details are emitted
+for attempted module loads, including load or registration failures.
+`plugins.gateway-bootstrap-import` reports the lazy host-module import before
+individual plugin loading begins.
 
 ## Plugin lifecycle trace
 

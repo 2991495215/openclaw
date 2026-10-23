@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
@@ -10,7 +11,6 @@ import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js
 import { withEnvAsync } from "../test-utils/env.js";
 import type { WizardSelectParams } from "../wizard/prompts.js";
 import { installPluginFromArchive, installPluginFromNpmSpec } from "./install.js";
-import { writePersistedInstalledPluginIndexInstallRecords } from "./installed-plugin-index-records.js";
 import { buildNpmResolutionInstallFields } from "./installs.js";
 import {
   clearPluginLoaderCache,
@@ -19,6 +19,7 @@ import {
 import { prepareAuthChoiceLoadedPluginProvider } from "./provider-auth-choice.js";
 import { buildPluginRegistrySnapshotReport } from "./status-snapshot.js";
 import { cleanupTrackedTempDirs, makeTrackedTempDir } from "./test-helpers/fs-fixtures.js";
+import { seedInstalledPluginIndex } from "./test-helpers/installed-plugin-index.js";
 import { registryPackages, startStaticRegistry } from "./test-helpers/npm-registry-fixtures.js";
 
 const install = vi.hoisted(() =>
@@ -27,13 +28,13 @@ const install = vi.hoisted(() =>
   >(),
 );
 const modelPicker = vi.hoisted(() =>
-  vi.fn<typeof import("../commands/model-picker.js").promptModelAllowlist>(),
+  vi.fn<typeof import("../flows/model-picker.js").promptModelAllowlist>(),
 );
 vi.mock("../commands/onboarding-plugin-install.js", () => ({
   ensureOnboardingPluginInstalled: install,
 }));
-vi.mock("../commands/model-picker.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../commands/model-picker.js")>()),
+vi.mock("../flows/model-picker.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../flows/model-picker.js")>()),
   promptModelAllowlist: modelPicker,
 }));
 
@@ -142,10 +143,8 @@ it.each([
                 extensionsDir: path.join(stateDir, "extensions"),
               });
         expect(result.ok, JSON.stringify(result)).toBe(true);
-        if (!result.ok) {
-          throw new Error(result.error);
-        }
-        await writePersistedInstalledPluginIndexInstallRecords(
+        assert.ok(result.ok);
+        await seedInstalledPluginIndex(
           {
             [pluginId]: {
               source,
@@ -168,23 +167,30 @@ it.each([
           installed: true,
           status: "installed",
         }));
+        const authContext = {
+          config,
+          workspaceDir,
+          agentId: "main",
+          agentDir: path.join(stateDir, "agents", "main", "agent"),
+        };
         for (const { choiceId } of choices) {
           const prompter = createWizardPrompter();
-          const prepared = await prepareAuthChoiceLoadedPluginProvider({
-            authChoice: choiceId,
-            config,
-            workspaceDir,
-            agentId: "main",
-            agentDir: path.join(stateDir, "agents", "main", "agent"),
-            prompter,
-            runtime: createNonExitingRuntime(),
-            setDefaultModel: false,
-          });
-          expect(install, choiceId).not.toHaveBeenCalled();
-          expect(prepared?.retrySelection, choiceId).not.toBe(true);
-          expect(prepared?.provider?.id, choiceId).toBe(pluginId);
-          expect(prompter.text).toHaveBeenCalledWith({ message: choiceId });
-          expect(prepared?.agentModelOverride).toBe(`${pluginId}/fixture-model`);
+          await prepareAuthChoiceLoadedPluginProvider(
+            {
+              authChoice: choiceId,
+              ...authContext,
+              prompter,
+              runtime: createNonExitingRuntime(),
+              setDefaultModel: false,
+            },
+            (prepared, provider) => {
+              expect(install, choiceId).not.toHaveBeenCalled();
+              expect(prepared?.retrySelection, choiceId).not.toBe(true);
+              expect(provider?.id, choiceId).toBe(pluginId);
+              expect(prompter.text).toHaveBeenCalledWith({ message: choiceId });
+              expect(prepared?.agentModelOverride).toBe(`${pluginId}/fixture-model`);
+            },
+          );
         }
         const authChoice = pluginId === "moonshot" ? "moonshot-api-key-cn" : `${pluginId}-api-key`;
         const prompter = createWizardPrompter({
@@ -193,18 +199,12 @@ it.each([
               options.find((option) => option.value === authChoice) ??
               options.find((option) => option.value === pluginId) ??
               options.find((option) => option.value === "__more");
-            if (!selected) {
-              throw new Error("Unexpected configure selection");
-            }
+            assert.ok(selected, "Unexpected configure selection");
             return selected.value;
           },
         });
         modelPicker.mockResolvedValue({ models: undefined });
-        await promptAuthConfig(config, createNonExitingRuntime(), prompter, {
-          agentId: "main",
-          agentDir: path.join(stateDir, "agents", "main", "agent"),
-          workspaceDir,
-        });
+        await promptAuthConfig(config, createNonExitingRuntime(), prompter, authContext);
         expect(install, authChoice).not.toHaveBeenCalled();
         expect(prompter.text).toHaveBeenCalledWith({ message: authChoice });
         expect(modelPicker).toHaveBeenCalledOnce();

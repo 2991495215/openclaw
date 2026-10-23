@@ -61,7 +61,21 @@ returns them.
 
 `providerOptions.deepgram` merges extra query params directly into the
 Deepgram `/listen` request, so any Deepgram-supported param name works
-(for example `detect_language`, `punctuate`, `smart_format`):
+(for example `detect_language`, `punctuate`, `smart_format`).
+
+Array values are sent as repeated query parameters in both batch and Flux
+requests. For example, set `providerOptions` on the audio config or a model entry
+to send each `keyterm` separately instead of a comma-separated list:
+
+```json validate=false
+{
+  "providerOptions": {
+    "deepgram": {
+      "keyterm": ["OpenClaw", "Deepgram"]
+    }
+  }
+}
+```
 
 <Tabs>
   <Tab title="With language hint">
@@ -110,6 +124,11 @@ converts the voice note to 16 kHz mono linear16 audio with `ffmpeg`, then sends
 it to Deepgram's `/v2/listen` WebSocket endpoint.
 Set `tools.media.models[].model` to either Flux model in the getting-started
 configuration above.
+
+Voice-note conversion processes the complete audio file, including notes longer
+than 20 minutes. Decoded audio uses a private temporary file, which is removed
+after the transcription attempt. The configured input-size and request-timeout
+limits still apply; failed conversion or upload does not return a partial transcript.
 
 Flux supports `eager_eot_threshold`, `eot_threshold`, `eot_timeout_ms`,
 `keyterm`, `language_hint`, `mip_opt_out`, `numerals`, `profanity_filter`,
