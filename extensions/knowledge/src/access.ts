@@ -164,13 +164,24 @@ export function maintenancePrincipal(scope: Partition): Principal {
   return { agentId: MAINTENANCE_AGENT, scope };
 }
 
-/** Whether a feature caller may change store assignments (spec §7). */
+/** Whether a feature caller may change store assignments (spec §7). A host that
+ * cannot confirm the caller live at publication cannot accept assignment changes. */
 export function canChangeAssignments(context: FeatureInvocationContext): boolean {
   return (
     context.source === "session-action" &&
     Boolean(context.action.client?.connId) &&
-    Boolean(context.action.client?.scopes.includes("operator.admin"))
+    Boolean(context.action.client?.scopes.includes("operator.admin")) &&
+    typeof context.action.client?.assertCurrent === "function"
   );
+}
+
+/** Live: throws once the operator's request authority has ended. Assignment
+ * writes pass this to the config writer, which checks it at publication. */
+export function assertCallerCurrent(context: FeatureInvocationContext): void {
+  if (context.source !== "session-action" || !context.action.client?.assertCurrent) {
+    throw new Error("Knowledge can't confirm the operator's access; nothing was changed.");
+  }
+  context.action.client.assertCurrent();
 }
 
 /** Pin a principal: later checks fail if live authority now resolves differently. */

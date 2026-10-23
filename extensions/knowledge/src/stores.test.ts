@@ -260,6 +260,36 @@ it("switching named stores leaves one assignment and the former store untouched"
   expect(await f.titles("research")).toStrictEqual(["Alpha"]);
 });
 
+it("an operator whose access ends before the config write changes nothing", async () => {
+  const f = await fixture();
+  await f.save("main", "Seed");
+  const writes = f.writes.length,
+    before = structuredClone(f.host.config);
+  // Admission reads the dispatch-time scopes; the live check runs only at publication.
+  const revoked = operatorContext(f.api, ["operator.admin"], () => {
+    throw new Error("Gateway requester authority changed");
+  });
+  const result = await f.service.stores_change(
+    {
+      requestId: randomUUID(),
+      expectedRevision: (await f.snapshot()).revision,
+      agent: "main",
+      change: { kind: "share_existing", label: "A", agents: ["research"] },
+    },
+    revoked,
+  );
+  expect(result.outcome).not.toBe("applied");
+  expect(f.writes).toHaveLength(writes);
+  expect(f.host.config).toStrictEqual(before);
+  // The refused request does not block a current administrator.
+  const next = await (f.change as any)("main", {
+    kind: "share_existing",
+    label: "A",
+    agents: ["research"],
+  });
+  expect(next.result.outcome, next.result.message).toBe("applied");
+});
+
 it("validation, stale revisions and non-admin callers never partially apply", async () => {
   const f = await fixture();
   await f.save("main", "Seed");

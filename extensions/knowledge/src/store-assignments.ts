@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { FeatureInvocationContext } from "openclaw/plugin-sdk/feature-plugin";
-import { canChangeAssignments } from "./access.js";
+import { assertCallerCurrent, canChangeAssignments } from "./access.js";
 import { RegistryUnavailable } from "./registry-client.js";
 import { bindingState, type RegistrySnapshot } from "./store-registry.js";
 import {
@@ -402,6 +402,9 @@ export function createStoreOperations(stores: Stores) {
         try {
           await api.runtime.config.mutateConfigFile({
             afterWrite: { mode: "auto" },
+            // The operator may disconnect or lose access while this change waits
+            // for the registry, store lanes and the config lock.
+            writeOptions: { assertCurrent: () => assertCallerCurrent(context) },
             mutate(draft) {
               // Compare only the stores section; unrelated edits never conflict.
               if (storesRevision(readStoresSection(draft)) !== input.expectedRevision) {

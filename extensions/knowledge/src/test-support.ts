@@ -153,12 +153,16 @@ export function hostApi(
         current: () => host.config,
         async mutateConfigFile({
           mutate,
+          writeOptions,
         }: {
           mutate: (draft: HostConfig, context: unknown) => unknown;
+          writeOptions?: { assertCurrent?: () => void };
         }) {
           // Mutations start from the persisted file, which may be ahead of config.current().
           const draft = structuredClone(host.pending ?? host.config);
           await mutate(draft, { snapshot: {}, previousHash: null });
+          // Real hosts check caller authority at publication.
+          writeOptions?.assertCurrent?.();
           writes.push(draft);
           // Real hosts publish a write to config.current() after it resolves.
           if (lag) {
@@ -215,10 +219,14 @@ export const toolContext = (
 });
 
 /** Operator session-action context. */
-export const operatorContext = (api: OpenClawPluginApi, scopes = ["operator.write"]): any => ({
+export const operatorContext = (
+  api: OpenClawPluginApi,
+  scopes = ["operator.write"],
+  assertCurrent = () => {},
+): any => ({
   source: "session-action" as const,
   api,
-  action: { client: { connId: "test", scopes } },
+  action: { client: { connId: "test", scopes, assertCurrent } },
 });
 
 /** Pinned access for direct storage calls, from a feature context. */
