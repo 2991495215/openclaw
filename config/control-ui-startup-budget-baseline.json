@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 313115,
-  "reason": "Defer settings, activity, terminal, and preferences English at existing lazy owners. Matched c64eaf54 baseline: startup 316245 B to 313115 B, seven JS requests unchanged; preserve main picker deferrals.",
-  "updatedAt": "2026-10-22"
+  "startupJsGzipBytes": 312986,
+  "reason": "Defer settings, activity, terminal, and preferences English at existing lazy owners. Matched 2c5b726d source baseline: startup 316173 B to 312986 B, seven JS requests unchanged; preserve main tool-row deferrals.",
+  "updatedAt": "2026-10-23"
 }
