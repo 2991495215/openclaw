@@ -2453,6 +2453,7 @@ for (const [flag, wanted] of Object.entries(expected)) {
 console.log(JSON.stringify({
   children: JSON.parse(process.env.FRV_REUSED_CHILDREN),
   manifest: JSON.parse(process.env.FRV_EVIDENCE_MANIFEST),
+  root: {artifact: JSON.parse(process.env.FRV_EVIDENCE_ARTIFACT)},
   releaseProfile: process.env.RELEASE_PROFILE,
   rerunGroup: process.env.RERUN_GROUP,
 }));
@@ -2471,6 +2472,7 @@ console.log(JSON.stringify({
     const sourceManifest = rootSource
       ? {
           ...evidenceManifest(),
+          retainedDiagnostic: "x".repeat(50_000),
           targetSha: reuse.evidenceSha,
           sourceAdmissionContract: "1",
           sourceAdmission: rootSource,
@@ -2481,7 +2483,10 @@ console.log(JSON.stringify({
             allowUnreleasedChangelog: "false",
           },
         }
-      : evidenceManifest();
+      : {
+          ...evidenceManifest(),
+          retainedDiagnostic: "x".repeat(50_000),
+        };
     const planInputs = planInput({
       ...(sourceAdmission ? { sourceAdmissionContract: "1", sourceAdmission } : {}),
       dockerPreflightResult: "skipped",
@@ -2509,6 +2514,13 @@ console.log(JSON.stringify({
         "--validate-run": "99",
       }),
       FRV_EVIDENCE_MANIFEST: JSON.stringify(sourceManifest),
+      FRV_EVIDENCE_ARTIFACT: JSON.stringify({
+        digest: `sha256:${"f".repeat(64)}`,
+        id: "900",
+        name: "full-release-validation-99-1",
+        runAttempt: 1,
+        sizeInBytes: 4096,
+      }),
       FRV_REUSED_CHILDREN: JSON.stringify(reusedEvidenceChildren()),
       FRV_VALIDATOR_ARGS: validatorArgs,
       FULL_RELEASE_EXECUTION_PLAN_PATH: output,
@@ -2531,7 +2543,10 @@ console.log(JSON.stringify({
       return;
     }
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(readFileSync(output, "utf8"))).toMatchObject({
+    const sealed = JSON.parse(readFileSync(output, "utf8"));
+    expect(Buffer.byteLength(JSON.stringify(sealed))).toBeLessThan(200_000);
+    expect(JSON.stringify(sealed)).not.toContain("retainedDiagnostic");
+    expect(sealed).toMatchObject({
       children: [
         expect.objectContaining({ key: "normalCi", runId: "101", source: "reused" }),
         expect.objectContaining({ key: "pluginPrerelease", runId: "202", source: "reused" }),
@@ -2547,18 +2562,59 @@ console.log(JSON.stringify({
         rootRunId: "99",
         runUrl: "https://example.invalid/runs/99",
         selectedRunId: "99",
-        sourceManifest,
+        sourceArtifact: {
+          digest: `sha256:${"f".repeat(64)}`,
+          id: "900",
+          name: "full-release-validation-99-1",
+          runAttempt: 1,
+          sizeInBytes: 4096,
+        },
       },
       trustedWorkflow: reuse.trustedWorkflow,
     });
     expect(JSON.parse(readFileSync(validatorArgs, "utf8"))).toContain("--expected-selected-run-id");
+    if (reuse.name === "changelog-only") {
+      const drainPath = join(root, "drain.json");
+      writeFileSync(drainPath, serializeReleaseArtifact({ children: {} }));
+      const writeResult = runCollector("write-manifest", {
+        FRV_EXPECTED_REUSE: JSON.stringify({
+          "--expected-changed-paths-json": JSON.stringify(reuse.changedPaths),
+          "--expected-evidence-policy": reuse.policy,
+          "--expected-evidence-sha": reuse.evidenceSha,
+          "--expected-root-run-id": "99",
+          "--expected-selected-run-id": "99",
+          "--expected-target-sha": TARGET_SHA,
+          "--trusted-workflow-full-ref": reuse.trustedWorkflow.fullRef,
+          "--trusted-workflow-ref": reuse.trustedWorkflow.ref,
+          "--trusted-workflow-sha": reuse.trustedWorkflow.sha,
+          "--validate-run": "99",
+        }),
+        FRV_EVIDENCE_ARTIFACT: JSON.stringify(sealed.evidenceReuse.sourceArtifact),
+        FRV_EVIDENCE_MANIFEST: JSON.stringify(sourceManifest),
+        FRV_REUSED_CHILDREN: JSON.stringify(reusedEvidenceChildren()),
+        FRV_VALIDATOR_ARGS: validatorArgs,
+        OPENCLAW_RELEASE_CI_SUMMARY_VALIDATOR: validator,
+        RELEASE_EXECUTION_PLAN_PATH: output,
+        DIAGNOSTIC_DRAIN_PATH: drainPath,
+        RERUN_GROUP: "all",
+        RUNNER_TEMP: root,
+      });
+      expect(writeResult.status, writeResult.stderr).toBe(0);
+      const writtenManifest = JSON.parse(
+        readFileSync(
+          join(root, "full-release-validation/full-release-validation-manifest.json"),
+          "utf8",
+        ),
+      );
+      expect(writtenManifest.retainedDiagnostic).toBe(sourceManifest.retainedDiagnostic);
+    }
   });
 
   it.each([
-    { name: "unchanged source manifest", mutation: "none", blocker: "" },
+    { name: "unchanged evidence artifact", mutation: "none", blocker: "" },
     {
-      name: "changed source manifest",
-      mutation: "sha",
+      name: "changed evidence artifact",
+      mutation: "digest",
       blocker: "provenance_mismatch",
     },
   ])("revalidates $name at the Decision boundary", ({ mutation, blocker }) => {
@@ -2568,9 +2624,16 @@ console.log(JSON.stringify({
     const gh = join(root, "gh");
     const validator = join(root, "validator.mjs");
     const sourceManifest = { ...evidenceManifest(), validationInputs: {} };
-    const revalidatedManifest = structuredClone(sourceManifest);
-    if (mutation === "sha") {
-      revalidatedManifest.targetSha = "c".repeat(40);
+    const sourceArtifact = {
+      digest: `sha256:${"f".repeat(64)}`,
+      id: "900",
+      name: "full-release-validation-99-1",
+      runAttempt: 1,
+      sizeInBytes: 4096,
+    };
+    const revalidatedArtifact = structuredClone(sourceArtifact);
+    if (mutation === "digest") {
+      revalidatedArtifact.digest = `sha256:${"e".repeat(64)}`;
     }
     const sealedPlan = executionPlan(
       {
@@ -2587,7 +2650,7 @@ console.log(JSON.stringify({
           rootRunId: "99",
           runUrl: "https://example.invalid/runs/99",
           selectedRunId: "99",
-          sourceManifest,
+          sourceArtifact,
         },
       },
     );
@@ -2609,7 +2672,8 @@ printf '%s\\n' '{"id":101,"event":"workflow_dispatch","path":".github/workflows/
       validator,
       `console.log(JSON.stringify({
   children: ${JSON.stringify(reusedEvidenceChildren())},
-  manifest: ${JSON.stringify(revalidatedManifest)},
+  manifest: ${JSON.stringify(sourceManifest)},
+  root: {artifact: ${JSON.stringify(revalidatedArtifact)}},
   releaseProfile: "stable",
   rerunGroup: "ci"
 }));\n`,
