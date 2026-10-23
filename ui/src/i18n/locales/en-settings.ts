@@ -1726,8 +1726,10 @@ const enSettings = {
       enhancedPreviewUnavailable:
         "Enhanced contrast is unavailable for this theme. Preview uses its authored colors; your contrast preference stays saved.",
       previewPaletteHint: "Choose Preview theme to load this palette.",
+      inspectingTheme: "Inspecting: {name}",
+      closeThemeInspection: "Close inspection",
       themeInspectionHint:
-        "Hover or focus to inspect. Arrow keys choose a theme; Preview theme tries it in this window. Escape cancels.",
+        "Hover or focus to expand a row. Arrow keys choose a theme; Preview theme tries it in this window. Escape closes inspection or cancels preview.",
       themeUnavailable: "{id} is unavailable. Using Claw until the theme becomes available again.",
       background: {
         title: "Background",

@@ -20,7 +20,7 @@ async function capture(page: Page, name: string) {
   if (process.env.OPENCLAW_CAPTURE_UI_PROOF !== "1") {
     return;
   }
-  artifacts ??= createControlUiE2eArtifactDir("theme-inspection");
+  artifacts ??= createControlUiE2eArtifactDir("theme-inspection-inline");
   const section = page.locator("#settings-appearance-theme");
   const frame = await takeControlUiScreenshotFrame(page, section, [section], {
     animations: "disabled",
@@ -68,7 +68,7 @@ suite.define(() => {
           );
         await expect.poll(() => root.getAttribute("data-theme-id")).toBe("claw");
         await capture(page, "after-resting");
-        expect(await page.locator(".settings-theme-miniature:popover-open").count()).toBe(0);
+        expect(await page.locator(".settings-theme-miniature").count()).toBe(0);
         const bounds = await grid.boundingBox();
         await grid.getByRole("radio", { name: "Claw", exact: true }).hover();
         await expect
@@ -88,7 +88,7 @@ suite.define(() => {
           )
           .toBe("rgb(14, 16, 21)");
         await tide.hover();
-        await page.locator(".settings-theme-miniature:popover-open iframe").waitFor();
+        await page.locator(".settings-theme-miniature iframe").waitFor();
         await expect
           .poll(() =>
             page
@@ -98,8 +98,73 @@ suite.define(() => {
           )
           .toBe("tide");
         await expect.poll(() => root.getAttribute("data-theme-id")).toBe("claw");
-        expect(await grid.boundingBox()).toEqual(bounds);
+        const expanded = await grid.boundingBox();
+        expect(expanded?.width).toBe(bounds?.width);
+        expect(expanded!.height).toBeGreaterThan(bounds!.height);
+        const assertInlineLayout = async () => {
+          const layout = await grid.evaluate((element) => {
+            const panel = element.querySelector(".settings-theme-miniature")!;
+            const panelBox = panel.getBoundingClientRect();
+            const cards = [...element.querySelectorAll(".settings-theme-card")].map((card) => {
+              const box = card.getBoundingClientRect();
+              return {
+                value: card.querySelector("input")!.value,
+                top: box.top,
+                bottom: box.bottom,
+                left: box.left,
+                right: box.right,
+              };
+            });
+            return {
+              direct: panel.parentElement === element,
+              panel: {
+                top: panelBox.top,
+                bottom: panelBox.bottom,
+                left: panelBox.left,
+                right: panelBox.right,
+              },
+              cards,
+            };
+          });
+          expect(layout.direct).toBe(true);
+          const inspected = layout.cards.find((card) => card.value === "tide")!;
+          expect(layout.panel.top).toBeGreaterThanOrEqual(inspected.bottom);
+          for (const card of layout.cards) {
+            const overlap =
+              Math.min(card.bottom, layout.panel.bottom) > Math.max(card.top, layout.panel.top) &&
+              Math.min(card.right, layout.panel.right) > Math.max(card.left, layout.panel.left);
+            expect(overlap).toBe(false);
+          }
+        };
+        await expect
+          .poll(async () => {
+            await assertInlineLayout();
+            return true;
+          })
+          .toBe(true);
+        await page.setViewportSize({ width: 520, height: 1100 });
+        await expect
+          .poll(async () => {
+            await assertInlineLayout();
+            return true;
+          })
+          .toBe(true);
+        await page.setViewportSize({ width: 1440, height: 1100 });
+        await expect
+          .poll(async () => {
+            await assertInlineLayout();
+            return true;
+          })
+          .toBe(true);
         await capture(page, "after-inspection");
+        await page.getByRole("button", { name: "Close inspection", exact: true }).click();
+        await expect.poll(() => page.locator(".settings-theme-miniature").count()).toBe(0);
+        expect(await tide.evaluate((input) => input === document.activeElement)).toBe(true);
+        await grid.getByRole("radio", { name: "Claw", exact: true }).focus();
+        await expect.poll(() => page.locator(".settings-theme-miniature").count()).toBe(1);
+        await page.keyboard.press("Escape");
+        await expect.poll(() => page.locator(".settings-theme-miniature").count()).toBe(0);
+        expect(new URL(page.url()).pathname).toBe("/settings/appearance");
         await tide.focus();
         await page.keyboard.press("ArrowRight");
         await expect.poll(() => grid.locator("input:checked").inputValue()).toBe("beacon");
@@ -162,17 +227,22 @@ suite.define(() => {
         await tide.tap();
         await expect.poll(() => tide.isChecked()).toBe(true);
         await expect.poll(() => page.locator("html").getAttribute("data-theme-id")).toBe("claw");
-        await expect
-          .poll(() => page.locator(".settings-theme-miniature:popover-open").count())
-          .toBe(1);
-        await page.getByRole("heading", { name: "Appearance", exact: true }).tap();
-        await expect
-          .poll(() => page.locator(".settings-theme-miniature:popover-open").count())
-          .toBe(0);
+        await expect.poll(() => page.locator(".settings-theme-miniature").count()).toBe(1);
+        if (process.env.OPENCLAW_CAPTURE_UI_PROOF === "1") {
+          artifacts ??= createControlUiE2eArtifactDir("theme-inspection-inline");
+          const panel = page.locator(".settings-theme-miniature");
+          const frame = await takeControlUiScreenshotFrame(
+            page,
+            panel,
+            [panel, tide.locator("..")],
+            { animations: "disabled", scrollTo: panel },
+          );
+          fs.writeFileSync(path.join(artifacts, "after-inline-mobile.png"), frame.png);
+        }
+        await page.getByRole("button", { name: "Close inspection", exact: true }).tap();
+        await expect.poll(() => page.locator(".settings-theme-miniature").count()).toBe(0);
         await tide.tap();
-        await expect
-          .poll(() => page.locator(".settings-theme-miniature:popover-open").count())
-          .toBe(1);
+        await expect.poll(() => page.locator(".settings-theme-miniature").count()).toBe(1);
         await page.getByRole("button", { name: "Preview theme", exact: true }).tap();
         await expect.poll(() => page.locator("html").getAttribute("data-theme-id")).toBe("tide");
         await page.getByRole("button", { name: "Cancel", exact: true }).tap();

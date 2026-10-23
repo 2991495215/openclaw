@@ -34,7 +34,7 @@ not delete the browser's collection or saved favicon preference.
 ## Select a theme
 
 In **Settings → Appearance**, theme tiles show their names, palette swatches,
-and the applied-theme checkmark. Hover or keyboard focus reveals a miniature
+and the applied-theme checkmark. Hover or keyboard focus reveals a row-expanding miniature
 without changing the window. Clicking or tapping a tile chooses a candidate;
 arrow keys browse the choices.
 

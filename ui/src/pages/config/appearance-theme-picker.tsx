@@ -2,9 +2,9 @@ import { createMemo, createSignal, createUniqueId, onSettled, Show } from "solid
 import { isBuiltinThemeId } from "../../../../packages/gateway-protocol/src/theme-ids.ts";
 import { syncThemePaletteStylesheet, type ThemeMode, type ThemeName } from "../../app/theme.ts";
 import { Icon } from "../../components/solid/icon.tsx";
-import { Popover } from "../../components/solid/popover.tsx";
 import { SettingsSegmented } from "../../components/solid/settings-ui.tsx";
 import { t } from "../../lib/reactive/i18n.ts";
+import { createResizeObserver } from "../../lib/reactive/observers.ts";
 import { themeMiniatureDocument } from "./theme-miniature.ts";
 
 type ThemeOption = { id: ThemeName; label: string; description: string };
@@ -22,7 +22,7 @@ function ThemeMiniature(props: { theme: ThemeName; mode: ThemeMode }) {
       retired = true;
     };
   });
-  // Do not install an empty document while the lazy popover body is adopted.
+  // Keep the frame absent until its complete scriptless document is ready.
   return (
     <Show when={source()}>
       {(html) => (
@@ -54,13 +54,26 @@ export function AppearanceThemePicker(props: {
   // A new saved selection retires the local candidate; inspection never writes preferences.
   const savedTheme = createMemo(() => props.theme);
   const [candidate, setCandidate] = createSignal(() => savedTheme());
-  const [inspected, setInspected] = createSignal<{
-    id: ThemeName;
-    anchor: HTMLElement;
-  } | null>(null);
+  const [inspected, setInspected] = createSignal<ThemeName | null>(null);
   const inspectedTheme = createMemo(() =>
-    props.options.find((option) => option.id === inspected()?.id),
+    props.options.find((option) => option.id === inspected()),
   );
+  let grid!: HTMLDivElement;
+  let focusedChoice: HTMLInputElement | undefined;
+  const [columns, setColumns] = createSignal(1);
+  // CSS owns responsive columns; observe its resolved layout rather than duplicating breakpoints.
+  createResizeObserver(
+    () => [grid],
+    () => {
+      setColumns(getComputedStyle(grid).gridTemplateColumns.trim().split(" ").length);
+    },
+  );
+  const inspectionRow = () =>
+    Math.floor(props.options.findIndex((option) => option.id === inspected()) / columns()) + 2;
+  function closeInspection() {
+    focusedChoice?.focus();
+    setInspected(null);
+  }
   const candidateTheme = createMemo(
     () =>
       props.options.find((option) => option.id === candidate()) ??
@@ -78,7 +91,7 @@ export function AppearanceThemePicker(props: {
   const previewTheme = createMemo(() =>
     props.options.find((option) => option.id === props.preview),
   );
-  const miniatureKey = () => `${inspected()?.id}:${props.mode}:${props.paletteRevision ?? 0}`;
+  const miniatureKey = () => `${inspected()}:${props.mode}:${props.paletteRevision ?? 0}`;
   const options = createMemo(() =>
     props.options.map((option) => ({
       value: option.id,
@@ -124,7 +137,8 @@ export function AppearanceThemePicker(props: {
     const option =
       input instanceof HTMLInputElement && props.options.find((entry) => entry.id === input.value);
     if (option && input instanceof HTMLInputElement) {
-      setInspected({ id: option.id, anchor: input });
+      focusedChoice = input;
+      setInspected(option.id);
     }
   }
   function apply() {
@@ -138,79 +152,67 @@ export function AppearanceThemePicker(props: {
     <div
       class="settings-theme-picker"
       onKeyDown={(event) => {
-        if (event.key === "Escape" && props.preview !== null) {
+        if (event.key === "Escape" && (props.preview !== null || inspected() !== null)) {
           event.preventDefault();
           event.stopPropagation();
-          props.onPreview(null);
+          setInspected(null);
+          if (props.preview !== null) {
+            props.onPreview(null);
+          }
         }
       }}
     >
-      <div
-        onPointerOver={inspect}
-        onFocusIn={inspect}
-        onPointerLeave={() => {
-          if (!inspected()?.anchor.contains(document.activeElement)) {
-            setInspected(null);
-          }
-        }}
-        onFocusOut={(event) => {
-          if (
-            !event.currentTarget.contains(
-              event.relatedTarget instanceof Node ? event.relatedTarget : null,
-            )
-          ) {
-            setInspected(null);
-          }
-        }}
-      >
+      <div onPointerOver={inspect} onFocusIn={inspect}>
         <SettingsSegmented
           class="settings-theme-grid"
+          groupRef={(element) => (grid = element)}
           value={candidateId()}
           options={options()}
           ariaLabel={t("configView.appearance.themePicker")}
           descriptionId={hintId}
-          onChange={(theme, element) => {
+          onChange={(theme) => {
             setCandidate(theme);
-            setInspected({ id: theme, anchor: element });
+            setInspected(theme);
           }}
-          onReselect={(theme, element) => setInspected({ id: theme, anchor: element })}
-        />
+          onReselect={(theme) => setInspected(theme)}
+        >
+          <Show when={inspectedTheme()}>
+            {(inspection) => (
+              <div
+                class="settings-theme-miniature"
+                role="region"
+                aria-labelledby={miniatureId}
+                style={{ "grid-row": inspectionRow() }}
+              >
+                <Show
+                  when={
+                    isBuiltinThemeId(inspection().id) ||
+                    inspection().id === (props.preview ?? props.theme)
+                  }
+                  fallback={
+                    <p class="settings-theme-card__description">
+                      {t("configView.appearance.previewPaletteHint")}
+                    </p>
+                  }
+                >
+                  <Show when={miniatureKey()} keyed>
+                    {(_key) => <ThemeMiniature theme={inspection().id} mode={props.mode} />}
+                  </Show>
+                </Show>
+                <div class="settings-theme-miniature__copy">
+                  <strong id={miniatureId}>
+                    {t("configView.appearance.inspectingTheme", { name: inspection().label })}
+                  </strong>
+                  <span class="settings-theme-card__description">{inspection().description}</span>
+                  <button type="button" class="btn btn--sm" onClick={closeInspection}>
+                    {t("configView.appearance.closeThemeInspection")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </Show>
+        </SettingsSegmented>
       </div>
-      <Show when={inspected()}>
-        {(inspection) => (
-          <Popover
-            id={miniatureId}
-            label={inspectedTheme()?.label ?? ""}
-            anchor={inspection().anchor}
-            open={true}
-            placement="top"
-            lazy="while-open"
-            class="settings-theme-miniature"
-            onOpenChange={(open) => {
-              if (!open) {
-                setInspected(null);
-              }
-            }}
-          >
-            <Show
-              when={
-                isBuiltinThemeId(inspection().id) ||
-                inspection().id === (props.preview ?? props.theme)
-              }
-              fallback={
-                <p class="settings-theme-card__description">
-                  {t("configView.appearance.previewPaletteHint")}
-                </p>
-              }
-            >
-              <Show when={miniatureKey()} keyed>
-                {(_key) => <ThemeMiniature theme={inspection().id} mode={props.mode} />}
-              </Show>
-            </Show>
-            <strong>{inspectedTheme()?.label}</strong>
-          </Popover>
-        )}
-      </Show>
       <div class="settings-theme-preview">
         <div class="settings-theme-preview__copy" role="status">
           <strong>

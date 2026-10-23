@@ -89,6 +89,14 @@ describe("config appearance preferences", () => {
     });
     const tide = findButtonByText(container, "Tide");
     await userEvent.hover(tide);
+    await expect
+      .poll(
+        () =>
+          container.querySelector(".settings-theme-grid > .settings-theme-miniature") instanceof
+          HTMLElement,
+      )
+      .toBe(true);
+    expect(container.querySelector(".settings-theme-miniature[popover]")).toBeNull();
     expect(props.setThemePreview).not.toHaveBeenCalled();
     expect(props.setTheme).not.toHaveBeenCalled();
     tide.focus();
