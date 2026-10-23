@@ -41,6 +41,9 @@ describe("mounted context usage palette", () => {
           true,
         ),
       );
+      await waitForSolid(() =>
+        expect(container.querySelector(".context-usage__bar span")).not.toBeNull(),
+      );
       const ring = container.querySelector<HTMLElement>(".context-ring")!;
       ring.style.transition = "none";
       const fill = container.querySelector(".context-ring__fill")!;

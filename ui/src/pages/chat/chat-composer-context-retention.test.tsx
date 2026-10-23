@@ -59,6 +59,7 @@ it("keeps the context popover open and its usage link focused during live usage 
   await waitForSolid(() =>
     expect(details.querySelector("[popover]")?.matches(":popover-open")).toBe(true),
   );
+  await waitForSolid(() => expect(query("[data-chat-provider-usage]")).not.toBeNull());
   const usageLink = query<HTMLAnchorElement>("[data-chat-provider-usage]")!;
   usageLink.focus();
   expect(document.activeElement).toBe(usageLink);
