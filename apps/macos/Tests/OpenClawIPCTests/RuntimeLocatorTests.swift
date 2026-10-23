@@ -24,7 +24,7 @@ struct RuntimeLocatorTests {
             return
         }
         #expect(res.path == node.path)
-        #expect(res.version == RuntimeVersion(major: 24, minor: 16, patch: 0))
+        #expect(res.version == RuntimeVersion(major: 24, minor: 22, patch: 1))
     }
 
     @Test func `runtime version probe tolerates loaded host delay`() async throws {
@@ -41,7 +41,7 @@ struct RuntimeLocatorTests {
             Issue.record("Expected delayed version probe to succeed, got \(result)")
             return
         }
-        #expect(resolution.version == RuntimeVersion(major: 24, minor: 16, patch: 0))
+        #expect(resolution.version == RuntimeVersion(major: 24, minor: 22, patch: 1))
     }
 
     @Test func `resolve fails on boundary below minimum`() async throws {
@@ -84,10 +84,12 @@ struct RuntimeLocatorTests {
         ("23.11.0", false),
         ("24.14.1", false),
         ("24.15.0", false),
+        ("24.22.0", false),
         ("24.22.1", true),
         ("25.8.1", false),
         ("25.9.0", false),
         ("26.0.0", false),
+        ("26.12.0", false),
         ("26.12.1", true),
     ])
     func `node support matches the core runtime contract`(version: String, supported: Bool) throws {
