@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 26,
   newBootJsRequests: 20,
-  // Detailed tool rows reduce Chat to 1,403,881 B; retain the tighter New Session cap.
+  // Deferred dictation capture: 1,400,926 B Chat and 913,227 B New Session.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_457_159,
-  newBootJsGzipBytes: 929_032,
+  chatBootJsGzipBytes: 1_454_050,
+  newBootJsGzipBytes: 925_999,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
