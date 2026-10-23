@@ -6,7 +6,7 @@ import { acquireGatewayLock } from "../../infra/gateway-lock.js";
 import { hasActiveGatewayStateOwner } from "../../infra/gateway-state-owner.js";
 import type { PackageUpdateTransaction } from "../../infra/package-update-swap-contract.js";
 import { isSqliteLockError } from "../../infra/sqlite-error-diagnostics.js";
-import { createSqliteLifecycleAggregateError } from "../../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import {
   createUpdateDatabaseBackup,
   type UpdateDatabaseBackup,
@@ -136,10 +136,9 @@ export async function captureUpdateDatabases(params: {
     await maintenance?.release();
   } catch (cleanupError) {
     if ("error" in outcome) {
-      throw createSqliteLifecycleAggregateError(
+      throwSqliteLifecycleErrors(
         [outcome.error, cleanupError],
         "Database backup and ownership cleanup both failed",
-        outcome.error,
       );
     }
     throw cleanupError;
