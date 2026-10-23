@@ -253,6 +253,7 @@ const { values } = parseArgs({
     "sidebar-row-transfer": { type: "string", default: "full" },
     "bundle-dir": { type: "string" },
     "gateway-url": { type: "string" },
+    "content-encoding": { type: "string" },
     "first-load": { type: "boolean", default: false },
     "boot-route": { type: "string", default: "chat" },
     "cold-http-cache": { type: "boolean", default: false },
@@ -337,6 +338,14 @@ const baselineCpu = values["cpu-profile-compare"]
 const cpuRuns: Record<string, ColdLoadCpuTables[]> = {};
 const runs = Number(values.runs);
 const gatewayUrl = values["gateway-url"] ? new URL(values["gateway-url"]) : undefined;
+const contentEncoding = values["content-encoding"];
+if (
+  contentEncoding !== undefined &&
+  (!gatewayUrl ||
+    (contentEncoding !== "gzip" && contentEncoding !== "br" && contentEncoding !== "identity"))
+) {
+  throw new Error("content-encoding requires gateway-url and must be gzip, br or identity");
+}
 const firstLoad = values["first-load"];
 const bootRoute = values["boot-route"];
 if (bootRoute !== "chat" && bootRoute !== "new") {
@@ -1215,6 +1224,11 @@ try {
     if (firstLoad || values["cold-http-cache"]) {
       await cdp.send("Network.enable");
     }
+    if (contentEncoding !== undefined) {
+      await cdp.send("Network.setExtraHTTPHeaders", {
+        headers: { "Accept-Encoding": contentEncoding },
+      });
+    }
     if (firstLoad) {
       cdp.on("Network.requestWillBeSent", (event) => {
         requests.push({
@@ -2071,6 +2085,7 @@ try {
         dirty,
         bundleDir,
         gatewayUrl: gatewayUrl?.origin,
+        contentEncoding,
         httpBoundary: gatewayUrl
           ? "Real Gateway HTTP documents/assets; synthetic bootstrap, WebSocket RPC and fixture media. Server cache lifecycle is controlled externally."
           : "Vite production preview HTTP; synthetic bootstrap, WebSocket RPC and fixture media.",

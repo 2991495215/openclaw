@@ -7,8 +7,10 @@ node --import tsx scripts/bench-control-ui-cold-load.ts
 ```
 
 This opt-in benchmark builds the production Control UI into a fresh artifact directory,
-warms a signed-in synthetic dashboard visit, and measures three reloads. It never
-connects to a real Gateway or account. The reusable inventory is
+warms a signed-in synthetic dashboard visit, and measures three reloads. By default,
+Vite preview serves the build; optional `--gateway-url` uses real Gateway HTTP
+serving. Both modes use synthetic bootstrap, WebSocket RPC, and fixture media.
+The reusable inventory is
 `ui/src/test-helpers/control-ui-team-scale-fixture.ts`; its browser contract is
 `ui/src/e2e/team-scale-cold-load.e2e.test.ts`.
 
@@ -63,6 +65,14 @@ are serialized to `summary.json` after all runs, outside the preview-server work
 modules and mapping coverage. It gzips source-mapped generated ranges independently,
 so those scores identify expensive modules but are not additive transfer costs;
 the existing shipped gzip sidecars remain the route budget authority.
+
+To measure precompressed delivery, use `--gateway-url <origin> --bundle-dir <build>
+--first-load --runs 1 --cold-http-cache` against an isolated Gateway serving that
+build. `--content-encoding gzip`, `br`, or `identity` selects the browser's accepted
+encoding; omission preserves browser negotiation. Restart the Gateway between
+cold-server samples and alternate the base and head builds for matched pairs.
+Verify response encodings and recorded byte sizes against the build's sidecars.
+Vite preview recompresses raw files and cannot measure a sidecar-only change.
 
 Every reload replays the warm visit's persisted sidebar and trimmed v8 transcript
 (after unloading the app), local storage and session storage; the HTTP cache stays warm.
