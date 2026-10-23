@@ -1,0 +1,43 @@
+# Identity and links
+
+## Resolve an entity
+
+1. Search with `knowledge_grep`; read candidate pages and metadata.
+2. If the source has a stable account ID, `knowledge_lookup` its namespaced alias
+   (`email:<address>`, `github:<login>`, `discord:<user id>`, `slack:<user id>`).
+   One key on two pages means a duplicate.
+3. For context, check `knowledge_connections` (`claims`, `incoming`,
+   `outgoing`, `dependents`), `knowledge_timeline({entity: id})` and
+   `knowledge_chronicle_last_seen`.
+4. External web research only when needed, with public hints. Never send private
+   context to public search.
+5. If ambiguity blocks a write, ask with a hypothesis: what you searched, what you
+   found, the specific candidate. Otherwise leave the mention unresolved.
+
+Not proof of identity: a name, an email domain, a filled role field, repeated
+copies of one assertion, a display name, or an attendee roster (evidence of
+presence, not of who spoke). Keep ambiguous candidates separate.
+
+- A handle or mononym can be a complete identity. For a genuinely unresolved one,
+  set `identity: {status: "partial", context: "..."}`. Candidates need an
+  observed page ID, basis and evidence; they do not merge pages.
+- Add spelling variants as aliases only after identity is confirmed. Keep
+  existing aliases.
+- Two pages confirmed as one entity: `knowledge_merge` (see `knowledge-correct`).
+  A lookup with `redirectedFrom` found a merged page; use the returned ID.
+- Source context, employment and speaker identity are distinct. A company name in
+  a participant label does not establish `works_at`.
+
+## Links
+
+- Inside pages, link with wikilinks to observed paths or titles. These create
+  References/Referenced-by navigation only. They are not typed relationships,
+  `entities` or `dependencies`.
+- An authored source → entity link gives the entity a derived backlink. That
+  does not author the entity → source link. When both directions are required,
+  write both.
+- Never hand-write References/Referenced-by lists. Never guess an ambiguous link
+  target; use the observed path.
+- In an authorized ingestion, link every identified entity that has a page to the
+  source and back. Create new pages only for notable entities (see
+  `knowledge-entities`). Skip incidental names.

@@ -6,16 +6,28 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../skills/", import.meta.url));
 const check = process.argv.includes("--check");
+// Small topic references that skills link on demand. They link only to each
+// other and the worked example, so every skill receives the complete set.
+const topics = [
+  "setup.md",
+  "sources.md",
+  "identity.md",
+  "publish.md",
+  "recovery.md",
+  "assertions.md",
+  "profiles.md",
+  "verify.md",
+  "meeting-entity-example.md",
+];
 for (const name of (await readdir(root)).filter((entry) => entry.startsWith("knowledge-"))) {
   // Automation setup routes to ingestion skills; it does not publish content.
   if (name === "knowledge-automation") {
     continue;
   }
-  const files =
-    name === "knowledge-recall" ? ["conventions.md"] : ["conventions.md", "publication.md"];
-  if (["knowledge-meeting-ingest", "knowledge-entities"].includes(name)) {
-    files.push("meeting-entity-example.md");
-  }
+  const files = [
+    ...(name === "knowledge-recall" ? ["conventions.md"] : ["conventions.md", "publication.md"]),
+    ...topics,
+  ];
   for (const file of files) {
     const source = await readFile(path.join(root, "shared", file), "utf8");
     const content =
