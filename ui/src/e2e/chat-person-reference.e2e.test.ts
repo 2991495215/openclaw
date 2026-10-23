@@ -359,9 +359,15 @@ suite.define(() => {
       }
     }));
 
-  it("retries a failed person card renderer when reopened", () =>
+  it("recovers a failed person card renderer through one document reload", () =>
     withPage(async (page) => {
       let requests = 0;
+      const documents: string[] = [];
+      page.on("request", (request) => {
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+          documents.push(request.url());
+        }
+      });
       await page.route("**/person-activity-card-view-*.js", async (route) => {
         requests += 1;
         if (requests === 1) {
@@ -370,16 +376,16 @@ suite.define(() => {
           await route.continue();
         }
       });
-      const { reference, card, heading } = await personPage(page, {
+      const { reference, heading } = await personPage(page, {
         methodResponses: { "users.list": directory },
       });
       await reference.focus();
-      await browserExpect(card.getByRole("status")).toHaveText("Could not load people. Try again.");
-      await reference.press("Escape");
-      await card.waitFor({ state: "detached" });
+      await expect.poll(() => documents.length).toBe(2);
+      expect(new URL(documents[1]!).searchParams.get("openclaw_mount_recovery")).toMatch(/^\d+$/u);
       await reference.click();
       await browserExpect(heading).toHaveText("Ada Lovelace");
       expect(requests).toBe(2);
+      expect(documents).toHaveLength(2);
     }));
 
   it.each(["failed", "missing"] as const)(
