@@ -228,6 +228,9 @@ describe.runIf("__vitest_browser__" in globalThis)("sidebar agent menu layout", 
       .poll(() => document.activeElement)
       .toBe(sidebar.querySelector('[data-value="agent:main"]'));
     await userEvent.keyboard("{ArrowDown}");
+    await expect
+      .poll(() => document.activeElement)
+      .toBe(sidebar.querySelector('[data-value="agent:release"]'));
     await userEvent.tab();
     const releaseSettings = sidebar.querySelector<HTMLButtonElement>(
       '[data-value="agent:release"] .sidebar-agent-menu__settings',

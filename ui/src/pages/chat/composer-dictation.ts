@@ -121,7 +121,11 @@ export class ComposerDictationOwner extends EventTarget {
   }
 
   update(options: ComposerDictationOwnerOptions): void {
-    if (this.options.draftKey !== options.draftKey) {
+    if (
+      this.options.client !== options.client ||
+      this.options.sessionKey !== options.sessionKey ||
+      this.options.draftKey !== options.draftKey
+    ) {
       this.cancel();
     }
     this.options = options;
@@ -338,7 +342,6 @@ export class ComposerDictationOwner extends EventTarget {
               if (this.session === currentSession) {
                 void this.stop({ commit: true });
               } else if (this.pendingCommitSession === currentSession) {
-                this.retirePendingCommit();
                 this.dispatchEvent(new Event("change"));
               }
             }
@@ -386,27 +389,18 @@ export class ComposerDictationOwner extends EventTarget {
       return Promise.resolve(false);
     }
     this.setPhase("stopping");
-    const transcript = options.commit ? session.transcriptSnapshot() : "";
-    const committed = Boolean(options.commit && transcript && wasActive && !this.disposed);
     this.session = null;
     this.setPhase("idle");
     if (!options.commit) {
       void session.cancel().catch(() => undefined);
       return Promise.resolve(false);
     }
-    if (committed) {
-      this.playback.stop();
-      this.options.onCommit(transcript);
-      this.dispatchEvent(new Event("change"));
-      void session.finish().catch(() => undefined);
-      return Promise.resolve(true);
-    }
     // The composer unlocks immediately, while this exact stopped session keeps
     // its final accumulator and voice claim until another voice action supersedes it.
     this.pendingCommitSession = session;
     this.syncCancellationListeners();
     return session
-      .finish(true)
+      .finish()
       .catch(() => "")
       .then((lateTranscript) => {
         const ownsPendingCommit = this.pendingCommitSession === session;
@@ -415,7 +409,14 @@ export class ComposerDictationOwner extends EventTarget {
           this.playback.stop();
           this.syncCancellationListeners();
         }
-        if (!ownsPendingCommit || !lateTranscript || !wasActive || this.disposed) {
+        if (
+          !ownsPendingCommit ||
+          !lateTranscript ||
+          !wasActive ||
+          this.disposed ||
+          !this.options.enabled ||
+          this.options.realtimeTalkActive
+        ) {
           return false;
         }
         this.options.onCommit(lateTranscript, true);
