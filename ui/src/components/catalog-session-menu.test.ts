@@ -31,6 +31,10 @@ describe("catalog session menu", () => {
     await waitForSolid(() => expect(document.activeElement).toBe(items[0]));
     expect(panel?.matches(":popover-open")).toBe(true);
     expect(items.map((item) => item.dataset.value)).toEqual(["viewer", "terminal"]);
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      "Open in OpenClaw",
+      "Open in terminal",
+    ]);
     expect(menu.querySelector(".session-menu__info")?.textContent?.trim()).toBe("Last active 57d");
   });
 

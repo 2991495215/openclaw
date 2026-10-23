@@ -223,3 +223,61 @@ it("rejects earlier source-authorized progress after a new refresh starts", () =
     ),
   ).toEqual([current]);
 });
+
+describe("root window settlement", () => {
+  it("leaves a rejected host intent untouched during a sibling provider failure", () => {
+    const live = new SessionCatalogLiveState();
+    const fresh = { ...catalog("source", 2), requiresFreshList: true as const };
+    fresh.hosts[1]!.error = { code: "UNAVAILABLE", message: "Sibling unavailable" };
+    const rejected = fresh.hosts[0]!.hostId;
+    const key = sessionCatalogHostKey(fresh.id, rejected);
+    const intent = { depth: 2, request: { depth: 3, status: "available" as const } };
+    live.windows.set(key, intent);
+
+    live.settleRootWindows([fresh], undefined, (_catalogId, hostId) => hostId !== rejected);
+
+    expect(live.windows.get(key)).toEqual(intent);
+    expect(live.requestedDepth(fresh.id, fresh.hosts[1]!.hostId)).toBe(0);
+    expect(live.canRetry(fresh)).toBe(true);
+  });
+
+  it.each([false, true])("preserves any rejection for aliased keys, reverse=%s", (reverse) => {
+    const live = new SessionCatalogLiveState();
+    const rejected = catalog("source", 1);
+    rejected.hosts[0]!.hostId = "group\u0000leaf";
+    const accepted = catalog("source\u0000group", 1);
+    accepted.hosts[0]!.hostId = "leaf";
+    const key = sessionCatalogHostKey(rejected.id, rejected.hosts[0]!.hostId);
+    const intent = { depth: 2, request: { depth: 3, status: "available" as const } };
+    live.windows.set(key, intent);
+
+    live.settleRootWindows(
+      reverse ? [accepted, rejected] : [rejected, accepted],
+      undefined,
+      (catalogId) => catalogId !== rejected.id,
+    );
+
+    expect(live.requestedDepth(accepted.id, "leaf")).toBe(3);
+    expect(live.windows.get(key)).toEqual(intent);
+  });
+
+  it.each([false, true])(
+    "finalizes every aliased host in catalog order, failureLast=%s",
+    (failureLast) => {
+      const live = new SessionCatalogLiveState();
+      const failed: SessionCatalog = { ...catalog("source", 1), requiresFreshList: true as const };
+      failed.hosts[0]!.hostId = "group\u0000leaf";
+      failed.error = { code: "UNAVAILABLE", message: "Provider unavailable" };
+      const completed = { ...catalog("source\u0000group", 1), requiresFreshList: true as const };
+      completed.hosts[0]!.hostId = "leaf";
+      const key = sessionCatalogHostKey(failed.id, failed.hosts[0]!.hostId);
+      live.windows.set(key, { depth: 2, request: { depth: 5, status: "retry" } });
+
+      live.settleRootWindows(failureLast ? [completed, failed] : [failed, completed]);
+
+      expect(live.windows.get(key)).toEqual(
+        failureLast ? { depth: 2, request: { depth: 2, status: "retry" } } : { depth: 2 },
+      );
+    },
+  );
+});

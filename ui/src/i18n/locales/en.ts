@@ -15,6 +15,8 @@ export const en: TranslationMap & {
   browser: TranslationMap & { errors: TranslationMap; annotatePrompt: TranslationMap };
   shortcutsOverlay: TranslationMap & { title: string };
   chat: TranslationMap & {
+    catalog: TranslationMap &
+      Record<"remoteViewOnly" | "unsupportedViewOnly" | "openOriginal", string>;
     codeBlock: TranslationMap;
     commands: TranslationMap;
     detailPanel: TranslationMap;
@@ -3207,20 +3209,7 @@ export const en: TranslationMap & {
     catalog: {
       remoteViewOnly: "This session is on a paired device and is view-only.",
       unsupportedViewOnly: "This external session source is view-only.",
-      sessionMenu: "External session actions",
-      openInOpenClaw: "Open in OpenClaw",
-      importToOpenClaw: "Import to OpenClaw",
-      importComplete: "Imported {count} transcript items.",
-      importUnchanged: "The imported transcript is up to date.",
-      importIncomplete:
-        "Imported {count} transcript items. Older history exceeded the import limit.",
-      openImportedSession: "Open imported session",
       openOriginal: "Open original",
-      openInTerminal: "Open in terminal",
-      deleteSession: "Delete",
-      deleteSessionConfirm:
-        "Delete this external session from OpenClaw? Make sure no other runner is using it. Beamed sessions are deleted permanently. Sessions kept by another tool, such as Codex, are archived there and may be restorable.",
-      terminalUnavailable: "Terminal opening is unavailable for this session.",
     },
     taskSuggestions: {
       eyebrow: "Suggested task · in {repo}",

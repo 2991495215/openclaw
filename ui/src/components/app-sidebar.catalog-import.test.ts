@@ -50,12 +50,15 @@ async function fixture(scopes = ["operator.read", "operator.write"]) {
     .querySelector('[data-catalog-session-key*="thread-1"]')!
     .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
   await vi.advanceTimersByTimeAsync(0);
+  await vi.dynamicImportSettled();
+  flush();
   const selectImport = async () => {
     const item = sidebar.querySelector<HTMLButtonElement>(
       'openclaw-catalog-session-menu [data-value="import"]',
     );
     expect(item).not.toBeNull();
     item!.click();
+    await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(0);
   };
   return { sidebar, toast, gateway, request, imported, selectImport };

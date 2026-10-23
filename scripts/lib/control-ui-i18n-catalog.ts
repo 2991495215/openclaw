@@ -8,6 +8,7 @@ import { registerAgentsHomeEnglish } from "../../ui/src/i18n/locales/en-agents-h
 import { registerAppsEnglish } from "../../ui/src/i18n/locales/en-apps.ts";
 import { registerBoardWebsiteEnglish } from "../../ui/src/i18n/locales/en-board-website.ts";
 import { registerBrowserEnglish } from "../../ui/src/i18n/locales/en-browser.ts";
+import { registerCatalogMenuEnglish } from "../../ui/src/i18n/locales/en-catalog-menu.ts";
 import { registerChatCameraEnglish } from "../../ui/src/i18n/locales/en-chat-camera.ts";
 import { registerChatCiEnglish } from "../../ui/src/i18n/locales/en-chat-ci.ts";
 import { registerChatGoalsEnglish } from "../../ui/src/i18n/locales/en-chat-goals.ts";
@@ -73,6 +74,7 @@ const sourceFiles = [
   "en-apps.ts",
   "en-board-website.ts",
   "en-browser.ts",
+  "en-catalog-menu.ts",
   "en-chat-camera.ts",
   "en-chat-ci.ts",
   "en-chat-goals.ts",
@@ -153,6 +155,16 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       Object.assign(boardWidget, registerBoardWebsiteEnglish.catalog.board.widget);
     }
   }
+  const catalog: TranslationMap = {
+    remoteViewOnly: en.chat.catalog.remoteViewOnly,
+    unsupportedViewOnly: en.chat.catalog.unsupportedViewOnly,
+  };
+  for (const [key, value] of Object.entries(registerCatalogMenuEnglish.catalog.chat.catalog)) {
+    catalog[key] = value;
+    if (key === "openImportedSession") {
+      catalog.openOriginal = en.chat.catalog.openOriginal;
+    }
+  }
   // Read fragment data without registering it into the shared runtime catalog.
   // en.ts's empty anchors retain source order for extracted whole subtrees.
   return mergeControlUiTranslationMaps(
@@ -163,6 +175,7 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       custodian: { ...registerPluginManagementEnglish.catalog.custodian, ...en.custodian },
       chat: {
         ...en.chat,
+        catalog,
         commands: registerCommandPaletteEnglish.catalog.chat.commands,
         welcome: registerCommandPaletteEnglish.catalog.chat.welcome,
         messages: registerChatMessageMetadataEnglish.catalog.chat.messages,

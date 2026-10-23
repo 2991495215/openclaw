@@ -76,7 +76,7 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
       };
     }
     if (params.catalogDisabledReason) {
-      const originalUrl = resolveCatalogOriginalUrl(this.catalogSession?.originalUrl);
+      const originalUrl = resolveCatalogOriginalUrl(this.history.catalogSession?.originalUrl);
       return originalUrl
         ? {
             kind: "composer-replacement" as const,

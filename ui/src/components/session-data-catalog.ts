@@ -1,7 +1,5 @@
 import type {
   SessionCatalog,
-  SessionsCatalogArchiveParams,
-  SessionsCatalogImportParams,
   SessionsCatalogImportResult,
   SessionsCatalogListResult,
 } from "../../../packages/gateway-protocol/src/index.ts";
@@ -9,11 +7,7 @@ import type { GatewayBrowserClient } from "../api/gateway.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import type { PresencePayload } from "../app/user-profile.ts";
 import { canCallGatewayMethod } from "../lib/gateway-methods.ts";
-import { readSessionMethodScopeAccess } from "../lib/session-method-access.ts";
-import {
-  buildCatalogSessionKey,
-  type CatalogSessionContinuedDetail,
-} from "../lib/sessions/catalog-key.ts";
+import type { CatalogSessionContinuedDetail } from "../lib/sessions/catalog-key.ts";
 import { normalizeAgentId } from "../lib/sessions/session-key.ts";
 import { SessionCatalogLiveState } from "./app-sidebar-session-catalog-live.ts";
 import {
@@ -21,8 +15,6 @@ import {
   refreshSessionCatalogsLive,
 } from "./app-sidebar-session-catalog-refresh.ts";
 import {
-  excludeSessionCatalogRows,
-  mergeSessionCatalogPage,
   refetchExpandedSessionCatalogPages,
   withdrawSessionCatalogRows,
   sessionCatalogRequestError,
@@ -30,8 +22,6 @@ import {
 import { bindAdoptedCatalogSession } from "./app-sidebar-session-catalogs.ts";
 import { sessionCatalogHostKey } from "./app-sidebar-session-types.ts";
 import type {
-  SidebarSessionMutationScope,
-  SidebarCatalogSessionMutationScope,
   SidebarSessionOwnerFilter,
   SidebarSessionStatusFilter,
 } from "./app-sidebar-session-types.ts";
@@ -314,37 +304,21 @@ async function resumePublishedSessionCatalogHost(
     (owner.sessionCatalogPageDepths.get(sessionCatalogHostKey(catalogId, hostId)) ?? 0) > 0
   ) {
     const isCurrent = captureSessionCatalogRequest(owner, catalogId, client, [hostId]);
-    const [page] = await refetchExpandedSessionCatalogPages({
-      catalogs: [{ ...catalog, hosts: [host] }],
-      previousCatalogs: [],
-      client,
-      agentId,
-      pageDepths: owner.sessionCatalogPageDepths,
-      isCurrent,
-      canRequestPage: () => isCurrent() && document.visibilityState !== "hidden",
-    });
-    if (!isCurrent()) {
+    const pageDepths = owner.sessionCatalogPageDepths;
+    const runtime = await import("./app-sidebar-session-catalog-pages.runtime.ts");
+    if (
+      !(await runtime.replayPublishedSessionCatalogHost({
+        owner,
+        catalog,
+        host,
+        client,
+        agentId,
+        pageDepths,
+        isCurrent,
+      }))
+    ) {
       return;
     }
-    // Only this host was replayed. Sibling publications may have advanced while
-    // its pages were in flight and must survive the merge.
-    owner.sessionCatalogs = owner.sessionCatalogs.map((current) =>
-      current.id === catalogId
-        ? {
-            ...current,
-            hosts: current.hosts.map((entry) =>
-              entry.hostId === hostId ? page!.hosts[0]! : entry,
-            ),
-          }
-        : current,
-    );
-    owner.sessionCatalogLive.finishWindow(
-      page!,
-      hostId,
-      owner.sessionCatalogPageDepths.get(sessionCatalogHostKey(catalogId, hostId)) ?? 0,
-    );
-    owner.sessionCatalogRevision += 1;
-    owner.requestSessionDataUpdate();
   }
   await discoverHiddenSessionCatalogPages(owner);
 }
@@ -542,7 +516,6 @@ export async function loadMoreSessionCatalog(
       return;
     }
     let page = result.catalogs.find((candidate) => candidate.id === catalogId);
-    const discoveryPages = owner.sessionCatalogLive.discoveryPages;
     if (catalog.requiresFreshList && page) {
       // A successful older page cannot authorize the previous head. Rebuild the
       // requested window in this cycle, using the same replay/error policy as refresh.
@@ -559,69 +532,21 @@ export async function loadMoreSessionCatalog(
         return;
       }
     }
-    const current = owner.sessionCatalogs.find((candidate) => candidate.id === catalogId);
-    if (!current) {
+    const { publishSessionCatalogPage } =
+      await import("./app-sidebar-session-catalog-pages.runtime.ts");
+    // Loading the page processor must not revive a read retired during the import.
+    if (!isCurrent()) {
       return;
     }
-    const merged = mergeSessionCatalogPage({
-      current,
+    publishSessionCatalogPage({
+      owner,
+      catalog,
       page,
       cursors,
-      ...(catalog.requiresFreshList ? { freshHostIds: requestedHostIds } : {}),
-      previousCursors: new Map(
-        current.hosts.flatMap((host) => {
-          const discovery = discoveryPages.get(sessionCatalogHostKey(catalogId, host.hostId));
-          return discovery ? [[host.hostId, discovery.cursors] as const] : [];
-        }),
-      ),
+      requestedHostIds,
+      pageDepths,
+      discovering,
     });
-    for (const hostId of merged.repeatedHostIds) {
-      discoveryPages.delete(sessionCatalogHostKey(catalogId, hostId));
-    }
-    for (const hostId of requestedHostIds) {
-      const cursor = cursors[hostId];
-      live.finishWindow(
-        merged.catalog,
-        hostId,
-        pageDepths.get(sessionCatalogHostKey(catalogId, hostId)) ?? 0,
-      );
-      if (!merged.advancedHostIds.includes(hostId)) {
-        continue;
-      }
-      const key = sessionCatalogHostKey(catalogId, hostId);
-      const discovery = discoveryPages.get(key);
-      const previous = current.hosts.find((host) => host.hostId === hostId);
-      const nextHost = merged.catalog.hosts.find((host) => host.hostId === hostId);
-      const depth = pageDepths.get(key) ?? 0;
-      if (
-        discovering &&
-        previous?.sessions.length === 0 &&
-        nextHost?.sessions.length === 0 &&
-        !owner.sessionCatalogPageDepths.has(key)
-      ) {
-        if (nextHost.nextCursor && cursor) {
-          const seenCursors = discovery?.cursors ?? new Set<string>();
-          seenCursors.add(cursor);
-          discoveryPages.set(key, {
-            headCursor: discovery?.headCursor ?? cursor,
-            nextCursor: nextHost.nextCursor,
-            depth,
-            cursors: seenCursors,
-          });
-        } else {
-          // Renew the sweep at the next invalidation: membership can change behind a cursor.
-          discoveryPages.delete(key);
-        }
-      } else {
-        discoveryPages.delete(key);
-        live.windows.set(key, { depth });
-      }
-    }
-    owner.sessionCatalogs = owner.sessionCatalogs.map((candidate) =>
-      candidate.id === catalogId ? merged.catalog : candidate,
-    );
-    owner.requestSessionDataUpdate();
-    owner.sessionCatalogRevision += 1;
   } catch (error) {
     if (!isCurrent()) {
       return;
@@ -662,62 +587,27 @@ export async function loadMoreSessionCatalog(
 }
 
 export async function archiveSessionCatalog(
-  owner: SessionCatalogDataOwner & {
-    pendingCatalogArchives: ReadonlySet<string>;
-    isSessionMutationScopeCurrent(scope: SidebarSessionMutationScope): boolean;
-    invalidateSessionCatalogs(): void;
-  },
-  scope: SidebarCatalogSessionMutationScope,
-  params: SessionsCatalogArchiveParams,
+  ...args: Parameters<
+    typeof import("./session-data-catalog-actions.runtime.ts").archiveSessionCatalog
+  >
 ): Promise<void> {
-  const generation = scope.catalogGeneration;
-  const key = buildCatalogSessionKey(params);
-  owner.pendingCatalogArchives = new Set([...owner.pendingCatalogArchives, key]);
-  owner.requestSessionDataUpdate();
-  try {
-    await scope.client.request("sessions.catalog.archive", params);
-    if (generation === owner.sessionScopeGeneration && owner.isSessionMutationScopeCurrent(scope)) {
-      owner.sessionCatalogs = excludeSessionCatalogRows(owner.sessionCatalogs, new Set([key]));
-      owner.invalidateSessionCatalogs();
-    }
-  } finally {
-    if (generation === owner.sessionScopeGeneration) {
-      owner.pendingCatalogArchives = new Set(
-        [...owner.pendingCatalogArchives].filter((entry) => entry !== key),
-      );
-      owner.requestSessionDataUpdate();
-    }
+  const actions = await import("./session-data-catalog-actions.runtime.ts");
+  const [owner, scope] = args;
+  if (
+    scope.catalogGeneration !== owner.sessionScopeGeneration ||
+    !owner.isSessionMutationScopeCurrent(scope)
+  ) {
+    return;
   }
+  return actions.archiveSessionCatalog(...args);
 }
 
 export async function importSessionCatalog(
-  owner: SessionCatalogDataOwner & {
-    isSessionMutationScopeCurrent(scope: SidebarSessionMutationScope): boolean;
-    refreshSidebarSessions(agentId?: string): Promise<void>;
-  },
-  scope: SidebarCatalogSessionMutationScope,
-  params: SessionsCatalogImportParams,
+  ...args: Parameters<
+    typeof import("./session-data-catalog-actions.runtime.ts").importSessionCatalog
+  >
 ): Promise<SessionsCatalogImportResult | null> {
-  const isCurrent = () =>
-    scope.catalogGeneration === owner.sessionScopeGeneration &&
-    owner.isSessionMutationScopeCurrent(scope);
-  if (!isCurrent()) {
-    return null;
-  }
-  const access = readSessionMethodScopeAccess(scope.gateway.snapshot.hello?.auth, {
-    method: "sessions.catalog.import",
-    requiredScope: "operator.write",
-  });
-  if (!access.allowed) {
-    throw new Error(access.reason);
-  }
-  const result = await scope.client.request<SessionsCatalogImportResult>(
-    "sessions.catalog.import",
-    params,
-  );
-  if (!isCurrent()) {
-    return null;
-  }
-  void owner.refreshSidebarSessions(params.agentId);
-  return result;
+  const actions = await import("./session-data-catalog-actions.runtime.ts");
+  // The mutation owner rechecks its captured scope before making the RPC.
+  return actions.importSessionCatalog(...args);
 }

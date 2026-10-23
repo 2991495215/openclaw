@@ -55,7 +55,7 @@ suite.define(() => {
       const found = ordinary("Ordinary discovered row");
       const gateway = await installMockGateway(page, {
         featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
-        featureEvents: ["sessions.catalog.changed", "sessions.catalog.host"],
+        featureEvents: ["sessions.catalog.host"],
         methodResponses: {
           "sessions.catalog.list": {
             sequence: [
@@ -76,8 +76,17 @@ suite.define(() => {
       await deeper.waitFor();
       await page.screenshot({ path: path.join(artifacts, "expanded.png") });
       await gateway.deferNext("sessions.catalog.list", { catalogId: "ordinary" });
-      await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
-      await gateway.waitForRequest("sessions.catalog.list", { after: 4 });
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          value: "visible",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      const discovery = await gateway.waitForRequest("sessions.catalog.list", { after: 4 });
+      expect(discovery.params).toMatchObject({ catalogId: "ordinary" });
       expect(await deeper.count()).toBe(0);
       const refresh = (await gateway.getRequests("sessions.catalog.list"))[3]!;
       await gateway.emitGatewayEvent("sessions.catalog.host", {
@@ -85,8 +94,14 @@ suite.define(() => {
         agentId: "main",
         catalog: head,
       });
-      await gateway.resolveDeferred("sessions.catalog.list", result(found));
+      const replay = await gateway.waitForRequest("sessions.catalog.list", { after: 5 });
+      expect(replay.params).toMatchObject({
+        catalogId: "shared",
+        hostIds: ["node:source"],
+        cursors: { "node:source": "next" },
+      });
       await deeper.waitFor();
+      await gateway.resolveDeferred("sessions.catalog.list", result(found));
       await sidebar.getByText("Ordinary discovered row", { exact: true }).waitFor();
       // The capture precedes the assertion so the missing expanded window is retained on red.
       await page.screenshot({ path: path.join(artifacts, "settled.png") });

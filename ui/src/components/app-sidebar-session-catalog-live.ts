@@ -149,36 +149,29 @@ export class SessionCatalogLiveState {
     error?: SessionCatalog["error"],
     acceptsHost: (catalogId: string, hostId: string) => boolean = () => true,
   ) {
-    const keys = new Set(
-      catalogs.flatMap((catalog) =>
-        catalog.hosts.map((host) => sessionCatalogHostKey(catalog.id, host.hostId)),
-      ),
-    );
-    for (const [key, window] of this.windows) {
-      if (
-        catalogs.some((catalog) =>
-          catalog.hosts.some(
-            (host) =>
-              sessionCatalogHostKey(catalog.id, host.hostId) === key &&
-              !acceptsHost(catalog.id, host.hostId),
-          ),
-        )
-      ) {
-        continue;
+    const hostAcceptance = new Map<string, boolean>();
+    const failedPrefixes: string[] = [];
+    for (const catalog of catalogs) {
+      if (catalog.requiresFreshList && (error || catalog.error)) {
+        failedPrefixes.push(sessionCatalogHostKey(catalog.id, ""));
       }
-      if (
-        catalogs.some(
-          (catalog) =>
-            catalog.requiresFreshList &&
-            (error || catalog.error) &&
-            key.startsWith(sessionCatalogHostKey(catalog.id, "")),
-        )
-      ) {
+      for (const host of catalog.hosts) {
+        const key = sessionCatalogHostKey(catalog.id, host.hostId);
+        // Aliased keys retain any rejection; finalization still visits each host.
+        hostAcceptance.set(
+          key,
+          acceptsHost(catalog.id, host.hostId) && hostAcceptance.get(key) !== false,
+        );
+      }
+    }
+    for (const [key, window] of this.windows) {
+      const accepted = hostAcceptance.get(key);
+      if (accepted === false || failedPrefixes.some((prefix) => key.startsWith(prefix))) {
         // A provider failure can omit all hosts. Preserve only window intent
         // until fresh discovery can identify the currently authorized hosts.
         continue;
       }
-      if (!keys.has(key) || window.request?.status === "available") {
+      if (accepted === undefined || window.request?.status === "available") {
         if (window.depth > 0) {
           this.windows.set(key, { depth: window.depth });
         } else {

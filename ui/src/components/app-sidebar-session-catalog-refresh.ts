@@ -9,8 +9,8 @@ import {
   sessionCatalogRequestError,
 } from "./app-sidebar-session-catalog-state.ts";
 
-const SESSION_CATALOG_SAFETY_REFRESH_MS = 10 * 60_000;
-const SESSION_CATALOG_STABLE_REFRESH_MS = 30_000;
+// External native clients can change their catalogs without a Gateway event.
+const SESSION_CATALOG_REFRESH_MS = 2 * 60_000;
 
 /** Runs one progressive list/reconciliation cycle without binding it to a Lit element. */
 export async function refreshSessionCatalogsLive(params: {
@@ -24,7 +24,6 @@ export async function refreshSessionCatalogsLive(params: {
   catalogs: () => SessionCatalog[];
   pageDepths: ReadonlyMap<string, number>;
   connected: () => boolean;
-  catalogChangedEvents: boolean;
   applyPending: (catalogs: SessionCatalog[]) => void;
   applyFinal: (catalogs: SessionCatalog[]) => void;
   /** Finish the finite cursor sweep without repeating the root catalog request. */
@@ -161,11 +160,7 @@ export async function refreshSessionCatalogsLive(params: {
     if (ownsRequest && current && params.connected()) {
       const pending = live.refreshPending;
       live.refreshPending = false;
-      const interval =
-        retryDelayMs ??
-        (params.catalogChangedEvents
-          ? SESSION_CATALOG_SAFETY_REFRESH_MS
-          : SESSION_CATALOG_STABLE_REFRESH_MS);
+      const interval = retryDelayMs ?? SESSION_CATALOG_REFRESH_MS;
       live.schedule(interval, params.connected(), () => {
         void params.refresh();
       });
