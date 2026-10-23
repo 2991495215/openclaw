@@ -483,8 +483,8 @@ export class EmbeddedTuiBackend implements TuiBackend {
       maxSingleMessageBytes: perMessageHardCap,
     });
     const messages = capArrayByJsonBytes(
-      replaced.messages,
-      maxHistoryBytes - byteCounter.framingBytes(replaced.messages),
+      replaced,
+      maxHistoryBytes - byteCounter.framingBytes(replaced),
       byteCounter.messageBytes,
     ).items;
     const newestInFlightRun = [...this.runs.entries()].findLast(

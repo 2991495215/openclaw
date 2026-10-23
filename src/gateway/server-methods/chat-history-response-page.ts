@@ -140,12 +140,11 @@ export function prepareChatHistoryResponsePage(
     );
     index = group.end;
   }
-  const replaced = replaceOversizedChatHistoryMessages({
+  const messages = replaceOversizedChatHistoryMessages({
     byteCounter,
     messages: groups,
     maxSingleMessageBytes: Math.min(CHAT_HISTORY_MAX_SINGLE_MESSAGE_BYTES, maxCost - 1),
   });
-  const messages = replaced.messages;
   function capChatHistoryTail(): unknown[] {
     let start = messages.length;
     let cost = 0;
@@ -202,9 +201,7 @@ export function prepareChatHistoryResponsePage(
     ? capChatHistoryAroundMessage(
         historyPage.anchor?.direction
           ? (readChatHistoryMessageId(
-              historyPage.anchor.direction === "newer"
-                ? replaced.messages[0]
-                : replaced.messages.at(-1),
+              historyPage.anchor.direction === "newer" ? messages[0] : messages.at(-1),
             ) ?? messageId)
           : messageId,
       )
@@ -245,7 +242,7 @@ export function prepareChatHistoryResponsePage(
           omission: {
             omittedCount,
             normalizedBytes: byteCounter.messagesBytes(normalized),
-            ...(capped.length < replaced.messages.length ? { byteLimited: true as const } : {}),
+            ...(capped.length < messages.length ? { byteLimited: true as const } : {}),
           },
         }
       : {}),

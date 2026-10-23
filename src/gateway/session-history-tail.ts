@@ -159,7 +159,6 @@ export function dropChatHistoryOverreadContextMessage(
 
 export type IncrementalChatHistoryTail = {
   windowReset?: boolean;
-  overreadContextMessage: unknown;
   projection: ReturnType<typeof projectChatDisplayMessagesWithState>;
   projected: unknown[];
   rawMessages: unknown[];
@@ -532,7 +531,6 @@ async function readIncrementalChatHistoryTailAttempt(params: {
   }
   params.readers.subagentCoordination?.assertCurrent?.();
   return {
-    overreadContextMessage,
     projected: result.projected,
     projection: result.projection,
     rawMessages: result.filteredRawMessages,
