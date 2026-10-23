@@ -158,7 +158,7 @@ suite.define(() => {
               .getByText("Review complete.", { exact: true })
               .waitFor();
             await button(page, "Stop and keep text", true).click();
-            expect(await textarea.inputValue()).toBe("Please check the tests too.");
+            await expectDraft(textarea, "Please check the tests too.");
             expect(await gateway.getRequests("chat.send")).toHaveLength(0);
           }
           await capture("dictated-draft");
@@ -220,7 +220,7 @@ suite.define(() => {
       }
       await gateway.waitForRequest("talk.session.close");
       const committedDraft = cancel ? "ship it" : expected;
-      expect(await textarea.inputValue()).toBe(committedDraft);
+      await expectDraft(textarea, committedDraft);
       expect(await gateway.getRequests("chat.send")).toHaveLength(0);
       await captureComposer(page, `dictation-${name.replaceAll(" ", "-")}-committed.png`);
       expect(await textarea.inputValue()).toBe(committedDraft);
