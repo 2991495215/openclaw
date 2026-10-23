@@ -85,7 +85,7 @@ describe("session progress hovercard ownership", () => {
     flush();
     await harness.focus();
     await vi.advanceTimersByTimeAsync(0);
-    expect(portalText()).toContain("Referenced session facts");
+    await expectPortalText("Referenced session facts");
   });
 
   it.each([
@@ -105,7 +105,7 @@ describe("session progress hovercard ownership", () => {
       await harness.focus();
       await vi.advanceTimersByTimeAsync(0);
       const portal = getPortal();
-      expect(portal?.textContent).toContain("research progress");
+      await waitForSolid(() => expect(portal?.textContent).toContain("research progress"));
       harness.emitPullRequestStatus("ready");
       flush();
       expect(portal?.querySelector('[role="status"]')).toBeNull();
@@ -132,7 +132,9 @@ describe("session progress hovercard ownership", () => {
     await harness.focus();
     await vi.advanceTimersByTimeAsync(0);
     const portal = getPortal();
-    expect(portal?.querySelector(".session-color-dot")?.getAttribute("style")).toContain("blue");
+    await waitForSolid(() =>
+      expect(portal?.querySelector(".session-color-dot")?.getAttribute("style")).toContain("blue"),
+    );
     expect(portal?.textContent).toContain("cloud-a · standard");
     expect(portal?.textContent).toContain("small");
 

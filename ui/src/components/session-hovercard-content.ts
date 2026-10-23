@@ -1,7 +1,9 @@
-import type { SessionHovercardInput } from "./session-hovercard-solid.tsx";
+import type { ProgressCard } from "@openclaw/gateway-protocol";
+import type { ControlUiSessionPullRequestSnapshot } from "../../../src/gateway/control-ui-contract.js";
+import type { SidebarSessionHovercardRow } from "./app-sidebar-session-types.ts";
 
 export function hasSessionHovercardPullRequests(
-  snapshot: SessionHovercardInput["pullRequests"],
+  snapshot: ControlUiSessionPullRequestSnapshot | undefined,
 ): boolean {
   return Boolean(
     snapshot &&
@@ -12,7 +14,11 @@ export function hasSessionHovercardPullRequests(
   );
 }
 
-export function hasSessionHovercardContent(input: SessionHovercardInput): boolean {
+export function hasSessionHovercardContent(input: {
+  row?: SidebarSessionHovercardRow;
+  pullRequests?: ControlUiSessionPullRequestSnapshot;
+  progressCard?: ProgressCard | null;
+}): boolean {
   return Boolean(
     input.row || hasSessionHovercardPullRequests(input.pullRequests) || input.progressCard,
   );
