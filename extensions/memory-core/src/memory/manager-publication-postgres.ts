@@ -272,15 +272,19 @@ export function bindPostgresMemoryPublication(
   ) => {
     checkSource(source);
     append("reindex", fragments ?? [], source);
-    if (!fragments) {
-      db.exec(
-        `INSERT INTO ${spool} (lane, json, last) SELECT 'reindex', json, last FROM ${spool} WHERE lane = 'source' ORDER BY ordinal`,
-      );
-    }
     const hasRows = fragments
       ? fragments.some((row) => row.last)
       : Boolean(
-          db.prepare(`SELECT 1 FROM ${spool} WHERE lane = 'source' AND last = 1 LIMIT 1`).get(),
+          db
+            .prepare(`WITH copied AS (
+              INSERT INTO ${spool} (lane, json, last)
+              SELECT 'reindex', json, last FROM ${spool}
+              WHERE lane = 'source' ORDER BY ordinal
+              RETURNING last
+            )
+            SELECT coalesce(max(CASE WHEN last = 1 THEN 1 ELSE 0 END), 0) AS has_rows
+            FROM copied`)
+            .get()?.has_rows,
         );
     rebuilding!.hasIndexedChunks ||= hasRows;
     rebuilding!.hasSemanticChunks ||= hasRows && source.model !== "fts-only";

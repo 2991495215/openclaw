@@ -17,6 +17,7 @@ import { openNodeSqliteDatabase } from "openclaw/plugin-sdk/sqlite-worker-runtim
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordMemorySessionTombstonesInDatabase } from "../memory-session-tombstones.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
+import { registerReindexStageTests } from "./manager-publication-stage.test-helpers.js";
 import {
   memoryEmbeddingCacheBatches,
   memoryPublicationBatches,
@@ -504,90 +505,23 @@ describe.skipIf(!connection)("PostgreSQL memory publication worker", () => {
       });
     }));
 
-  it("retains a private full reindex across short bindings and rolls back a refused commit", () =>
-    admitted(() => {
-      expect(publishInline(replacement("old"))).toMatchObject({ ok: true });
-      expect(backend.execute({ type: "index.writeMetadata", input: metadata })).toMatchObject({
-        ok: true,
-      });
-      const before = rows();
-      const revision = Number(
-        pg().prepare("SELECT revision FROM memory_index_state WHERE id = 1").get()!.revision,
-      );
-      const stageId = "full-reindex";
-      const rebind = (id?: string) => {
-        backend.close();
-        backend = bind(id);
-        expect(database.isTransaction).toBe(false);
-      };
-      rebind(stageId);
-      expect(backend.execute({ type: "database.stage.start", input: undefined })).toMatchObject({
-        ok: true,
-      });
-      rebind(stageId);
-      const next = replacement("new", `new ${"replacement ".repeat(24_000)}`);
-      const batches = [...memoryPublicationBatches(next)];
-      expect(batches.length).toBeGreaterThan(1);
-      backend.execute({ type: "stage.start", input: { header: memoryPublicationHeader(next) } });
-      rebind(stageId);
-      for (const fragments of batches) {
-        backend.execute({ type: "stage.append", input: { fragments } });
-        rebind(stageId);
-        expect(rows()).toEqual(before);
-      }
-      expect(backend.execute({ type: "source.replace", input: { state } })).toMatchObject({
-        ok: true,
-      });
-      rebind(stageId);
-      expect(
-        backend.execute({ type: "index.writeMetadata", input: { ...metadata, chunkTokens: 200 } }),
-      ).toMatchObject({ ok: true });
-      rebind();
-      expect(rows()).toEqual(before);
-      expect(keyword("new")).toEqual([]);
-      expect(keyword("old")).toEqual([{ path: "memory/old.md" }]);
-      denyCommit = true;
-      expect(
-        backend.execute({
-          type: "database.stage.publish",
-          input: { stageId, expectedRevision: revision, vectorIndexComplete: true },
-        }),
-      ).toMatchObject({
-        ok: false,
-        entered: true,
-        committed: false,
-        error: { message: "publication authority revoked" },
-      });
-      expect(rows()).toEqual(before);
-      expect(keyword("old")).toEqual([{ path: "memory/old.md" }]);
-      expect(readMemoryDatabaseFacts(database).revision).toBe(revision);
-      denyCommit = false;
-      rebind();
-      expect(
-        backend.execute({
-          type: "database.stage.publish",
-          input: { stageId, expectedRevision: revision, vectorIndexComplete: true },
-        }),
-      ).toMatchObject({ ok: true });
-      expect(rows()).toEqual([
-        { path: "memory/new.md", text: next.chunks[0]!.text, vector: "[1,0,0]" },
-      ]);
-      expect(keyword("old")).toEqual([]);
-      expect(keyword("new")).toEqual([{ path: "memory/new.md" }]);
-      expect(backend.execute({ type: "index.facts", input: undefined })).toMatchObject({
-        meta: { chunkTokens: 200 },
-        vectorState: { state: "complete" },
-        revision: revision + 1,
-      });
-      backend.execute({ type: "database.stage.discard", input: { stageId } });
-      expect(() =>
-        backend.execute({
-          type: "database.stage.publish",
-          input: { stageId, expectedRevision: revision, vectorIndexComplete: true },
-        }),
-      ).toThrow("Memory reindex connection was lost");
-      expect(rows()).toHaveLength(1);
-    }));
+  registerReindexStageTests({
+    pg,
+    execute: (command) => backend.execute(command),
+    rebind(stageId) {
+      backend.close();
+      backend = bind(stageId);
+    },
+    setDenyCommit(value) {
+      denyCommit = value;
+    },
+    replacement,
+    publishInline,
+    rows,
+    keyword,
+    state,
+    metadata,
+  });
 
   it.each(["publication", "forget"] as const)("rejects a staged reindex after %s", (change) =>
     admitted(() => {
