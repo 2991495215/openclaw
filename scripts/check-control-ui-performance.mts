@@ -56,9 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 26,
   newBootJsRequests: 20,
-  // Lazy person cards: 1,413,780 B Chat; retain the New Session picker budget.
+  // Detailed tool rows reduce Chat to 1,403,881 B; retain the tighter New Session cap.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_467_434,
+  chatBootJsGzipBytes: 1_457_159,
+  newBootJsGzipBytes: 929_032,
   newBootJsGzipBytes: 929_032,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
