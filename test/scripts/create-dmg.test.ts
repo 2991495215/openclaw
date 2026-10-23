@@ -183,6 +183,19 @@ function runScript(args: string[], env: NodeJS.ProcessEnv = {}) {
   });
 }
 
+function fixture() {
+  const app = makeValidApp();
+  const outputDir = mkdtempSync(path.join(tmpdir(), "openclaw-create-dmg-output-"));
+  tempDirs.push(outputDir);
+  const output = path.join(outputDir, "OpenClaw.dmg");
+  const tools = makeFakeDmgTools();
+  return {
+    output,
+    tools,
+    run: (env: NodeJS.ProcessEnv = {}) => runScript([app, output], { ...tools.env, ...env }),
+  };
+}
+
 function expectPrivateDmgMount(log: string): string {
   const attach = log.match(/^attach (.+)\/image-rw\.dmg -mountpoint (.+) -nobrowse$/m);
   const runRoot = attach?.[1];
