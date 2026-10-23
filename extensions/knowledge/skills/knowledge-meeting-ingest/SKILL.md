@@ -56,7 +56,15 @@ Retain the original export and the transcript ([sources](references/sources.md))
 Normalized text is a labeled derivative. Report acquisition, retention and
 publication separately, with real counts ("9/16 originals retained").
 
-**Done when:** complete transcript retained; evidence receipts in hand.
+Read the normalized transcript once, in sections of about 150 lines. After each
+section, append to a working digest file: the line range, who spoke, topics,
+candidate decisions, commitments and facts with exact line citations, quote
+candidates, and new proper nouns. Later steps draft from the digest. Return to the
+transcript only for specific line ranges (to check wording or a quote), never for
+a full reread.
+
+**Done when:** complete transcript retained; evidence receipts in hand; digest
+covers every line.
 
 ### 2. Split, dedup, resolve speakers
 

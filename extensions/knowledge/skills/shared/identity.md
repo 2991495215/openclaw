@@ -55,10 +55,11 @@ attention and degrades search.
   a low-confidence identification; bots or spam.
 - **Sub-features and small workstreams** (one plugin, one PR) go into the parent
   project's Timeline.
-- **Type:** pick the best-fitting declared ontology type, using its definition
-  (`knowledge_ontology`). Prefer a specific type (an investment firm may have its
-  own). If the closest type is broad (the shipped `company` covers products and
-  open-source projects), use it without comment.
+- **Type:** pick the declared ontology type whose definition fits
+  (`knowledge_ontology`), preferring a specific one when it exists. In the shipped
+  ontology, ongoing initiatives (open-source projects, internal programs,
+  workstreams) are `project`; organizations and the products they sell are
+  `company`.
 - Find before creating: search, then create only if nothing matches.
 
 ## Links

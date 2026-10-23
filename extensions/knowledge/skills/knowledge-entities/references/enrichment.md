@@ -12,10 +12,17 @@ enriched in the past week without new signal.
 ## During ingestion
 
 When another skill (meeting, document) sends you here, the source is the
-enrichment. Use Knowledge and the source itself. Go to the web only to confirm an
-identity or a proper-noun spelling, with a targeted query, and keep only the
-passage that settles it. Full tier research below is for an explicit enrichment
-request.
+enrichment. Use Knowledge and the source itself, plus two kinds of web lookup:
+
+- **Participant identity:** when participants appear by first name only, fetch
+  the organization's public team or people page once (from the roster's email
+  domain or the project's site) and match names against it. Record the match and
+  its basis; a single unambiguous match is enough for a full name.
+- **Spelling:** a targeted query to confirm a proper noun's canonical spelling.
+
+Keep only the passage that settles the question. Skip background reading about
+products, standards or companies (homepages, docs). Full tier research below is
+for an explicit enrichment request.
 
 ## Tiers
 
