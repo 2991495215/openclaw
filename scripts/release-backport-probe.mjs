@@ -125,7 +125,7 @@ export function formatBackportProbes(probes) {
   return `${rows.map((row) => row.map(tsv).join("\t")).join("\n")}\n`;
 }
 
-function runBackportProbe(args = process.argv.slice(2)) {
+export function runBackportProbe(args = process.argv.slice(2)) {
   const { values } = parseArgs({
     args: stripLeadingPackageManagerSeparator(args),
     options: {
