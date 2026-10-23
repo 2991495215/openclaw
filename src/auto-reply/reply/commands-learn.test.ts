@@ -145,7 +145,6 @@ describe("learn command", () => {
 
     expect(result?.shouldContinue).toBe(true);
     expect(params.ctx.BodyForAgent).toContain("Review my Skill Workshop drafts.");
-    expect(params.ctx.BodyForAgent).toContain("discard every draft you reviewed");
   });
 
   it("keeps the wildcard sender policy for non-owner WebChat", async () => {

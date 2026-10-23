@@ -91,12 +91,12 @@ export async function listWorkshopDrafts(
   return drafts.toSorted((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id));
 }
 
-/** Saves a proposed SKILL.md for later review; live skills stay unchanged. */
+/** Saves a proposed SKILL.md for later review and returns its id; live skills stay unchanged. */
 export async function saveWorkshopDraft(
   config: OpenClawConfig,
   agentId: string,
   params: { name: string; content: string; reason?: string; assertLive?: () => void },
-): Promise<WorkshopDraft> {
+): Promise<string> {
   if (!EXISTING_SKILL_NAME_PATTERN.test(params.name)) {
     throw new WorkshopWriteError(
       `Invalid skill name "${params.name}": use lowercase letters, digits, or hyphens (e.g. "deploy-staging").`,
@@ -108,11 +108,11 @@ export async function saveWorkshopDraft(
       `${MAX_DRAFTS} drafts are already waiting for review. Save nothing; the user reviews drafts with /learn drafts.`,
     );
   }
-  const skillsRoot = resolveWorkshopSkillsDir(config, agentId);
   const draftsDir = resolveWorkshopDraftsDir(config, agentId);
   const id = `${params.name.slice(0, 60).replace(/-+$/u, "")}-${randomUUID().slice(0, 8)}`;
-  assertInsideSkillsRoot(skillsRoot, path.join(draftsDir, id), "draft directory");
   await fs.mkdir(draftsDir, { recursive: true });
+  // A symlinked .drafts must not carry writes outside the Workshop directory.
+  assertInsideSkillsRoot(resolveWorkshopSkillsDir(config, agentId), draftsDir, "drafts directory");
   const drafts = await root(draftsDir);
   const write = async (filePath: string, content: string) =>
     await drafts.write(`${id}/${filePath}`, content, {
@@ -127,11 +127,7 @@ export async function saveWorkshopDraft(
     await write(REASON_FILE, `${reason}\n`);
   }
   await write(SKILL_FILE, params.content);
-  const draft = await readDraft(draftsDir, id);
-  if (!draft) {
-    throw new WorkshopWriteError(`Draft ${id} could not be read back after saving.`);
-  }
-  return draft;
+  return id;
 }
 
 export async function viewWorkshopDraft(

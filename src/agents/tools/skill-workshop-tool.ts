@@ -150,13 +150,8 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
       );
     }
 
-    const draftId =
-      action === "discard"
-        ? readToolStringParam(params, "draft", { required: true })
-        : action === "view"
-          ? readToolStringParam(params, "draft")
-          : undefined;
-    if (draftId) {
+    const draftId = readToolStringParam(params, "draft", { required: action === "discard" });
+    if (draftId && (action === "view" || action === "discard")) {
       if (action === "view") {
         const filePath = readToolStringParam(params, "file_path");
         const view = await viewWorkshopDraft(options.config, options.agentId, draftId, filePath);
@@ -217,7 +212,7 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
     }
 
     if (action === "draft") {
-      const draft = await runMutation(() =>
+      const savedId = await runMutation(() =>
         saveWorkshopDraft(options.config, options.agentId, {
           name,
           content: readToolStringParam(params, "content", { required: true, trim: false }),
@@ -226,8 +221,8 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
         }),
       );
       return textResult(
-        `Saved draft ${draft.id} for "${name}". Skills are unchanged; the user reviews drafts with /learn drafts.`,
-        { draft },
+        `Saved draft ${savedId} for "${name}". Skills are unchanged; the user reviews drafts with /learn drafts.`,
+        { draft: savedId },
       );
     }
 
