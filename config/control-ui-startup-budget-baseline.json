@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 299435,
-  "reason": "Boot-only one-iteration Zopfli: matched 72b4cdf build reduces startup from 311172 to 299435 B with seven JS requests.",
+  "startupJsGzipBytes": 298916,
+  "reason": "Boot-only five-iteration Zopfli: matched 72b4cdf build reduces startup from 311172 to 298916 B with seven JS requests.",
   "updatedAt": "2026-10-23"
 }

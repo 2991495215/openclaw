@@ -108,7 +108,7 @@ export async function createControlUiPrecompressedAssetVariants(
       // byte-stable encoder so production test builds stay within their deadlines.
       source: Buffer.from(
         bootAsset
-          ? await gzipAsync(body, { numiterations: 1 })
+          ? await gzipAsync(body, { numiterations: 5 })
           : gzip(body, { level: 9, legacyHash: true, memLevel: 6 }),
       ),
     },
