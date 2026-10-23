@@ -714,7 +714,10 @@ suite.define(() => {
       after: requestCountB,
     });
     expect(requestB.params).toMatchObject({ sessionKey: sessionB });
-    const publishingB = page.getByRole("button", { name: "Publishing…" });
+    // Admission moves the action into the menu while the outside click closes it.
+    const publicationB = await openChatPublication(page);
+    await publicationB.locator('.chat-pr__actions-trigger[aria-expanded="true"]').waitFor();
+    const publishingB = publicationB.getByRole("button", { name: "Publishing…" });
     const publishingBState = () =>
       publishingB.evaluateAll((buttons) => ({
         count: buttons.length,
