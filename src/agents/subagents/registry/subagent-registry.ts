@@ -11,7 +11,6 @@ import { findSessionControllerOperationByRunId } from "../../../sessions/session
 import { runInDetachedAsyncContext } from "../../../shared/detached-async-context.js";
 import type { AgentRecoveryProgress } from "../../../state/agent-database-preparation-recovery.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
-import { prependAgentSteeringPrompt } from "../../agent-steering-queue.js";
 import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
 import { isDeliverySuspended } from "./subagent-delivery-state.js";
@@ -199,10 +198,14 @@ export function resumeSubagentRun(runId: string, source: "live" | "restore" = "l
     return;
   }
   if (entry.terminalOwner === "interrupted-recovery") {
-    // Startup orphan recovery replays this durable exact-run winner before it
-    // reads session/config state. Do not prune or resume it through announce.
     resumeReader.retirePending(entry);
-    resumedRuns.add(getSubagentRunRuntimeKey(entry));
+    if (source === "restore") {
+      // Startup recovery owns terminal reconciliation and resource cleanup before delivery.
+      resumedRuns.add(getSubagentRunRuntimeKey(entry));
+      return;
+    }
+    // The recovery completion path has run; live retries only resume its delivery.
+    resumeCheckedSubagentRun(runId, entry, source, null);
     return;
   }
   const orphanCheck = resolveSubagentRunOrphanReason({
@@ -689,19 +692,13 @@ export const finalizeInterruptedSubagentRun = completionRuntime.finalizeInterrup
 export const markSubagentRunTerminated = subagentRunManager.markSubagentRunTerminated;
 export const retireSubagentObligations = subagentLifecycleController.retireSubagentObligations;
 
-export { prependAgentSteeringPrompt };
-
 const publicApi = createSubagentRegistryPublicApi({
   runs: subagentRuns,
   restoreOnce: (context) => subagentRestorer.restoreOnce(true, context),
-  startAnnounceCleanup: startSubagentAnnounceCleanupFlow,
   settleRequesterTurn: settleRequesterTurnAfterSessionSpawns,
   markRequesterYielded: subagentLifecycleController.markRequesterTurnYielded,
 });
 
-export const leasePendingAgentSteeringItems = publicApi.leasePendingAgentSteeringItems;
-export const ackPendingAgentSteeringItems = publicApi.ackPendingAgentSteeringItems;
-export const releasePendingAgentSteeringItems = publicApi.releasePendingAgentSteeringItems;
 export const getSubagentRunByRunId = publicApi.getSubagentRunByRunId;
 export const prepareSubagentRunsByRunIds = publicApi.prepareSubagentRunsByRunIds;
 export const listCollectorRunsForRequesterIncarnation =
