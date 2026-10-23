@@ -238,6 +238,17 @@ maximum pauses and tails; all tails include sample counts. Apply the campaign's
 paired-delta, sample-count and absolute GC pause rules. RSS high water includes
 setup; retained state and allocation profiles are task-owned cleanup artifacts.
 
+Add `--with-roster` to follow each catalog read with the real `sessions.list`
+handler for both agents, returning 200 sidebar rows apiece. This mixed workload
+reports roster latency, selection calls and rows by task, and the longest
+instrumented synchronous main-thread task in each cycle. Compare the complete
+response-sequence digest across revisions. Roster hashing omits only the request
+timestamp (`ts`), fixture-specific `path`, and opaque `rowsRevision`; presentation
+`snapshotAt` timestamps are normalized to zero. All other values and row ordering
+remain in the digest, and catalog responses remain byte-for-byte comparisons.
+The fixture has no transcript enrichment or active model turns, and handler
+timings exclude transport.
+
 ## Codex adoption candidate preparation
 
 `adoption-candidates-measure.ts` calls the production adoption owner with 5,000

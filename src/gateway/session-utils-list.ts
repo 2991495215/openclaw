@@ -291,15 +291,23 @@ export function prepareSessionRowSelection(
   // Unordered readers keep the resident owner's order, including replacement and federation.
   const rows =
     !selection || !prepared?.ordered
-      ? (prepared?.candidateKeys
-          ? [...prepared.candidateKeys].map((key) => ({ key }))
-          : [{ key: prepared?.key, sessionIdOrKey: prepared?.sessionIdOrKey, parentSessionKey }]
-        ).flatMap((query) =>
-          projection.selectEntries(
-            { agentId: selectedScope.agentId, ...query, sortBy: null },
+      ? prepared?.candidateKeys
+        ? [...prepared.candidateKeys].flatMap((key) =>
+            projection.selectEntries(
+              { agentId: selectedScope.agentId, key, sortBy: null },
+              prepared.metadataPrepared === true,
+            ),
+          )
+        : projection.selectEntries(
+            {
+              agentId: selectedScope.agentId,
+              key: prepared?.key,
+              sessionIdOrKey: prepared?.sessionIdOrKey,
+              parentSessionKey,
+              sortBy: null,
+            },
             prepared?.metadataPrepared === true,
-          ),
-        )
+          )
       : undefined;
   if (!selection) {
     selection = createSessionRowSelection(
