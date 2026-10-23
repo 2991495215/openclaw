@@ -42,22 +42,6 @@ import {
 } from "./settings.ts";
 import type { ThemeName } from "./theme.ts";
 
-function applyChangedSettingsPatch(
-  target: Partial<UiSettings>,
-  settings: UiSettings,
-  source: Partial<UiSettings>,
-): void {
-  const applyKey = <K extends keyof UiSettings>(key: K, value: UiSettings[K] | undefined) => {
-    if (!prefValuesEqual(settings[key], value)) {
-      target[key] = value;
-    }
-  };
-  // SAFETY: source contains only UiSettings fields produced by the synced descriptor write methods.
-  for (const key of Object.keys(source) as Array<keyof UiSettings>) {
-    applyKey(key, source[key]);
-  }
-}
-
 export function extractServerUiPrefs(configObject: unknown): ServerUiPrefs {
   const prefs = asRecord(asRecord(asRecord(configObject)?.ui)?.prefs);
   if (!prefs) {
@@ -194,7 +178,18 @@ function serverPrefsLocalPatch(
         if (forcePublish) {
           Object.assign(patch, resetPatch);
         } else {
-          applyChangedSettingsPatch(patch, settings, resetPatch);
+          const applyKey = <K extends keyof UiSettings>(
+            settingKey: K,
+            value: UiSettings[K] | undefined,
+          ) => {
+            if (!prefValuesEqual(settings[settingKey], value)) {
+              patch[settingKey] = value;
+            }
+          };
+          // SAFETY: resetPatch contains only UiSettings fields produced by the synced descriptor write methods.
+          for (const settingKey of Object.keys(resetPatch) as Array<keyof UiSettings>) {
+            applyKey(settingKey, resetPatch[settingKey]);
+          }
         }
       }
       continue;
