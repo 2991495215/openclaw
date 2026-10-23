@@ -262,6 +262,30 @@ describe("full release same-parent recovery workflow", () => {
     },
   );
 
+  it("checks out the admitted qualification verifier before writing the summary manifest", () => {
+    const checkout = step("summary", "Checkout admitted qualification verifier");
+    const manifest = step("summary", "Write release validation manifest");
+    const summarySteps = workflow.jobs.summary?.steps ?? [];
+
+    expect(summarySteps.indexOf(checkout)).toBeLessThan(summarySteps.indexOf(manifest));
+    expect(checkout.if).toBe(
+      "${{ needs.resolve_target.result == 'success' && fromJSON(needs.resolve_target.outputs.source_admission_json || '{}').qualificationAdmission != null }}",
+    );
+    expect(checkout.with).toMatchObject({
+      ref: "${{ fromJSON(needs.resolve_target.outputs.source_admission_json).qualificationAdmission.workflowSha }}",
+      path: "qualification-verifier",
+      "sparse-checkout": "scripts",
+      "sparse-checkout-cone-mode": false,
+      "fetch-depth": 1,
+      "persist-credentials": false,
+      submodules: false,
+    });
+    expect(manifest.env).toMatchObject({
+      OPENCLAW_RELEASE_CI_SUMMARY_VALIDATOR:
+        "${{ fromJSON(needs.resolve_target.outputs.source_admission_json || '{}').qualificationAdmission != null && format('{0}/qualification-verifier/scripts/release-ci-summary.mjs', github.workspace) || format('{0}/scripts/release-ci-summary.mjs', github.workspace) }}",
+    });
+  });
+
   it("adopts only a matched child and still dispatches an unmatched sibling", () => {
     const root = tempDirs.make("release-child-dispatch-");
     const bin = join(root, "bin");
