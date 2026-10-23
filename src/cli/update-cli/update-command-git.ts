@@ -65,13 +65,11 @@ import { gatewayServiceCommandUsesRoot } from "./update-command-service-plan.js"
 
 export async function retireStandaloneGitWrapper(params: {
   previousRoot: string;
-  platform?: NodeJS.Platform;
-  searchDirs?: readonly string[];
   assertCurrent?: () => void;
 }): Promise<{ error?: string }> {
-  const platform = params.platform ?? process.platform;
+  const platform = process.platform;
   const wrapperName = platform === "win32" ? "openclaw.cmd" : "openclaw";
-  const searchDirs = params.searchDirs ?? (process.env.PATH ?? "").split(path.delimiter);
+  const searchDirs = (process.env.PATH ?? "").split(path.delimiter);
   const expectedEntry =
     platform === "win32"
       ? path.win32.join(params.previousRoot, "dist", "entry.js")

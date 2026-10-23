@@ -8,6 +8,7 @@ import { withMockedPlatform } from "../../test-utils/vitest-spies.js";
 import { retireStandaloneGitWrapper } from "./update-command-git.js";
 
 const dirs = useAutoCleanupTempDirTracker(afterEach);
+afterEach(() => vi.unstubAllEnvs());
 const installerWrapper = (root: string) =>
   `#!/usr/bin/env bash\nset -euo pipefail\nexec /usr/bin/node ${root.replaceAll(" ", "\\ ")}/dist/entry.js "$@"\n`;
 async function fixture(platform: NodeJS.Platform = "linux") {
@@ -21,7 +22,10 @@ async function fixture(platform: NodeJS.Platform = "linux") {
   const write = (contents: string) => fs.writeFile(wrapper, contents, { mode: 0o755 });
   await write(original);
   const retire = (searchDirs = [base], assertCurrent?: () => void) =>
-    retireStandaloneGitWrapper({ previousRoot: root, platform, searchDirs, assertCurrent });
+    withMockedPlatform(platform, async () => {
+      vi.stubEnv("PATH", searchDirs.join(path.delimiter));
+      return await retireStandaloneGitWrapper({ previousRoot: root, assertCurrent });
+    });
   return { base, root, wrapper, original, write, retire };
 }
 
@@ -68,7 +72,7 @@ describe("retireStandaloneGitWrapper", () => {
             return contents;
           });
     try {
-      const retiring = withMockedPlatform(platform, () => retire([base], assertCurrent));
+      const retiring = retire([base], assertCurrent);
       const result =
         change === "revoked finalizer"
           ? await expect(retiring).rejects.toThrow("finalizer revoked")
@@ -99,9 +103,7 @@ describe("retireStandaloneGitWrapper", () => {
       .spyOn(exec, "runCommandBuffered")
       .mockResolvedValue(pkgQueryResult(`${wrapper}\n`));
     try {
-      await withMockedPlatform("freebsd", () =>
-        expect(retire()).rejects.toThrow("installed by FreeBSD pkg"),
-      );
+      await expect(retire()).rejects.toThrow("installed by FreeBSD pkg");
       await expect(fs.readFile(wrapper, "utf8")).resolves.toBe(original);
     } finally {
       query.mockRestore();
