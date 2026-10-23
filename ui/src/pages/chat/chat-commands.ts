@@ -29,7 +29,6 @@ import {
 import { executeSlashCommand } from "./chat-command-executor.ts";
 import { clearChatHistory } from "./chat-history-actions.ts";
 import { setChatError } from "./chat-history-state.ts";
-import { chatOutboxOwner } from "./chat-outbox-owner.ts";
 import { readChatSessionActionAccess } from "./chat-session-action-access.ts";
 import type { ChatExportResult } from "./export.ts";
 import { publishChatSessionProjectionMessages } from "./history-merge.ts";
