@@ -6,27 +6,28 @@ import {
   readChatInputReceipt,
 } from "../chat/history-message-identity.ts";
 import { formatUiError } from "../format-error.ts";
+import type { SessionCapability } from "./session-capability.ts";
 import { isUiGlobalSessionKey } from "./session-key.ts";
 import {
   pauseSessionPlacementRecovery,
   retainSessionPlacementSendError,
   readSessionPlacementRecovery,
   type SessionPlacementRecovery,
+  type SessionPlacementStartMode,
   type SessionPlacementPausedRecovery,
   writeSessionPlacementRecovery,
   writeSessionPlacementRecoveryIfAvailable,
 } from "./session-placement-recovery.ts";
 import {
-  deleteRecoveredSessionPlacementDraft,
   deleteSessionPlacementDraft,
   startSessionPlacementInitialTurn,
 } from "./session-placement-startup.ts";
 
 export type SessionPlacementDraftAdvanceResult =
   | { status: "started"; messageId: string }
-  | { status: "accepted" }
+  | { status: "accepted"; consumedByEventId?: string }
   | { status: "paused"; recovery: SessionPlacementPausedRecovery }
-  | { status: "cancelled"; cleanupError?: string; recoveryPersisted: boolean }
+  | { status: "cancelled"; cleanupError?: string }
   | { status: "interrupted"; error?: string }
   | { status: "ownership-lost" };
 
@@ -34,17 +35,23 @@ type SessionPlacementRecoveryRetirement = "resolved" | "interrupted";
 
 export async function advanceSessionPlacementDraft(params: {
   client: Pick<GatewayBrowserClient, "request">;
+  describe: SessionCapability["describe"];
   recovery: SessionPlacementRecovery;
   persistRecovery?: boolean;
   cleanupOnCancellation: () => boolean;
-  recovering: boolean;
+  mode: SessionPlacementStartMode;
   isLifecycleCurrent: () => boolean;
   ownsRecovery: () => boolean;
   readSendError?: () => string | undefined;
   clearRecovery: (retirement: SessionPlacementRecoveryRetirement) => void;
   setRecoveryPhase: (phase: "sending", durable: boolean) => void;
-}): Promise<SessionPlacementDraftAdvanceResult> {
+  signal?: AbortSignal;
+}): Promise<
+  | SessionPlacementDraftAdvanceResult
+  | { status: "history-read"; settle: () => SessionPlacementDraftAdvanceResult }
+> {
   const persistRecovery = params.persistRecovery !== false;
+  const recovering = params.mode !== "dispatch";
   let recovery = params.recovery;
   let reason: SessionPlacementPausedRecovery["reason"] = "not-sent";
   const pause = (error: string, next = reason): SessionPlacementDraftAdvanceResult => ({
@@ -54,6 +61,18 @@ export async function advanceSessionPlacementDraft(params: {
   // Dispatch and send require both fences. After accepted delivery, inspect
   // them separately so lifecycle interruption is not reported as takeover.
   const isCurrentOwner = () => params.isLifecycleCurrent() && params.ownsRecovery();
+  const deleteDraft = async (recovered = recovering) => {
+    const error = await deleteSessionPlacementDraft(
+      params,
+      recovery.sessionKey,
+      recovery.agentId,
+      recovered,
+    );
+    if (!error) {
+      params.clearRecovery("resolved");
+    }
+    return error;
+  };
   if (
     recovery.phase === "sending" ||
     (recovery.phase === "paused" && recovery.reason === "unconfirmed")
@@ -66,6 +85,7 @@ export async function advanceSessionPlacementDraft(params: {
     const history = await params.client
       .request<ChatHistoryResult>("chat.history", {
         sessionKey: recovery.sessionKey,
+        toolResultMaxChars: 2_000,
         ...(isUiGlobalSessionKey(recovery.sessionKey) ? { agentId: recovery.agentId } : {}),
         limit: 1000,
         ...(recovery.messageId.length <= CHAT_INPUT_RUN_ID_MAX_CHARS
@@ -73,98 +93,84 @@ export async function advanceSessionPlacementDraft(params: {
           : {}),
       })
       .catch((error: unknown) => ({ error: formatUiError(error) }));
-    if (!isCurrentOwner()) {
-      return { status: "interrupted" };
-    }
-    // The old send may reject while this check awaits history. Read its owner-held
-    // diagnostic after both fences, without replacing the captured submission.
-    const sendError = params.readSendError?.();
-    if (sendError) {
-      recovery = retainSessionPlacementSendError(recovery, sendError);
-    }
-    if ("error" in history) {
-      return pause(history.error, "unconfirmed");
-    }
-    const input = { sendRunId: recovery.messageId };
-    const inputReceipt = readChatInputReceipt(history, input);
-    if (inputReceipt || findChatSubmissionMessage(history.messages, recovery.messageId, true)) {
-      params.clearRecovery("resolved");
-      return inputReceipt
-        ? { status: "accepted" }
-        : { status: "started", messageId: recovery.messageId };
-    }
-    return pause(
-      "No matching user message was found in the available history. Delivery remains unconfirmed.",
-      "unconfirmed",
-    );
+    // Settle in the startup owner's continuation, so no late send can land between
+    // updating the stored recovery and publishing that same decision in memory.
+    return {
+      status: "history-read",
+      settle: () => {
+        if (!isCurrentOwner()) {
+          return { status: "interrupted" };
+        }
+        const sendError = params.readSendError?.();
+        if (sendError) {
+          recovery = retainSessionPlacementSendError(recovery, sendError);
+        }
+        if ("error" in history) {
+          return pause(history.error, "unconfirmed");
+        }
+        const input = { sendRunId: recovery.messageId };
+        const inputReceipt = readChatInputReceipt(history, input);
+        if (inputReceipt || findChatSubmissionMessage(history.messages, recovery.messageId, true)) {
+          params.clearRecovery("resolved");
+          const receipt = history.inputReceipts?.find((item) => item.runId === recovery.messageId);
+          return inputReceipt
+            ? {
+                status: "accepted",
+                ...(receipt?.state === "consumed"
+                  ? { consumedByEventId: receipt.consumedByEventId }
+                  : {}),
+              }
+            : { status: "started", messageId: recovery.messageId };
+        }
+        return pause(
+          "No matching user message was found in the available history. Delivery remains unconfirmed.",
+          "unconfirmed",
+        );
+      },
+    };
   }
   if (recovery.phase === "paused") {
     return { status: "paused", recovery };
   }
   const existingRecovery =
-    params.recovering && persistRecovery
+    recovering && persistRecovery
       ? readSessionPlacementRecovery(
           recovery.gatewayUrl,
           recovery.recoveryScope,
           recovery.sessionKey,
         )
       : null;
+  const ensureRecovery = () =>
+    recovering
+      ? existingRecovery?.messageId === recovery.messageId
+      : writeSessionPlacementRecoveryIfAvailable(recovery);
   if (!isCurrentOwner()) {
     if (!params.cleanupOnCancellation()) {
       return { status: "interrupted" };
     }
-    const recoveryPersisted = persistRecovery
-      ? params.recovering
-        ? existingRecovery?.messageId === recovery.messageId
-        : writeSessionPlacementRecoveryIfAvailable(recovery)
-      : false;
-    const cleanupError = params.recovering
-      ? await deleteRecoveredSessionPlacementDraft(
-          params.client,
-          recovery.sessionKey,
-          recovery.agentId,
-        )
-      : await deleteSessionPlacementDraft(params.client, recovery.sessionKey, recovery.agentId);
-    if (!cleanupError) {
-      params.clearRecovery("resolved");
+    if (persistRecovery) {
+      ensureRecovery();
     }
-    return {
-      status: "cancelled",
-      cleanupError,
-      recoveryPersisted: cleanupError ? recoveryPersisted : false,
-    };
+    const cleanupError = await deleteDraft();
+    return { status: "cancelled", cleanupError };
   }
-  const recoveryPersisted = persistRecovery
-    ? params.recovering
-      ? existingRecovery?.messageId === recovery.messageId
-      : writeSessionPlacementRecoveryIfAvailable(recovery)
-    : true;
+  const recoveryPersisted = !persistRecovery || ensureRecovery();
   if (!isCurrentOwner() || !recoveryPersisted) {
     if (!params.cleanupOnCancellation() && !isCurrentOwner()) {
       return { status: "interrupted" };
     }
-    if (params.recovering && !recoveryPersisted) {
+    if (recovering && !recoveryPersisted) {
       return {
         status: "cancelled",
         cleanupError: "placement recovery storage is unavailable",
-        recoveryPersisted: false,
       };
     }
-    const cleanupError = params.recovering
-      ? await deleteRecoveredSessionPlacementDraft(
-          params.client,
-          recovery.sessionKey,
-          recovery.agentId,
-        )
-      : await deleteSessionPlacementDraft(params.client, recovery.sessionKey, recovery.agentId);
-    if (!cleanupError) {
-      params.clearRecovery("resolved");
-    }
-    return { status: "cancelled", cleanupError, recoveryPersisted };
+    const cleanupError = await deleteDraft();
+    return { status: "cancelled", cleanupError };
   }
 
   const placementStart = await startSessionPlacementInitialTurn(
-    params.client,
+    params,
     {
       key: recovery.sessionKey,
       agentId: recovery.agentId,
@@ -173,28 +179,27 @@ export async function advanceSessionPlacementDraft(params: {
       mentions: recovery.mentions,
       attachments: recovery.attachments,
       messageId: recovery.messageId,
-      recovering: params.recovering,
+      mode: params.mode,
       cleanupOnCancellation: params.cleanupOnCancellation,
+      signal: params.signal,
     },
     isCurrentOwner,
     () => {
-      if (!persistRecovery) {
-        reason = "unconfirmed";
-        params.setRecoveryPhase("sending", false);
-        return true;
+      let persisted = true;
+      if (persistRecovery) {
+        const currentRecovery = readSessionPlacementRecovery(
+          recovery.gatewayUrl,
+          recovery.recoveryScope,
+          recovery.sessionKey,
+        );
+        if (currentRecovery && currentRecovery.messageId !== recovery.messageId) {
+          return false;
+        }
+        persisted = writeSessionPlacementRecovery({ ...recovery, phase: "sending" });
       }
-      const currentRecovery = readSessionPlacementRecovery(
-        recovery.gatewayUrl,
-        recovery.recoveryScope,
-        recovery.sessionKey,
-      );
-      if (currentRecovery && currentRecovery.messageId !== recovery.messageId) {
-        return false;
-      }
-      const persisted = writeSessionPlacementRecovery({ ...recovery, phase: "sending" });
       if (persisted) {
         reason = "unconfirmed";
-        params.setRecoveryPhase("sending", true);
+        params.setRecoveryPhase("sending", persistRecovery);
       }
       return persisted;
     },
@@ -211,31 +216,22 @@ export async function advanceSessionPlacementDraft(params: {
     recovery = retainSessionPlacementSendError(recovery, placementStart.error);
   }
   if (placementStart.status === "cancelled") {
-    const cleanupError = await deleteSessionPlacementDraft(
-      params.client,
-      recovery.sessionKey,
-      recovery.agentId,
-    );
-    if (!cleanupError) {
-      params.clearRecovery("resolved");
-    }
-    return { status: "cancelled", cleanupError, recoveryPersisted: persistRecovery };
-  }
-  if (placementStart.status === "cleanup-rejected") {
-    return pause(placementStart.error);
+    const cleanupError = await deleteDraft(false);
+    return { status: "cancelled", cleanupError };
   }
   if (placementStart.status === "session-missing") {
     params.clearRecovery("resolved");
-    return { status: "cancelled", recoveryPersisted: false };
+    return { status: "cancelled" };
   }
-  if (placementStart.status === "send-not-started") {
-    return pause(placementStart.error, "not-sent");
-  }
-  if (placementStart.status === "send-definitive-rejected") {
-    return pause(placementStart.error, "rejected");
-  }
-  if (placementStart.status === "dispatch-rejected" || placementStart.status === "send-rejected") {
-    return pause(placementStart.error);
+  if ("error" in placementStart) {
+    return pause(
+      placementStart.error,
+      placementStart.status === "send-not-started"
+        ? "not-sent"
+        : placementStart.status === "send-definitive-rejected"
+          ? "rejected"
+          : reason,
+    );
   }
   if (!params.isLifecycleCurrent()) {
     // The page recorded why its lifecycle changed before this accepted send returned.
