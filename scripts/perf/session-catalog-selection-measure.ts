@@ -33,6 +33,7 @@ const { values } = parseArgs({
     output: { type: "string" },
     allocations: { type: "boolean", default: false },
     unchanged: { type: "boolean", default: false },
+    "with-roster": { type: "boolean", default: false },
   },
 });
 const integer = (name: "operations" | "yield-ms" | "start-at", min: number) =>
@@ -85,6 +86,9 @@ const [
   { createEmptyPluginRegistry },
   { setActivePluginRegistry },
   { createSubsystemLogger },
+  { sessionReadHandlers },
+  { getSessionRowSelectionMetrics },
+  { createMainThreadStallMonitor, runWithMainThreadTask },
 ] = await Promise.all([
   import("../../src/config/runtime-snapshot.js"),
   import("../../src/config/sessions/session-accessor.js"),
@@ -98,6 +102,9 @@ const [
   import("../../src/plugins/registry-empty.js"),
   import("../../src/plugins/runtime.js"),
   import("../../src/logging/subsystem.js"),
+  import("../../src/gateway/server-methods/sessions-read.js"),
+  import("../../src/infra/gateway-work-metrics.js"),
+  import("../../src/infra/main-thread-stall.js"),
 ]);
 
 const agents = ["main", "work"] as const;
@@ -137,7 +144,8 @@ function allocation(profile: HeapProfiler.SamplingHeapProfile) {
     const selection =
       inSelection ||
       node.callFrame.url.includes("session-row-selection") ||
-      node.callFrame.functionName === "prepareSessionRowSelection";
+      node.callFrame.functionName === "prepareSessionRowSelection" ||
+      node.callFrame.functionName === "selectSessionRowEntries";
     const catalog =
       inCatalog || node.callFrame.url.includes("/src/gateway/server-methods/session-catalog");
     totalBytes += node.selfSize;
@@ -226,6 +234,7 @@ function recordGc(entries: PerformanceEntry[]) {
 }
 const observer = new PerformanceObserver((list) => recordGc(list.getEntries()));
 const loop = monitorEventLoopDelay({ resolution: 1 });
+const taskMonitor = createMainThreadStallMonitor();
 try {
   // Two small sequential transactions; no transcripts or copied databases.
   for (const agentId of agents) {
@@ -242,7 +251,7 @@ try {
   // Finish cold-row hydration before capturing resident order or measuring warm metadata updates.
   await projection.prepareSelection();
   await projection.ensureMaterialized();
-  // This fixture supplies only the context fields consumed by sessions.catalog.list.
+  // This fixture supplies only the context fields consumed by these read handlers.
   const context = bindSessionRowProjection(
     {
       getRuntimeConfig: () => cfg,
@@ -254,18 +263,20 @@ try {
   async function list() {
     let result: unknown;
     let replies = 0;
-    await handler({
-      req: { type: "req", id: "catalog-measure", method: "sessions.catalog.list" },
-      params: { agentId: "main", limitPerHost: 16 },
-      context,
-      client: null,
-      isWebchatConnect: () => false,
-      respond: (ok, payload, error) => {
-        assert.ok(ok, JSON.stringify(error));
-        result = payload;
-        replies++;
-      },
-    });
+    await runWithMainThreadTask("gateway:rpc:sessions.catalog.list", () =>
+      handler({
+        req: { type: "req", id: "catalog-measure", method: "sessions.catalog.list" },
+        params: { agentId: "main", limitPerHost: 16 },
+        context,
+        client: null,
+        isWebchatConnect: () => false,
+        respond: (ok, payload, error) => {
+          assert.ok(ok, JSON.stringify(error));
+          result = payload;
+          replies++;
+        },
+      }),
+    );
     assert.equal(replies, 1);
     assert.ok(result && typeof result === "object" && "catalogs" in result);
     const catalogs = result.catalogs as SessionCatalog[];
@@ -277,12 +288,42 @@ try {
     }
     return result;
   }
+  async function roster(agentId: string) {
+    let result: unknown;
+    await runWithMainThreadTask("gateway:rpc:sessions.list", () =>
+      sessionReadHandlers["sessions.list"]!({
+        req: { type: "req", id: "roster-measure", method: "sessions.list" },
+        params: { agentId, limit: 200, rowMode: "sidebar" },
+        context,
+        client: null,
+        isWebchatConnect: () => false,
+        respond: (ok, payload, error) => {
+          assert.ok(ok, JSON.stringify(error));
+          result = payload;
+        },
+      }),
+    );
+    assert.ok(result && typeof result === "object" && "sessions" in result);
+    assert.equal((result.sessions as unknown[]).length, 200);
+    // Only the request clock and task-owned fixture path vary between processes.
+    const { ts: _ts, path: _path, ...stable } = result as Record<string, unknown>;
+    return stable;
+  }
   async function golden() {
     captureGolden = true;
     try {
       return {
         response: hash("sha256", JSON.stringify(await list()), "hex"),
         entries: Object.fromEntries(entryGoldens),
+        ...(values["with-roster"]
+          ? {
+              roster: await Promise.all(
+                agents.map(async (agentId) =>
+                  hash("sha256", JSON.stringify(await roster(agentId)), "hex"),
+                ),
+              ),
+            }
+          : {}),
       };
     } finally {
       captureGolden = false;
@@ -312,8 +353,13 @@ try {
   const callsBefore = providerCalls;
   const rowsBefore = providerRows;
   const revisionsBefore = providerRevisions;
+  const selectionsBefore = getSessionRowSelectionMetrics();
   const responseSequence = createHash("sha256");
   const latency: number[] = [];
+  const rosterLatency: number[] = [];
+  const taskMaximum: number[] = [];
+  const stalls: ReturnType<typeof taskMonitor.drain>["stalls"] = [];
+  let droppedStalls = 0;
   observer.observe({ entryTypes: ["gc"] });
   if (values.allocations) {
     await inspector.post("HeapProfiler.startSampling", {
@@ -325,6 +371,7 @@ try {
   const before = process.memoryUsage();
   const cpu = process.cpuUsage();
   loop.reset();
+  taskMonitor.reset();
   marker("heap-start");
   measuredStart = performance.now();
   for (let index = 0; index < operations; index++) {
@@ -342,6 +389,18 @@ try {
     latency.push(performance.now() - started);
     // Preserve every response's byte order; no volatile fields are removed.
     responseSequence.update(JSON.stringify(result)).update("\n");
+    if (values["with-roster"]) {
+      for (const agentId of agents) {
+        const rosterStarted = performance.now();
+        const rows = await roster(agentId);
+        rosterLatency.push(performance.now() - rosterStarted);
+        responseSequence.update(JSON.stringify(rows)).update("\n");
+      }
+    }
+    const tasks = taskMonitor.drain();
+    taskMaximum.push(tasks.delayMaxMs);
+    stalls.push(...tasks.stalls);
+    droppedStalls += tasks.dropped;
     await (yieldMs ? delay(yieldMs) : nextTurn());
   }
   measuredEnd = performance.now();
@@ -363,6 +422,21 @@ try {
     providerRows: providerRows - rowsBefore,
     providerRevisions: providerRevisions - revisionsBefore,
   };
+  const selectionsAfter = getSessionRowSelectionMetrics();
+  const selectionCounts = {
+    resets: selectionsAfter.resets - selectionsBefore.resets,
+    selections: selectionsAfter.selections.map((next) => {
+      const previous = selectionsBefore.selections.find(
+        (entry) => entry.kind === next.kind && entry.task === next.task,
+      );
+      return {
+        kind: next.kind,
+        task: next.task,
+        calls: next.calls - (previous?.calls ?? 0),
+        rows: next.rows - (previous?.rows ?? 0),
+      };
+    }),
+  };
   assert.equal(counts.providerCalls, operations * agents.length);
   assert.equal(counts.providerRows, operations * sessionCount);
   assert.equal(counts.providerRevisions, values.unchanged ? 0 : operations * agents.length);
@@ -381,8 +455,7 @@ try {
     ? readGatewayGcTrace(path.resolve(values["gc-log"]), profilePath)
     : undefined;
   const result = {
-    scope:
-      "in-process real sessions.catalog.list handler with persisted synthetic session rows; no transport or model latency claim",
+    scope: `in-process real sessions.catalog.list${values["with-roster"] ? " and sessions.list" : ""} handlers with persisted synthetic session rows; no transport or model latency claim`,
     workload: values.unchanged ? "unchanged-warm-list" : "metadata-update-and-list",
     measurementScope:
       "Handler latency excludes the metadata write and row settling; allocation, GC, CPU and elapsed include the write, settling, response digest and pacing.",
@@ -391,19 +464,23 @@ try {
     agents: agents.length,
     providers: agents.length,
     operations,
+    rosterCalls: rosterLatency.length,
     yieldMs,
     startAt,
     stateDir,
     profilePath: profile ? profilePath : null,
     counts,
+    selectionCounts,
     golden: {
       initial: initialGolden,
       final: finalGolden,
       responseSequence: responseSequence.digest("hex"),
-      omittedFields: [],
+      omittedFields: values["with-roster"] ? ["roster.ts", "roster.path"] : [],
     },
     allocation: profile ? allocation(profile) : null,
     handlerLatency: distribution(latency),
+    ...(values["with-roster"] ? { rosterHandlerLatency: distribution(rosterLatency) } : {}),
+    mainThreadTasks: { maximumPerOperation: distribution(taskMaximum), stalls, droppedStalls },
     warmUnchangedLatency: distribution(warmLatency),
     elapsedMs: measuredEnd - measuredStart,
     cpuMs: (usedCpu.user + usedCpu.system) / 1000,
@@ -429,6 +506,7 @@ try {
   writeSync(1, output);
 } finally {
   observer.disconnect();
+  taskMonitor.stop();
   loop.disable();
   if (inspectorConnected) {
     inspector.disconnect();

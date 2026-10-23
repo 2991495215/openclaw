@@ -104,7 +104,7 @@ it("preserves scoped key and ID selection against a scan over randomized federat
     }
     const matching = (query: Query, kind?: string) =>
       selectMatchingSessionRows({ rows, indexes, scope }, query, kind);
-    const select = createSessionRowEntrySelector({
+    const { selectEntries: select } = createSessionRowEntrySelector({
       isActive: () => true,
       runAsOwner: (read) => read(),
       prepare: () => true,

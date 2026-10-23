@@ -190,13 +190,27 @@ it("reads clean local catalog entries from the resident owner without SQLite", (
 it("shares list selection facts while preserving catalog order after row replacement", () =>
   withCatalog(
     async ({ list, setList, projection }) => {
+      const workKey = "agent:work:other";
+      replaceSessionEntrySync(
+        { agentId: "work", sessionKey: workKey },
+        { sessionId: "work-other", updatedAt: 1 },
+      );
       const snapshots: Array<readonly string[]> = [];
       setList(async ({ sessionEntries }) => {
         snapshots.push(sessionEntries!.entriesForAgent("main").map(({ sessionKey }) => sessionKey));
         return hosts([session()]);
       });
       await list();
+      const unordered = (agentId?: string) =>
+        prepareSessionRowSelection(projection, { agentId }, { metadataPrepared: true });
+      const unrelated = ["agent:main:unrelated-0", "agent:main:unrelated-1"];
+      expect(
+        unordered()
+          .entries("all")
+          .map(([sessionKey]) => sessionKey),
+      ).toEqual([key, ...unrelated, workKey]);
       const builds = vi.spyOn(rowSelection, "createSessionRowSelection");
+      const selections = vi.spyOn(projection, "selectEntries");
       const ordered = () =>
         prepareSessionRowSelection(projection, { agentId: "main" }, { ordered: true }).entries(
           "all",
@@ -207,7 +221,6 @@ it("shares list selection facts while preserving catalog order after row replace
       replace({ updatedAt: 2 });
       await list();
       expect(ordered().map(([sessionKey]) => sessionKey)[0]).toBe(key);
-      const unrelated = ["agent:main:unrelated-0", "agent:main:unrelated-1"];
       expect(snapshots).toEqual([
         [key, ...unrelated],
         [...unrelated, key],
@@ -221,8 +234,25 @@ it("shares list selection facts while preserving catalog order after row replace
       await list();
       expect(snapshots[2]).toEqual([unrelated[1], key, unrelated[0]]);
       expect(snapshots[0]).toEqual([key, ...unrelated]);
+      expect(
+        unordered("work")
+          .entries("all")
+          .map(([sessionKey]) => sessionKey),
+      ).toEqual([workKey]);
+      // Global insertion order and the agent index's replacement order are different contracts.
+      expect(
+        unordered()
+          .entries("all")
+          .map(([sessionKey]) => sessionKey),
+      ).toEqual([key, ...unrelated, workKey]);
+      const current = unordered("main");
+      expect(current.entries("all").map(([sessionKey]) => sessionKey)).toEqual(snapshots[2]);
+      expect(current.entries(false).map(([sessionKey]) => sessionKey)).toEqual([unrelated[1], key]);
+      expect(current.entries(true).map(([sessionKey]) => sessionKey)).toEqual([unrelated[0]]);
+      // Metadata receipts update the shared selection; catalog reads need only its resident order.
+      expect(selections.mock.calls.filter(([query]) => !query?.key)).toHaveLength(0);
     },
-    { otherEntryCount: 2 },
+    { otherEntryCount: 2, agents: { entries: { main: {}, work: {} } } },
   ));
 
 it.each(["planning", "delivery"])(

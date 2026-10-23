@@ -406,7 +406,7 @@ export function createSessionRowEntrySelector(owner: {
   state: () => SessionRowEntrySelection;
 }) {
   const noDirtyRows = new Set<string>();
-  return (
+  const selectEntries = (
     query: records.Query = {},
     metadataPrepared = false,
     selectionKind?: "running-candidate",
@@ -441,6 +441,23 @@ export function createSessionRowEntrySelector(owner: {
       task,
     );
     return selected;
+  };
+  return {
+    selectEntries,
+    // Prepared consumers need resident order, not another scope/facts selection.
+    *iteratePreparedEntryOrder(agentId?: string) {
+      if (!owner.isActive()) {
+        return;
+      }
+      const { rows, byAgent } = owner.state();
+      if (!agentId) {
+        yield* rows.values();
+      } else {
+        for (const id of byAgent.get(agentId) ?? []) {
+          yield rows.get(id)!;
+        }
+      }
+    },
   };
 }
 

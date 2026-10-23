@@ -290,7 +290,7 @@ export function prepareSessionRowSelection(
   let selection = retained ? scopes.get(selectedScope)?.get(activeOnly) : undefined;
   // Unordered readers keep the resident owner's order, including replacement and federation.
   const rows =
-    !selection || !prepared?.ordered
+    !selection || (!prepared?.ordered && !prepared?.metadataPrepared)
       ? (prepared?.candidateKeys
           ? [...prepared.candidateKeys].map((key) => ({ key }))
           : [{ key: prepared?.key, sessionIdOrKey: prepared?.sessionIdOrKey, parentSessionKey }]
@@ -331,7 +331,9 @@ export function prepareSessionRowSelection(
   const selected = selection.read(
     prepared?.ordered ? (opts.sortBy ?? "updatedAt") : undefined,
     candidates,
-    prepared?.ordered ? undefined : rows,
+    prepared?.ordered
+      ? undefined
+      : () => rows ?? projection.iteratePreparedEntryOrder(selectedScope.agentId),
   );
   const { entries } = selected;
   return {

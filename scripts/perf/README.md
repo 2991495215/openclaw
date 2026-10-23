@@ -151,6 +151,17 @@ maximum pauses and tails; all tails include sample counts. Apply the campaign's
 paired-delta, sample-count and absolute GC pause rules. RSS high water includes
 setup; retained state and allocation profiles are task-owned cleanup artifacts.
 
+Add `--with-roster` to follow each catalog read with the real `sessions.list`
+handler for both agents, returning 200 sidebar rows apiece. This mixed-reader
+workload exercises unordered catalog selection and ordered roster selection at
+the same row-owner revision while metadata changes between operations. It reports
+roster latency separately, selection calls and rows by task/kind, and the longest
+instrumented synchronous main-thread task in each operation. Compare the complete
+ordered response-sequence digest across revisions; only the roster's top-level
+request timestamp (`ts`) and fixture-specific store `path` are omitted. Catalog
+responses and entry digests remain byte-for-byte comparisons. The fixture has no
+transcript enrichment or active model turns, and handler timings exclude transport.
+
 ## Gateway startup and restart acceptance
 
 Use `scripts/bench-gateway-startup.ts` and `scripts/bench-gateway-restart.ts`

@@ -304,7 +304,7 @@ export function createSessionRowSelection(
     read(
       sortBy?: SessionsListParams["sortBy"],
       candidates?: Iterable<Pick<SelectionTarget, "key" | "agentId">>,
-      residentOrder?: Iterable<Pick<SelectionTarget, "key" | "agentId" | "storeTarget">>,
+      residentOrder?: () => Iterable<Pick<SelectionTarget, "key" | "agentId" | "storeTarget">>,
     ) {
       assertCanonical();
       if (!candidates && !partitions) {
@@ -323,25 +323,32 @@ export function createSessionRowSelection(
           const orderKey = `${sortBy}:${archived ?? false}`;
           let entries = !candidates && sortBy && orders.get(orderKey)?.entries;
           if (!entries) {
-            const targets = (
-              residentOrder
-                ? Array.from(residentOrder, (row) => {
-                    const target = winners.get(keyFor(row));
-                    return target?.row.agentId === row.agentId &&
-                      target.row.storeTarget.storePath === row.storeTarget.storePath
-                      ? target
-                      : undefined;
-                  })
-                : candidates
-                  ? [...new Set(Array.from(candidates, keyFor))].flatMap(
-                      (key) => winners.get(key) ?? [],
-                    )
-                  : [...winners.values()]
-            ).filter(
-              (target): target is IndexedTarget =>
-                target !== undefined && matchesSessionArchiveFilter(target.row.entry, archived),
-            );
-            entries = targets.map((target) => target.pair);
+            const selectedEntries: SessionEntryPair[] = [];
+            const append = (target: IndexedTarget | undefined) => {
+              if (target && matchesSessionArchiveFilter(target.row.entry, archived)) {
+                selectedEntries.push(target.pair);
+              }
+            };
+            if (residentOrder) {
+              for (const row of residentOrder()) {
+                const target = winners.get(keyFor(row));
+                if (
+                  target?.row.agentId === row.agentId &&
+                  target.row.storeTarget.storePath === row.storeTarget.storePath
+                ) {
+                  append(target);
+                }
+              }
+            } else if (candidates) {
+              for (const key of new Set(Array.from(candidates, keyFor))) {
+                append(winners.get(key));
+              }
+            } else {
+              for (const target of winners.values()) {
+                append(target);
+              }
+            }
+            entries = selectedEntries;
             if (sortBy) {
               entries.sort((a, b) => compareSessionEntryPairs(a, b, sortBy));
               if (!candidates) {

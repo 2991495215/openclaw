@@ -444,6 +444,9 @@ export function createSessionRowProjectionFixture(params: {
     },
     isCurrent: (row) => rows.get(id(row))?.generation === row.generation,
     selectEntries,
+    *iteratePreparedEntryOrder(agentId) {
+      yield* selectEntries({ agentId, sortBy: null });
+    },
     async projectRecentCandidates(profileIds) {
       const selection = createSessionRowSelection(
         cfg,

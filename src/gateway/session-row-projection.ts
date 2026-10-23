@@ -566,7 +566,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
     recents.dispose();
     archive.clear();
   }
-  const selectEntries = rowScope.createSessionRowEntrySelector({
+  const entrySelection = rowScope.createSessionRowEntrySelector({
     isActive: () => !disposed,
     runAsOwner: inOwnerContext,
     prepare: prepareRead,
@@ -699,7 +699,7 @@ export async function createSessionRowProjection(params: records.ProjectionOptio
       };
     },
     isCurrent,
-    selectEntries,
+    ...entrySelection,
     projectRecentCandidates: recents.candidates,
     listCreatedActors: (): ReturnType<typeof creators.list> =>
       creators.list(() => projection.state.scope({}).paths, matching),
