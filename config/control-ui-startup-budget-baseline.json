@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 285513,
-  "reason": "Media helper extraction: matched 9dfbbc9 builds measured 285463 to 285513 B startup gzip with 7 JS and 1 CSS request; record the current candidate after earlier lazy-English savings.",
+  "startupJsGzipBytes": 282539,
+  "reason": "Defer 245 optional feature English strings: matched b19bade build 285482 to 282539 B gzip with 7 JS and 1 CSS request.",
   "updatedAt": "2026-10-23"
 }
