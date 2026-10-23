@@ -172,9 +172,6 @@ export async function syncWorkspaceSkills(params: {
   skillFilter?: string[];
   agentId?: string;
   eligibility?: SkillEligibilityContext;
-  managedSkillsDir?: string;
-  bundledSkillsDir?: string;
-  pluginSkillsDir?: string;
   skillsSnapshot?: SkillSnapshot;
   assertCurrent?: () => void;
 }): Promise<SkillUsagePath[]> {
@@ -203,9 +200,6 @@ export async function syncWorkspaceSkills(params: {
         sourceDir,
         params.agentId ? normalizeAgentId(params.agentId) : undefined,
         params.config ? fingerprintSkillSnapshotConfig(params.config) : undefined,
-        params.managedSkillsDir,
-        params.bundledSkillsDir,
-        params.pluginSkillsDir,
         skillRoots?.agentWorkspaceDir,
         skillRoots?.executionWorkspaceDir,
         executionWorkspaceFileHost,
@@ -248,9 +242,6 @@ export async function syncWorkspaceSkills(params: {
       skillFilter: params.skillFilter,
       agentId: params.agentId,
       eligibility: params.eligibility,
-      managedSkillsDir: params.managedSkillsDir,
-      bundledSkillsDir: params.bundledSkillsDir,
-      pluginSkillsDir: params.pluginSkillsDir,
       ...(skillsSnapshot?.skillFilter ? { skillFilter: skillsSnapshot.skillFilter } : {}),
       ...(skillsSnapshot?.skillOverrides ? { skillOverrides: skillsSnapshot.skillOverrides } : {}),
     };

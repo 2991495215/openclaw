@@ -17,6 +17,13 @@ import { useLoadingFixture, writeSkillFixture as writeSkill } from "./loading.te
 import { buildSkillSnapshot } from "./workspace-skill-prompt.js";
 import { syncWorkspaceSkills } from "./workspace-skill-sync.runtime.js";
 
+vi.mock("./workspace-skill-loader.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./workspace-skill-loader.js")>();
+  const prepare: typeof actual.prepareWorkspaceSkills = (source, opts, assertCurrent) =>
+    actual.prepareWorkspaceSkills(source, { ...sourceOptions(source), ...opts }, assertCurrent);
+  return { ...actual, prepareWorkspaceSkills: prepare };
+});
+
 const isolatedConfig = { plugins: { enabled: false } } satisfies OpenClawConfig;
 
 function sourceOptions(workspace: string) {
@@ -24,6 +31,7 @@ function sourceOptions(workspace: string) {
     config: isolatedConfig,
     bundledSkillsDir: path.join(workspace, ".bundled"),
     managedSkillsDir: path.join(workspace, ".managed"),
+    pluginSkillsDir: path.join(workspace, ".openclaw", "plugin-skills"),
   };
 }
 
@@ -53,7 +61,7 @@ function sync(
 
 function syncOptions(source: string, target: string) {
   return {
-    ...sourceOptions(source),
+    config: isolatedConfig,
     sourceWorkspaceDir: source,
     targetWorkspaceDir: target,
   };
@@ -359,8 +367,6 @@ describe("syncWorkspaceSkills", () => {
           agentId: root.agentId,
           config,
           skillFilter: [skillName],
-          bundledSkillsDir: path.join(agentWorkspace, ".bundled"),
-          managedSkillsDir: path.join(agentWorkspace, ".managed"),
           skillsSnapshot,
         });
         const syncedSkillDir = skillPath(target, skillName);
@@ -656,7 +662,6 @@ describe("syncWorkspaceSkills for plugin skills", () => {
 
     const skillUsagePaths = await sync(source, target, {
       config: plugin.config,
-      pluginSkillsDir,
     });
 
     const syncedSkillDir = path.join(target, "skills", "wiki-maintainer");
@@ -693,7 +698,6 @@ describe("syncWorkspaceSkills for plugin skills", () => {
 
     await sync(source, target, {
       config: plugin.config,
-      pluginSkillsDir,
     });
 
     expect(await exists(skillPath(target, "escaped-skill", "SKILL.md"))).toBe(false);

@@ -84,8 +84,6 @@ export class QaCredentialAdminError extends Error {
 type AdminBaseOptions = {
   actorId?: string;
   endpointPrefix?: string;
-  env?: NodeJS.ProcessEnv;
-  fetchImpl?: typeof fetch;
   siteUrl?: string;
 };
 
@@ -156,7 +154,7 @@ function resolveAdminAuthToken(env: NodeJS.ProcessEnv): string {
 }
 
 export async function diagnoseQaCredentialBroker(options: AdminBaseOptions = {}) {
-  const env = options.env ?? process.env;
+  const env = process.env;
   const checks: QaCredentialDoctorCheck[] = [];
   const siteUrl = options.siteUrl?.trim() || env.OPENCLAW_QA_CONVEX_SITE_URL?.trim();
   const endpointPrefix = options.endpointPrefix?.trim() || env.OPENCLAW_QA_CONVEX_ENDPOINT_PREFIX;
@@ -206,8 +204,6 @@ export async function diagnoseQaCredentialBroker(options: AdminBaseOptions = {})
       const listed = await listQaCredentialSets({
         actorId: options.actorId,
         endpointPrefix: normalizedEndpointPrefix,
-        env,
-        fetchImpl: options.fetchImpl,
         limit: 1,
         siteUrl: normalizedSiteUrl,
         status: "active",
@@ -243,7 +239,7 @@ export async function diagnoseQaCredentialBroker(options: AdminBaseOptions = {})
 }
 
 function resolveAdminConfig(options: AdminBaseOptions, operation: "add" | "remove" | "list") {
-  const env = options.env ?? process.env;
+  const env = process.env;
   const siteUrl = options.siteUrl?.trim() || env.OPENCLAW_QA_CONVEX_SITE_URL?.trim();
   if (!siteUrl) {
     throw new QaCredentialAdminError({
@@ -269,7 +265,6 @@ function resolveAdminConfig(options: AdminBaseOptions, operation: "add" | "remov
       DEFAULT_HTTP_TIMEOUT_MS,
     ),
     url: joinQaCredentialEndpoint(normalizedSiteUrl, endpointPrefix, `admin/${operation}`),
-    fetchImpl: options.fetchImpl ?? fetch,
   };
 }
 
@@ -283,7 +278,7 @@ async function postJson<T>(
   let response: Response;
   let text: string;
   try {
-    response = await params.fetchImpl(params.url, {
+    response = await fetch(params.url, {
       method: "POST",
       headers: {
         authorization: `Bearer ${params.authToken}`,
