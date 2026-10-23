@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, For, Show, useContext } from "solid-js";
 import type {
   SessionPlacementDiskSpace,
   SessionPlacementWorkerRuntimeInstall,
@@ -10,11 +10,12 @@ import type { ApplicationPlacementStartupStatus } from "../../app/session-placem
 import { formatWebUiIconErrorText } from "../../components/error-presentation.ts";
 import { CopyButton } from "../../components/solid/copy-button.tsx";
 import { Icon } from "../../components/solid/icon.tsx";
-import { registerNewSessionSetupEnglish } from "../../i18n/locales/en-new-session-setup.ts";
+import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
+import { registerNewSessionRuntimeEnglish } from "../../i18n/locales/en-new-session-runtime.ts";
 import { formatBytes } from "../../lib/agents/display.ts";
 import { findChatSubmissionMessage } from "../../lib/chat/history-message-identity.ts";
 import { clampText } from "../../lib/format.ts";
-import { t } from "../../lib/reactive/i18n.ts";
+import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import {
   ChatProviderReviewNotice,
   type ChatProviderReviewOwner,
@@ -22,12 +23,16 @@ import {
 import type { SubagentRoster, SubagentRowContext } from "./chat-spawned-subagent.ts";
 import { ChatGPTUsageLimit } from "./chatgpt-usage-limit.tsx";
 import { ChatChildAttention } from "./components/chat-child-attention.tsx";
+import { ChatConversationMobile } from "./components/chat-conversation-presentation.ts";
 import { WorkspaceConflictNotice } from "./components/chat-workspace-conflict.tsx";
 import type { ChatRunError } from "./run-lifecycle.ts";
 import type { ProviderPolicyNotice } from "./tool-stream-contract.ts";
+import "../../styles/chat/conversation-notices.css";
 import type { WorkspaceResultConflict } from "./workspace-conflict.ts";
 
-registerNewSessionSetupEnglish();
+registerEnglishCatalog(registerChatSessionEnglish);
+
+registerNewSessionRuntimeEnglish();
 
 export type ChatPlacementStartupNoticeProps = {
   placementStartup?: ApplicationPlacementStartupStatus | null;
@@ -135,6 +140,8 @@ function ChatErrorNotice(props: {
   displayError?: string;
   tone?: "danger" | "warn";
   summary?: string;
+  compact?: boolean;
+  actionAvailable?: boolean;
 }) {
   const startup = createMemo(() => resolveSessionStartupErrorPresentation(props.error));
   const displayError = () => props.displayError ?? formatWebUiIconErrorText(props.error);
@@ -148,54 +155,114 @@ function ChatErrorNotice(props: {
   const hasDetails = () => lines().some((line) => line !== "" && line !== title());
   const tone = () => props.tone ?? "danger";
   return (
-    <div
-      class={[
-        "chat-composer-neighbor-card",
-        `chat-composer-neighbor-card--${tone()}`,
-        "chat-error",
-      ]}
-      role={tone() === "warn" ? "status" : "alert"}
+    <Show
+      when={props.compact}
+      fallback={
+        <div
+          class={[
+            "chat-composer-neighbor-card",
+            `chat-composer-neighbor-card--${tone()}`,
+            "chat-error",
+          ]}
+          role={tone() === "warn" ? "status" : "alert"}
+        >
+          <span class="chat-composer-neighbor-card__icon" aria-hidden="true">
+            <Icon name="alertTriangle" />
+          </span>
+          <div class="chat-error__content">
+            <Show when={startup()}>
+              {(presentation) => (
+                <div class="chat-composer-neighbor-card__copy">
+                  <strong>{presentation().title}</strong>
+                  <span>{presentation().recovery}</span>
+                </div>
+              )}
+            </Show>
+            <Show
+              when={hasDetails()}
+              fallback={
+                <span class="chat-error__content">
+                  <strong>{title()}</strong>
+                  <CopyButton text={props.error} idleLabel={t("chat.copyError")} />
+                </span>
+              }
+            >
+              <details class="chat-error__content">
+                <summary class="chat-error__summary">
+                  <Show when={!startup()}>
+                    <strong>{title()}</strong>
+                  </Show>
+                  <span>{t("chat.details")}</span>
+                  <span class="chat-error__chevron" aria-hidden="true">
+                    <Icon name="chevronDown" />
+                  </span>
+                  <CopyButton text={props.error} idleLabel={t("chat.copyError")} />
+                </summary>
+                <pre
+                  class="chat-error__diagnostic"
+                  tabindex={0}
+                  aria-label={t("chat.errorDetails")}
+                >
+                  {displayError()}
+                </pre>
+              </details>
+            </Show>
+          </div>
+          {props.action}
+        </div>
+      }
     >
-      <span class="chat-composer-neighbor-card__icon" aria-hidden="true">
-        <Icon name="alertTriangle" />
-      </span>
-      <div class="chat-error__content">
-        <Show when={startup()}>
-          {(presentation) => (
-            <div class="chat-composer-neighbor-card__copy">
-              <strong>{presentation().title}</strong>
-              <span>{presentation().recovery}</span>
-            </div>
-          )}
-        </Show>
+      <div
+        class={[
+          "chat-composer-neighbor-card",
+          `chat-composer-neighbor-card--${tone()}`,
+          "chat-error chat-error--mobile",
+          { "chat-error--with-action": props.actionAvailable },
+        ]}
+        role={tone() === "warn" ? "status" : "alert"}
+      >
         <Show
           when={hasDetails()}
           fallback={
-            <span class="chat-error__content">
-              <strong>{title()}</strong>
-              <CopyButton text={props.error} idleLabel={t("chat.copyError")} />
-            </span>
+            <div class="chat-error__mobile-header">
+              <Icon name="alertTriangle" />
+              <span class="chat-error__mobile-title">{title()}</span>
+              {props.action}
+            </div>
           }
         >
-          <details class="chat-error__content">
-            <summary class="chat-error__summary">
-              <Show when={!startup()}>
-                <strong>{title()}</strong>
-              </Show>
-              <span>{t("chat.details")}</span>
-              <span class="chat-error__chevron" aria-hidden="true">
-                <Icon name="chevronDown" />
+          <details
+            class="chat-error__mobile-disclosure"
+            onPointerDown={(event) => {
+              event.currentTarget.dataset.disclosureInput = "pointer";
+            }}
+            onKeyDown={(event) => {
+              event.currentTarget.dataset.disclosureInput = "keyboard";
+            }}
+          >
+            <summary class="chat-error__mobile-header">
+              <Icon name="alertTriangle" />
+              <span class="chat-error__mobile-title">
+                {title()}
+                <span class="chat-error__mobile-chevron" aria-hidden="true">
+                  <Icon name="chevronRight" />
+                </span>
               </span>
-              <CopyButton text={props.error} idleLabel={t("chat.copyError")} />
+              {props.action}
             </summary>
-            <pre class="chat-error__diagnostic" tabindex={0} aria-label={t("chat.errorDetails")}>
-              {displayError()}
-            </pre>
+            <div class="chat-error__mobile-details">
+              <pre tabindex={0} aria-label={t("chat.errorDetails")}>
+                {displayError()}
+              </pre>
+              <CopyButton text={props.error} idleLabel={t("chat.copyError")} bare />
+            </div>
           </details>
         </Show>
+        <Show when={startup()}>
+          {(presentation) => <div class="chat-error__recovery">{presentation().recovery}</div>}
+        </Show>
       </div>
-      {props.action}
-    </div>
+    </Show>
   );
 }
 
@@ -226,6 +293,7 @@ export function renderChatTopbarNotices(props: ChatViewNoticesProps) {
 }
 
 export function renderChatComposerNotices(props: ChatComposerNoticesProps) {
+  const mobile = useContext(ChatConversationMobile);
   // Unrelated pane publications must not replace a visible provider notice.
   const providerPolicyNotice = createMemo(() => props.providerPolicyNotice);
   const hasTranscriptFailure = () =>
@@ -282,6 +350,8 @@ export function renderChatComposerNotices(props: ChatComposerNoticesProps) {
             <ChatErrorNotice
               error={error().summary}
               action={refresh}
+              compact={mobile()}
+              actionAvailable={Boolean(props.onRefresh)}
               tone={contention() ? "warn" : "danger"}
               summary={
                 error().kind === "stop"
@@ -291,7 +361,9 @@ export function renderChatComposerNotices(props: ChatComposerNoticesProps) {
                         ? "chat.errorBusySummary"
                         : error().kind === "auth_refresh"
                           ? "chat.errorSignInSummary"
-                          : "chat.errorReplySummary",
+                          : mobile()
+                            ? "chat.errorReplyTitle"
+                            : "chat.errorReplySummary",
                     )
               }
             />

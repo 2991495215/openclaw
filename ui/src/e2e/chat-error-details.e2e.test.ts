@@ -176,6 +176,20 @@ suite.define(() => {
           diagnostic,
         );
         await alert.locator("summary").click();
+        await expectMobileFit(page, alert);
+        await expect.poll(() => alert.getByText(guidance, { exact: false }).isVisible()).toBe(true);
+        await expect
+          .poll(() =>
+            alert
+              .getByText(guidance, { exact: false })
+              .evaluate((node) => node.scrollWidth <= node.clientWidth),
+          )
+          .toBe(true);
+        expect(await alert.getByLabel("Error details", { exact: true }).isVisible()).toBe(false);
+        await captureDiagnosticProof(
+          page,
+          title.startsWith("Conversation") ? "startup-context-mobile" : "startup-workspace-mobile",
+        );
         await input.fill("Keep this draft");
         const historyCount = (await gateway.getRequests("chat.history")).length;
         await alert.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -350,7 +364,15 @@ suite.define(() => {
         await copy.click();
         await polledClipboard(page).toBe(safeDiagnostic);
         expect(await details.isVisible()).toBe(true);
+        await summary.press("Enter");
+        await polledVisible(details).toBe(false);
         await expectMobileFit(page, alert);
+        await polledVisible(details).toBe(false);
+        await summary.press("Enter");
+        await polledVisible(details).toBe(true);
+        expect(await details.textContent()).toBe(safeDiagnostic);
+        await exactButton(alert, "Copy error").click();
+        await polledClipboard(page).toBe(safeDiagnostic);
         await summary.press("Enter");
         await polledVisible(details).toBe(false);
       });
