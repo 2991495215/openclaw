@@ -635,7 +635,10 @@ describe("install smoke no-push root image transport", () => {
 
     for (const pair of pairs) {
       const producer = job(workflow, pair.producerName);
-      expect(producer.needs, pair.producerName).toEqual(["preflight"]);
+      expect(producer.needs, pair.producerName).toEqual([
+        "preflight",
+        "installer_smoke_candidate_payload",
+      ]);
       expect(producer["timeout-minutes"], pair.producerName).toBe(45);
       expect(producer.outputs, pair.producerName).toEqual({
         archive_sha256: "${{ steps.image_artifact.outputs.archive_sha256 }}",
