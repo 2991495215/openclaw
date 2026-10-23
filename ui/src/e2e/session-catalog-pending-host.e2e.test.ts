@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { Page } from "playwright";
 import { expect, it } from "vitest";
 import type { SessionCatalog } from "../../../packages/gateway-protocol/src/index.ts";
 import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
@@ -9,6 +10,15 @@ const suite = createControlUiE2eSuite({
   name: "Pending paired-node catalog",
   startServerBeforeBrowser: true,
 });
+
+async function activateBrowserTab(page: Page) {
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
 
 suite.define(() => {
   it("keeps the paired-node row through pending refresh and applies its later publication", async () => {
@@ -52,15 +62,7 @@ suite.define(() => {
       };
       await gateway.setMethodResponse("sessions.catalog.list", { catalogs: [pendingCatalog] });
       const beforeRefresh = await gateway.deferNext("sessions.catalog.list");
-      await page.evaluate(() => {
-        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
-        document.dispatchEvent(new Event("visibilitychange"));
-        Object.defineProperty(document, "visibilityState", {
-          configurable: true,
-          value: "visible",
-        });
-        document.dispatchEvent(new Event("visibilitychange"));
-      });
+      await activateBrowserTab(page);
       const request = await gateway.waitForRequest("sessions.catalog.list", {
         after: beforeRefresh,
       });
@@ -159,7 +161,7 @@ suite.define(() => {
         };
         const gateway = await installMockGateway(page, {
           featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
-          featureEvents: ["sessions.catalog.changed", "sessions.catalog.host"],
+          featureEvents: ["sessions.catalog.host"],
           methodResponses: {
             "sessions.catalog.list":
               scenario === "cross-host"
@@ -219,7 +221,7 @@ suite.define(() => {
           await sidebar.getByText("Authorized deeper row", { exact: true }).waitFor();
           await page.screenshot({ path: path.join(artifacts, "expanded-window.png") });
           const beforeRefresh = await gateway.deferNext("sessions.catalog.list");
-          await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
+          await activateBrowserTab(page);
           await gateway.waitForRequest("sessions.catalog.list", { after: beforeRefresh });
           await gateway.resolveDeferred("sessions.catalog.list");
           await expect
@@ -279,7 +281,7 @@ suite.define(() => {
         };
         const gateway = await installMockGateway(page, {
           featureMethods: ["chat.metadata", "chat.startup", "sessions.catalog.list"],
-          featureEvents: ["sessions.catalog.changed", "sessions.catalog.host"],
+          featureEvents: ["sessions.catalog.host"],
           methodResponses: { "sessions.catalog.list": { catalogs: [catalog] } },
         });
         await page.goto(`${suite.server.baseUrl}chat`);
@@ -306,7 +308,7 @@ suite.define(() => {
           ],
         });
         const beforeRefresh = await gateway.deferNext("sessions.catalog.list");
-        await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
+        await activateBrowserTab(page);
         await gateway.waitForRequest("sessions.catalog.list", { after: beforeRefresh });
         await gateway.resolveDeferred("sessions.catalog.list");
         await expect.poll(() => row.count()).toBe(0);

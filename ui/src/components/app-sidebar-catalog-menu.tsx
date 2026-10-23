@@ -2,7 +2,6 @@
 import { Show, type Component } from "solid-js";
 import { projectSource } from "../lib/reactive/projection.ts";
 import type { CatalogSessionKey } from "../lib/sessions/catalog-key.ts";
-import type { SidebarCatalogMenuView } from "./app-sidebar-catalog-menu-view.tsx";
 import type { CatalogSessionMenuRequest } from "./app-sidebar-session-catalogs.ts";
 import { SESSION_MENU_OPEN_EVENT } from "./session-progress-hovercard-target.ts";
 import type { SidebarMenusOwner } from "./sidebar-menus-types.ts";
@@ -26,6 +25,14 @@ export type SidebarCatalogMenuHost = Pick<
     | "importSessionCatalog"
     | "sessionScopeGeneration"
   >;
+};
+
+export type SidebarCatalogMenuViewProps = {
+  host: SidebarCatalogMenuHost;
+  viewHost: SidebarCatalogMenuHost;
+  menu: SidebarCatalogSessionMenuState;
+  trigger: HTMLElement | null;
+  close: () => void;
 };
 
 export function createSidebarCatalogMenu(host: SidebarCatalogMenuHost, beforeOpen: () => void) {
@@ -85,7 +92,7 @@ export function createSidebarCatalogMenu(host: SidebarCatalogMenuHost, beforeOpe
       });
       return {
         isOpenFor: (key: CatalogSessionKey) => matchesMenu(snapshot.read()?.menu, key),
-        render: (CatalogMenu: Component<Parameters<typeof SidebarCatalogMenuView>[0]>) => (
+        render: (CatalogMenu: Component<SidebarCatalogMenuViewProps>) => (
           <Show when={snapshot.read()?.menu} keyed>
             {(menu) => (
               <CatalogMenu

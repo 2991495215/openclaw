@@ -299,9 +299,10 @@ async function resumePublishedSessionCatalogHost(
   ) {
     const isCurrent = captureSessionCatalogRequest(owner, catalogId, client, [hostId]);
     const pageDepths = owner.sessionCatalogPageDepths;
-    const runtime = await import("./app-sidebar-session-catalog-pages.runtime.ts");
+    const { replayPublishedSessionCatalogHost } =
+      await import("./app-sidebar-session-catalog-pages.runtime.ts");
     if (
-      !(await runtime.replayPublishedSessionCatalogHost({
+      !(await replayPublishedSessionCatalogHost({
         owner,
         catalog,
         host,
@@ -585,7 +586,8 @@ export async function archiveSessionCatalog(
     typeof import("./session-data-catalog-actions.runtime.ts").archiveSessionCatalog
   >
 ): Promise<void> {
-  const actions = await import("./session-data-catalog-actions.runtime.ts");
+  const { archiveSessionCatalog: archiveCatalog } =
+    await import("./session-data-catalog-actions.runtime.ts");
   const [owner, scope] = args;
   if (
     scope.catalogGeneration !== owner.sessionScopeGeneration ||
@@ -593,7 +595,7 @@ export async function archiveSessionCatalog(
   ) {
     return;
   }
-  return actions.archiveSessionCatalog(...args);
+  return archiveCatalog(...args);
 }
 
 export async function importSessionCatalog(
@@ -601,7 +603,8 @@ export async function importSessionCatalog(
     typeof import("./session-data-catalog-actions.runtime.ts").importSessionCatalog
   >
 ): Promise<SessionsCatalogImportResult | null> {
-  const actions = await import("./session-data-catalog-actions.runtime.ts");
+  const { importSessionCatalog: importCatalog } =
+    await import("./session-data-catalog-actions.runtime.ts");
   // The mutation owner rechecks its captured scope before making the RPC.
-  return actions.importSessionCatalog(...args);
+  return importCatalog(...args);
 }

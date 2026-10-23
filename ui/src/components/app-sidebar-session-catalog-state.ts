@@ -138,7 +138,8 @@ export async function refetchExpandedSessionCatalogPages(
       hosts: catalog.hosts.map((host) => preserveExpandedCatalogHost(host, undefined, catalog)),
     }));
   }
-  const replay = await import("./app-sidebar-session-catalog-pages.runtime.ts");
+  const { refetchExpandedSessionCatalogPages: replayExpandedSessionCatalogPages } =
+    await import("./app-sidebar-session-catalog-pages.runtime.ts");
   // The runtime retains canRequestPage before every RPC and isCurrent after it.
-  return replay.refetchExpandedSessionCatalogPages(params);
+  return replayExpandedSessionCatalogPages(params);
 }

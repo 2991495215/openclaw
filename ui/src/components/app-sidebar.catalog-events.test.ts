@@ -49,11 +49,11 @@ function visibilityFixture() {
 }
 
 function sourceCatalogPage(rows: Parameters<typeof catalogPage>[0], cursor?: string) {
-  const page = catalogPage(rows, cursor);
-  for (const catalog of page.catalogs) {
+  const result = catalogPage(rows, cursor);
+  for (const catalog of result.catalogs) {
     catalog.requiresFreshList = true;
   }
-  return page;
+  return result;
 }
 
 async function mountTab(
@@ -120,13 +120,16 @@ describe("AppSidebar catalog event refresh", () => {
   it.each(["success", "failed", "revoked"] as const)(
     "reauthorizes the whole source window during %s load-more",
     async (outcome) => {
-      const page = sourceCatalogPage;
-      const warm = page([{ threadId: "old", name: "Previously authorized head" }], "old-cursor");
+      const sourcePage = sourceCatalogPage;
+      const warm = sourcePage(
+        [{ threadId: "old", name: "Previously authorized head" }],
+        "old-cursor",
+      );
       const refreshed = deferred<typeof warm>();
       const request = createGatewayRequestMock()
         .mockResolvedValueOnce(warm)
         .mockReturnValueOnce(refreshed.promise)
-        .mockResolvedValue(page([{ threadId: "older", name: "Fresh older row" }]));
+        .mockResolvedValue(sourcePage([{ threadId: "older", name: "Fresh older row" }]));
       const { sidebar } = await mountTab(request);
       const more = sidebar.sessionData.loadMoreSessionCatalog("codex");
       await settleLitElement(sidebar);
@@ -141,8 +144,8 @@ describe("AppSidebar catalog event refresh", () => {
       } else {
         refreshed.resolve(
           outcome === "revoked"
-            ? page([])
-            : page([{ threadId: "fresh", name: "Fresh authorized head" }], "fresh-cursor"),
+            ? sourcePage([])
+            : sourcePage([{ threadId: "fresh", name: "Fresh authorized head" }], "fresh-cursor"),
         );
       }
       await more;
@@ -165,14 +168,14 @@ describe("AppSidebar catalog event refresh", () => {
   );
 
   it("advances source-authorized discovery across multiple empty pages", async () => {
-    const page = sourceCatalogPage;
+    const sourcePage = sourceCatalogPage;
     const request = createGatewayRequestMock()
-      .mockResolvedValueOnce(page([{ threadId: "old", name: "Old head" }], "page-2"))
-      .mockResolvedValueOnce(page([], "page-2"))
-      .mockResolvedValueOnce(page([], "page-3"))
-      .mockResolvedValueOnce(page([], "page-2"))
-      .mockResolvedValueOnce(page([], "page-3"))
-      .mockResolvedValueOnce(page([{ threadId: "visible", name: "Visible later page" }]));
+      .mockResolvedValueOnce(sourcePage([{ threadId: "old", name: "Old head" }], "page-2"))
+      .mockResolvedValueOnce(sourcePage([], "page-2"))
+      .mockResolvedValueOnce(sourcePage([], "page-3"))
+      .mockResolvedValueOnce(sourcePage([], "page-2"))
+      .mockResolvedValueOnce(sourcePage([], "page-3"))
+      .mockResolvedValueOnce(sourcePage([{ threadId: "visible", name: "Visible later page" }]));
     const { sidebar } = await mountTab(request);
     await loadMoreSessionCatalog(sidebar.sessionData, "codex", undefined, true);
     await loadMoreSessionCatalog(sidebar.sessionData, "codex", undefined, true);

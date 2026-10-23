@@ -99,7 +99,7 @@ suite.define(() => {
           label: name,
         }));
         const owner = identities[0]!;
-        const shared = { owner: { actor: owner }, sharingRole: "owner", visibility: "shared" };
+        const shared = { owner: { actor: owner }, sharingRole: "owner", visibility: "read-only" };
         const sessions = Array.from({ length: 300 }, (_, index) =>
           createControlUiSessionRow(
             index === 0 ? sessionKey : `agent:main:fixture-${index}`,
@@ -159,6 +159,9 @@ suite.define(() => {
               members: [],
               role: "owner",
               identities,
+              permissions: identities
+                .filter(({ id }) => id !== owner.id)
+                .map(({ id }) => ({ identityId: id, level: "read", options: ["read", "send"] })),
               allowedVisibilities: ["shared", "read-only", "suggest", "draft"],
             },
             "session.suggestions.list": { suggestions: [], role: "owner" },
@@ -241,7 +244,11 @@ suite.define(() => {
         expect(
           await sharing
             .locator('[data-value="member:person-109"]')
-            .evaluate((element) => element === document.activeElement),
+            .evaluate(
+              (element) =>
+                document.activeElement instanceof HTMLButtonElement &&
+                document.activeElement.closest('[data-value="member:person-109"]') === element,
+            ),
         ).toBe(true);
         await page.keyboard.press("ArrowUp");
         expect(await search.evaluate((element) => element === document.activeElement)).toBe(true);
