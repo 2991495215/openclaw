@@ -60,3 +60,29 @@ it("loads optional English copy at each view boundary while keeping shared label
     expect(en.dashboardsPage).toBe(dashboards);
   }
 });
+
+it("loads session-owner copy before organization menus while retaining the namespace", async () => {
+  const { en, manager } = await loadI18n({
+    sessionsView: { stopCloudWorker: "Cloud-Worker stoppen" },
+  });
+  const sessions = en.sessionsView;
+  const colors = sessions.colors;
+  const { formatSessionArchiveReason } = await import("../lib/sessions/session-archive-reason.ts");
+
+  expect(formatSessionArchiveReason("age-retention")).toBe(
+    "Automatically archived by age retention",
+  );
+  expect(manager.t("sessionsView.stopCloudWorkerConfirm", { session: "Project" })).toBe(
+    'Stop the cloud worker for "Project"?',
+  );
+  expect(manager.t("sessionsView.newGroupTitle")).toBe("New group");
+  expect(manager.t("sessionsView.communication.title")).toBe("sessionsView.communication.title");
+
+  await manager.setLocale("de");
+  await import("../components/solid/sidebar-owner-filter.tsx");
+
+  expect(manager.t("sessionsView.communication.title")).toBe("Cross-session messaging");
+  expect(manager.t("sessionsView.stopCloudWorker")).toBe("Cloud-Worker stoppen");
+  expect(en.sessionsView).toBe(sessions);
+  expect(en.sessionsView.colors).toBe(colors);
+});

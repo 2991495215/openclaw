@@ -1,4 +1,5 @@
 import type { TranslationMap } from "../lib/types.ts";
+import { registerSessionActionsEnglish } from "./en-session-actions.ts";
 import { en } from "./en.ts";
 
 // The ordered source retains hot labels by reference; menu and management copy loads on use.
@@ -51,12 +52,15 @@ const enSessionOrganization = {
     ownedBy: en.sessionsView.ownedBy,
     archivedBy: en.sessionsView.archivedBy,
     archiveReason: "Archive reason",
-    archiveReasonManual: "Archived manually",
-    archiveReasonAgeRetention: "Automatically archived by age retention",
+    archiveReasonManual: registerSessionActionsEnglish.catalog.sessionsView.archiveReasonManual,
+    archiveReasonAgeRetention:
+      registerSessionActionsEnglish.catalog.sessionsView.archiveReasonAgeRetention,
     archiveReasonActiveSessionCap:
-      "Automatically archived because the active-session limit was reached",
-    archiveReasonStaleDashboard: "Automatically archived after dashboard inactivity",
-    archiveReasonRestartRecovery: "Archived when a replacement session was recovered",
+      registerSessionActionsEnglish.catalog.sessionsView.archiveReasonActiveSessionCap,
+    archiveReasonStaleDashboard:
+      registerSessionActionsEnglish.catalog.sessionsView.archiveReasonStaleDashboard,
+    archiveReasonRestartRecovery:
+      registerSessionActionsEnglish.catalog.sessionsView.archiveReasonRestartRecovery,
     viewingNow: en.sessionsView.viewingNow,
     owners: en.sessionsView.owners,
     allOwners: en.sessionsView.allOwners,
@@ -120,7 +124,7 @@ const enSessionOrganization = {
     kind: "Kind",
     updated: "Updated",
     tokens: "Tokens",
-    goal: "Goal",
+    goal: registerSessionActionsEnglish.catalog.sessionsView.goal,
     goalNote: "Goal note",
     thinking: "Thinking",
     fast: "Fast",
@@ -234,7 +238,7 @@ const enSessionOrganization = {
     customIconHintNoShortcut: "Paste an emoji or SVG.",
     removeIcon: "Remove icon",
     pinSession: en.sessionsView.pinSession,
-    pinRootSessionsOnly: "Only root sessions can be pinned; pin the parent session instead.",
+    pinRootSessionsOnly: registerSessionActionsEnglish.catalog.sessionsView.pinRootSessionsOnly,
     unpinSession: en.sessionsView.unpinSession,
     markUnread: "Mark as unread",
     markRead: "Mark as read",
@@ -252,9 +256,9 @@ const enSessionOrganization = {
     splitBelow: "Split below",
     workspaceEditors: "Workspace · editor",
     resetAppearance: "Reset to default",
-    copyTranscriptChanged: "Conversation changed while copying. Try again.",
-    openWindowBlocked: "Allow pop-ups for this site, then try again.",
-    splitUnavailable: "Open a conversation on a wide screen to use split view.",
+    copyTranscriptChanged: registerSessionActionsEnglish.catalog.sessionsView.copyTranscriptChanged,
+    openWindowBlocked: registerSessionActionsEnglish.catalog.sessionsView.openWindowBlocked,
+    splitUnavailable: registerSessionActionsEnglish.catalog.sessionsView.splitUnavailable,
     openPullRequest: "Open PR",
     openInEditorMenu: "Open in",
     archiveSession: en.sessionsView.archiveSession,
@@ -279,8 +283,10 @@ const enSessionOrganization = {
     sessionNameInUse: "A session with this name already exists.",
     newGroupMoveSkipped:
       "Group created, but the move was skipped because the list changed. Move from the row menu.",
-    stopCloudWorkerConfirm: 'Stop the cloud worker for "{session}"?',
-    stopCloudWorkerConfirmAction: "Stop worker",
+    stopCloudWorkerConfirm:
+      registerSessionActionsEnglish.catalog.sessionsView.stopCloudWorkerConfirm,
+    stopCloudWorkerConfirmAction:
+      registerSessionActionsEnglish.catalog.sessionsView.stopCloudWorkerConfirmAction,
     stopCloudWorkerStale:
       'Gateway connection replaced before the cloud worker for "{session}" was stopped. Try again.',
     deleteSessionConfirm:
@@ -311,8 +317,8 @@ const enSessionOrganization = {
     archiveSessionCount: "Archive {count}",
     restoreSession: en.sessionsView.restoreSession,
     restoreSessionCount: "Restore {count}",
-    moveSession: "Move session…",
-    moveSessionTitle: "Move session",
+    moveSession: registerSessionActionsEnglish.catalog.sessionsView.moveSession,
+    moveSessionTitle: registerSessionActionsEnglish.catalog.sessionsView.moveSessionTitle,
     moveSessionDescription: 'Choose where "{session}" should continue.',
     moveSessionNoReplayWarning:
       "OpenClaw safely reconciles the current workspace before moving. Active work is never replayed.",
@@ -320,11 +326,12 @@ const enSessionOrganization = {
       "The active turn will be interrupted. Partial output is not replayed; send the next turn again after the move.",
     moveSessionAction: "Move session",
     moveSessionCatalogFailed: "Could not load available destinations.",
-    moveSessionFailed: "Move failed",
-    moveSessionGatewayTarget: "Gateway",
-    movingSession: "Moving to {target}…",
-    movingSessionGeneric: "Moving session…",
-    stopCloudWorker: "Stop cloud worker…",
+    moveSessionFailed: registerSessionActionsEnglish.catalog.sessionsView.moveSessionFailed,
+    moveSessionGatewayTarget:
+      registerSessionActionsEnglish.catalog.sessionsView.moveSessionGatewayTarget,
+    movingSession: registerSessionActionsEnglish.catalog.sessionsView.movingSession,
+    movingSessionGeneric: registerSessionActionsEnglish.catalog.sessionsView.movingSessionGeneric,
+    stopCloudWorker: registerSessionActionsEnglish.catalog.sessionsView.stopCloudWorker,
     initialTurnPausedByWorkerStop:
       "Worker stop requested. Review the initial message before retrying.",
     deleteSessionMenu: "Delete…",
@@ -350,11 +357,11 @@ const enSessionOrganization = {
     group: "Group",
     ungrouped: "Ungrouped",
     newGroup: "New group",
-    newGroupPrompt: "New group name",
-    newGroupTitle: "New group",
-    newGroupCreate: "Create group",
-    newGroupFailed: "Could not create the group.",
-    newGroupStale: "Gateway connection replaced before the group was saved. Try again.",
+    newGroupPrompt: registerSessionActionsEnglish.catalog.sessionsView.newGroupPrompt,
+    newGroupTitle: registerSessionActionsEnglish.catalog.sessionsView.newGroupTitle,
+    newGroupCreate: registerSessionActionsEnglish.catalog.sessionsView.newGroupCreate,
+    newGroupFailed: registerSessionActionsEnglish.catalog.sessionsView.newGroupFailed,
+    newGroupStale: registerSessionActionsEnglish.catalog.sessionsView.newGroupStale,
     moveToGroup: "Move session to a group",
     moveToGroupMenu: "Move to group",
     moveToGroupMenuCount: "Move {count} to group",

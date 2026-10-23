@@ -146,6 +146,7 @@ const sourceFiles = [
   "en-personal-instructions.ts",
   "en-session-machine.ts",
   "en-session-navigation.ts",
+  "en-session-actions.ts",
   "en-session-organization.ts",
   "en-session-people.ts",
   "en-session-placement.ts",
