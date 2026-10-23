@@ -81,7 +81,6 @@ type LaunchAgentBootstrapRepairResult =
 export async function repairLaunchAgentBootstrap(args: {
   deadline?: GatewayServiceControlArgs["deadline"];
   env?: Record<string, string | undefined>;
-  warn?: (message: string) => void;
 }): Promise<LaunchAgentBootstrapRepairResult> {
   const env = args.env ?? (process.env as Record<string, string | undefined>);
   const domain = resolveLaunchAgentGuiDomain();
@@ -105,7 +104,7 @@ export async function repairLaunchAgentBootstrap(args: {
   }
   // Rewrite first so legacy inline environment secrets move into the private
   // env file before the plist becomes world-readable for launchd.
-  const warn = args.warn ?? ((message: string) => console.warn(formatLine("Warning", message)));
+  const warn = (message: string) => console.warn(formatLine("Warning", message));
   await rewriteLaunchAgentPlistForRestart({ env, label, plistPath, warn });
   try {
     const bootstrap = await bootstrapLaunchAgentOrThrow({

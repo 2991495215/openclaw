@@ -204,13 +204,13 @@ describe("launchd bootstrap repair", () => {
   );
 
   it("migrates inline secrets before making an existing plist readable", async () => {
-    const warn = vi.fn();
+    using warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const secret = "legacy-secret";
     state.files.set(WRAPPER, "custom wrapper");
     setGatewayPlist(defaultProgramArguments, { OPENAI_API_KEY: secret });
     state.fileModes.set(PLIST, 0o600);
 
-    await expect(repairLaunchAgentBootstrap({ env: ENV, warn })).resolves.toEqual({
+    await expect(repairLaunchAgentBootstrap({ env: ENV })).resolves.toEqual({
       ok: true,
       status: "repaired",
     });
