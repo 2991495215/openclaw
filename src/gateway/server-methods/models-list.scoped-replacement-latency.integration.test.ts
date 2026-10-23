@@ -257,8 +257,14 @@ it("records models.list ordering during an unrelated scoped replacement", async 
     await withinTest(replacement, signal);
     record("b-replacement-completed");
     for (const result of await withinTest(Promise.all([unseenA, affectedB]), signal)) {
-      expect(catalogModelIds(result, provider)).toContain("fixture-model");
+      // Provider-config lists authored inventory; this fixture authors no model rows.
+      expect(result.models).toEqual([]);
     }
+    const configured = await withinTest(
+      request("a-after-replacement", "main", "configured"),
+      signal,
+    );
+    expect(catalogModelIds(configured, provider)).toContain("fixture-model");
     completed = true;
   } finally {
     checkpoint = undefined;
