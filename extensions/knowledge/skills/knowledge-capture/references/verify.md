@@ -37,7 +37,9 @@ Structure passing does not prove meaning. Review:
 
 Keep reads bounded: `view: "summary"` for identity checks; `includeEvidence:
 true` with small `evidenceLimit`/`maxEvidenceChars` only when reviewing
-provenance. Don't fetch every body or original just to confirm publication.
+provenance. Don't fetch every body or original just to confirm publication; review prose
+from the drafts you published, and read a saved body only when a check fails or
+an existing page's merged result needs judgment.
 Responses cap at 24 KiB; follow returned offsets and check `omitted`.
 
 Retrieval: confirm one exact lookup and one distinctive keyword search. An

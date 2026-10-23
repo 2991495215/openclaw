@@ -138,8 +138,10 @@ Run [verify](references/verify.md) first. Then check:
   `from`/`to`/`label`/`source_page`. Every linked profile has a Timeline line
   for this meeting.
 - **State:** no updated profile has a State topic named for a date or meeting.
-- **Style:** reread each page against [writing](references/writing.md): names
-  first, no stacked caveats, no notes to yourself, no filler lines.
+- **Style:** check the drafts in your work files against
+  [writing](references/writing.md) before publishing: names first, no stacked
+  caveats, no notes to yourself, no filler lines. Don't read published pages back
+  to check style; after a fix, reread only the section you changed.
 - **Speakers:** no raw label passes as a known person; run the
   fabricated-attendee check in [speakers](references/speakers.md).
 - **Quotes:** read each quoted span's lines with `knowledge_evidence_read`. Only
