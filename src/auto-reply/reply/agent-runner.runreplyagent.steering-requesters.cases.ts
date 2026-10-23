@@ -1,5 +1,4 @@
 import { expect, it, vi, type Mock } from "vitest";
-import type { QuestionWaitAnswerResult } from "../../../packages/gateway-protocol/src/index.js";
 import {
   awaitGateBeforeSettlement,
   createDeferred,
@@ -13,6 +12,7 @@ import {
   callGatewayTool,
   withQuestionGateway,
 } from "../../agents/harness/gateway-question.test-support.js";
+import { awaitGatewayQuestionAnswer } from "../../agents/tools/gateway-question-lifecycle.js";
 import { createReplyOperation } from "../../sessions/session-controller.js";
 import { getSessionControllerEntryForOperation } from "../../sessions/session-controller.state.js";
 import type { TemplateContext } from "../templating.js";
@@ -293,15 +293,11 @@ export function registerSteeringRequesterCases({
           );
           claim.attachRegistration(registration);
           await withinTest(registration, signal);
-          const answer = callGatewayTool(
-            "question.waitAnswer",
-            { timeoutMs: 70_000 },
-            {
-              id,
-              timeoutMs: 60_000,
-              includeResolutionId: true,
-            },
-          ) as Promise<QuestionWaitAnswerResult>;
+          const answer = awaitGatewayQuestionAnswer({
+            gatewayCall: callGatewayTool,
+            questionId: id,
+            timeoutMs: 60_000,
+          });
           answerOutcome = answer.catch(() => undefined);
           claim.setAnswer(answer);
           await withinTest(fixture.waitStarted, signal);
