@@ -29,36 +29,59 @@ if (!shouldCheck && !shouldWrite) {
   process.exit(1);
 }
 
-const expected = serializeToolDisplayConfig();
+const snapshots = [
+  { path: outputPath, expected: serializeToolDisplayConfig() },
+  {
+    path: path.join(repoRoot, "ui/src/lib/chat/tool-display-presentation.generated.json"),
+    expected: `${JSON.stringify(
+      {
+        version: TOOL_DISPLAY_CONFIG.version,
+        fallback: toolPresentation(TOOL_DISPLAY_CONFIG.fallback),
+        tools: Object.fromEntries(
+          Object.entries(TOOL_DISPLAY_CONFIG.tools).map(([name, spec]) => [
+            name,
+            toolPresentation(spec),
+          ]),
+        ),
+      },
+      null,
+      2,
+    )}\n`,
+  },
+];
 ensureCoreToolCoverage();
 
 if (shouldWrite) {
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, expected);
-  process.stdout.write(`wrote ${path.relative(repoRoot, outputPath)}\n`);
+  for (const snapshot of snapshots) {
+    fs.mkdirSync(path.dirname(snapshot.path), { recursive: true });
+    fs.writeFileSync(snapshot.path, snapshot.expected);
+    process.stdout.write(`wrote ${path.relative(repoRoot, snapshot.path)}\n`);
+  }
   process.exit(0);
 }
 
-if (!fs.existsSync(path.dirname(outputPath))) {
-  process.stdout.write(
-    `skip tool-display snapshot check; missing ${path.relative(repoRoot, path.dirname(outputPath))}\n`,
-  );
-  process.exit(0);
-}
+for (const snapshot of snapshots) {
+  if (!fs.existsSync(path.dirname(snapshot.path))) {
+    process.stdout.write(
+      `skip tool-display snapshot check; missing ${path.relative(repoRoot, path.dirname(snapshot.path))}\n`,
+    );
+    continue;
+  }
 
-if (!fs.existsSync(outputPath)) {
-  console.error(
-    `missing generated snapshot: ${path.relative(repoRoot, outputPath)}\nrun: pnpm tool-display:write`,
-  );
-  process.exit(1);
-}
+  if (!fs.existsSync(snapshot.path)) {
+    console.error(
+      `missing generated snapshot: ${path.relative(repoRoot, snapshot.path)}\nrun: pnpm tool-display:write`,
+    );
+    process.exit(1);
+  }
 
-const actual = fs.readFileSync(outputPath, "utf8");
-if (actual !== expected) {
-  console.error(
-    `tool-display snapshot is stale: ${path.relative(repoRoot, outputPath)}\nrun: pnpm tool-display:write`,
-  );
-  process.exit(1);
+  const actual = fs.readFileSync(snapshot.path, "utf8");
+  if (actual !== snapshot.expected) {
+    console.error(
+      `tool-display snapshot is stale: ${path.relative(repoRoot, snapshot.path)}\nrun: pnpm tool-display:write`,
+    );
+    process.exit(1);
+  }
 }
 
 process.stdout.write("tool-display snapshot is up to date\n");
@@ -91,6 +114,10 @@ function collectToolNamesFromFile(sourcePath: string, names: Set<string>) {
       names.add(name);
     }
   }
+}
+
+function toolPresentation({ icon, title, label }: ToolDisplayConfig["fallback"]) {
+  return { icon, title, label };
 }
 
 function serializeToolDisplayConfig(config: ToolDisplayConfig = TOOL_DISPLAY_CONFIG): string {

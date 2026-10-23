@@ -1,4 +1,4 @@
-import { GATEWAY_SERVER_CAPS } from "../../../../packages/gateway-protocol/src/server-capabilities.js";
+import type { GATEWAY_SERVER_CAPS } from "../../../../packages/gateway-protocol/src/server-capabilities.js";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import {
@@ -55,6 +55,9 @@ import {
   sidebarDashboardPresentation,
   type SidebarLayout,
 } from "./sidebar-layout.ts";
+
+const BOARD_WIDGET_PUT_CANVAS_DOC =
+  "board-widget-put-canvas-doc" satisfies typeof GATEWAY_SERVER_CAPS.BOARD_WIDGET_PUT_CANVAS_DOC;
 
 export abstract class ChatPaneBoard extends ChatPaneHistory {
   private boardView: HTMLElementTagNameMap["openclaw-board-view"] | null = null;
@@ -276,9 +279,7 @@ export abstract class ChatPaneBoard extends ChatPaneHistory {
     const canGrant = !gateway || hasOperatorApprovalsAccess(gateway.hello?.auth ?? null);
     const canPinWidgets =
       canMutate &&
-      (!gateway ||
-        isGatewayCapabilityAdvertised(gateway, GATEWAY_SERVER_CAPS.BOARD_WIDGET_PUT_CANVAS_DOC) ===
-          true);
+      (!gateway || isGatewayCapabilityAdvertised(gateway, BOARD_WIDGET_PUT_CANVAS_DOC) === true);
     const canPinMcpApps =
       canMutate &&
       (!gateway ||

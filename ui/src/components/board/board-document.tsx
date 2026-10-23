@@ -1,6 +1,6 @@
 import type { BoardGetParams, BoardSnapshot } from "@openclaw/gateway-protocol";
 import { createMemo, onSettled, Show } from "solid-js";
-import { GATEWAY_SERVER_CAPS } from "../../../../packages/gateway-protocol/src/server-capabilities.js";
+import type { GATEWAY_SERVER_CAPS } from "../../../../packages/gateway-protocol/src/server-capabilities.js";
 import type { ApplicationGatewaySnapshot } from "../../app/context.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import {
@@ -29,6 +29,9 @@ import { Icon } from "../solid/icon.tsx";
 import { PanelLoadingSkeleton } from "../solid/panel-loading-skeleton.tsx";
 import "../../styles/board-document.css";
 import { BoardView } from "./board-view.tsx";
+
+const BOARD_WIDGET_PUT_CANVAS_DOC =
+  "board-widget-put-canvas-doc" satisfies typeof GATEWAY_SERVER_CAPS.BOARD_WIDGET_PUT_CANVAS_DOC;
 
 type DashboardDocumentState =
   | "loading"
@@ -82,9 +85,7 @@ function createBoardDocument(
       canMutate,
       canGrant: connected && hasOperatorApprovalsAccess(snapshot.hello?.auth ?? null),
       canPinWidgets:
-        canMutate &&
-        isGatewayCapabilityAdvertised(snapshot, GATEWAY_SERVER_CAPS.BOARD_WIDGET_PUT_CANVAS_DOC) ===
-          true,
+        canMutate && isGatewayCapabilityAdvertised(snapshot, BOARD_WIDGET_PUT_CANVAS_DOC) === true,
       canPinMcpApps:
         canMutate &&
         isGatewayMethodAdvertised(snapshot, "board.widget.appView") === true &&
