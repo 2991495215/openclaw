@@ -1,7 +1,10 @@
 import type { TranslationMap } from "../lib/types.ts";
+import { registerSessionOrganizationCoreEnglish } from "./en-session-organization-core.ts";
 import { en } from "./en.ts";
 
-// The ordered source retains hot labels by reference; menu and management copy loads on use.
+const core = registerSessionOrganizationCoreEnglish.catalog.sessionsView;
+
+// Keep source order while shared Chat labels and menu-only copy load separately.
 const enSessionOrganization = {
   sessionsView: {
     pullRequestCount: en.sessionsView.pullRequestCount,
@@ -51,12 +54,11 @@ const enSessionOrganization = {
     ownedBy: en.sessionsView.ownedBy,
     archivedBy: en.sessionsView.archivedBy,
     archiveReason: "Archive reason",
-    archiveReasonManual: "Archived manually",
-    archiveReasonAgeRetention: "Automatically archived by age retention",
-    archiveReasonActiveSessionCap:
-      "Automatically archived because the active-session limit was reached",
-    archiveReasonStaleDashboard: "Automatically archived after dashboard inactivity",
-    archiveReasonRestartRecovery: "Archived when a replacement session was recovered",
+    archiveReasonManual: core.archiveReasonManual,
+    archiveReasonAgeRetention: core.archiveReasonAgeRetention,
+    archiveReasonActiveSessionCap: core.archiveReasonActiveSessionCap,
+    archiveReasonStaleDashboard: core.archiveReasonStaleDashboard,
+    archiveReasonRestartRecovery: core.archiveReasonRestartRecovery,
     viewingNow: en.sessionsView.viewingNow,
     owners: en.sessionsView.owners,
     allOwners: en.sessionsView.allOwners,
@@ -120,7 +122,7 @@ const enSessionOrganization = {
     kind: "Kind",
     updated: "Updated",
     tokens: "Tokens",
-    goal: "Goal",
+    goal: core.goal,
     goalNote: "Goal note",
     thinking: "Thinking",
     fast: "Fast",
@@ -234,7 +236,7 @@ const enSessionOrganization = {
     customIconHintNoShortcut: "Paste an emoji or SVG.",
     removeIcon: "Remove icon",
     pinSession: en.sessionsView.pinSession,
-    pinRootSessionsOnly: "Only root sessions can be pinned; pin the parent session instead.",
+    pinRootSessionsOnly: core.pinRootSessionsOnly,
     unpinSession: en.sessionsView.unpinSession,
     markUnread: "Mark as unread",
     markRead: "Mark as read",
@@ -252,9 +254,9 @@ const enSessionOrganization = {
     splitBelow: "Split below",
     workspaceEditors: "Workspace · editor",
     resetAppearance: "Reset to default",
-    copyTranscriptChanged: "Conversation changed while copying. Try again.",
-    openWindowBlocked: "Allow pop-ups for this site, then try again.",
-    splitUnavailable: "Open a conversation on a wide screen to use split view.",
+    copyTranscriptChanged: core.copyTranscriptChanged,
+    openWindowBlocked: core.openWindowBlocked,
+    splitUnavailable: core.splitUnavailable,
     openPullRequest: "Open PR",
     openInEditorMenu: "Open in",
     archiveSession: en.sessionsView.archiveSession,
@@ -279,8 +281,8 @@ const enSessionOrganization = {
     sessionNameInUse: "A session with this name already exists.",
     newGroupMoveSkipped:
       "Group created, but the move was skipped because the list changed. Move from the row menu.",
-    stopCloudWorkerConfirm: 'Stop the cloud worker for "{session}"?',
-    stopCloudWorkerConfirmAction: "Stop worker",
+    stopCloudWorkerConfirm: core.stopCloudWorkerConfirm,
+    stopCloudWorkerConfirmAction: core.stopCloudWorkerConfirmAction,
     stopCloudWorkerStale:
       'Gateway connection replaced before the cloud worker for "{session}" was stopped. Try again.',
     deleteSessionConfirm:
@@ -311,8 +313,8 @@ const enSessionOrganization = {
     archiveSessionCount: "Archive {count}",
     restoreSession: en.sessionsView.restoreSession,
     restoreSessionCount: "Restore {count}",
-    moveSession: "Move session…",
-    moveSessionTitle: "Move session",
+    moveSession: core.moveSession,
+    moveSessionTitle: core.moveSessionTitle,
     moveSessionDescription: 'Choose where "{session}" should continue.',
     moveSessionNoReplayWarning:
       "OpenClaw safely reconciles the current workspace before moving. Active work is never replayed.",
@@ -320,11 +322,11 @@ const enSessionOrganization = {
       "The active turn will be interrupted. Partial output is not replayed; send the next turn again after the move.",
     moveSessionAction: "Move session",
     moveSessionCatalogFailed: "Could not load available destinations.",
-    moveSessionFailed: "Move failed",
-    moveSessionGatewayTarget: "Gateway",
-    movingSession: "Moving to {target}…",
-    movingSessionGeneric: "Moving session…",
-    stopCloudWorker: "Stop cloud worker…",
+    moveSessionFailed: core.moveSessionFailed,
+    moveSessionGatewayTarget: core.moveSessionGatewayTarget,
+    movingSession: core.movingSession,
+    movingSessionGeneric: core.movingSessionGeneric,
+    stopCloudWorker: core.stopCloudWorker,
     initialTurnPausedByWorkerStop:
       "Worker stop requested. Review the initial message before retrying.",
     deleteSessionMenu: "Delete…",
@@ -350,11 +352,11 @@ const enSessionOrganization = {
     group: "Group",
     ungrouped: "Ungrouped",
     newGroup: "New group",
-    newGroupPrompt: "New group name",
-    newGroupTitle: "New group",
-    newGroupCreate: "Create group",
-    newGroupFailed: "Could not create the group.",
-    newGroupStale: "Gateway connection replaced before the group was saved. Try again.",
+    newGroupPrompt: core.newGroupPrompt,
+    newGroupTitle: core.newGroupTitle,
+    newGroupCreate: core.newGroupCreate,
+    newGroupFailed: core.newGroupFailed,
+    newGroupStale: core.newGroupStale,
     moveToGroup: "Move session to a group",
     moveToGroupMenu: "Move to group",
     moveToGroupMenuCount: "Move {count} to group",
