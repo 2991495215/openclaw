@@ -7,6 +7,11 @@ const DAY_MS = 86_400_000;
 const TITLE_MAX = 80;
 const CLAIM_MAX = 110;
 const HANDLE_MAX = 60;
+// The busiest recent pages get their newest decisions and commitments listed:
+// a bare claim count says nothing, and these pages are too large to open casually.
+const HUB_PAGES = 3;
+const HUB_HEADLINES = 3;
+const HUB_KINDS = new Set(["decision", "commitment"]);
 // Ingested material, not things the agent works with by name.
 const EXCLUDED_PAGE_TYPES = new Set(["source", "artifact"]);
 const TYPE_WEIGHT: Record<string, number> = {
@@ -44,7 +49,14 @@ export function promptLabel(value: unknown, max: number): string | null {
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
 }
 
-type Page = { record: LoadedRecord; touched: number; links: number; recentClaims: number };
+type Page = {
+  record: LoadedRecord;
+  touched: number;
+  links: number;
+  recentClaims: number;
+  /** Recent decision and commitment claims about this page. */
+  recentHeadlines: LoadedRecord[];
+};
 
 const recordedAt = (record: LoadedRecord) => Date.parse(record.metadata.recorded_at);
 const date = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -67,10 +79,33 @@ function pageLine(page: Page): string {
   return `- ${record.type}: ${name}${claims}`;
 }
 
-function claimLine(record: LoadedRecord): string {
+function claimLine(record: LoadedRecord, indent = ""): string {
   const kind = record.metadata.claim_kind ?? "claim";
   const text = promptLabel(record.title, CLAIM_MAX) ?? `(id ${record.id})`;
-  return `- ${kind} ${date(recordedAt(record)).slice(5)}: ${text}`;
+  return `${indent}- ${kind} ${date(recordedAt(record)).slice(5)}: ${text}`;
+}
+
+// Picks each hub's newest headlines, never repeating a claim already shown under another hub.
+function hubHeadlines(pages: readonly Page[]): Map<string, LoadedRecord[]> {
+  const busiest = pages
+    .filter((p) => p.recentHeadlines.length > 0)
+    .toSorted((a, b) => b.recentClaims - a.recentClaims || a.record.id.localeCompare(b.record.id));
+  const shown = new Set<string>();
+  const result = new Map<string, LoadedRecord[]>();
+  for (const hub of busiest) {
+    if (result.size === HUB_PAGES) {
+      break;
+    }
+    const picked = hub.recentHeadlines
+      .filter((c) => !shown.has(c.id))
+      .toSorted((a, b) => recordedAt(b) - recordedAt(a) || a.id.localeCompare(b.id))
+      .slice(0, HUB_HEADLINES);
+    if (picked.length > 0) {
+      picked.forEach((c) => shown.add(c.id));
+      result.set(hub.record.id, picked);
+    }
+  }
+  return result;
 }
 
 // Collects pages plus the claim/relationship activity that touches them as of the cutoff.
@@ -79,7 +114,13 @@ function collect(records: readonly LoadedRecord[], asOf: number) {
   const pages = new Map<string, Page>();
   for (const record of visible) {
     if (record.kind === "page" && !EXCLUDED_PAGE_TYPES.has(record.type)) {
-      pages.set(record.id, { record, touched: recordedAt(record), links: 0, recentClaims: 0 });
+      pages.set(record.id, {
+        record,
+        touched: recordedAt(record),
+        links: 0,
+        recentClaims: 0,
+        recentHeadlines: [],
+      });
     }
   }
   const unfiled: LoadedRecord[] = [];
@@ -108,6 +149,9 @@ function collect(records: readonly LoadedRecord[], asOf: number) {
       page.touched = Math.max(page.touched, recordedAt(record));
       if (recent && record.kind === "claim") {
         page.recentClaims++;
+        if (HUB_KINDS.has(meta.claim_kind ?? "")) {
+          page.recentHeadlines.push(record);
+        }
       }
     }
     if (record.kind === "claim" && !filed && recent) {
@@ -118,7 +162,8 @@ function collect(records: readonly LoadedRecord[], asOf: number) {
 }
 
 /** Deterministic standing index of an owner-private vault as of `asOf` (ms).
- * Lists page labels and recent claims not filed under any page; never bodies.
+ * Lists page labels, recent claims not filed under any page and the newest
+ * decisions and commitments about the busiest pages; never bodies.
  * Returns an empty string when the vault has nothing to list. */
 export function buildMemoryIndex(
   records: readonly LoadedRecord[],
@@ -135,6 +180,10 @@ export function buildMemoryIndex(
     .toSorted((a, b) => b.touched - a.touched || byId(a, b));
   const weight = (p: Page) => (TYPE_WEIGHT[p.record.type] ?? 1) * Math.log2(2 + p.links);
   const connected = pages.toSorted((a, b) => weight(b) - weight(a) || byId(a, b));
+  const headlines = hubHeadlines(pages);
+  // A hub's entry is its page line plus its nested headlines, listed or dropped together.
+  const entry = (p: Page) =>
+    [pageLine(p), ...(headlines.get(p.record.id) ?? []).map((c) => claimLine(c, "  "))].join("\n");
   // The footer names every page type, so its worst case is reserved before listing.
   const types = [...new Set(pages.map((p) => p.record.type))].toSorted();
   const footerFor = (unlisted: Page[]) =>
@@ -177,30 +226,47 @@ export function buildMemoryIndex(
     }
   };
 
+  const unfiledLines: Array<[string, string]> = unfiled
+    .toSorted(
+      (a, b) =>
+        (CLAIM_RANK[a.metadata.claim_kind ?? ""] ?? 9) -
+          (CLAIM_RANK[b.metadata.claim_kind ?? ""] ?? 9) ||
+        recordedAt(b) - recordedAt(a) ||
+        a.id.localeCompare(b.id),
+    )
+    .map((r) => [r.id, claimLine(r)]);
   section(
     `Recent claims not filed under any page (${unfiled.length}):`,
-    unfiled
-      .toSorted(
-        (a, b) =>
-          (CLAIM_RANK[a.metadata.claim_kind ?? ""] ?? 9) -
-            (CLAIM_RANK[b.metadata.claim_kind ?? ""] ?? 9) ||
-          recordedAt(b) - recordedAt(a) ||
-          a.id.localeCompare(b.id),
-      )
-      .map((r) => [r.id, claimLine(r)]),
-    maxChars * 0.25,
+    unfiledLines,
+    maxChars * 0.15,
   );
+  const unfiledEnd = out.length;
   section(
     `Recently active pages (last ${RECENT_DAYS} days):`,
-    recent.map((p) => [p.record.id, pageLine(p)]),
+    recent.map((p) => [p.record.id, entry(p)]),
     maxChars * 0.55,
   );
   section(
     "Most connected pages:",
-    connected.map((p) => [p.record.id, pageLine(p)]),
+    connected.map((p) => [p.record.id, entry(p)]),
     maxChars,
   );
   const unlisted = pages.filter((p) => !listed.has(p.record.id));
+  // When every page fits, the space left goes back to unfiled claims (small vaults).
+  if (unlisted.length === 0) {
+    const extra: string[] = [];
+    for (const [id, line] of unfiledLines) {
+      if (listed.has(id)) {
+        continue;
+      }
+      if (used + line.length + 1 + "All pages are listed.".length + 1 > maxChars) {
+        break;
+      }
+      extra.push(line);
+      used += line.length + 1;
+    }
+    out.splice(unfiledEnd, 0, ...extra);
+  }
   out.push(unlisted.length ? footerFor(unlisted) : "All pages are listed.");
   return out.join("\n");
 }

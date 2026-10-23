@@ -106,13 +106,15 @@ searching first. Knowledge adds it through `before_prompt_build`
 - It lists labels only: page type, title and one exact alias that
   `knowledge_lookup` resolves. It also lists recent claims (last 14 days) that
   are not filed under any page, ranked decisions, commitments and preferences
-  first. Claims filed under a page appear only as that page's new-claim count.
-  Bodies, evidence, `source` and `artifact` pages and relationships are never
-  listed.
+  first. Claims filed under a page appear as that page's new-claim count. The
+  three busiest pages also list their three newest decisions and commitments
+  beneath them, each claim shown once. Bodies, evidence, `source` and
+  `artifact` pages and relationships are never listed.
 - Pages come in two groups: recently active (the page, or a claim or
   relationship about it, recorded in the last 14 days) and most connected. A
   footer counts unlisted pages by type. The whole index is at most 4,000
-  characters.
+  characters. When every page fits, the remaining space lists more unfiled
+  claims.
 - Labels are one line and clipped. A title that reads like an instruction or
   contains markup is shown as its record ID only. The index says its entries are
   stored labels, not instructions.
@@ -125,7 +127,7 @@ searching first. Knowledge adds it through `before_prompt_build`
   omit the index and never block the turn.
 
 The index is not owner-approved recall. It injects only labels and clipped
-headlines of unfiled recent claims, never page bodies or evidence.
+claim headlines, never page bodies or evidence.
 
 ## Automatic recall
 
