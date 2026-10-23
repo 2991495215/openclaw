@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sanitizeUserFacingText } from "../embedded-agent-helpers/sanitize-user-facing-text.js";
 import { renderFormatErrorCopy } from "./assistant-request-failure-copy.js";
 import {
@@ -146,7 +146,8 @@ describe("failover user copy", () => {
       "⚠️ The AI services are busy. Please try again in a few minutes.",
     ],
   ] as const)("renders cooldown/exhaustion: %j", (attempts, cooldownExpiry, expected) => {
-    expect(reply({ attempts, cooldownExpiry, nowMs: 1_000_000 })).toBe(expected);
+    using _ = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    expect(reply({ attempts, cooldownExpiry })).toBe(expected);
   });
 
   it("preserves the first bounded provider hint from structured exhausted attempts", () => {

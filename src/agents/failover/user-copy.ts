@@ -391,7 +391,6 @@ export function renderRateLimitReplyCopy(params: {
   attempts?: readonly ReplyFallbackAttempt[];
   rateLimitRetriesExhausted?: number;
   cooldownExpiry?: number | null;
-  nowMs?: number;
   sanitizeText?: (text: string) => string;
 }): string {
   const attempts = params.attempts ?? [];
@@ -468,7 +467,7 @@ export function renderRateLimitReplyCopy(params: {
     }
   }
   const expiry = params.cooldownExpiry;
-  const nowMs = params.nowMs ?? Date.now();
+  const nowMs = Date.now();
   if (typeof expiry === "number" && expiry > nowMs) {
     const secsLeft = Math.max(1, Math.ceil((expiry - nowMs) / 1000));
     return secsLeft <= 60
