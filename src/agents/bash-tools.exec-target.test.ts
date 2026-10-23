@@ -49,21 +49,14 @@ describe("resolveExecTarget", () => {
   });
 
   it.each([
-    ["auto", undefined, false, false, "auto", "gateway"],
-    ["auto", "node", false, true, "node", "node"],
-    ["node", "node", true, false, "node", "node"],
-    ["auto", "sandbox", true, true, "gateway", "gateway"],
-    ["node", "auto", false, true, "node", "node"],
+    ["auto", undefined, false, false, "gateway"],
+    ["auto", "node", false, true, "node"],
+    ["node", "node", true, false, "node"],
+    ["auto", "sandbox", true, true, "gateway"],
+    ["node", "auto", false, true, "node"],
   ] as const)(
-    "resolves configured=%s requested=%s sandbox=%s elevated=%s to selected=%s host=%s",
-    (
-      configuredTarget,
-      requestedTarget,
-      sandboxAvailable,
-      elevatedRequested,
-      selectedTarget,
-      effectiveHost,
-    ) => {
+    "resolves configured=%s requested=%s sandbox=%s elevated=%s to host=%s",
+    (configuredTarget, requestedTarget, sandboxAvailable, elevatedRequested, effectiveHost) => {
       expect(
         resolveExecTarget({
           configuredTarget,
@@ -73,8 +66,6 @@ describe("resolveExecTarget", () => {
         }),
       ).toEqual({
         configuredTarget,
-        requestedTarget: requestedTarget === "auto" ? null : (requestedTarget ?? null),
-        selectedTarget,
         effectiveHost,
       });
     },
