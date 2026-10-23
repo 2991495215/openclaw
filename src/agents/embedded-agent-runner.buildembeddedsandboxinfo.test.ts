@@ -37,11 +37,6 @@ const promptInfo = {
   browserBridgeUrl: "http://localhost:9222",
   hostBrowserAllowed: true,
 };
-const fullPolicy = { mode: "full", security: "full", ask: "off" } as const;
-const elevatedInfo = (
-  execPolicy: Parameters<typeof buildEmbeddedSandboxInfo>[2],
-  hostPolicy: Parameters<typeof buildEmbeddedSandboxInfo>[3],
-) => buildEmbeddedSandboxInfo(sandbox(), elevation, execPolicy, hostPolicy)?.elevated;
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -80,14 +75,22 @@ it("uses the effective configured exec policy", async () => {
   );
   expect(buildEmbeddedSandboxInfo(sandbox(), elevation, policy)?.elevated).toEqual(blocked);
 });
-it("advertises full access only when host approval floors allow it", () => {
-  expect(elevatedInfo(fullPolicy, { security: "allowlist", ask: "off" })).toEqual(blocked);
-  expect(elevatedInfo(fullPolicy, { security: "full", ask: "always" })).toEqual(blocked);
-  expect(
-    elevatedInfo({ ...fullPolicy, ask: "on-miss" }, { security: "full", ask: "on-miss" }),
-  ).toEqual({
-    allowed: true,
-    defaultLevel: "full",
-    fullAccessAvailable: true,
+it.each([
+  [{ security: "allowlist", ask: "off" }, blocked],
+  [{ security: "full", ask: "always" }, blocked],
+  [
+    { security: "full", ask: "on-miss" },
+    { allowed: true, defaultLevel: "full", fullAccessAvailable: true },
+  ],
+] as const)("applies host approval floors (%j)", async (hostPolicy, expected) => {
+  vi.mocked(execApprovals.loadExecApprovalsReadOnlyAsync).mockResolvedValue({
+    version: 1,
+    defaults: hostPolicy,
+    agents: {},
   });
+  const policy = await resolveEmbeddedSandboxInfoExecPolicy(
+    { config: { tools: { exec: { mode: "full" } } }, sandboxAvailable: true },
+    {},
+  );
+  expect(buildEmbeddedSandboxInfo(sandbox(), elevation, policy)?.elevated).toEqual(expected);
 });

@@ -10,7 +10,6 @@ import {
 import type { EmbeddedFullAccessBlockedReason, EmbeddedSandboxInfo } from "./types.js";
 
 type EmbeddedFullAccessExecPolicy = Pick<ExecToolDefaults, "mode" | "security" | "ask">;
-type EmbeddedFullAccessHostPolicy = Pick<ExecToolDefaults, "security" | "ask">;
 type EmbeddedSandboxInfoExecOverrides = Pick<
   ExecToolDefaults,
   "host" | "security" | "ask" | "node"
@@ -20,7 +19,6 @@ type EmbeddedSandboxInfoExecOverrides = Pick<
 export function resolveEmbeddedFullAccessState(params: {
   execElevated?: ExecElevatedDefaults;
   execPolicy?: EmbeddedFullAccessExecPolicy;
-  hostPolicy?: EmbeddedFullAccessHostPolicy;
 }): {
   available: boolean;
   blockedReason?: EmbeddedFullAccessBlockedReason;
@@ -28,10 +26,8 @@ export function resolveEmbeddedFullAccessState(params: {
   const blockedByPolicy =
     (params.execPolicy?.mode !== undefined && params.execPolicy.mode !== "full") ||
     (params.execPolicy?.security !== undefined && params.execPolicy.security !== "full") ||
-    params.execPolicy?.ask === "always" ||
-    (params.hostPolicy?.security !== undefined && params.hostPolicy.security !== "full") ||
-    params.hostPolicy?.ask === "always";
-  // Explicit exec/host policy wins over elevated availability. A configured elevated backend
+    params.execPolicy?.ask === "always";
+  // Effective exec policy wins over elevated availability. A configured elevated backend
   // must not bypass ask/security restrictions chosen for this agent or session.
   const available =
     !blockedByPolicy &&
@@ -80,7 +76,6 @@ export function buildEmbeddedSandboxInfo(
   sandbox?: Awaited<ReturnType<typeof resolveSandboxContext>>,
   execElevated?: ExecElevatedDefaults,
   execPolicy?: EmbeddedFullAccessExecPolicy,
-  hostPolicy?: EmbeddedFullAccessHostPolicy,
 ): EmbeddedSandboxInfo | undefined {
   if (!sandbox?.enabled) {
     return undefined;
@@ -93,7 +88,6 @@ export function buildEmbeddedSandboxInfo(
     : resolveEmbeddedFullAccessState({
         execElevated,
         execPolicy,
-        hostPolicy,
       });
   return {
     enabled: true,
