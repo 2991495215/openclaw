@@ -4,21 +4,17 @@ const STARTUP_FAILURES = [
   {
     // codex-rs thread_processor.rs: read_thread_view has neither live nor persisted state.
     pattern: /^thread not loaded: \S+(?:$|\s*(?:\||: code=|\n))/u,
-    title: "Conversation context is unavailable.",
-    channelRecovery:
-      "Open this conversation in the Control UI and refresh it. If the context is still unavailable, send /new here to start a fresh conversation with the context you need.",
-    recovery:
-      "Refresh and try again. If it still fails, start a new conversation with the context you need.",
+    title: "Couldn't resume this conversation.",
+    channelRecovery: "Send /new to start a new conversation, then send your request again.",
+    recovery: "Start a new conversation and send your request again.",
   },
   {
     // allocation.ts names the lease; the state-lease owner supplies scope/key and outcome.
     pattern:
       /^managed worktree allocation lease core:managed-worktrees:(?:create|mutation)\/\S+ (?:was lost|expired)(?:$|\s*(?:\||: code=|\n))/u,
-    title: "Workspace preparation was interrupted.",
-    channelRecovery:
-      "Open this conversation in the Control UI and refresh it to check its status before trying again. You can keep using this conversation.",
-    recovery:
-      "Refresh to check its status before trying again. You can keep using this conversation.",
+    title: "Couldn't finish preparing the code workspace.",
+    channelRecovery: "Send your request again to retry workspace setup.",
+    recovery: "Send your request again to retry workspace setup.",
   },
 ];
 

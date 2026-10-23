@@ -205,9 +205,9 @@ it.each([false, true])("updates startup recovery when the error changes (mobile=
   );
   const copy = container.querySelector(".chat-composer-neighbor-card__copy, .chat-error__recovery");
   expect(container.querySelector(".chat-error")?.textContent).toContain(
-    "Conversation context is unavailable.",
+    "Couldn't resume this conversation.",
   );
-  expect(copy?.textContent).toContain("Refresh and try again.");
+  expect(copy?.textContent).toContain("Start a new conversation and send your request again.");
   expect(copy?.closest("details")).toBeNull();
   expect(container.querySelector("details")?.open).toBe(false);
   expect(container.querySelector("pre")?.textContent).toContain(error);

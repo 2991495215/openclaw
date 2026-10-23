@@ -288,7 +288,7 @@ it.each([
       role: "custom",
       customType: "run-failed-before-reply",
       content:
-        "Conversation context is unavailable. Refresh and try again. If it still fails, start a new conversation with the context you need.",
+        "Couldn't resume this conversation. Start a new conversation and send your request again.",
       details: { runId: "run-1", diagnostic },
     },
   ]);

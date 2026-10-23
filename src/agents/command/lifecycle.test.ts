@@ -157,8 +157,8 @@ describe("createAgentCommandLifecycle", () => {
         );
       }
       const published = emitAgentEvent.mock.calls[0]?.[0].data.error;
-      expect(published).toContain("Conversation context is unavailable.");
-      expect(published).toContain("Refresh and try again.");
+      expect(published).toContain("Couldn't resume this conversation.");
+      expect(published).toContain("Start a new conversation and send your request again.");
       expect(published).toContain(`\n\n${error.message}`);
       expect(error.message).toBe("thread not loaded: synthetic-thread");
     },

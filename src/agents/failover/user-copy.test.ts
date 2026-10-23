@@ -48,15 +48,15 @@ describe("failover user copy", () => {
   it.each([
     [
       "thread not loaded: synthetic-thread",
-      "Conversation context is unavailable. Refresh and try again. If it still fails, start a new conversation with the context you need.",
+      "Couldn't resume this conversation. Start a new conversation and send your request again.",
     ],
     [
       "managed worktree allocation lease core:managed-worktrees:create/capacity was lost",
-      "Workspace preparation was interrupted. Refresh to check its status before trying again. You can keep using this conversation.",
+      "Couldn't finish preparing the code workspace. Send your request again to retry workspace setup.",
     ],
     [
       "managed worktree allocation lease core:managed-worktrees:mutation/synthetic-worktree expired",
-      "Workspace preparation was interrupted. Refresh to check its status before trying again. You can keep using this conversation.",
+      "Couldn't finish preparing the code workspace. Send your request again to retry workspace setup.",
     ],
   ])("gives recovery guidance without internal identifiers for %s", (raw, expected) => {
     expect(sanitizedCopy(raw, { errorContext: true })).toBe(expected);
@@ -65,7 +65,7 @@ describe("failover user copy", () => {
 
   it("keeps normalized startup diagnostics out of the compact summary", () => {
     const copy =
-      "Conversation context is unavailable. Refresh and try again. If it still fails, start a new conversation with the context you need.";
+      "Couldn't resume this conversation. Start a new conversation and send your request again.";
     expect(
       sanitizedCopy(
         `${copy}\n\nCodexAppServerRpcError: thread not loaded: synthetic-thread: code=-32600`,

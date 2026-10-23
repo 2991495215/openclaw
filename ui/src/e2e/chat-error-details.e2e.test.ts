@@ -69,7 +69,7 @@ suite.define(() => {
       },
       async ({ page }) => {
         const content =
-          "Conversation context is unavailable. Refresh and try again. If it still fails, start a new conversation with the context you need.";
+          "Couldn't resume this conversation. Start a new conversation and send your request again.";
         const diagnostic = "thread not loaded: synthetic-thread";
         await installMockGateway(page, {
           sessionKey,
@@ -128,7 +128,9 @@ suite.define(() => {
       });
       const alert = page.locator(".chat-topbar-notices .chat-error");
       await alert.waitFor();
-      const guidance = alert.getByText("Refresh and try again.", { exact: false });
+      const guidance = alert.getByText("Start a new conversation and send your request again.", {
+        exact: false,
+      });
       await expect.poll(() => guidance.isVisible()).toBe(true);
       await captureDiagnosticProof(page, "startup-request-context");
     });
@@ -137,13 +139,13 @@ suite.define(() => {
   it.each([
     [
       "thread not loaded: synthetic-thread",
-      "Conversation context is unavailable.",
-      "Refresh and try again.",
+      "Couldn't resume this conversation.",
+      "Start a new conversation and send your request again.",
     ],
     [
       "managed worktree allocation lease core:managed-worktrees:create/capacity was lost",
-      "Workspace preparation was interrupted.",
-      "Refresh to check its status before trying again.",
+      "Couldn't finish preparing the code workspace.",
+      "Send your request again to retry workspace setup.",
     ],
   ])(
     "shows recovery before opening details for startup failure: %s",
@@ -166,7 +168,7 @@ suite.define(() => {
         await alert.waitFor();
         await captureDiagnosticProof(
           page,
-          title.startsWith("Conversation") ? "startup-context" : "startup-workspace",
+          title.includes("resume") ? "startup-context" : "startup-workspace",
         );
         expect(await alert.textContent()).toContain(title);
         await expect.poll(() => alert.getByText(guidance, { exact: false }).isVisible()).toBe(true);
@@ -188,7 +190,7 @@ suite.define(() => {
         expect(await alert.getByLabel("Error details", { exact: true }).isVisible()).toBe(false);
         await captureDiagnosticProof(
           page,
-          title.startsWith("Conversation") ? "startup-context-mobile" : "startup-workspace-mobile",
+          title.includes("resume") ? "startup-context-mobile" : "startup-workspace-mobile",
         );
         await input.fill("Keep this draft");
         const historyCount = (await gateway.getRequests("chat.history")).length;

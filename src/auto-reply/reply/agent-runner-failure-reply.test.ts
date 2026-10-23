@@ -36,22 +36,18 @@ it("shows unshrinkable request guidance without verbose diagnostics", () => {
 });
 
 it.each([
-  ["thread not loaded: synthetic-thread", "Conversation context is unavailable."],
+  [
+    "thread not loaded: synthetic-thread",
+    "Couldn't resume this conversation. Send /new to start a new conversation, then send your request again.",
+  ],
   [
     "managed worktree allocation lease core:managed-worktrees:create/capacity was lost",
-    "Workspace preparation was interrupted.",
+    "Couldn't finish preparing the code workspace. Send your request again to retry workspace setup.",
   ],
-])("delivers startup recovery guidance without diagnostic identifiers: %s", (message, title) => {
+])("delivers startup recovery within the current channel: %s", (message, expected) => {
   const reply = buildExternalRunFailureReply({ message, error: new Error(message) });
   expect(reply.isGenericRunnerFailure).toBe(false);
-  expect(reply.text).toContain(title);
-  expect(reply.text).toContain("Control UI");
-  expect(reply.text).toContain("refresh");
-  if (title.startsWith("Conversation")) {
-    expect(reply.text).toContain("/new");
-  }
-  expect(reply.text).not.toContain("synthetic-thread");
-  expect(reply.text).not.toContain("lease");
+  expect(reply.text).toBe(expected);
 });
 
 it("keeps wrapped skill delivery-limit guidance visible without diagnostics", () => {

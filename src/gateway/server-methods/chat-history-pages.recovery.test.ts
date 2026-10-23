@@ -115,12 +115,12 @@ describe("historical page recovery context", () => {
   it.each([
     [
       "thread not loaded: synthetic-thread | password=synthetic-password",
-      "Conversation context is unavailable.",
+      "Couldn't resume this conversation.",
       "thread not loaded: synthetic-thread",
     ],
     [
       "managed worktree allocation lease core:managed-worktrees:create/capacity was lost | password=synthetic-password",
-      "Workspace preparation was interrupted.",
+      "Couldn't finish preparing the code workspace.",
       "core:managed-worktrees:create/capacity",
     ],
   ])(

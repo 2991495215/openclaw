@@ -498,10 +498,10 @@ describe("session lifecycle state", () => {
   );
 
   it.each([
-    ["thread not loaded: synthetic-thread", "Conversation context is unavailable."],
+    ["thread not loaded: synthetic-thread", "Couldn't resume this conversation."],
     [
       "managed worktree allocation lease core:managed-worktrees:create/capacity was lost",
-      "Workspace preparation was interrupted.",
+      "Couldn't finish preparing the code workspace.",
     ],
   ])(
     "persists startup recovery guidance rather than runtime identifiers: %s",
@@ -516,7 +516,7 @@ describe("session lifecycle state", () => {
       );
       expect(failed.status).toBe("failed");
       expect(failed.lastRunError).toContain(title);
-      expect(failed.lastRunError).toContain("Refresh");
+      expect(failed.lastRunError).toContain("your request again");
       expect(failed.lastRunError?.length).toBeLessThanOrEqual(160);
       expect(failed.lastRunError).not.toContain("lease");
       expect(failed.lastRunError).not.toContain("synthetic-thread");
