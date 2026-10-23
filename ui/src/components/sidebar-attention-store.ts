@@ -9,6 +9,7 @@ import type {
 } from "../app/sidebar-attention-store.ts";
 import { normalizeAgentLabel } from "../lib/agents/display.ts";
 import { subscribeChatOutboxAttentionChanges } from "../lib/chat/outbox-owner-registry.ts";
+import { listChatOutboxAttention } from "../lib/chat/outbox-store-projection.ts";
 import { subscribeStoredChatOutboxChanges } from "../lib/chat/outbox-store.ts";
 import { loadCompactCronJobsPage } from "../lib/cron/jobs.ts";
 import { createInitialCronState, loadCronStatus } from "../lib/cron/state.ts";
@@ -101,7 +102,6 @@ export class SidebarAttentionStoreOwner implements StoreOwner {
   private modelAuthRefresh: { generation: number; agentId: string; requested: boolean } | null =
     null;
   private readonly stopSubscriptions: Array<() => void>;
-  private outboxRuntime: typeof import("../pages/chat/chat-outbox-owner.ts") | null = null;
   private disposed = false;
 
   constructor(
@@ -136,19 +136,6 @@ export class SidebarAttentionStoreOwner implements StoreOwner {
       listen(document, "visibilitychange", this.refreshDeferred),
       listen(globalThis, "storage", this.syncDismissalsFromStorage),
     ];
-    // Share the chat owner’s live overlays without putting its send graph in shell startup.
-    void import("../pages/chat/chat-outbox-owner.ts")
-      .then((runtime) => {
-        if (!this.disposed) {
-          this.outboxRuntime = runtime;
-          if (this.buildEntries().some((entry) => entry.type === "outbox")) {
-            this.onChange();
-          }
-        }
-      })
-      .catch(() => {
-        // Chat retains its existing recovery controls if its lazy runtime cannot load.
-      });
     this.synchronizeGateway();
   }
 
@@ -245,35 +232,32 @@ export class SidebarAttentionStoreOwner implements StoreOwner {
 
   private buildEntries(): SidebarInboxEntry[] {
     const gateway = this.sources.gateway.snapshot;
-    const outbox: Extract<SidebarInboxEntry, { type: "outbox" }>[] =
-      this.outboxRuntime
-        ?.listChatOutboxAttention({
-          client: gateway.client,
-          connected: gateway.phase === "connected",
-          settings: { gatewayUrl: this.sources.gateway.connection.gatewayUrl },
-          assistantAgentId: gateway.assistantAgentId,
-          agentsList: this.sources.agents.state.agentsList,
-          hello: gateway.hello,
-        })
-        .map((item) =>
-          Object.assign(item, {
-            type: "outbox" as const,
-            category: "system" as const,
-            dismissal: {
-              kind: "outbox" as const,
-              signature: JSON.stringify([
-                gateway.client?.recoveryScope,
-                item.agentId,
-                item.sessionKey,
-                item.id,
-                item.unconfirmed,
-                item.command,
-              ]),
-            },
-            requiresAction: true,
-            severity: item.unconfirmed ? ("warning" as const) : ("error" as const),
-          }),
-        ) ?? [];
+    const outbox: Extract<SidebarInboxEntry, { type: "outbox" }>[] = listChatOutboxAttention({
+      client: gateway.client,
+      connected: gateway.phase === "connected",
+      settings: { gatewayUrl: this.sources.gateway.connection.gatewayUrl },
+      assistantAgentId: gateway.assistantAgentId,
+      agentsList: this.sources.agents.state.agentsList,
+      hello: gateway.hello,
+    }).map((item) =>
+      Object.assign(item, {
+        type: "outbox" as const,
+        category: "system" as const,
+        dismissal: {
+          kind: "outbox" as const,
+          signature: JSON.stringify([
+            gateway.client?.recoveryScope,
+            item.agentId,
+            item.sessionKey,
+            item.id,
+            item.unconfirmed,
+            item.command,
+          ]),
+        },
+        requiresAction: true,
+        severity: item.unconfirmed ? ("warning" as const) : ("error" as const),
+      }),
+    );
     const overlay = this.sources.overlays.snapshot;
     const update = resolveSidebarUpdateAttention(this.sources);
     const scopeUpgrade = buildScopeUpgradeInboxEntry({

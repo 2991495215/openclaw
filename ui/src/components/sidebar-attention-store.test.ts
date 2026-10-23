@@ -872,7 +872,7 @@ describe("sidebar attention source publication", () => {
       ),
     ).toBe("admitted");
     store = activate(harness);
-    await import("../pages/chat/chat-outbox-owner.ts");
+    expect(store.entries.map((entry) => entry.type)).toEqual(["outbox"]);
     await waitForFast(() =>
       expect(store?.entries.map((entry) => entry.type)).toEqual(["outbox", "attention"]),
     );

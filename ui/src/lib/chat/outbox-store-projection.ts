@@ -270,6 +270,44 @@ export function readStoredChatOutbox(
   );
 }
 
+function chatOutboxItemNeedsReview(
+  owner: ReturnType<typeof chatOutboxAttentionOwners.get>,
+  scope: StoredChatOutboxScope,
+  item: ChatQueueItem,
+) {
+  return owner ? owner.needsReview(scope, item) : storedChatOutboxItemNeedsReview(item);
+}
+
+/** Read existing delivery attention without creating an outbox owner. */
+export function listChatOutboxAttention(state: ChatComposerScope) {
+  if (!readOfflineStorageScope(state)) {
+    return [];
+  }
+  const owner = chatOutboxAttentionOwners.get(outboxOwnerKey(state));
+  const attention: Array<{
+    id: string;
+    sessionKey: string;
+    agentId: string | undefined;
+    unconfirmed: boolean;
+    command: boolean;
+  }> = [];
+  for (const outbox of listStoredChatOutboxes(state)) {
+    for (const item of outbox.queue) {
+      if (!chatOutboxItemNeedsReview(owner, outbox, item)) {
+        continue;
+      }
+      attention.push({
+        id: item.id,
+        sessionKey: outbox.sessionKey,
+        agentId: outbox.agentId,
+        unconfirmed: item.sendState === "unconfirmed" || item.sendState === "held",
+        command: Boolean(item.localCommandName),
+      });
+    }
+  }
+  return attention;
+}
+
 function summarizeStoredChatOutboxes(
   state: ChatComposerScope,
   durablePresence?: ReadonlyMap<string, DurableChatDraftPresence>,
@@ -294,11 +332,7 @@ function summarizeStoredChatOutboxes(
     for (const item of session.queue ?? []) {
       if (!item.pendingRunId) {
         ids.all.add(item.id);
-        if (
-          attentionOwner
-            ? attentionOwner.needsReview(scope, item)
-            : storedChatOutboxItemNeedsReview(item)
-        ) {
+        if (chatOutboxItemNeedsReview(attentionOwner, scope, item)) {
           ids.attention.add(item.id);
         }
       }
