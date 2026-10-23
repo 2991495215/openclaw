@@ -53,6 +53,7 @@ export function createDispatchFixture(
     admissionRevokedActor?: boolean;
     admissionFailedUpload?: boolean;
     qualificationMovedRef?: boolean;
+    advanceMainBeforeAdmission?: number;
     advanceMainAfterAdmission?: boolean;
     stopAfterAccepted?: "admission" | "qualification";
     bareShaFetchFailure?: boolean;
