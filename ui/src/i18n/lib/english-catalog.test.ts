@@ -37,6 +37,8 @@ it("keeps shared session labels eager while lazy renderers extend their retained
   const composer = en.chat.composer;
   const menu = composer.menu;
   const toolAccess = menu.toolAccess;
+  const welcome = en.chat.welcome;
+  const suggestions = welcome.suggestions;
   try {
     await i18n.setLocale("en");
     expect(t("chat.sessionDetails.progressOptions")).toBe("Task progress options");
@@ -82,6 +84,8 @@ it("keeps shared session labels eager while lazy renderers extend their retained
     expect(en.chat.composer).toBe(composer);
     expect(en.chat.composer.menu).toBe(menu);
     expect(en.chat.composer.menu.toolAccess).toBe(toolAccess);
+    expect(en.chat.welcome).toBe(welcome);
+    expect(en.chat.welcome.suggestions).toBe(suggestions);
   } finally {
     for (const { target, value } of snapshots) {
       for (const key of Object.keys(target)) {

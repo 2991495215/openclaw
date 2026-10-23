@@ -1,4 +1,5 @@
 import type { TranslationMap } from "../lib/types.ts";
+import { registerChatComposerEnglish } from "./en-chat-composer.ts";
 import { en } from "./en.ts";
 
 // Discovery copy loads with the palette or transcript search, not the shell.
@@ -128,15 +129,17 @@ const enCommandPalette = {
     },
   },
   chat: {
-    welcome: en.chat.welcome,
+    welcome: registerChatComposerEnglish.catalog.chat.welcome,
     commands: en.chat.commands,
   },
 } satisfies TranslationMap;
 
 export const registerCommandPaletteEnglish = Object.assign(
   () => {
+    const { suggestions, ...welcome } = enCommandPalette.chat.welcome;
     Object.assign(en.shortcutsOverlay, enCommandPalette.shortcutsOverlay);
-    Object.assign(en.chat.welcome, enCommandPalette.chat.welcome);
+    Object.assign(en.chat.welcome, welcome);
+    Object.assign(en.chat.welcome.suggestions, suggestions);
     Object.assign(en.chat.commands, enCommandPalette.chat.commands);
     Object.assign(en.commandPalette, enCommandPalette.commandPalette);
     Object.assign(en.palette, enCommandPalette.palette);

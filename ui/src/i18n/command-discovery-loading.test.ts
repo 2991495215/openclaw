@@ -36,6 +36,7 @@ describe("command discovery English loading", () => {
     const { manager } = await loadI18n();
     await manager.setLocale("de");
     const { SLASH_COMMANDS, getSlashCommandDescription } = await import("../lib/chat/commands.ts");
+    expect(manager.t("chat.welcome.recentSessions")).toBe("chat.welcome.recentSessions");
     await import("../pages/chat/components/chat-welcome.tsx");
     await import("../pages/chat/components/chat-model-account-control.ts");
 

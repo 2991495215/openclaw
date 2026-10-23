@@ -3,6 +3,17 @@ import { en } from "./en.ts";
 
 const catalog = {
   chat: {
+    welcome: {
+      hintBeforeShortcut: "Type a message below ·",
+      hintAfterShortcut: "for commands",
+      recentSessions: "Recent chats",
+      suggestions: {
+        whatCanYouDo: en.chat.welcome.suggestions.whatCanYouDo,
+        summarizeRecentSessions: "Summarize my recent sessions",
+        configureChannel: "Help me configure a channel",
+        checkSystemHealth: "Check system health",
+      },
+    },
     composer: {
       running: "running",
       composerInput: "Chat composer",
@@ -283,6 +294,9 @@ const catalog = {
 
 export const registerChatComposerEnglish = Object.assign(
   () => {
+    const { suggestions, ...welcome } = catalog.chat.welcome;
+    Object.assign(en.chat.welcome, welcome);
+    Object.assign(en.chat.welcome.suggestions, suggestions);
     const { menu, ...composer } = catalog.chat.composer;
     const { toolAccess, ...menuItems } = menu;
     Object.assign(en.chat.composer, composer);
