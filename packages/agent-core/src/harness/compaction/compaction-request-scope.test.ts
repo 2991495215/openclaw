@@ -54,6 +54,40 @@ describe("manual compaction requests", () => {
     }
     expect(result.value.requestState).toBeUndefined();
   });
+
+  it("preserves a prior pending request when fallback has no authoritative replacement", () => {
+    const request = "Review the patch; do not deploy it.";
+    const entries: SessionTreeEntry[] = [
+      messageEntry(assistant("Prior retained work", 1), 0),
+      {
+        type: "compaction",
+        id: "prior-compaction",
+        parentId: "entry-0",
+        timestamp: new Date(2).toISOString(),
+        firstKeptEntryId: "entry-0",
+        tokensBefore: 100,
+        summary: `## Latest unresolved user request\n${JSON.stringify(request)}\n\nPrior work continues.`,
+        details: { readFiles: [], modifiedFiles: [], latestUnresolvedUserRequest: request },
+      },
+      messageEntry(assistant("Still working.", 3), 2),
+      messageEntry(assistant("Still working after a tool result.", 4), 3),
+    ];
+    const prepared = prepareCompaction(entries, settings);
+    if (!prepared.ok || !prepared.value) {
+      throw new Error("expected compactable history");
+    }
+    expect(prepared.value.requestState).toBeUndefined();
+    expect(prepared.value.latestUnresolvedUserRequest).toBeUndefined();
+
+    const fallback = compactWithoutSummary(prepared.value);
+    expect(fallback.ok).toBe(true);
+    if (fallback.ok) {
+      expect(fallback.value.summary).toContain(
+        `## Latest unresolved user request\n${JSON.stringify(request)}`,
+      );
+      expect(fallback.value.summary).toContain("Prior work continues.");
+    }
+  });
 });
 
 describe("run-owned compaction requests", () => {

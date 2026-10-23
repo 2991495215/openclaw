@@ -700,8 +700,12 @@ function previousSummaryWithoutFileOperations(
   const previousRequestSection = previousRequest
     ? `## Latest unresolved user request\n${JSON.stringify(previousRequest)}\n\n`
     : "";
+  const requestSelectionIsAuthoritative =
+    preparation.requestState !== undefined || preparation.latestUnresolvedUserRequest !== undefined;
   const summaryWithoutRequest =
-    previousRequestSection && previousSummary?.includes(previousRequestSection)
+    requestSelectionIsAuthoritative &&
+    previousRequestSection &&
+    previousSummary?.includes(previousRequestSection)
       ? previousSummary.replace(previousRequestSection, "")
       : previousSummary;
   const previousFileOperations = previousSummaryDetails
