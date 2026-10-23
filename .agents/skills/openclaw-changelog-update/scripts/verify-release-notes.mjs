@@ -2625,6 +2625,19 @@ function writeFileAtomic(filePath, contents) {
   }
 }
 
+function loadOrInitializeReleaseChangelog(rootDir, version, writeLedger) {
+  const existing = findReleaseChangelog({ rootDir, version });
+  if (existing || !writeLedger) {
+    return existing ?? loadReleaseChangelog({ rootDir, version });
+  }
+  writeReleaseChangelog({
+    rootDir,
+    version,
+    section: `## ${version}\n\n### Highlights\n\n### Changes\n\n### Fixes\n`,
+  });
+  return loadReleaseChangelog({ rootDir, version });
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {

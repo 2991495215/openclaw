@@ -47,10 +47,8 @@ import {
   type QualificationAdmissionDispatch,
 } from "./lib/full-release-dispatch-request.mts";
 import { execPlainGh } from "./lib/plain-gh.mjs";
-import { validateCandidateChangelog } from "./lib/release-candidate-changelog.mts";
 import { parseReleaseContextRef, resolveReleaseContextIdentity } from "./lib/release-context.mjs";
 import { resolveQualificationBaselines } from "./lib/release-upgrade-baseline.mjs";
-import { classifyReleaseTrain, parseReleaseVersion } from "./lib/release-version.mjs";
 import { validatePackageSourceRef } from "./package-source-preflight.mjs";
 import {
   validateCandidateActorPermissionWithGithub,
@@ -213,8 +211,8 @@ always performs read-only reconciliation. --reconcile-request refuses a missing 
 mutation; after a qualification POST it is observation-only, never a redispatch.
 Retain the artifact until operator cleanup; its loss never proves non-execution.
 Frozen tooling must declare FULL_RELEASE_DISPATCH_WITNESS_CONTRACT=1 before a new request.
-Prints the frozen candidate/tooling, effective profile, group, and soak selection
-before dispatch and when reconciling the retained request.
+Prints the frozen candidate/tooling, effective profile, group, soak and redacted
+waiver selection before dispatch and when reconciling the retained request.
 
 Preflights the Validation SHA with a bare-SHA fetch into a fresh temporary repository.
 Creates one immutable release-ci/* workflow ref pinned to the exact Tooling SHA,
@@ -622,19 +620,7 @@ export function verifyTargetRef(
   if (!targetRef) {
     return targetSha;
   }
-  let identity: ReturnType<typeof resolveReleaseContextIdentity>;
-  try {
-    identity = resolveReleaseContextIdentity(targetRef, targetVersion);
-  } catch (error) {
-    const context = parseReleaseContextRef(targetRef);
-    const preparation =
-      context?.kind === "release tag"
-        ? `Prepare the candidate from a commit whose package.json version matches ${context.ref}, push that tag, then rerun with its candidate SHA.`
-        : `Update package.json on ${targetRef} to the intended release version, commit and push the release branch, then rerun with the new candidate SHA.`;
-    throw new Error(`${error instanceof Error ? error.message : String(error)} ${preparation}`, {
-      cause: error,
-    });
-  }
+  const identity = resolveReleaseContextIdentity(targetRef, targetVersion);
   if (!identity) {
     throw new Error("Target ref must be a canonical OpenClaw release branch or tag");
   }
@@ -784,10 +770,7 @@ function candidateTrustReason(
       const context = parseReleaseContextRef(contextRef);
       return context?.kind === "release tag" ? [context.ref] : [];
     });
-  if (matchingTags.length > 0) {
-    return "release-tag";
-  }
-  return undefined;
+  return matchingTags.length > 0 ? "release-tag" : undefined;
 }
 
 function preflightCandidateSigningProvenance(
@@ -806,37 +789,6 @@ function preflightCandidateSigningProvenance(
     `Release candidate provenance verified for ${targetSha}${actor ? ` (${actor})` : " (main-ancestor)"}`,
   );
   return actor;
-}
-
-// pnpm release:candidate applies these gates after validation finishes; check
-// them first so an unpublishable candidate never spends a validation run.
-// Extended-stable publication does not use that checklist.
-function validatePublishCandidateChangelog(
-  targetSha: string,
-  targetContextRef: string,
-  targetVersion: string,
-) {
-  const packaged = parseReleaseVersion(targetVersion);
-  if (packaged && classifyReleaseTrain(packaged) === "extended-stable") {
-    return;
-  }
-  const releaseTag =
-    resolveReleaseContextIdentity(targetContextRef, targetVersion)?.releaseTag ??
-    `v${targetVersion}`;
-  try {
-    validateCandidateChangelog({
-      rootDir: process.cwd(),
-      repository: REPOSITORY,
-      tag: releaseTag,
-      targetSha,
-    });
-  } catch (error) {
-    throw new Error(
-      `Candidate ${targetSha} would fail the pnpm release:candidate changelog gates for ${releaseTag}: ${error instanceof Error ? error.message : String(error)}. Fix the release notes or contribution record on the release branch (its recorded target must be reachable from the candidate), then validate the new candidate SHA.`,
-      { cause: error },
-    );
-  }
-  console.log(`Release notes and contribution record pass the ${releaseTag} candidate gates`);
 }
 
 function targetVersionForTarget(targetSha: string): string {
@@ -2135,9 +2087,6 @@ async function main() {
   validatePackageSourceRef(targetSha, {
     allowUnreleasedChangelog: args.inputs.allow_unreleased_changelog === "true",
   });
-  if (args.inputs.validation_purpose === "publish") {
-    validatePublishCandidateChangelog(targetSha, targetContextRef, targetVersion);
-  }
   if (trustedWorkflowHarness.contract === "1") {
     args.inputs.reuse_evidence = "false";
   }
