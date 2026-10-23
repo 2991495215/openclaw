@@ -290,13 +290,18 @@ export async function executeLocalWorkspaceManifestRead(
       }
     }
   }
-  const previousNodes: LocalWorkspaceManifestNode[] = [];
-  for (const entryPath of inspected) {
-    const previous = records.get(entryPath);
-    if (previous) {
-      previousNodes.push(previous.node);
+  const collectInspectedNodes = () => {
+    const nodes: LocalWorkspaceManifestNode[] = [];
+    for (const entryPath of inspected) {
+      const record = records.get(entryPath);
+      if (record) {
+        nodes.push(record.node);
+      }
     }
-  }
+    return nodes;
+  };
+
+  const previousNodes = collectInspectedNodes();
   const updated = updateLocalWorkspaceManifestTree(records, changes);
   const changedRecords = new Map(updated.records.map((record) => [record.node.path, record]));
   const observedRecords: LocalWorkspaceManifestRecord[] = [];
@@ -310,13 +315,7 @@ export async function executeLocalWorkspaceManifestRead(
       observedRecords.push(record);
     }
   }
-  const currentNodes: LocalWorkspaceManifestNode[] = [];
-  for (const entryPath of inspected) {
-    const current = records.get(entryPath);
-    if (current) {
-      currentNodes.push(current.node);
-    }
-  }
+  const currentNodes = collectInspectedNodes();
   const base = manifestDocument(previousNodes, row.base_commit, retained);
   const current = manifestDocument(currentNodes, row.base_commit, retained);
   const replace = row.baseline_json !== null || row.baseline_ref === null;

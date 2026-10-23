@@ -340,15 +340,15 @@ export function createGatewayPluginRequestHandler(params: {
     const gatewayRequestOperatorScopes = controlUiPluginGrant
       ? controlUiPluginGrant.scopes
       : dispatchContext?.gatewayRequestOperatorScopes;
+    const isRouteWithinControlUiGrant = (route: PluginHttpRouteRegistration) =>
+      !controlUiPluginGrant ||
+      route.auth !== "gateway" ||
+      route.pluginId === controlUiPluginGrant.pluginId;
 
     // Fail closed before invoking any handlers when matched gateway routes are
     // missing the runtime auth/scope context they require.
     for (const route of matchedRoutes) {
-      if (
-        controlUiPluginGrant &&
-        route.auth === "gateway" &&
-        route.pluginId !== controlUiPluginGrant.pluginId
-      ) {
+      if (!isRouteWithinControlUiGrant(route)) {
         continue;
       }
       const missingRuntimeContext = getMissingPluginRouteRuntimeContext(route, {
@@ -370,11 +370,7 @@ export function createGatewayPluginRequestHandler(params: {
     }
 
     for (const route of matchedRoutes) {
-      if (
-        controlUiPluginGrant &&
-        route.auth === "gateway" &&
-        route.pluginId !== controlUiPluginGrant.pluginId
-      ) {
+      if (!isRouteWithinControlUiGrant(route)) {
         continue;
       }
       try {
