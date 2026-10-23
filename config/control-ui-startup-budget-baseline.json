@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 285424,
-  "reason": "Session action and Chat discovery English split: matched 4d689774c5e build preserves 7 startup requests; Chat 1273663 to 1268634 B and New Session 771348 to 770121 B gzip, with unchanged 21/16 route requests.",
+  "startupJsGzipBytes": 285431,
+  "reason": "Session, discovery, and panel English split: matched 571040c3104 build preserves 7 startup requests; Chat 1273791 to 1266455 B and New Session 771359 to 770256 B gzip, with unchanged 21/16 route requests.",
   "updatedAt": "2026-10-23"
 }

@@ -134,3 +134,78 @@ it("loads session-owner copy before organization menus while retaining the names
   expect(en.sessionsView.colors).toBe(colors);
   expect(en.worktrees).toBe(worktrees);
 });
+
+it("loads panel copy at a lazy consumer and preserves nested namespaces on repeated registration", async () => {
+  const { en, manager } = await loadI18n({
+    common: { health: "Gesundheit" },
+    chat: { workspaceFiles: { desktop: { project: "Projekt" } } },
+  });
+  const { registerEnglishCatalog } = await import("../lib/reactive/i18n.ts");
+  const { registerChatSessionEnglish } = await import("./locales/en-chat-session.ts");
+  registerEnglishCatalog(registerChatSessionEnglish);
+  await manager.setLocale("de");
+  const namespaces = {
+    chat: en.chat,
+    automation: en.chat.sessionAutomation,
+    subagents: en.chat.subagentsPanel,
+    header: en.chat.sessionHeader,
+    terminal: en.chat.sessionHeader.continueInTerminal,
+    youtube: en.chat.youtube,
+    rail: en.chat.rail,
+    diff: en.chat.sessionDiff,
+    discussion: en.chat.sessionDiscussion,
+    files: en.chat.workspaceFiles,
+    desktop: en.chat.workspaceFiles.desktop,
+  };
+  expect(manager.t("chat.subagentsPanel.title")).toBe("Subagents");
+  expect(manager.t("chat.workspaceFiles.desktop.sessionFiles")).toBe("Session files");
+  expect(manager.t("chat.sessionAutomation.occurrence6")).toBe("Last");
+  expect(manager.t("chat.youtube.video")).toBe("YouTube video");
+  const coldCopy = [
+    ["chat.subagentsPanel.nativeStatus.interrupted", "Interrupted"],
+    ["chat.subagentsPanel.desktopFilter.active", "Active"],
+    ["chat.sessionHeader.continueInTerminal.title", "Continue in terminal"],
+    ["chat.youtube.player", "YouTube player: {title}"],
+    ["chat.rail.health.waiting-on-user", "Waiting on you"],
+    ["chat.sessionDiff.modeUnified", "Unified"],
+    ["chat.sessionDiscussion.loading", "Loading discussion…"],
+    ["chat.workspaceFiles.mobile.searchFolder", "Search in {folder}"],
+  ];
+  for (const [key] of coldCopy) {
+    expect(manager.t(key)).toBe(key);
+  }
+
+  await import("../pages/chat/components/continue-in-terminal-dialog.tsx");
+  for (const [key, value] of coldCopy) {
+    expect(manager.t(key)).toBe(value);
+  }
+  const nativeStatus = en.chat.subagentsPanel.nativeStatus;
+  const desktopFilter = en.chat.subagentsPanel.desktopFilter;
+  registerChatSessionEnglish();
+  await import("../pages/chat/components/youtube-video-card.tsx");
+  registerChatSessionEnglish();
+  const currentNamespaces = {
+    chat: en.chat,
+    automation: en.chat.sessionAutomation,
+    subagents: en.chat.subagentsPanel,
+    header: en.chat.sessionHeader,
+    terminal: en.chat.sessionHeader.continueInTerminal,
+    youtube: en.chat.youtube,
+    rail: en.chat.rail,
+    diff: en.chat.sessionDiff,
+    discussion: en.chat.sessionDiscussion,
+    files: en.chat.workspaceFiles,
+    desktop: en.chat.workspaceFiles.desktop,
+  };
+  for (const key of Object.keys(namespaces) as Array<keyof typeof namespaces>) {
+    expect(currentNamespaces[key]).toBe(namespaces[key]);
+  }
+  expect(en.chat.subagentsPanel.nativeStatus).toBe(nativeStatus);
+  expect(en.chat.subagentsPanel.desktopFilter).toBe(desktopFilter);
+  for (const [key, value] of coldCopy) {
+    expect(manager.t(key)).toBe(value);
+  }
+  expect(manager.t("chat.workspaceFiles.desktop.project")).toBe("Projekt");
+  expect(manager.t("common.health")).toBe("Gesundheit");
+  expect(manager.getLocale()).toBe("de");
+});

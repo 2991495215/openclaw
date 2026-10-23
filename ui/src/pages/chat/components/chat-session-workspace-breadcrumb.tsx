@@ -1,12 +1,14 @@
 import { createMemo, createSignal, createUniqueId, For, Show } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { Menu } from "../../../components/solid/menu.tsx";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { createLayoutMeasurement } from "../../../lib/reactive/layout-measurement.ts";
 import { splitWorkspaceFilename } from "./chat-session-workspace-catalog.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 export type WorkspaceBreadcrumbProps = {
   /** Canonical workspace-relative path. External/artifact identity uses sourceLabel instead. */

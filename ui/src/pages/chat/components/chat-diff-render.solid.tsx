@@ -1,6 +1,7 @@
 import type { JSX } from "@solidjs/web";
 import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerChatToolLabelsEnglish } from "../../../i18n/locales/en-chat-tool-labels.ts";
 import type { ToolCardOutcome } from "../../../lib/chat/chat-types.ts";
@@ -22,6 +23,7 @@ import { DiffStatChips } from "./chat-diff-stat.solid.tsx";
 registerEnglishCatalog(registerChatToolLabelsEnglish);
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 export function createDiffPresentation(props: {
   active?: boolean;

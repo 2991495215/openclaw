@@ -4,6 +4,7 @@ import type {
   SessionDiffFile,
   SessionsDiffResult,
 } from "../../../../../packages/gateway-protocol/src/index.js";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerChatToolLabelsEnglish } from "../../../i18n/locales/en-chat-tool-labels.ts";
 import type { ParsedFilePatch } from "../../../lib/chat/session-diff.ts";
@@ -19,6 +20,7 @@ import {
 registerEnglishCatalog(registerChatToolLabelsEnglish);
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 function SplitSide(props: {
   line: DiffLine | undefined;

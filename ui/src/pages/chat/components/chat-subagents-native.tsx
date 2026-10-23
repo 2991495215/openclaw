@@ -1,9 +1,11 @@
 import { For, Show } from "solid-js";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import type { SubagentsPanelData } from "../subagents-panel-data.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 export function ChatSubagentsNative(props: {
   snapshot: SubagentsPanelData["nativeSnapshot"];

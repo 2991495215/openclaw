@@ -21,6 +21,7 @@ import { registerChatDetailsEnglish } from "../../ui/src/i18n/locales/en-chat-de
 import { registerChatGoalsEnglish } from "../../ui/src/i18n/locales/en-chat-goals.ts";
 import { registerChatMediaEnglish } from "../../ui/src/i18n/locales/en-chat-media.ts";
 import { registerChatMessageMetadataEnglish } from "../../ui/src/i18n/locales/en-chat-message-metadata.ts";
+import { registerChatPanelsEnglish } from "../../ui/src/i18n/locales/en-chat-panels.ts";
 import { registerChatProviderReviewEnglish } from "../../ui/src/i18n/locales/en-chat-provider-review.ts";
 import { registerChatQuestionsEnglish } from "../../ui/src/i18n/locales/en-chat-questions.ts";
 import { registerChatSessionEnglish } from "../../ui/src/i18n/locales/en-chat-session.ts";
@@ -116,6 +117,7 @@ const sourceFiles = [
   "en-chat-goals.ts",
   "en-chat-message-metadata.ts",
   "en-chat-media.ts",
+  "en-chat-panels.ts",
   "en-chat-provider-review.ts",
   "en-chat-questions.ts",
   "en-chat-session.ts",
@@ -216,6 +218,54 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       Object.assign(sessionDetails, registerChatDetailsEnglish.catalog.chat.sessionDetails);
     }
   }
+  const hotChat = registerChatSessionEnglish.catalog.chat;
+  const panelChat = registerChatPanelsEnglish.catalog.chat;
+  const subagentsPanel = insertFragmentCopy(panelChat.subagentsPanel, {
+    nativeStatus: { title: hotChat.subagentsPanel.title },
+    desktopCloseSearch: { desktopWorking: hotChat.subagentsPanel.desktopWorking },
+    mobileFinished: {
+      stopConfirmTitle: hotChat.subagentsPanel.stopConfirmTitle,
+      stopConfirmMessage: hotChat.subagentsPanel.stopConfirmMessage,
+      stopConfirmAction: hotChat.subagentsPanel.stopConfirmAction,
+      back: hotChat.subagentsPanel.back,
+    },
+    refresh: { stop: hotChat.subagentsPanel.stop, stopping: hotChat.subagentsPanel.stopping },
+  });
+  const rail = insertFragmentCopy(panelChat.rail, {
+    expand: { collapse: hotChat.rail.collapse },
+    close: { show: hotChat.rail.show, clear: hotChat.rail.clear },
+    askImageQuestion: { selectionTooLong: hotChat.rail.selectionTooLong },
+  });
+  const sessionDiff = insertFragmentCopy(panelChat.sessionDiff, {
+    collapseContext: { title: hotChat.sessionDiff.title, show: hotChat.sessionDiff.show },
+  });
+  const workspaceFiles = insertFragmentCopy(panelChat.workspaceFiles, {
+    label: {
+      collapse: hotChat.workspaceFiles.collapse,
+      showFiles: hotChat.workspaceFiles.showFiles,
+    },
+    read: { artifacts: hotChat.workspaceFiles.artifacts },
+    browser: { root: hotChat.workspaceFiles.root },
+    preview: { copyPath: hotChat.workspaceFiles.copyPath },
+  });
+  workspaceFiles.desktop = {
+    ...hotChat.workspaceFiles.desktop,
+    ...panelChat.workspaceFiles.desktop,
+  };
+  const sessionDiscussion = {
+    show: hotChat.sessionDiscussion.show,
+    hide: hotChat.sessionDiscussion.hide,
+    disconnected: hotChat.sessionDiscussion.disconnected,
+    ...insertFragmentCopy(panelChat.sessionDiscussion, {
+      requiresWriteAccess: { openExternal: hotChat.sessionDiscussion.openExternal },
+    }),
+  };
+  const sessionHeader = {
+    ...hotChat.sessionHeader,
+    continueInTerminal: insertFragmentCopy(hotChat.sessionHeader.continueInTerminal, {
+      action: panelChat.sessionHeader.continueInTerminal,
+    }),
+  };
   const toolCards: TranslationMap = {};
   const toolContent = registerChatToolContentEnglish.catalog.chat.toolCards;
   for (const [key, value] of Object.entries(registerChatToolLabelsEnglish.catalog.chat.toolCards)) {
@@ -279,7 +329,14 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       },
       chat: {
         ...en.chat,
-        ...registerChatSessionEnglish.catalog.chat,
+        ...hotChat,
+        subagentsPanel,
+        sessionHeader,
+        youtube: panelChat.youtube,
+        rail,
+        sessionDiff,
+        sessionDiscussion,
+        workspaceFiles,
         ...registerSessionNavigationEnglish.catalog.chat,
         sessionDetails,
         sessionSuggestions: {
@@ -401,4 +458,18 @@ function loadControlUiCoreHintCatalog(): TranslationMap {
     }
   }
   return catalog;
+}
+
+// Restore canonical key order across hot and lazy fragments without registering
+// either fragment into the shared runtime dictionary.
+function insertFragmentCopy(
+  source: TranslationMap,
+  after: Record<string, TranslationMap>,
+): TranslationMap {
+  const result: TranslationMap = {};
+  for (const [key, value] of Object.entries(source)) {
+    result[key] = value;
+    Object.assign(result, after[key]);
+  }
+  return result;
 }

@@ -3,6 +3,7 @@ import { Show, createUniqueId, onSettled } from "solid-js";
 import { Icon, type IconName } from "../../../components/solid/icon.tsx";
 import { Menu } from "../../../components/solid/menu.tsx";
 import { registerChatMediaEnglish } from "../../../i18n/locales/en-chat-media.ts";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import "../../../components/tooltip.ts";
 import { registerCodeBlocksEnglish } from "../../../i18n/locales/en-code-blocks.ts";
@@ -18,6 +19,7 @@ import type { MobileFileBack } from "./chat-sidebar-content-types.ts";
 registerEnglishCatalog(registerChatMediaEnglish);
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 registerCodeBlocksEnglish();
 registerFilePreviewEnglish();
