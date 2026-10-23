@@ -59,9 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Compact tool presentation: matched a7f5566 Chat 1,273,728 to 1,271,539 B.
-  // New Session 769,205 to 767,113 B; preserve each surface's relative headroom.
-  chatBootJsGzipBytes: 1_361_324,
+  // Compact tool metadata: matched a7f5566 Chat 1,273,728 to 1,271,488 B.
+  // New Session 769,205 to 767,114 B; retain its stricter existing cap.
+  // Ratchet Chat by the measured byte ratio, preserving relative headroom.
+  chatBootJsGzipBytes: 1_361_269,
   newBootJsGzipBytes: 802_467,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.

@@ -48,6 +48,25 @@ const snapshots = [
       2,
     )}\n`,
   },
+  {
+    path: path.join(repoRoot, "ui/src/lib/chat/tool-display-details.generated.json"),
+    expected: `${JSON.stringify(
+      {
+        version: TOOL_DISPLAY_CONFIG.version,
+        fallback: toolDetails(TOOL_DISPLAY_CONFIG.fallback),
+        tools: Object.fromEntries(
+          Object.entries(TOOL_DISPLAY_CONFIG.tools).flatMap(([name, spec]) => {
+            const details = toolDetails(spec);
+            return details.detailKeys === undefined && details.actions === undefined
+              ? []
+              : [[name, details]];
+          }),
+        ),
+      },
+      null,
+      2,
+    )}\n`,
+  },
 ];
 ensureCoreToolCoverage();
 
@@ -118,6 +137,18 @@ function collectToolNamesFromFile(sourcePath: string, names: Set<string>) {
 
 function toolPresentation({ icon, title, label }: ToolDisplayConfig["fallback"]) {
   return { icon, title, label };
+}
+
+function toolDetails({ detailKeys, actions }: ToolDisplayConfig["fallback"]) {
+  const detailActions = Object.fromEntries(
+    Object.entries(actions ?? {}).flatMap(([name, spec]) =>
+      spec.detailKeys === undefined ? [] : [[name, { detailKeys: spec.detailKeys }]],
+    ),
+  );
+  return {
+    detailKeys,
+    actions: Object.keys(detailActions).length > 0 ? detailActions : undefined,
+  };
 }
 
 function serializeToolDisplayConfig(config: ToolDisplayConfig = TOOL_DISPLAY_CONFIG): string {

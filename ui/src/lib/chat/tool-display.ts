@@ -1,6 +1,5 @@
 import { isHttpUrl } from "@openclaw/net-policy/url-protocol";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
-import SHARED_TOOL_DISPLAY_JSON from "../../../../apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json" with { type: "json" };
 import { unwrapToolCallForDisplay } from "../../../../src/agents/tool-display-call.js";
 import {
   resolveToolDetailForArgs,
@@ -8,6 +7,7 @@ import {
 } from "../../../../src/agents/tool-display-common.js";
 import type { ToolDetailMode } from "../../../../src/agents/tool-display-exec.js";
 import type { ControlUiEmbedSandboxMode } from "../../../../src/gateway/control-ui-bootstrap-contract.js";
+import TOOL_DETAILS from "./tool-display-details.generated.json" with { type: "json" };
 import { resolveToolDisplayIdentity } from "./tool-display-identity.ts";
 
 const A2UI_PATH = "/__openclaw__/a2ui";
@@ -23,8 +23,11 @@ type ToolDisplay = {
 
 export type EmbedSandboxMode = ControlUiEmbedSandboxMode;
 
-const FALLBACK = SHARED_TOOL_DISPLAY_JSON.fallback;
-const TOOL_MAP: Record<string, ToolDisplaySpec> = SHARED_TOOL_DISPLAY_JSON.tools;
+const FALLBACK = TOOL_DETAILS.fallback;
+const TOOL_MAP: Record<
+  string,
+  Pick<ToolDisplaySpec, "detailKeys" | "actions">
+> = TOOL_DETAILS.tools;
 
 function shortenHomeInString(input: string): string {
   // Browser-safe home shortening: avoid importing Node-only helpers (keeps Vite builds working in Docker/CI).
