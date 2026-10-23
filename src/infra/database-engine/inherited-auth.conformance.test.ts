@@ -164,12 +164,15 @@ process.emit = function(event, ...args) {
         const messages = (
           JSON.parse(body) as { messages: Array<{ role: string; content: unknown }> }
         ).messages;
-        const lastInput = JSON.stringify(
-          messages.findLast((message) => message.role === "user") ?? null,
-        );
-        const ownerInput = ["FRESH_OWNER", "SAVED_OWNER"].find((marker) =>
-          lastInput.includes(marker),
-        );
+        // Runtime context may follow the actual user input.
+        const ownerInput = messages
+          .filter((message) => message.role === "user")
+          .flatMap((message) =>
+            ["SAVED_OWNER", "FRESH_OWNER"].filter((marker) =>
+              JSON.stringify(message.content).includes(marker),
+            ),
+          )
+          .at(-1);
         if (ownerInput) {
           ownerInputOrder.push(ownerInput);
           ownerAuthorizations.push(request.headers.authorization);
