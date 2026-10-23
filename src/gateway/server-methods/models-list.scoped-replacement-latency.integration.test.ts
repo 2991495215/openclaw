@@ -80,6 +80,7 @@ it("records models.list ordering during an unrelated scoped replacement", async 
   const token = "scoped-latency-synthetic-token";
   const cfg: OpenClawConfig = {
     agents: {
+      ownership: "explicit",
       defaults: {
         skipBootstrap: true,
         model: { primary: `${provider}/fixture-model` },
