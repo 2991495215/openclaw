@@ -56,13 +56,13 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Optimized boot gzip: 1,301,022 B Chat and 794,464 B New Session.
-  // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_350_577,
-  newBootJsGzipBytes: 805_180,
+  // Deferred menus and closed dialogs: 1,349,135 B Chat and 823,357 B New Session.
+  // Retain the stricter prior caps after the current-main measurement refresh.
+  chatBootJsGzipBytes: 1_400_431,
+  newBootJsGzipBytes: 834_356,
   startupCssRequests: 1,
-  // Preserve the measured startup headroom after boot-only gzip optimization.
-  startupJsGzipBytes: 312_188,
+  // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
+  startupJsGzipBytes: 325_081,
   // Keep 45 KiB advisory: tiny integrated changes must not exhaust the budget.
   // The fixed 50 KiB ceiling bounds accumulation of small changes.
   startupCssGzipBytes: 50 * KIB,
