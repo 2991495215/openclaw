@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Defer rendering leaves: 1,317,422 B Chat; preserve headroom against matched 054f11c8.
-  chatBootJsGzipBytes: 1_365_959,
-  // Separate panel headers and defer Labs/Usage copy: 814,674 B New against 721d124.
-  newBootJsGzipBytes: 822_617,
+  // Defer rendering leaves: 1,313,969 B Chat; preserve headroom against matched 6dc8ca5.
+  chatBootJsGzipBytes: 1_362_088,
+  // Keep New Session's existing cap; the matched build differs by only 48 B.
+  newBootJsGzipBytes: 819_711,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
