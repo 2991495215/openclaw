@@ -33,6 +33,7 @@ import {
 
 export { TEAM_SCALE_SELF_INSTANCE_ID };
 
+const TEAM_SCALE_CATALOG_PROGRESS_ID = "team-scale-progress";
 const TEAM_SCALE_LIVE_RUN_ID = "team-scale-live-run";
 
 type TeamScaleCatalogEvent = { event: "sessions.catalog.host"; payload: SessionsCatalogHostEvent };
@@ -64,7 +65,6 @@ type FixtureOptions = {
   largeSnapshot?: boolean;
   offRosterSession?: boolean;
   transcriptMessages?: number;
-  transcriptCode?: "named" | "auto";
   dashboardMcpApp?: { font: Buffer };
   /** Opt into a scripted HTML dashboard with an independently fetched web font. */
   dashboardWidgetFontUrl?: string;
@@ -170,7 +170,6 @@ export function createControlUiTeamScaleFixture(options: FixtureOptions = {}) {
     inlineWidgets: counts.inlineWidgets,
     now,
     largeSnapshot: options.largeSnapshot,
-    transcriptCode: options.transcriptCode,
     attachments: duplicateReads?.attachments,
   });
   const configuredHistory =
@@ -236,7 +235,7 @@ export function createControlUiTeamScaleFixture(options: FixtureOptions = {}) {
     catalog.hosts.map((host) => ({
       event: "sessions.catalog.host",
       payload: {
-        progressId: "team-scale-progress",
+        progressId: TEAM_SCALE_CATALOG_PROGRESS_ID,
         agentId: "main",
         catalog: { ...catalog, hosts: [host] },
       },
@@ -499,6 +498,7 @@ export function createControlUiTeamScaleFixture(options: FixtureOptions = {}) {
   const liveEvents: TeamScaleLiveEvent[] = Array.from({ length: 125 }, (_, index) => {
     const kind = liveKinds[index % liveKinds.length]!;
     const ts = now + (index + 1) * 160;
+    const runId = TEAM_SCALE_LIVE_RUN_ID;
     let event: string;
     let payload: unknown;
     let history: TeamScaleLiveEvent["history"];
@@ -553,10 +553,10 @@ export function createControlUiTeamScaleFixture(options: FixtureOptions = {}) {
       history = { message };
       payload = {
         sessionKey: selectedSessionKey,
-        clientRunId: TEAM_SCALE_LIVE_RUN_ID,
+        clientRunId: runId,
         messageId: `team-scale-live-message-${index}`,
         messageSeq: counts.transcriptMessages + index + 1,
-        activeRunIds: [TEAM_SCALE_LIVE_RUN_ID],
+        activeRunIds: [runId],
         hasActiveRun: true,
         message,
       };
@@ -565,7 +565,7 @@ export function createControlUiTeamScaleFixture(options: FixtureOptions = {}) {
       history = { text: `Synthetic streaming progress ${index + 1}` };
       payload = {
         sessionKey: selectedSessionKey,
-        runId: TEAM_SCALE_LIVE_RUN_ID,
+        runId,
         seq: index + 1,
         state: "delta",
         message: {

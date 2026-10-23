@@ -17,8 +17,6 @@ export const uiIsolatedTestFiles = [
   "ui/src/components/link-reader-title-tooltip.test.ts",
   // Import rejection fixtures must not poison the shared module registry.
   "ui/src/components/lazy-entry-feedback.test.tsx",
-  "ui/src/components/markdown-highlight-failure.test.tsx",
-  "ui/src/components/markdown-highlight.test.tsx",
   "ui/src/components/sidebar-attention-lazy-failure.test.ts",
   "ui/src/components/markdown-tables.test.ts",
   "ui/src/components/mcp-app-bridge.test.ts",
@@ -65,6 +63,7 @@ export const uiIsolatedTestFiles = [
   "ui/src/pages/config/memory-mutation-owner.test.ts",
   "ui/src/pages/config/memory-page.test.ts",
   "ui/src/pages/new-session/draft-persistence.test.ts",
+  "ui/src/pages/new-session/new-session-attachment-lazy.test.ts",
   "ui/src/pages/sessions/sessions-page.archived.test.ts",
 ].map((file) => resolveUiTypeScriptPath(file));
 
