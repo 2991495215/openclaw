@@ -1,5 +1,28 @@
 # Team-shaped synthetic state
 
+## Owned directory events
+
+`owned-directory-events-measure.ts` opens real shared directory subscriptions and
+replays fixed native callbacks. Setup checks a missing descendant's event filter;
+the measured pass delivers 65 direct-root events per batch, with a one-millisecond
+yield between batches. It measures observer work, not filesystem or Gateway throughput.
+
+```sh
+node --expose-gc --trace-gc-nvp --import ./scripts/tsx.mjs \
+  scripts/perf/owned-directory-events-measure.ts \
+  --state-dir /path/to/new-state --operations 4000 --start-at <epoch-ms> \
+  --gc-log /path/to/capture.log --output /path/to/result.json > /path/to/capture.log 2>&1
+```
+
+Use `--owner /absolute/path/to/owned-directory-observation.baseline.ts` to load a
+baseline saved beside the current owner. Add `--allocations` for a separate paired
+pass including collected objects. Reports include bytes per event, batch latency,
+CPU, GC counts/tails/maxima, promotion, and event-loop tails with sample counts.
+Compare concurrent pairs under one quiet lock and the production guard, swapping
+interleaved CPU sets for the second pair. Apply the campaign's paired-delta,
+absolute-delta, GC-pause, and minimum-sample rules. Notifications must remain exact;
+lower allocation must not regress eligible CPU, GC/work, or latency metrics.
+
 ## Background result lifecycle wait
 
 `background-result-wait-measure.ts` holds a synthetic session turn open while
@@ -115,6 +138,79 @@ and tails with sample counts; promotion excludes setup and profiler-stop GC.
 Apply the campaign's sample-count and paired-delta rules. RSS high water includes
 setup. State and profile files remain in the task-owned directory for inspection
 and cleanup.
+
+## Session catalog selection
+
+`session-catalog-selection-measure.ts` invokes the real `sessions.catalog.list`
+handler with a real row projection over 5,000 persisted synthetic sessions split
+between two agents. Two synthetic providers consume the shared planning snapshot
+and return 16 rows each. Every measured call follows a committed metadata update
+and waits for the row owner to settle before reading its order;
+`--unchanged` instead measures repeated calls at one revision. This is in-process
+handler evidence, without transport, model calls, or external provider IO.
+
+```sh
+node --expose-gc --trace-gc-nvp --import ./scripts/tsx.mjs \
+  scripts/perf/session-catalog-selection-measure.ts \
+  --state-dir /path/to/new-state --operations 4000 --start-at <future-epoch-ms> \
+  --gc-log /path/to/capture.log --output /path/to/result.json > /path/to/capture.log 2>&1
+```
+
+Run on the approved benchmark host with a new state directory per process. Setup
+and warmup precede `CATALOG_READY`; use preparation CPUs until that marker, then
+the pair's interleaved measurement CPUs. Hold one quiet lock and use the shared
+production guard; swap placements in the second pair. Add `--allocations` for a
+separate paired allocation pass including objects collected by minor and major GC.
+Handler latency excludes the metadata write and row settling; allocation, GC, promotion, CPU, and
+elapsed time include the write, settling, response hashing, and the one-millisecond pacing
+yield. Selection and catalog allocation subtrees are reported separately.
+
+Compare the initial/final full ordered entry hashes and complete response-sequence
+hash across baseline and candidate: no response fields are omitted. Assertions
+check both providers ran and saw all rows and the expected selection revisions.
+Twenty unchanged warmup calls provide context; use `--unchanged --operations 4000`
+for a full unchanged comparison. GC reports totals per call, collection counts,
+maximum pauses and tails; all tails include sample counts. Apply the campaign's
+paired-delta, sample-count and absolute GC pause rules. RSS high water includes
+setup; retained state and allocation profiles are task-owned cleanup artifacts.
+
+## Codex adoption candidate preparation
+
+`adoption-candidates-measure.ts` calls the production adoption owner with 5,000
+synthetic session entries, including 16 valid adoptions. The main measurement
+uses `--team-shape`: the existing generator creates 5,000 persisted sessions,
+6,000 retained runs, approvals, cron jobs, and projects, with transcript payloads
+disabled. Setup reads the actual stored session entries through the plugin
+runtime and uses the first 4,984 alongside the 16 valid adoptions. Generation
+runs sequentially on preparation CPUs, before `ADOPTION_READY`. Without this
+flag, the smaller setup uses simple in-memory session rows. The real binding store
+and decoder read an in-memory fixture adapter; unexpected mutations fail. Each
+list gets a new snapshot revision by default; `--unchanged` retains the warmed
+revision. This measures candidate preparation and binding decoding, without
+Gateway transport, SQLite, or native App Server latency.
+
+```sh
+node --expose-gc --trace-gc-nvp --import ./scripts/tsx.mjs \
+  scripts/perf/adoption-candidates-measure.ts \
+  --team-shape --state-dir /path/to/new-state --operations 4000 --start-at <future-epoch-ms> \
+  --gc-log /path/to/capture.log --output /path/to/result.json > /path/to/capture.log 2>&1
+```
+
+Run on the approved benchmark host under the shared guard and one quiet lock,
+with concurrent baseline/candidate processes and swapped interleaved CPU sets
+in the second pair. `ADOPTION_READY` follows fixture preparation and warmup.
+`--owner /path/to/baseline-sibling.ts` substitutes an adoption module alongside
+its original imports. Add `--allocations` for separate paired allocation passes
+that retain samples of objects collected by minor and major GC.
+
+Every result must exactly match the independently constructed ordered adoption
+map. Compare result digests across both sides; fixture digests also include the
+isolated state-directory paths, which differ between runs. The report includes
+bytes per list for the full capture, owner stacks, and key-parser stacks, along
+with CPU, latency, GC time per list, promotion, and event-loop delay. All tails
+include sample counts and GC includes maximum pauses. Result verification and
+pacing are excluded from list latency but included in aggregate measurements.
+Apply the campaign's paired-delta, sample-count, and absolute pause rules.
 
 ## Gateway startup and restart acceptance
 
@@ -257,7 +353,7 @@ preparation outside the measurement CPU allocation.
 ## Session pull-request subscriptions
 
 `session-pr-subscriptions-measure.ts` runs a real source Gateway in a separate
-process, with signed synthetic WebSocket clients and the standard 5,000-session
+process, waits for its readiness probe, and uses signed synthetic WebSocket clients and the standard 5,000-session
 fixture. Prepare fixtures sequentially outside measurement CPU allocations:
 
 ```sh
@@ -272,22 +368,36 @@ node --import ./scripts/tsx.mjs scripts/perf/session-pr-subscriptions-measure.ts
 
 Each tab watches one active and 49 passive session PR targets. The measured
 writer alternates an unrelated session's category through `sessions.patch`;
-category commits exercise the stored-row notification path even when PR
+`--mutation label` alternates its label instead. Both use the general session
+patch commit path and emit canonical replacement notifications. These commits
+exercise the stored-row notification path even when PR
 snapshots remain unchanged. The child counts eligible row notifications, samples
 all main-isolate allocations (including collected objects), and captures GC and
-promotion. Controller and socket-driver allocation is excluded. Reported notify
-latency is the category RPC round trip, not a claim of individual asynchronous
-listener completion. Setup identifies the subscription owner's native work scope
+promotion. Controller and socket-driver allocation is excluded. Notify RPC
+latency reports the mutation round trip; notify settlement latency continues
+through the native subscription owner's idle barrier. Settlement is an upper
+bound including controller and IPC overhead. Each mutation settles before the
+next scheduled mutation, and scheduling delay records any workload overruns.
+Setup identifies the subscription owner's native work scope
 from its direct caller stack, then restores the original tracking method before
 measurement. Exactly one scope must be found; connection and ingress lifetimes
-are excluded. A native idle barrier joins this owner inside the allocation capture and records settlement
-duration; failure to settle within 30 seconds fails the run. Every client must
-receive all watched keys before measurement. Final observations after settlement
-must match the initial snapshots; canonical hashes sort clients and session keys,
-while raw frames preserve delivery order for inspection.
+are excluded. Native idle barriers run inside the allocation capture and record
+settlement duration; failure to settle within 30 seconds fails the run. Cold setup
+snapshots are saved separately. After warmup and timed subscriptions, every client
+must receive ready snapshots with task receipt fields for all watched keys before
+notification measurement. Initial and final captures both wait for a response on
+each WebSocket after settlement. Final observations must match these warm initial
+snapshots; canonical hashes sort clients and session keys, while raw frames preserve
+delivery order for inspection. Snapshot artifacts are saved even if equality fails.
 
 Use separate identical fixtures and ports for both sides. The common
 `--start-at` starts subscribe timing; notification timing starts 30 seconds later.
+Add `--list-every 8` to interleave a 200-row sidebar list with every eight stored-row
+updates. The allocation window includes these requests and reports their latency
+separately. Resource snapshots include selection counts by kind and caller; the
+run must observe parent selections during the notification window. This exercises
+the retained sidebar and task-PR descendant paths together, without assuming that
+their synthetic ratio is the production ratio.
 A missed scheduled phase fails the run. Compare concurrent pairs under one
 host measurement lock, use interleaved physical cores, and swap sides for the
 second pair. Repeat with `--clients 1` to distinguish fixed from per-tab costs.
@@ -297,9 +407,11 @@ per side; total GC remains the gate. Reject a mean paired regression of at least
 20%, or a metric at least 10% worse in both pairs. Inspect family allocation
 share and snapshot captures alongside total allocation at the matched workload.
 To compare a small owner-only change without another source tree, place candidate
-copies of `control-ui-session-task-prs.ts` and `control-ui-session-pr-subscriptions.ts`
+copies of `control-ui-session-task-prs.ts`, `control-ui-session-pr-read.ts`,
+`control-ui-session-pr-subscriptions.ts`,
+and `session-row-scope.ts`
 beside the originals with a `.candidate.ts` suffix and pass `--owner-suffix candidate`.
-The child verifies both substitutions loaded; results record both owner hashes
+The child verifies all substitutions loaded; results record the owner hashes
 and the optional `--revision` label.
 
 ## Async context allocation
