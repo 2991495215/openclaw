@@ -36,7 +36,7 @@ import {
   chatAttachmentBatchBytes,
 } from "./components/chat-attachment-admission.ts";
 import { encodeTextAsDataUrl } from "./components/chat-attachment-text.ts";
-import { sessionWorkspaceForHost } from "./components/chat-session-workspace-state.ts";
+import { sessionWorkspaceForHost } from "./components/chat-session-workspace-model.ts";
 import type { SessionWorkspacePreview } from "./components/chat-sidebar-content-types.ts";
 import type { ChatComposerScope } from "./composer-persistence.ts";
 

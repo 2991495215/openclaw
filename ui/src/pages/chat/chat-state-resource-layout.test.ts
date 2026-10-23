@@ -5,7 +5,7 @@ import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { createChatPaneRails } from "./chat-pane-rails.ts";
 import { createChatPageStateContext } from "./chat-state-context.test-support.ts";
 import { createPageState } from "./chat-state-page.ts";
-import { sessionWorkspaceForHost } from "./components/chat-session-workspace-state.ts";
+import { sessionWorkspaceForHost } from "./components/chat-session-workspace-model.ts";
 import { openSessionWorkspaceFile } from "./components/chat-session-workspace.ts";
 import { activatePanel, openSlot, toggleSidebarPanelExpanded } from "./sidebar-layout.ts";
 

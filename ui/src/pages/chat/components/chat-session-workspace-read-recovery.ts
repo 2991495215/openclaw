@@ -29,7 +29,6 @@ export function createWorkspaceReadRecoveryRegistry(contracts: RecoveryContracts
         recovery = createWorkspaceReadRecovery(state, workspace, contracts);
         recoveries.set(workspace, recovery);
       }
-      recovery.sync();
       return recovery;
     },
     dispose(workspace: SessionWorkspaceState) {
@@ -49,6 +48,7 @@ function createWorkspaceReadRecovery(
       retry: ReturnType<typeof createGatewayRetryOwner>;
       current: () => boolean;
       enabled: () => boolean;
+      deferred?: () => void;
     }
   >();
   let fileDemands = 0;
@@ -94,7 +94,11 @@ function createWorkspaceReadRecovery(
         continue;
       }
       if (wanted() && document.visibilityState !== "hidden" && read.enabled()) {
-        read.retry.resume();
+        if (!read.retry.resume() && read.deferred) {
+          const resume = read.deferred;
+          read.deferred = undefined;
+          resume();
+        }
       } else {
         read.retry.pause();
       }
@@ -106,8 +110,33 @@ function createWorkspaceReadRecovery(
     sync,
     dispose,
     pending,
+    defer(
+      key: string,
+      current: () => boolean,
+      enabled: () => boolean,
+      resume: () => void,
+      replace = false,
+    ) {
+      const read: NonNullable<ReturnType<typeof currentRead>> = currentRead(key) ?? {
+        retry: createGatewayRetryOwner(),
+        current,
+        enabled,
+      };
+      // Keep a queued invalidation when ordinary presentation asks for the same read.
+      reads.set(key, {
+        ...read,
+        current,
+        enabled,
+        deferred: replace ? resume : (read.deferred ?? resume),
+      });
+      sync();
+    },
     begin(key: string) {
-      currentRead(key)?.retry.cancel();
+      const read = currentRead(key);
+      if (read) {
+        read.deferred = undefined;
+        read.retry.cancel();
+      }
     },
     success: retire,
     failed(

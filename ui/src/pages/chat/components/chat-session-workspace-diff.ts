@@ -5,10 +5,10 @@ import { isGatewayMethodAdvertised } from "../../../lib/gateway-methods.ts";
 import { createGatewayRetryOwner } from "../../../lib/gateway-retry.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
 import { readWorkspaceFileText } from "./chat-session-workspace-file-content.ts";
+import { sessionWorkspaceForHost } from "./chat-session-workspace-model.ts";
 import {
   getSessionWorkspace,
   isCurrentSessionWorkspace,
-  sessionWorkspaceForHost,
   trackSessionCheckoutSidebar,
 } from "./chat-session-workspace-state.ts";
 import type { SessionWorkspaceHost } from "./chat-session-workspace-types.ts";

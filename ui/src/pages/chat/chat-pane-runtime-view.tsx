@@ -30,7 +30,7 @@ import {
 } from "./chat-provider-review-controller.tsx";
 import { createComposerQuestions } from "./components/chat-composer-questions.ts";
 import { installChatComposerPickerDismissal } from "./components/chat-picker-overlay.ts";
-import { sessionWorkspaceForHost } from "./components/chat-session-workspace-state.ts";
+import { sessionWorkspaceForHost } from "./components/chat-session-workspace-model.ts";
 import { activeQueuedMessageEdit, subscribeQueuedMessageEdit } from "./queued-message-edit.ts";
 import { notifyRenderLifecycleForTest } from "./render-lifecycle.ts";
 

@@ -22,7 +22,10 @@ import {
   readWorkspaceFileText,
   unsupportedFileSidebarContent,
 } from "./chat-session-workspace-file-content.ts";
-import { captureSessionWorkspaceNavigation } from "./chat-session-workspace-model.ts";
+import {
+  sessionWorkspaceForHost,
+  captureSessionWorkspaceNavigation,
+} from "./chat-session-workspace-model.ts";
 import { openWorkspaceItem } from "./chat-session-workspace-preview.ts";
 import {
   loadSessionWorkspaceDirectory,
@@ -31,7 +34,6 @@ import {
   isCurrentSessionWorkspace,
   loadSessionWorkspace,
   refreshSessionWorkspaceState,
-  sessionWorkspaceForHost,
   sessionWorkspaceReadRetention,
 } from "./chat-session-workspace-state.ts";
 import type {

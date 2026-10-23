@@ -1,6 +1,5 @@
-/* @vitest-environment jsdom */
-
 import { createSignal, flush, onSettled } from "solid-js";
+/* @vitest-environment jsdom */
 import { afterEach, assert, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { GatewayRequestError } from "../../../api/gateway.ts";
@@ -10,13 +9,14 @@ import {
   createGatewayBrowserClientFixture,
   createSessionCapabilityFixture,
 } from "../chat-pane.test-support.ts";
+import { sessionWorkspaceForHost } from "./chat-session-workspace-model.ts";
 import { SessionWorkspaceRail } from "./chat-session-workspace-rail-solid.tsx";
 import {
   getSessionWorkspace,
   loadSessionWorkspace,
   refreshSessionWorkspaceState,
   retainSessionWorkspaceArtifacts,
-  sessionWorkspaceForHost,
+  sessionWorkspaceReadRetention,
 } from "./chat-session-workspace-state.ts";
 import {
   createSessionWorkspaceProps,
@@ -274,6 +274,7 @@ describe("session workspace path actions", () => {
         }),
       },
     } as unknown as SessionWorkspaceHost;
+    onTestFinished(sessionWorkspaceReadRetention(state)());
     createSessionWorkspaceProps(state, { expanded: true });
     await vi.waitFor(() => expect(createSessionWorkspaceProps(state).list).not.toBeNull());
     const { container, update } = await mountWorkspace(
@@ -592,6 +593,7 @@ it("desktop browses lazy directories and restores activity after global search c
     createSessionWorkspaceProps(state, { expanded: true, presentation: "desktop" });
   const mounted = await mountWorkspace(props());
   const unsubscribe = sessionWorkspaceForHost(state).subscribe(() => mounted.update(props()));
+  mounted.update(props());
   try {
     await vi.waitFor(() => expect(button(mounted.container, "docs")).not.toBeNull());
     button(mounted.container, "docs")!.click();
@@ -773,6 +775,7 @@ it("mobile restores folder search and root groups without mixing global search r
     createSessionWorkspaceProps(state, { expanded: true, presentation: "mobile" });
   const mounted = await mountWorkspace(props());
   const unsubscribe = sessionWorkspaceForHost(state).subscribe(() => mounted.update(props()));
+  mounted.update(props());
   onTestFinished(() => {
     unsubscribe();
     mounted.unmount();
@@ -851,6 +854,7 @@ it.each(["files", "artifacts"] as const)(
     const release = retainSessionWorkspaceArtifacts(state);
     const mounted = await mountWorkspace(props());
     const unsubscribe = sessionWorkspaceForHost(state).subscribe(() => mounted.update(props()));
+    mounted.update(props());
     onTestFinished(() => {
       unsubscribe();
       mounted.unmount();

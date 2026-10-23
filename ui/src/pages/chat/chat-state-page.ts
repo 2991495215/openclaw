@@ -48,11 +48,11 @@ import { OFFLINE_QUEUE_STORAGE_ERROR } from "./chat-send-support.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { selectedChatSessionRow } from "./chat-state-route.ts";
 import { safeMediaAttachmentHref } from "./components/chat-attachment-href.ts";
+import { sessionWorkspaceForHost } from "./components/chat-session-workspace-model.ts";
 import {
   openSessionWorkspacePreview,
   getSessionWorkspace,
   clearSessionWorkspacePreviews,
-  sessionWorkspaceForHost,
 } from "./components/chat-session-workspace-state.ts";
 import {
   handleChatDraftChange,

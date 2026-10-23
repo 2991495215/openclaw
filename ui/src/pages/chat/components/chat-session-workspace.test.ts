@@ -12,18 +12,19 @@ import {
   createGatewayBrowserClientFixture,
   createSessionCapabilityFixture,
 } from "../chat-pane.test-support.ts";
+import { sessionWorkspaceForHost } from "./chat-session-workspace-model.ts";
 import { SessionWorkspaceRail } from "./chat-session-workspace-rail-solid.tsx";
 import {
   getSessionWorkspace,
   loadSessionWorkspace,
-  sessionWorkspaceForHost,
+  sessionWorkspaceReadRetention,
 } from "./chat-session-workspace-state.ts";
 import {
   loadedSidebarContent,
   createSidebarContentRecorder,
 } from "./chat-session-workspace.test-support.ts";
 import {
-  createSessionWorkspaceProps as workspaceProps,
+  createSessionWorkspaceProps,
   openSessionWorkspaceFile,
   refreshSessionWorkspace,
   revealSessionWorkspaceFile,
@@ -32,6 +33,29 @@ import {
 } from "./chat-session-workspace.ts";
 import type { SidebarContent, SidebarSelection } from "./chat-sidebar-content-types.ts";
 import { SessionDiffPanel } from "./session-diff-panel.tsx";
+
+// Model the Files view's retained lifetime for these plain owner tests.
+const fileViews = new WeakMap<SessionWorkspaceHost, { owner: object; release: () => void }>();
+function workspaceProps(
+  state: SessionWorkspaceHost,
+  options?: Parameters<typeof createSessionWorkspaceProps>[1],
+) {
+  const props = createSessionWorkspaceProps(state, options);
+  const held = fileViews.get(state);
+  if (options?.expanded === false || options?.presented === false) {
+    held?.release();
+    fileViews.delete(state);
+  } else if (options?.expanded === true && held?.owner !== getSessionWorkspace(state)) {
+    held?.release();
+    const view = { owner: getSessionWorkspace(state), release: props.retainReads() };
+    fileViews.set(state, view);
+    onTestFinished(() => {
+      fileViews.get(state)?.release();
+      fileViews.delete(state);
+    });
+  }
+  return createSessionWorkspaceProps(state, options);
+}
 
 function workspaceFile(
   path: string,
@@ -652,6 +676,7 @@ describe("openSessionWorkspaceFile", () => {
       );
       const workspace = getSessionWorkspace(state);
       workspace.list = workspaceList(oldSource.root);
+      onTestFinished(sessionWorkspaceReadRetention(state)());
       if (view === "forwarded") {
         void openSessionWorkspaceFile(state, { path: "notes.md", sessionKey: key });
       } else {
@@ -795,6 +820,7 @@ describe("openSessionWorkspaceFile", () => {
       workspace.browserSearch = "notes";
       const oldDiff = resolveSessionDiffSidebarContent(state);
       state.sidebarContent = oldDiff;
+      onTestFinished(sessionWorkspaceReadRetention(state)());
       const savedUpdate = nextWorkspaceUpdate(state, () => !workspace.loading);
       const saving = file.edit.save({ content: "after — café 雪 🦞", expectedHash: "old" });
       if (scope === "replaced") {

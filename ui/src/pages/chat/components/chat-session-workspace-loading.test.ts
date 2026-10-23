@@ -27,6 +27,8 @@ import {
   type SessionWorkspaceHost,
 } from "./chat-session-workspace.ts";
 
+const releases: (() => void)[] = [];
+
 async function fixture({ loadInitialListing = true } = {}) {
   const { promise: pending, resolve, reject } = createDeferred<SessionWorkspaceListResult>();
   const listing: SessionWorkspaceListResult = {
@@ -74,6 +76,7 @@ async function fixture({ loadInitialListing = true } = {}) {
     );
   };
   if (loadInitialListing) {
+    releases.push(sessionWorkspaceReadRetention(state)());
     createSessionWorkspaceProps(state, { expanded: true });
     await settled();
   }
@@ -82,7 +85,11 @@ async function fixture({ loadInitialListing = true } = {}) {
   return { state, listing, listFiles, resolve, finish, props, settled, reload, openFile };
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  releases.splice(0).forEach((release) => release());
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 it.each([
   ["directory", "success"],
@@ -154,6 +161,7 @@ describe("workspace catalog demand", () => {
         .mockReturnValueOnce(oldResponse.promise)
         .mockReturnValueOnce(freshResponse.promise);
       state.sessions = createSessionCapabilityFixture({ listFiles });
+      releases.push(sessionWorkspaceReadRetention(state)());
       const oldLoad = loadSessionWorkspaceDirectory(state, "");
       if (invalidation === "refresh") {
         refreshSessionWorkspaceState(state, false);
@@ -178,7 +186,7 @@ describe("workspace catalog demand", () => {
     },
   );
 
-  it("reloads invalidated in-flight artifacts for Files without retained demand", async () => {
+  it("reloads invalidated in-flight artifacts for the retained Files view", async () => {
     vi.useFakeTimers();
     const { state } = await fixture({ loadInitialListing: false });
     const oldResponse = createDeferred<{
@@ -192,6 +200,7 @@ describe("workspace catalog demand", () => {
       .mockReturnValueOnce(oldResponse.promise)
       .mockReturnValueOnce(freshResponse.promise);
     state.client = createGatewayBrowserClientFixture({ request });
+    releases.push(sessionWorkspaceReadRetention(state)());
     createSessionWorkspaceProps(state, { expanded: true });
     refreshSessionWorkspaceState(state, true);
     oldResponse.resolve({
@@ -278,6 +287,7 @@ describe("workspace catalog demand", () => {
       },
     }));
     state.sessions = createSessionCapabilityFixture({ listFiles });
+    releases.push(sessionWorkspaceReadRetention(state)());
     createSessionWorkspaceProps(state, { expanded: true, presentation: "desktop" });
     await vi.waitFor(() => expect(getSessionWorkspace(state).loading).toBe(false));
     const props = createSessionWorkspaceProps(state, { presentation: "desktop" });
@@ -308,6 +318,7 @@ describe("workspace catalog demand", () => {
     state.client = createGatewayBrowserClientFixture({ request });
     const release = retainSessionWorkspaceArtifacts(state);
     expect(listFiles).not.toHaveBeenCalled();
+    releases.push(sessionWorkspaceReadRetention(state)());
     createSessionWorkspaceProps(state, { expanded: true });
     expect(request).toHaveBeenCalledTimes(1);
     response.resolve({
@@ -358,6 +369,7 @@ describe("workspace catalog demand", () => {
     const response = createDeferred<SessionWorkspaceListResult>();
     const listFiles = vi.fn(() => response.promise);
     state.sessions = createSessionCapabilityFixture({ listFiles });
+    releases.push(sessionWorkspaceReadRetention(state)());
     const first = loadSessionWorkspaceDirectory(state, "docs");
     const second = loadSessionWorkspaceDirectory(state, "docs");
     expect(listFiles).toHaveBeenCalledTimes(1);
@@ -854,3 +866,106 @@ it.each(["invalidate", "collapse"] as const)(
     release();
   },
 );
+
+it("defers hidden successful-read fan-out until Files is visible again", async () => {
+  const { state, listing } = await fixture({ loadInitialListing: false });
+  const first = createDeferred<SessionWorkspaceListResult>();
+  const read = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue(listing);
+  state.sessions = createSessionCapabilityFixture({ listFiles: read });
+  const workspace = getSessionWorkspace(state);
+  workspace.tree!.expandedPaths = ["", "src", "docs"];
+  let release = sessionWorkspaceReadRetention(state)();
+  loadSessionWorkspace(state, workspace);
+  release();
+  first.resolve(listing);
+  await workspace.readResult;
+  expect(read).toHaveBeenCalledOnce();
+  release = sessionWorkspaceReadRetention(state)();
+  releases.push(release);
+  await Promise.resolve();
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(read.mock.calls.slice(1).map((call) => call[1].path)).toEqual(["src", "docs"]);
+});
+
+it("defers a queued artifact refresh after all consumers leave", async () => {
+  const { state } = await fixture({ loadInitialListing: false });
+  const first = createDeferred<{ artifacts: [] }>();
+  const read = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue({ artifacts: [] });
+  state.client = createGatewayBrowserClientFixture({ request: read });
+  const release = retainSessionWorkspaceArtifacts(state, "assistant");
+  const workspace = getSessionWorkspace(state);
+  refreshSessionWorkspaceState(state, false);
+  release();
+  first.resolve({ artifacts: [] });
+  await workspace.assistantArtifacts!.readResult;
+  expect(read).toHaveBeenCalledOnce();
+  releases.push(retainSessionWorkspaceArtifacts(state, "assistant"));
+  await workspace.assistantArtifacts!.readResult;
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+it("defers projection admission while the document is hidden and catches up once", async () => {
+  const { state, listing } = await fixture({ loadInitialListing: false });
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  const files = vi.fn().mockResolvedValue(listing);
+  const artifacts = vi.fn().mockResolvedValue({ artifacts: [] });
+  state.sessions = createSessionCapabilityFixture({ listFiles: files });
+  state.client = createGatewayBrowserClientFixture({ request: artifacts });
+  createSessionWorkspaceProps(state, { expanded: true, presented: true });
+  releases.push(sessionWorkspaceReadRetention(state)());
+  expect(files).not.toHaveBeenCalled();
+  expect(artifacts).not.toHaveBeenCalled();
+  visibility.mockReturnValue("visible");
+  document.dispatchEvent(new Event("visibilitychange"));
+  await getSessionWorkspace(state).readResult;
+  document.dispatchEvent(new Event("visibilitychange"));
+  expect(files).toHaveBeenCalledOnce();
+  expect(artifacts).toHaveBeenCalledOnce();
+});
+
+it("retains forced invalidation through hidden presentation requests", async () => {
+  const { state, listing } = await fixture({ loadInitialListing: false });
+  const files = vi.fn().mockResolvedValue(listing);
+  state.sessions = createSessionCapabilityFixture({ listFiles: files });
+  const workspace = getSessionWorkspace(state);
+  workspace.list = listing;
+  workspace.directories = {
+    src: { loading: false, error: null, browser: { path: "src", entries: [] } },
+  };
+  workspace.tree!.expandedPaths.push("src");
+  loadSessionWorkspace(state, workspace, true);
+  loadSessionWorkspace(state, workspace);
+  expect(files).not.toHaveBeenCalled();
+  releases.push(sessionWorkspaceReadRetention(state)());
+  releases.push(sessionWorkspaceReadRetention(state)());
+  await workspace.readResult;
+  expect(files.mock.calls.map((call) => call[1].path)).toEqual(["", "src"]);
+});
+
+it("releases visibility listeners and timers across repeated closed-panel refreshes", async () => {
+  const { state, listing } = await fixture({ loadInitialListing: false });
+  vi.useFakeTimers();
+  const added = vi.spyOn(document, "addEventListener");
+  const removed = vi.spyOn(document, "removeEventListener");
+  const files = vi.fn().mockResolvedValue(listing);
+  const artifacts = vi.fn().mockResolvedValue({ artifacts: [] });
+  state.sessions = createSessionCapabilityFixture({ listFiles: files });
+  state.client = createGatewayBrowserClientFixture({ request: artifacts });
+  const workspace = getSessionWorkspace(state);
+  for (let cycle = 0; cycle < 50; cycle++) {
+    loadSessionWorkspace(state, workspace);
+    expect(files).toHaveBeenCalledTimes(cycle);
+    const release = sessionWorkspaceReadRetention(state)();
+    await workspace.readResult;
+    await workspace.artifacts?.readResult;
+    release();
+  }
+  expect(files).toHaveBeenCalledTimes(50);
+  expect(artifacts).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
+  const callbacks = (mock: typeof added) =>
+    mock.mock.calls
+      .filter(([event]) => event === "visibilitychange")
+      .map(([, callback]) => callback);
+  expect(callbacks(removed)).toEqual(callbacks(added));
+});

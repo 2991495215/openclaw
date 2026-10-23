@@ -1,5 +1,4 @@
 import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
-import { createChangeListeners } from "../../../../../src/shared/listeners.js";
 import type { SessionWorkspaceListResult } from "../../../api/types.ts";
 import { showConfirmChoiceDialog } from "../../../components/confirm-dialog.ts";
 import { t } from "../../../i18n/index.ts";
@@ -18,32 +17,6 @@ import type {
   FileReaderDraftState,
   SidebarSelection,
 } from "./chat-sidebar-content-types.ts";
-
-type SessionWorkspaceOwner = {
-  readonly state: SessionWorkspaceState | undefined;
-  subscribe(listener: () => void): () => void;
-  publish(): void;
-};
-
-type SessionWorkspaceSource = Pick<SessionWorkspaceHost, "sessionWorkspaceState">;
-const workspaceOwners = new WeakMap<SessionWorkspaceSource, SessionWorkspaceOwner>();
-
-/** Publishes workspace mutations without replacing the raw preview and editor identities. */
-export function sessionWorkspaceForHost(host: SessionWorkspaceSource): SessionWorkspaceOwner {
-  let owner = workspaceOwners.get(host);
-  if (!owner) {
-    const listeners = createChangeListeners();
-    owner = {
-      get state() {
-        return host.sessionWorkspaceState;
-      },
-      subscribe: listeners.subscribe,
-      publish: listeners.publish,
-    };
-    workspaceOwners.set(host, owner);
-  }
-  return owner;
-}
 
 export function clearWorkspaceTimer(workspace: SessionWorkspaceState | undefined) {
   if (workspace?.browserSearchTimer) {
@@ -151,6 +124,16 @@ function loadSessionWorkspaceArtifacts(
   if (!state.client || !state.connected || skipRead) {
     return Promise.resolve();
   }
+  if (document.visibilityState === "hidden" || !recovery.artifactsWanted(messageRole ?? "all")) {
+    recovery.defer(
+      retryKey,
+      () => workspace[key] === artifacts,
+      () => recovery.artifactsWanted(messageRole ?? "all"),
+      () => void loadSessionWorkspaceArtifacts(state, force, messageRole),
+      force,
+    );
+    return Promise.resolve();
+  }
   recovery.begin(retryKey);
   artifacts.loading = true;
   const client = state.client;
@@ -201,14 +184,14 @@ function loadSessionWorkspaceArtifacts(
         if (artifactRefreshPending.delete(artifacts)) {
           void loadSessionWorkspaceArtifacts(state, true, messageRole);
         } else {
-          sessionWorkspaceForHost(state).publish();
+          workspaceModel.sessionWorkspaceForHost(state).publish();
         }
       }
     }
   })();
   artifacts.readResult = request;
   artifactLoads.set(artifacts, request);
-  sessionWorkspaceForHost(state).publish();
+  workspaceModel.sessionWorkspaceForHost(state).publish();
   return request;
 }
 
@@ -256,6 +239,16 @@ export function loadSessionWorkspaceDirectory(
   if (!state.connected || !state.client || skipRead) {
     return Promise.resolve();
   }
+  if (document.visibilityState === "hidden" || !recovery.filesWanted()) {
+    recovery.defer(
+      retryKey,
+      () => workspace.directories === directories,
+      () => recovery.filesWanted() && Boolean(workspace.tree?.expandedPaths.includes(path)),
+      () => void loadSessionWorkspaceDirectory(state, path, force),
+      force,
+    );
+    return Promise.resolve();
+  }
   const directory = (directories[path] ??= { loading: false, error: null });
   recovery.begin(retryKey);
   directory.loading = true;
@@ -290,13 +283,13 @@ export function loadSessionWorkspaceDirectory(
       directory.loading = false;
       requests.delete(path);
       if (isCurrentSessionWorkspace(state, workspace)) {
-        sessionWorkspaceForHost(state).publish();
+        workspaceModel.sessionWorkspaceForHost(state).publish();
       }
     }
   })();
   directory.readResult = request;
   requests.set(path, request);
-  sessionWorkspaceForHost(state).publish();
+  workspaceModel.sessionWorkspaceForHost(state).publish();
   return request;
 }
 
@@ -316,7 +309,7 @@ function restoreSessionWorkspaceNavigation(
   for (const path of tree.expandedPaths) {
     void loadSessionWorkspaceDirectory(state, path);
   }
-  sessionWorkspaceForHost(state).publish();
+  workspaceModel.sessionWorkspaceForHost(state).publish();
 }
 
 export function loadSessionWorkspace(
@@ -342,6 +335,16 @@ function loadSessionWorkspaceFiles(
     return false;
   }
   const recovery = readRecoveries.for(state, workspace);
+  if (document.visibilityState === "hidden" || !recovery.filesWanted()) {
+    recovery.defer(
+      "files",
+      () => isCurrentSessionWorkspace(state, workspace),
+      recovery.filesWanted,
+      () => loadSessionWorkspace(state, workspace, force),
+      force,
+    );
+    return false;
+  }
   recovery.begin("files");
   workspace.loading = true;
   setSessionWorkspaceError(workspace, null);
@@ -409,11 +412,11 @@ function loadSessionWorkspaceFiles(
         if (!isCurrentListing()) {
           workspace.list = null;
         }
-        sessionWorkspaceForHost(state).publish();
+        workspaceModel.sessionWorkspaceForHost(state).publish();
       }
     }
   })();
-  sessionWorkspaceForHost(state).publish();
+  workspaceModel.sessionWorkspaceForHost(state).publish();
   return true;
 }
 
@@ -468,7 +471,7 @@ export function retireSessionWorkspaceCheckout(state: SessionWorkspaceHost) {
       void loadSessionWorkspaceArtifacts(state, false, role === "assistant" ? role : undefined);
     }
   }
-  sessionWorkspaceForHost(state).publish();
+  workspaceModel.sessionWorkspaceForHost(state).publish();
 }
 
 /** File tabs are transient presentation scoped to this workspace. */
@@ -531,7 +534,7 @@ export function openSessionWorkspacePreview(
     preview.requestIds = [...new Set([...(preview.requestIds ?? []), id])];
   }
   workspace.activePreviewId = preview.id;
-  sessionWorkspaceForHost(state).publish();
+  workspaceModel.sessionWorkspaceForHost(state).publish();
   return preview;
 }
 
@@ -545,7 +548,7 @@ export function pinSessionWorkspacePreview(state: SessionWorkspaceHost, id: stri
   if (preview.pinned === false) {
     preview.pinned = true;
     workspace.previews = [...workspace.previews];
-    sessionWorkspaceForHost(state).publish();
+    workspaceModel.sessionWorkspaceForHost(state).publish();
   }
   return true;
 }
@@ -570,7 +573,7 @@ export function selectSessionWorkspacePreview(state: SessionWorkspaceHost, id: s
         restoreSessionWorkspaceNavigation(state, navigation);
       }
     }
-    sessionWorkspaceForHost(state).publish();
+    workspaceModel.sessionWorkspaceForHost(state).publish();
   }
 }
 
@@ -588,7 +591,7 @@ function closeSessionWorkspacePreview(state: SessionWorkspaceHost, id: string) {
       workspace.previews[Math.min(index, workspace.previews.length - 1)]?.id ?? null,
     );
   }
-  sessionWorkspaceForHost(state).publish();
+  workspaceModel.sessionWorkspaceForHost(state).publish();
 }
 
 export function clearSessionWorkspacePreviews(state: SessionWorkspaceHost) {
@@ -597,7 +600,7 @@ export function clearSessionWorkspacePreviews(state: SessionWorkspaceHost) {
     workspace.pendingPreview = undefined;
     workspace.previews = [];
     workspace.activePreviewId = null;
-    sessionWorkspaceForHost(state).publish();
+    workspaceModel.sessionWorkspaceForHost(state).publish();
   }
 }
 

@@ -14,6 +14,7 @@ import {
   createSessionCapabilityFixture,
 } from "../chat-pane.test-support.ts";
 import { readFileDraft, setFileDraft } from "./chat-file-drafts.ts";
+import { sessionWorkspaceForHost } from "./chat-session-workspace-model.ts";
 import {
   openSessionWorkspacePreview,
   pinSessionWorkspacePreview,
@@ -21,7 +22,7 @@ import {
   selectSessionWorkspacePreview,
   getSessionWorkspace,
   loadSessionWorkspace,
-  sessionWorkspaceForHost,
+  sessionWorkspaceReadRetention,
 } from "./chat-session-workspace-state.ts";
 import {
   createSessionWorkspaceProps,
@@ -270,6 +271,7 @@ describe("workspace file tabs", () => {
       }
       await firstUpdated;
       if (unrelatedError) {
+        onTestFinished(sessionWorkspaceReadRetention(state)());
         state.sessions.listFiles = vi.fn().mockRejectedValue(new Error("List failed"));
         loadSessionWorkspace(state, getSessionWorkspace(state), true);
         await nextWorkspaceUpdate(state);

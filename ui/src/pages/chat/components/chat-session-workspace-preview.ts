@@ -1,13 +1,15 @@
 import { toErrorObject } from "@openclaw/normalization-core";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { readFileDraft } from "./chat-file-drafts.ts";
-import { captureSessionWorkspaceNavigation } from "./chat-session-workspace-model.ts";
+import {
+  sessionWorkspaceForHost,
+  captureSessionWorkspaceNavigation,
+} from "./chat-session-workspace-model.ts";
 import {
   clearSessionWorkspaceError,
   setSessionWorkspaceError,
   isCurrentSessionWorkspace,
   openSessionWorkspacePreview,
-  sessionWorkspaceForHost,
 } from "./chat-session-workspace-state.ts";
 import type {
   SessionWorkspaceHost,

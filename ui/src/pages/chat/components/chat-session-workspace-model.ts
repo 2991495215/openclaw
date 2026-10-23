@@ -1,4 +1,5 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { createChangeListeners } from "../../../../../src/shared/listeners.js";
 import {
   scopedAgentParamsForSession,
   type SessionScopeHostWithKey,
@@ -74,4 +75,30 @@ export function createSessionWorkspaceState(state: SessionWorkspaceHost): Sessio
     pendingReload: false,
     sessionKey: state.sessionKey,
   };
+}
+
+type SessionWorkspaceOwner = {
+  readonly state: SessionWorkspaceState | undefined;
+  subscribe(listener: () => void): () => void;
+  publish(): void;
+};
+
+type SessionWorkspaceSource = Pick<SessionWorkspaceHost, "sessionWorkspaceState">;
+const workspaceOwners = new WeakMap<SessionWorkspaceSource, SessionWorkspaceOwner>();
+
+/** Publishes workspace mutations without replacing the raw preview and editor identities. */
+export function sessionWorkspaceForHost(host: SessionWorkspaceSource): SessionWorkspaceOwner {
+  let owner = workspaceOwners.get(host);
+  if (!owner) {
+    const listeners = createChangeListeners();
+    owner = {
+      get state() {
+        return host.sessionWorkspaceState;
+      },
+      subscribe: listeners.subscribe,
+      publish: listeners.publish,
+    };
+    workspaceOwners.set(host, owner);
+  }
+  return owner;
 }

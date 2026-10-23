@@ -2,8 +2,8 @@ import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { gatewayHelloForMethods } from "../../../test-helpers/gateway-methods.ts";
+import { sessionWorkspaceForHost } from "./chat-session-workspace-model.ts";
 import "./chat-detail-panel.tsx";
-import { sessionWorkspaceForHost } from "./chat-session-workspace-state.ts";
 import { createSidebarContentRecorder } from "./chat-session-workspace.test-support.ts";
 import {
   createSessionWorkspaceProps,
