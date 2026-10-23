@@ -168,7 +168,6 @@ export async function syncWorkspaceSkills(params: {
   sourceWorkspaceDir: string;
   targetWorkspaceDir: string;
   config?: OpenClawConfig;
-  skillFilter?: string[];
   agentId?: string;
   eligibility?: SkillEligibilityContext;
   managedSkillsDir?: string;
@@ -244,7 +243,6 @@ export async function syncWorkspaceSkills(params: {
 
     const loadOptions = {
       config: params.config,
-      skillFilter: params.skillFilter,
       agentId: params.agentId,
       eligibility: params.eligibility,
       managedSkillsDir: params.managedSkillsDir,

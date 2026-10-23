@@ -145,7 +145,6 @@ async function syncFiltered(
 ) {
   return syncWorkspaceSkills({
     ...syncOptions(source, target),
-    skillFilter,
     skillsSnapshot: await buildSnapshot(source, { skillFilter, snapshotVersion }),
   });
 }
@@ -358,7 +357,6 @@ describe("syncWorkspaceSkills", () => {
           targetWorkspaceDir: target,
           agentId: root.agentId,
           config,
-          skillFilter: [skillName],
           bundledSkillsDir: path.join(agentWorkspace, ".bundled"),
           managedSkillsDir: path.join(agentWorkspace, ".managed"),
           skillsSnapshot,
@@ -620,11 +618,7 @@ describe("syncWorkspaceSkills", () => {
     await writeSkill(targetSkillDir, skillName, "Managed symlink target");
     await linkSkill(targetSkillDir, path.join(managedDir, skillName));
 
-    await withEnvAsync({ HOME: source }, () =>
-      sync(source, target, {
-        skillFilter: [skillName],
-      }),
-    );
+    await withEnvAsync({ HOME: source }, () => sync(source, target));
 
     const syncedSkillDir = path.join(target, "skills", skillName);
     expect(await exists(path.join(syncedSkillDir, "SKILL.md"))).toBe(true);
