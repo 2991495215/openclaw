@@ -169,7 +169,7 @@ export function createChatToolIcons(readSource: () => ToolIconSource): PluginToo
           const scheduled = pending.size > 0;
           pending.add(name);
           if (!scheduled) {
-            queueMicrotask(refresh);
+            queueMicrotask(() => void refresh());
           }
         }
         const key = keys.get(name);

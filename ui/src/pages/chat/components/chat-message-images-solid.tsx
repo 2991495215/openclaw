@@ -56,9 +56,8 @@ type RetainedInlineImage = {
   timeout?: ReturnType<typeof setTimeout>;
 };
 
-function isInlineImageSource(source: string | undefined): source is string {
-  return source?.startsWith("data:image/") === true || source?.startsWith("blob:") === true;
-}
+const isInlineImageSource = (source: string | undefined): source is string =>
+  source?.startsWith("data:image/") === true || source?.startsWith("blob:") === true;
 
 type ImagePresentation = {
   image: ImageBlock;

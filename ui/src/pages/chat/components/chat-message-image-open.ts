@@ -25,7 +25,6 @@ import {
   type ImageRenderOptions,
 } from "./chat-message-media.ts";
 
-
 async function loadGalleryImage(
   image: ImageBlock,
   opts: ImageRenderOptions | undefined,
