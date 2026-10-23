@@ -1102,9 +1102,9 @@ export function createChangedCheckPlan(
   }
   if (lanes.extensions || lanes.extensionTests) {
     // Generated plugin outputs have their own asset-integrity gate and are
-    // intentionally ignored by oxlint; manifests still need full-lane fallback.
+    // intentionally ignored by oxlint. Core Plugin SDK changes select extension
+    // typechecking, but only changed extension sources need extension lint.
     if (
-      !result.paths.some((changedPath) => generatedExtensionAssetPaths.has(changedPath)) ||
       result.paths.some(
         (changedPath) =>
           getChangedPathFacts(changedPath).surface === "extension" &&

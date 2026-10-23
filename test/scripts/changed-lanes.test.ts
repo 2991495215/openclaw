@@ -977,6 +977,15 @@ describe("scripts/changed-lanes", () => {
     expect(commands[0]?.args.slice(3)).toEqual(["src/agents/agent-tools.ts"]);
   });
 
+  it("keeps Plugin SDK core changes on extension typechecking without full extension lint", () => {
+    const plan = createChangedCheckPlan(detectChangedLanes(["src/plugin-sdk/core.ts"]), {
+      env: { PATH: "/usr/bin" },
+    });
+
+    expect(plan.commands.map((command) => command.args[0])).toContain("tsgo:extensions");
+    expect(plan.commands.map((command) => command.args[0])).not.toContain("lint:extensions");
+  });
+
   it("bounds encoded core lint commands without dropping long Unicode paths on POSIX", () => {
     const targets = Array.from(
       { length: 160 },

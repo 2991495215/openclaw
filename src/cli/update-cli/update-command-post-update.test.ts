@@ -123,7 +123,6 @@ vi.mock("./update-command-result.js", async (importOriginal) => ({
 import { registerMaintenanceContentionTests } from "./update-command-maintenance-contention.test-support.js";
 import * as postCoreModule from "./update-command-post-core.js";
 import { registerBoundaryFinalizationControls } from "./update-command-post-update-boundary.test-support.js";
-import { finishUpdate } from "./update-command-post-update.js";
 import * as rollbackModule from "./update-command-rollback.js";
 import { registerStaleSessionReceiptUpdateTest } from "./update-command-stale-session-receipt.test-support.js";
 
