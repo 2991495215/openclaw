@@ -381,29 +381,14 @@ export function buildAssistantText(input: ResponsesInputItem[], body: Record<str
     .filter(Boolean)
     .join(",");
   const askUserNote = /^Note:\s*(.+)$/m.exec(askUserResult)?.[1]?.trim();
-  if (
-    toolOutput &&
-    /"status"\s*:\s*"answered"/.test(askUserResult) &&
-    /\bask_user_fixture=single\b/i.test(allInputText) &&
-    askUserDeploy
-  ) {
+  const askUserAnswered = toolOutput && /"status"\s*:\s*"answered"/.test(askUserResult);
+  if (askUserAnswered && /\bask_user_fixture=single\b/i.test(allInputText) && askUserDeploy) {
     return `ASK-USER-SINGLE-OK | deploy=${askUserDeploy}`;
   }
-  if (
-    toolOutput &&
-    /"status"\s*:\s*"answered"/.test(askUserResult) &&
-    /\bask_user_fixture=multi\b/i.test(allInputText) &&
-    askUserChecks
-  ) {
+  if (askUserAnswered && /\bask_user_fixture=multi\b/i.test(allInputText) && askUserChecks) {
     return `ASK-USER-MULTI-OK | checks=${askUserChecks}`;
   }
-  if (
-    toolOutput &&
-    /"status"\s*:\s*"answered"/.test(askUserResult) &&
-    askUserDeploy &&
-    askUserChecks &&
-    askUserNote
-  ) {
+  if (askUserAnswered && askUserDeploy && askUserChecks && askUserNote) {
     return `ASK-USER-ROUNDTRIP-OK | deploy=${askUserDeploy} | checks=${askUserChecks} | note=${askUserNote}`;
   }
   if (
