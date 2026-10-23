@@ -1376,7 +1376,7 @@ jobs:
     name: Resolve Windows-node release artifacts
     needs: [resolve_target]
     if: needs.resolve_target.outputs.windows_node_scheduled == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.OPENCLAW_RELEASE_RUNNER_GROUP != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON(vars.OPENCLAW_RELEASE_RUNNER_GROUP), toJSON('ubuntu-24.04'))) || ('ubuntu-24.04') }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -1524,7 +1524,7 @@ jobs:
     name: Resolve Windows-node main source
     needs: [resolve_target]
     if: needs.resolve_target.outputs.windows_node_scheduled == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.OPENCLAW_RELEASE_RUNNER_GROUP != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON(vars.OPENCLAW_RELEASE_RUNNER_GROUP), toJSON('ubuntu-24.04'))) || ('ubuntu-24.04') }}
     timeout-minutes: 5
     permissions:
       contents: read
