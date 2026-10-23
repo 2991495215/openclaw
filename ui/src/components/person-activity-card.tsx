@@ -58,6 +58,8 @@ export function updatePersonActivityCard(
   } else if (existing) {
     existing.update(input);
   } else {
+    // Keep keyboard entry on this root while the detailed renderer loads.
+    container.tabIndex = -1;
     let update!: (value: CardValue) => void;
     // The portal outlives the caller’s transient render scope.
     const dispose = runWithOwner(null, () =>

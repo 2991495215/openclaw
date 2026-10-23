@@ -113,11 +113,12 @@ export function createPortaledHovercardOwner(
         dismiss();
         return;
       }
-      // Enter a pending card itself until its links join the native tab sequence.
+      // Explicit focus targets can retain keyboard entry while their links load.
       if (event.key !== "Tab" || event.shiftKey || event.composedPath()[0] !== triggerElement) {
         return;
       }
-      const first = portal.focusables()[0] ?? portal.card;
+      const first =
+        portal.focusables()[0] ?? (portal.card?.hasAttribute("tabindex") ? portal.card : undefined);
       if (first) {
         event.preventDefault();
         first.focus();
@@ -426,7 +427,6 @@ export function createPortaledHovercard(id: string, className: string): HTMLDivE
   const card = document.createElement("div");
   card.id = id;
   card.className = className;
-  card.tabIndex = -1;
   card.dataset.open = "true";
   card.setAttribute("role", "dialog");
   return card;
