@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 313199,
-  "reason": "Defer optional Settings, Preferences, Terminal, Activity, and update-detail English; remeasured with current main parser/emoji boundaries and matched build inputs",
+  "startupJsGzipBytes": 313191,
+  "reason": "Deferred Settings, Preferences, Terminal, Activity and update-detail English; matched b74eeb9 build measures 313191 B startup with unchanged7/23/17 requests.",
   "updatedAt": "2026-10-23"
 }
