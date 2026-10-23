@@ -2,6 +2,7 @@
 import type { SessionTreeEntry } from "@openclaw/agent-core";
 import { sql } from "kysely";
 import { selectResetKeptEntries } from "../../../packages/agent-core/src/harness/session/tool-result-pairing.js";
+import { jsonArrayElements, jsonValid } from "../../infra/database-engine/json-values.js";
 import { registerNodeSqliteDisposeCallback } from "../../infra/kysely-sync-cache-state.js";
 import {
   executeSqliteQuerySync,
@@ -31,6 +32,7 @@ import {
   type CurrentTranscriptProjection,
   type SessionTranscriptMessageEvent,
 } from "./session-accessor.sqlite-projection-read.js";
+import type { SessionTranscriptContextStats } from "./session-transcript-projection-facts.types.js";
 import { transcriptEventReadBytesSql } from "./session-transcript-read-bytes.js";
 import {
   transcriptEventModelNavigationSql,
@@ -161,7 +163,9 @@ export function readUnindexedHistoryControls(
           getActiveTranscriptKysely(projection.database)
             .selectFrom(
               /* kysely-allow-raw: drive indexed lookups from the requested set, not a full active-path scan to satisfy ordering. */
-              sql<{ value: number }>`json_each(${JSON.stringify([...eligible.keys()])})`.as(
+              sql<{
+                value: number;
+              }>`(SELECT CAST(value AS BIGINT) AS value FROM ${jsonArrayElements(projection.database.db, sql.val(JSON.stringify([...eligible.keys()])))})`.as(
                 "requested",
               ),
             )
@@ -354,7 +358,7 @@ function findLatestResetMessageWindow(
           .select([
             "active.message_position",
             /* kysely-allow-raw: preserve JS-readable overdepth rows for existing tool-pairing validation. */
-            sql<string>`CASE WHEN json_valid(${transcriptEventNavigationSql(projection.database.db, "event")})
+            sql<string>`CASE WHEN ${jsonValid(projection.database.db, transcriptEventNavigationSql(projection.database.db, "event"))}
               THEN ${transcriptEventModelNavigationSql(projection.database.db, "event")}
               ELSE ${transcriptEventNavigationSql(projection.database.db, "event")} END`.as(
               "event_json",
@@ -694,15 +698,20 @@ export function* iterateVisibleMessageMetadata(
 }
 
 /** Reads logical transcript bytes, reusing cached retained-tail facts after resets. */
-export function readVisibleTranscriptStats(projection: CurrentTranscriptProjection): {
-  eventCount: number;
-  sizeBytes: number;
-} {
+export function readVisibleTranscriptStats(
+  projection: CurrentTranscriptProjection,
+  freshBoundary = false,
+): SessionTranscriptContextStats {
+  if (projection.contextStats) {
+    return projection.contextStats;
+  }
   if (projection.contextMetadata) {
     const { eventCount, sizeBytes } = projection.contextMetadata;
-    return { eventCount, sizeBytes };
+    return { eventCount, sizeBytes, boundaryActivePosition: -1 };
   }
-  const window = resolveTranscriptBoundaryWindow(projection, "context");
+  const window = freshBoundary
+    ? findLatestResetMessageWindow(projection, "context")
+    : resolveTranscriptBoundaryWindow(projection, "context");
   const db = getActiveTranscriptKysely(projection.database);
   const base = db
     .selectFrom("session_transcript_active_events as active")
@@ -714,8 +723,8 @@ export function readVisibleTranscriptStats(projection: CurrentTranscriptProjecti
     .select((eb) => [
       eb.fn.count<number>("active.event_seq").as("event_count"),
       /* kysely-allow-raw: JSONL size includes one terminating newline per event. */
-      sql<number>`COALESCE(SUM(${transcriptEventReadBytesSql("event")} ), 0)
-        + COUNT(*)`.as("size_bytes"),
+      sql<number>`CAST(COALESCE(SUM(${transcriptEventReadBytesSql("event")} ), 0)
+        + COUNT(*) AS BIGINT)`.as("size_bytes"),
     ])
     .where("active.session_id", "=", projection.resolved.sessionId)
     .where("active.context_eligible", "=", 1);
@@ -726,5 +735,6 @@ export function readVisibleTranscriptStats(projection: CurrentTranscriptProjecti
   return {
     eventCount: (row?.event_count ?? 0) + (window?.contextPrefixEventCount ?? 0),
     sizeBytes: (row?.size_bytes ?? 0) + (window?.contextPrefixSizeBytes ?? 0),
+    boundaryActivePosition: window?.boundaryActivePosition ?? -1,
   };
 }

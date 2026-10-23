@@ -212,12 +212,12 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
       params,
     });
     if (!access.allowed) {
-      setChatError(state, access.reason, true);
+      setChatError(state, access.reason);
       return false;
     }
 
     this.recoveringSession = true;
-    this.requestUpdate();
+    this.invalidate();
     setChatError(state, null);
     try {
       const recovery = await sessions.recover(params);
@@ -225,7 +225,7 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
         return false;
       }
       if (!recovery) {
-        setChatError(state, state.sessionsError ?? NEW_SESSION_CREATE_FAILED_MESSAGE, true);
+        setChatError(state, state.sessionsError ?? NEW_SESSION_CREATE_FAILED_MESSAGE);
         return false;
       }
       if (recovery.continuation.status === "rejected") {
@@ -245,7 +245,7 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
             generation: this.connectionGeneration,
           };
         }
-        setChatError(state, formatUiError(recovery.continuation.error.message), true);
+        setChatError(state, formatUiError(recovery.continuation.error.message));
         return false;
       }
       this.restartRecoveryFallback = null;
@@ -263,7 +263,7 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
       return true;
     } finally {
       this.recoveringSession = false;
-      this.requestUpdate();
+      this.invalidate();
     }
   };
 
@@ -304,16 +304,16 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
     const isCurrent = () =>
       this.isConnectionScopeCurrent(scope) && this.context.sessions === sessions;
     if (!canCreateChatSession(state)) {
-      setChatError(state, NEW_SESSION_ACTIVE_RUN_MESSAGE, true);
+      setChatError(state, NEW_SESSION_ACTIVE_RUN_MESSAGE);
       return false;
     }
     if (state.sessionsLoading) {
-      setChatError(state, NEW_SESSION_LIST_LOADING_MESSAGE, true);
+      setChatError(state, NEW_SESSION_LIST_LOADING_MESSAGE);
       return false;
     }
     const initialAccess = readCreateAccess();
     if (!initialAccess.allowed) {
-      setChatError(state, initialAccess.reason, true);
+      setChatError(state, initialAccess.reason);
       return false;
     }
     if (
@@ -324,12 +324,12 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
       return false;
     }
     if (!canCreateChatSession(state)) {
-      setChatError(state, NEW_SESSION_ACTIVE_RUN_MESSAGE, true);
+      setChatError(state, NEW_SESSION_ACTIVE_RUN_MESSAGE);
       return false;
     }
     const currentAccess = readCreateAccess();
     if (!currentAccess.allowed) {
-      setChatError(state, currentAccess.reason, true);
+      setChatError(state, currentAccess.reason);
       return false;
     }
 
@@ -340,7 +340,7 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
     }
     this.creatingIncognitoSession = expiredIncognito;
     if (expiredIncognito) {
-      this.requestUpdate();
+      this.invalidate();
     }
     try {
       const nextSessionKey = await sessions.create(createParams);
@@ -359,7 +359,6 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
               (state.sessionsLoading
                 ? NEW_SESSION_LIST_LOADING_MESSAGE
                 : NEW_SESSION_CREATE_FAILED_MESSAGE),
-            true,
           );
         }
         return false;
@@ -380,7 +379,7 @@ export abstract class ChatPaneSessionCreation extends ChatPaneRetainedPresentati
     } finally {
       this.creatingIncognitoSession = false;
       if (expiredIncognito && isCurrent()) {
-        this.requestUpdate();
+        this.invalidate();
       }
     }
   };

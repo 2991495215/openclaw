@@ -137,6 +137,24 @@ async function catalogFixture() {
 }
 
 describe("session-share receiver catalog", () => {
+  it.each(["runtime", "request snapshot"])(
+    "reports %s node discovery failures and recovers without hiding them as an empty catalog",
+    async (route) => {
+      const fixture = await catalogFixture();
+      const failure = new Error("paired node inventory is unavailable");
+      fixture.list.mockRejectedValueOnce(failure);
+      await expect(
+        fixture.catalog.list(route === "request snapshot" ? { listNodes: fixture.list } : {}),
+      ).rejects.toThrow("Cannot discover OpenClaw session sources. Refresh the catalog to retry.");
+      expect(fixture.invoke).not.toHaveBeenCalled();
+
+      await fixture.read({});
+      expect((await fixture.read({}))[0]?.sessions).toEqual([nativeSession]);
+      fixture.list.mockResolvedValueOnce({ nodes: [] });
+      expect(await fixture.catalog.list({})).toEqual([]);
+    },
+  );
+
   it("surfaces discovery failure without exposing node-runtime details", async () => {
     const fixture = await catalogFixture();
     try {

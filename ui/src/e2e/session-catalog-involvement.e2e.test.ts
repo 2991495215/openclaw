@@ -20,43 +20,26 @@ suite.define(() => {
   it("keeps only Gateway-admitted catalog conversations under Involving me", async () => {
     await suite.withPage({ viewport: { width: 1280, height: 900 } }, async ({ page }) => {
       const sidebar = page.locator(".sidebar");
-      const viewer = {
+      const actor = (id: string, label: string) => ({
         type: "human" as const,
-        id: "profile-ada",
-        label: "Ada",
-        identity: { type: "profile" as const, id: "profile-ada" },
-      };
-      const other = {
-        type: "human" as const,
-        id: "profile-bob",
-        label: "Bob",
-        identity: { type: "profile" as const, id: "profile-bob" },
-      };
-      const native = {
-        key: "agent:main:own",
-        sessionId: "own",
+        id,
+        label,
+        identity: { type: "profile" as const, id },
+      });
+      const viewer = actor("profile-ada", "Ada");
+      const other = actor("profile-bob", "Bob");
+      const session = (sessionId: string, label: string, updatedAt: number, owner = other) => ({
+        key: `agent:main:${sessionId === "own" ? sessionId : `${sessionId}-catalog`}`,
+        sessionId,
         kind: "direct" as const,
-        label: "My conversation",
-        owner: { actor: viewer },
-        updatedAt: 3,
-      };
+        label,
+        owner: { actor: owner },
+        updatedAt,
+      });
+      const native = session("own", "My conversation", 3, viewer);
       // Gateway involvement can include participation beyond the bounded avatar preview.
-      const involved = {
-        key: "agent:main:involved-catalog",
-        sessionId: "involved",
-        kind: "direct" as const,
-        label: "Collaborative coding",
-        owner: { actor: other },
-        updatedAt: 2,
-      };
-      const unrelated = {
-        key: "agent:main:unrelated-catalog",
-        sessionId: "unrelated",
-        kind: "direct" as const,
-        label: "Another person's coding",
-        owner: { actor: other },
-        updatedAt: 1,
-      };
+      const involved = session("involved", "Collaborative coding", 2);
+      const unrelated = session("unrelated", "Another person's coding", 1);
       const response = {
         ts: 1,
         path: "",
@@ -77,60 +60,50 @@ suite.define(() => {
         canArchive: false,
         createdActor: other,
       });
+      const catalog = (
+        id: string,
+        label: string,
+        hostId: string,
+        hostLabel: string,
+        sessions: ReturnType<typeof entry>[],
+        continueSession = false,
+      ) => ({
+        id,
+        label,
+        requiresFreshList: id === "codex",
+        capabilities: { continueSession, archive: false },
+        hosts: [
+          {
+            hostId,
+            label: hostLabel,
+            kind: hostId.startsWith("node:") ? "node" : "gateway",
+            connected: true,
+            sessions,
+          },
+        ],
+      });
       const catalogs = [
-        {
-          id: "session-share",
-          label: "OpenClaw sessions",
-          capabilities: { continueSession: false, archive: false },
-          hosts: [
-            {
-              hostId: "node:remote",
-              label: "Remote",
-              kind: "node",
-              connected: true,
-              sessions: [entry("shared", "Remote shared conversation")],
-            },
+        catalog("session-share", "OpenClaw sessions", "node:remote", "Remote", [
+          entry("shared", "Remote shared conversation"),
+        ]),
+        catalog("beam", "Beam", "gateway", "Imported", [entry("imported", "Imported meeting")]),
+        catalog(
+          "codex",
+          "Coding",
+          "gateway:local",
+          "Local",
+          [
+            entry("involved", involved.label, involved.key),
+            entry("unrelated", unrelated.label, unrelated.key),
           ],
-        },
-        {
-          id: "beam",
-          label: "Beam",
-          capabilities: { continueSession: false, archive: false },
-          hosts: [
-            {
-              hostId: "gateway",
-              label: "Imported",
-              kind: "gateway",
-              connected: true,
-              sessions: [entry("imported", "Imported meeting")],
-            },
-          ],
-        },
-        {
-          id: "codex",
-          label: "Coding",
-          requiresFreshList: true,
-          capabilities: { continueSession: true, archive: false },
-          hosts: [
-            {
-              hostId: "gateway:local",
-              label: "Local",
-              kind: "gateway",
-              connected: true,
-              sessions: [
-                entry("involved", involved.label, involved.key),
-                entry("unrelated", unrelated.label, unrelated.key),
-              ],
-            },
-          ],
-        },
+          true,
+        ),
       ];
       const gateway = await installMockGateway(page, {
         sessionKey: native.key,
         presenceUsers: [{ self: true, id: viewer.id, name: viewer.label }],
         sessions: [native, involved, unrelated],
         featureMethods: [...defaultControlUiFeatureMethods, "sessions.catalog.list"],
-        featureEvents: ["sessions.catalog.changed"],
         historyMessages: [{ role: "assistant", content: [{ type: "text", text: "Ready." }] }],
         methodResponses: {
           "sessions.list": {
@@ -146,6 +119,12 @@ suite.define(() => {
         },
       });
       await page.goto(controlUiSessionUrl(suite.server.baseUrl, native.key));
+      const text = (label: string) => sidebar.getByText(label, { exact: true });
+      const expectVisible = async (...labels: string[]) => {
+        for (const label of labels) {
+          await expectBrowser(text(label)).toBeVisible();
+        }
+      };
       await selectAllSidebarSessions(page);
       await chooseSidebarMenuOption(page, "Status", "All");
       await closeSidebarMenu(page);
@@ -162,45 +141,28 @@ suite.define(() => {
           await toggle.click();
         }
       }
-      await expectBrowser(
-        sidebar.getByText("Remote shared conversation", { exact: true }),
-      ).toBeVisible();
-      await expectBrowser(sidebar.getByText("Imported meeting", { exact: true })).toBeVisible();
-      await expectBrowser(sidebar.getByText(involved.label, { exact: true })).toBeVisible();
+      await expectVisible("Remote shared conversation", "Imported meeting", involved.label);
       await chooseSidebarOwner(page, "involving-me");
       await expect
-        .poll(async () =>
-          (await gateway.getRequests("sessions.list")).some(
-            (request) => (request.params as { involvingMe?: boolean }).involvingMe === true,
-          ),
+        .poll(
+          async () => (await gateway.getRequests("sessions.list", { involvingMe: true })).length,
         )
-        .toBe(true);
-      await expectBrowser(sidebar.getByText(native.label, { exact: true })).toBeVisible();
-      await expectBrowser(sidebar.getByText(involved.label, { exact: true })).toBeVisible();
+        .toBeGreaterThan(0);
+      await expectVisible(native.label, involved.label);
       const artifactParent = process.env.OPENCLAW_UI_E2E_ARTIFACT_DIR?.trim();
       if (artifactParent) {
         const directory = createControlUiE2eArtifactDir("catalog-involvement", artifactParent);
-        await writeFile(
-          path.join(directory, "involving-me.png"),
-          (
-            await takeControlUiScreenshotFrame(
-              page,
-              page.locator(".sidebar"),
-              [
-                page.locator("#sidebar-session-owner-title"),
-                sidebar.getByText(native.label, { exact: true }),
-                sidebar.getByText(involved.label, { exact: true }),
-              ],
-              { animations: "disabled" },
-            )
-          ).png,
+        const frame = await takeControlUiScreenshotFrame(
+          page,
+          sidebar,
+          [page.locator("#sidebar-session-owner-title"), text(native.label), text(involved.label)],
+          { animations: "disabled" },
         );
+        await writeFile(path.join(directory, "involving-me.png"), frame.png);
       }
-      await expectBrowser(
-        sidebar.getByText("Remote shared conversation", { exact: true }),
-      ).toHaveCount(0);
-      await expectBrowser(sidebar.getByText("Imported meeting", { exact: true })).toHaveCount(0);
-      await expectBrowser(sidebar.getByText(unrelated.label, { exact: true })).toHaveCount(0);
+      await expectBrowser(text("Remote shared conversation")).toHaveCount(0);
+      await expectBrowser(text("Imported meeting")).toHaveCount(0);
+      await expectBrowser(text(unrelated.label)).toHaveCount(0);
       const source = catalogs[2]!;
       const host = source.hosts[0]!;
       await gateway.setMethodResponse("sessions.catalog.list", {
@@ -222,7 +184,7 @@ suite.define(() => {
       });
       const retry = sidebar.locator('[data-session-catalog-load-more="codex"]');
       const beforeInvalidation = (await gateway.getRequests("sessions.catalog.list")).length;
-      await gateway.emitGatewayEvent("sessions.catalog.changed", { agentId: "main" });
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
       // Event refresh is debounced; start rendering assertions after the request is admitted.
       await gateway.waitForRequest("sessions.catalog.list", { after: beforeInvalidation });
       const codingSection = sidebar.locator('[data-session-section="catalog:codex"]');
@@ -275,11 +237,7 @@ suite.define(() => {
         );
       }
       await selectAllSidebarSessions(page);
-      await expectBrowser(
-        sidebar.getByText("Remote shared conversation", { exact: true }),
-      ).toBeVisible();
-      await expectBrowser(sidebar.getByText("Imported meeting", { exact: true })).toBeVisible();
-      await expectBrowser(sidebar.getByText(unrelated.label, { exact: true })).toBeVisible();
+      await expectVisible("Remote shared conversation", "Imported meeting", unrelated.label);
     });
   });
 });

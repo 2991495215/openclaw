@@ -167,15 +167,14 @@ type SessionLifecycleArtifactsCleanupParams = {
   nowMs?: number;
 };
 
-type SessionLifecycleArtifactsCleanupResult = {
-  archivedTranscriptArtifacts: number;
-  removedEntries: number;
-};
+type SessionLifecycleArtifactsCleanupResult = Awaited<
+  ReturnType<typeof cleanupAccessorSessionLifecycleArtifacts>
+>;
 
 /** Resolves the configured session store path without selecting a row-operation agent. */
 export { resolveSessionStorePathCore as resolveStorePath } from "../config/sessions/paths.js";
 
-/** @deprecated Use getSessionEntryAsync. Final compatibility day: 2026-12-31. */
+/** @deprecated Use getSessionEntryAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export function getSessionEntry(params: SessionStoreReadParams): SessionEntry | undefined {
   warnPluginSdkDeprecation({
     family: "session-store",
@@ -186,7 +185,7 @@ export function getSessionEntry(params: SessionStoreReadParams): SessionEntry | 
   return entry ? projectPluginSessionEntry(entry) : undefined;
 }
 
-/** @deprecated Use getConversationSessionAsync. Final compatibility day: 2026-12-31. */
+/** @deprecated Use getConversationSessionAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export function getConversationSession(params: {
   agentId: string;
   env?: NodeJS.ProcessEnv;
@@ -220,7 +219,7 @@ export async function getConversationSessionAsync(
  * Lists session entries for one agent. `readOnly` reads without joining the
  * agent database writable lifecycle (no create/register/migrate) — required
  * for detection/introspection paths that may run across the whole fleet.
- * @deprecated Use listSessionEntriesAsync for metadata reads. Final compatibility day: 2026-12-31.
+ * @deprecated Use listSessionEntriesAsync for metadata reads. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release.
  */
 export function listSessionEntries(
   params: SessionStoreListParams & { readOnly?: boolean } = {},
@@ -335,7 +334,7 @@ type SessionStoreTranscriptReadParams = {
   storePath?: string;
 };
 
-/** @deprecated Use loadTranscriptEvents. Final compatibility day: 2026-12-31. */
+/** @deprecated Use loadTranscriptEvents. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 function loadTranscriptEventsSyncLegacy(
   params: SessionStoreTranscriptReadParams,
 ): SessionStoreTranscriptEvent[] {
@@ -356,7 +355,7 @@ export function loadTranscriptEvents(
 
 export { loadTranscriptEventsSyncLegacy as loadTranscriptEventsSync };
 
-/** @deprecated Use readTranscriptStatsAsync. Final compatibility day: 2026-12-31. */
+/** @deprecated Use readTranscriptStatsAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 function readSessionStoreTranscriptStatsSync(params: {
   agentId?: string;
   env?: NodeJS.ProcessEnv;
@@ -382,7 +381,7 @@ export const readTranscriptStatsAsync: (
 
 export { readSessionStoreTranscriptStatsSync as readTranscriptStatsSync };
 
-/** @deprecated Await resolveTranscriptSessionKeyBySessionIdAsync. Final compatibility day: 2026-12-31. */
+/** @deprecated Await resolveTranscriptSessionKeyBySessionIdAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export function resolveTranscriptSessionKeyBySessionId(
   params: Parameters<typeof resolveAccessorTranscriptSessionKeyBySessionId>[0],
 ): string | undefined {
@@ -399,7 +398,7 @@ export function resolveTranscriptSessionKeyBySessionId(
 /** Resolves the exact persisted transcript window, including historical session identities. */
 export { resolveTranscriptSessionKeyBySessionIdAsync } from "../config/sessions/session-accessor.js";
 
-/** @deprecated Use prepareSessionEntryPatch or applySessionEntryPatch. Final compatibility day: 2026-12-31. */
+/** @deprecated Use prepareSessionEntryPatch or applySessionEntryPatch. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export async function patchSessionEntry(
   params: PatchSessionEntryParams,
 ): Promise<SessionEntry | null> {
@@ -507,7 +506,7 @@ function sessionEntryPatchOptions(params: Omit<PrepareSessionEntryPatchParams, "
   };
 }
 
-/** @deprecated Use readSessionUpdatedAtAsync. Final compatibility day: 2026-12-31. */
+/** @deprecated Use readSessionUpdatedAtAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export function readSessionUpdatedAt(params: SessionStoreReadParams): number | undefined {
   warnPluginSdkDeprecation({
     family: "session-store",
@@ -527,7 +526,7 @@ export function readSessionUpdatedAtAsync(
 export { resolveAmbientTranscriptWatermarkKey, updateAmbientTranscriptWatermark };
 export type { AmbientTranscriptWatermarkScope };
 
-/** @deprecated Use readAmbientTranscriptWatermarkAsync. Final compatibility day: 2026-12-31. */
+/** @deprecated Use readAmbientTranscriptWatermarkAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export function readAmbientTranscriptWatermark(
   params: ReadAmbientTranscriptWatermarkParams,
 ): AmbientTranscriptWatermark | undefined {
@@ -546,7 +545,7 @@ export async function readAmbientTranscriptWatermarkAsync(
   return readAmbientTranscriptWatermarkFromEntry(await getSessionEntryAsync(params), params.key);
 }
 
-/** @deprecated Use prepareSessionEntryPatch. Final compatibility day: 2026-12-31. */
+/** @deprecated Use prepareSessionEntryPatch. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export async function updateSessionStoreEntry(
   params: UpdateSessionStoreEntryParams,
 ): Promise<SessionEntry | null> {
@@ -741,7 +740,7 @@ export { recordInboundSessionMeta as recordSessionMetaFromInbound } from "../con
 
 export function updateLastRoute(
   params: UpdateSessionLastRouteParams & {
-    /** @deprecated Use updateLastRouteWithAuthority. Final compatibility day: 2026-12-31. */
+    /** @deprecated Use updateLastRouteWithAuthority. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
     assertCommitAllowed?: () => void;
   },
 ): Promise<SessionEntry | null> {
