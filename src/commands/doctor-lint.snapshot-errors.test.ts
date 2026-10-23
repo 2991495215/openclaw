@@ -20,7 +20,8 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createStateSnapshotFailureFinding } from "./doctor-lint-output.js";
 
-vi.mock("../flows/doctor-health-contributions.js", () => ({
+vi.mock("../flows/doctor-health-contributions.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../flows/doctor-health-contributions.js")>()),
   resolveDoctorContributionHealthChecks: async () => [],
 }));
 
