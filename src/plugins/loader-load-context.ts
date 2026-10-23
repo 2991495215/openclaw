@@ -4,6 +4,7 @@ import { createConfigRuntimeEnv } from "../config/env-vars.js";
 import { getRuntimeConfigCapture } from "../config/runtime-config-capture-state.js";
 import { captureRuntimeConfig } from "../config/runtime-source-projection.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createWeakOwnerIds } from "../shared/weak-owner-map.js";
 import { resolveUserPath } from "../utils.js";
 import { resolvePluginActivationSourceConfig } from "./activation-source-config.js";
 import {
@@ -27,20 +28,10 @@ import { getPluginRegistryRuntime } from "./registry-runtime-binding.js";
 import { getActivePluginRegistry, getPluginRegistryForContext } from "./runtime.js";
 import { activationConfigFingerprint } from "./runtime/load-context.js";
 
-const runtimeBindingCacheIds = new WeakMap<object, number>();
-let nextRuntimeBindingCacheId = 1;
+const runtimeBindingCacheIds = createWeakOwnerIds(1);
 
 function resolveRuntimeBindingCacheId(value: object | undefined): number | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const existing = runtimeBindingCacheIds.get(value);
-  if (existing !== undefined) {
-    return existing;
-  }
-  const id = nextRuntimeBindingCacheId++;
-  runtimeBindingCacheIds.set(value, id);
-  return id;
+  return value ? runtimeBindingCacheIds.getId(value) : undefined;
 }
 
 function buildActivationMetadataHash(params: {
@@ -369,7 +360,7 @@ export function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
       const cfg = captureRuntimeConfig(runtimeConfig);
       if (registrationGeneration !== undefined && cfg !== runtimeConfig) {
         // api.config reentry belongs to the load already registering this generation.
-        runtimeBindingCacheIds.set(cfg, registrationGeneration);
+        runtimeBindingCacheIds.setId(cfg, registrationGeneration);
       }
       const activationSourceConfig =
         activationConfig === runtimeConfig ? cfg : captureRuntimeConfig(activationConfig);

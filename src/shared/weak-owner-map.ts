@@ -10,3 +10,23 @@ export function getOrCreateWeakOwnerMap<Owner extends object, Key, Value>(
   }
   return values;
 }
+
+/** Creates a private numeric identity space with explicit alias binding. */
+export function createWeakOwnerIds(firstId = 0) {
+  const ids = new WeakMap<object, number>();
+  let nextId = firstId;
+  return {
+    getId: (owner: object): number => {
+      const existing = ids.get(owner);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const id = nextId++;
+      ids.set(owner, id);
+      return id;
+    },
+    setId: (owner: object, id: number): void => {
+      ids.set(owner, id);
+    },
+  };
+}
