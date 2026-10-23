@@ -386,7 +386,10 @@ describe("FRV continuation preflight", () => {
       html_url: `https://github.com/${REPOSITORY}/actions/runs/81`,
     };
     const logs = {
-      dispatch: `Artifact dispatch ${stage} target ${TARGET_SHA}: https://github.com/${REPOSITORY}/actions/runs/81 (attempt 1)`,
+      dispatch: [
+        `Artifact dispatch ${stage} target ${TARGET_SHA}: https://github.com/${REPOSITORY}/actions/runs/81 (attempt 1)`,
+        ...(stage === "npm" ? ["Artifact preparation npm identity: job 901 (attempt 1)"] : []),
+      ].join("\n"),
     };
     const client = {
       ...methods,
@@ -396,7 +399,7 @@ describe("FRV continuation preflight", () => {
           [
             "name: Full Release Validation",
             "env:",
-            '  FULL_RELEASE_ARTIFACT_RECOVERY_CONTRACT: "1"',
+            '  FULL_RELEASE_ARTIFACT_RECOVERY_CONTRACT: "2"',
             "jobs:",
             "  prepare_npm_package:",
             '    name: "Prepare release npm artifacts"',
@@ -507,6 +510,71 @@ describe("FRV continuation preflight", () => {
         "77": 2,
         "101": 1,
       });
+    },
+  );
+
+  it("refuses a consumed producer rerun before mutation and shows authenticated reuse", async () => {
+    const fixture = artifactFixture("npm");
+    fixture.producer.conclusion = "failure";
+    fixture.client.getAttemptJobs = async () => [
+      {
+        ...job("renamed preparation job"),
+        id: 901,
+        run_attempt: 1,
+        conclusion: "failure",
+      },
+    ];
+    const consumedPlan = {
+      ...fixture.plan,
+      candidate: { producer: { runId: "606" } },
+    };
+
+    await expect(continueFailed(consumedPlan, "77", fixture.client)).rejects.toThrow(
+      "artifact:npm producer 81 already supplied the sealed candidate evidence; rerunning cannot preserve those consumed immutable bytes. Dispatch a fresh all-group FRV with reuse_evidence=true to authenticate reuse instead.",
+    );
+    expect(fixture.client.rerunFailed).not.toHaveBeenCalled();
+    expect(fixture.client.rerunParent).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the recorded npm preparation identity is absent", async () => {
+    const fixture = artifactFixture("npm");
+    fixture.producer.conclusion = "failure";
+    fixture.client.getAttemptJobs = async () => [
+      { ...job("different preparation job"), id: 902, run_attempt: 1 },
+    ];
+    const consumedPlan = {
+      ...fixture.plan,
+      candidate: { producer: { runId: "606" } },
+    };
+
+    await expect(continueFailed(consumedPlan, "77", fixture.client)).rejects.toThrow(
+      "artifact:npm producer 81 preparation identity is missing or ambiguous",
+    );
+    expect(fixture.client.rerunFailed).not.toHaveBeenCalled();
+    expect(fixture.client.rerunParent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { stage: "npm", carriedPreparation: true },
+    { stage: "docker", carriedPreparation: false },
+  ])(
+    "keeps consumed-candidate recovery for $stage producers that preserve bytes",
+    async ({ stage, carriedPreparation }) => {
+      const fixture = artifactFixture(stage);
+      fixture.producer.conclusion = "failure";
+      if (carriedPreparation) {
+        fixture.client.getAttemptJobs = async () => [
+          { ...job("renamed preparation job"), id: 901, run_attempt: 1 },
+        ];
+      }
+      const consumedPlan = {
+        ...fixture.plan,
+        candidate: { producer: { runId: "606" } },
+      };
+
+      await expect(
+        continueFailed(consumedPlan, "77", fixture.client, { dryRun: true }),
+      ).resolves.toMatchObject({ action: "would-rerun" });
     },
   );
 
