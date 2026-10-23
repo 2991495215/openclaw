@@ -84,10 +84,6 @@ function optionPresentation(options: ModelPresentationProps) {
   };
 }
 
-function createOptionPresentation(props: ChatModelPickerOptionProps) {
-  return createMemo(() => optionPresentation(props));
-}
-
 export function modelOptionSearchRow(options: ModelPresentationProps): ChatModelSearchRow {
   const view = optionPresentation(options);
   return {
@@ -105,10 +101,8 @@ export function modelOptionSearchRow(options: ModelPresentationProps): ChatModel
   };
 }
 
-type OptionPresentation = ReturnType<ReturnType<typeof createOptionPresentation>>;
-
 function ModelOptionButton(
-  props: ChatModelPickerOptionProps & { presentation: OptionPresentation },
+  props: ChatModelPickerOptionProps & { presentation: ReturnType<typeof optionPresentation> },
 ) {
   const search = useContext(ChatModelSearchContext);
   const key = createMemo(() => modelPickerOptionKey(props.entry));
@@ -217,7 +211,7 @@ function ModelOptionButton(
 }
 
 export function ChatModelPickerOption(props: ChatModelPickerOptionProps) {
-  const presentation = createOptionPresentation(props);
+  const presentation = createMemo(() => optionPresentation(props));
   return (
     <Show
       when={presentation().detail}

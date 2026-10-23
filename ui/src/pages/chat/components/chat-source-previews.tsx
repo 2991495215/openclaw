@@ -8,11 +8,6 @@ import { readLinkFavicon, type LinkFaviconFetcher } from "../link-favicon-cache.
 
 registerEnglishCatalog(registerChatMessageMetadataEnglish);
 
-type SourcePreviewsProps = {
-  sources: readonly ChatSourcePreview[];
-  fetchFavicon?: LinkFaviconFetcher;
-};
-
 function SourceCard(props: {
   source: ChatSourcePreview;
   favicon: string | null;
@@ -94,7 +89,10 @@ function SourceCard(props: {
   );
 }
 
-export function ChatSourcePreviews(props: SourcePreviewsProps) {
+export function ChatSourcePreviews(props: {
+  sources: readonly ChatSourcePreview[];
+  fetchFavicon?: LinkFaviconFetcher;
+}) {
   const [ready, setReady] = createSignal(false);
   const [revision, setRevision] = createSignal(0);
   const [failedFavicons, setFailedFavicons] = createStore<Record<string, boolean>>({});
