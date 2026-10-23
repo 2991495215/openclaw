@@ -10,7 +10,7 @@ import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
 const source = readFileSync(".github/workflows/full-release-validation.yml", "utf8");
 type Workflow = {
-  jobs: Record<string, { if?: string; steps: Array<Record<string, unknown>> }>;
+  jobs: Record<string, { if?: string; needs?: string[]; steps: Array<Record<string, unknown>> }>;
   on: { workflow_dispatch: { inputs: Record<string, unknown> } };
 };
 const workflow = parse(source) as Workflow;
