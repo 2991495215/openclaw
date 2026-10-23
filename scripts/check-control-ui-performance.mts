@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Session recovery, delivery and copy: 1,315,637 B Chat / 806,611 B New.
-  // Preserve main's relative headroom against the matched 55477ab build.
-  chatBootJsGzipBytes: 1_364_895,
-  newBootJsGzipBytes: 814_787,
+  // Separate panel headers and defer Labs/Usage copy: 1,324,362 B Chat / 814,674 B New.
+  // Preserve main's relative headroom against the matched 721d124 build.
+  chatBootJsGzipBytes: 1_373_793,
+  newBootJsGzipBytes: 822_617,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
@@ -805,10 +805,10 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   if (moduleAttribution) {
     const { collectControlUiModuleAttribution, formatControlUiModuleAttribution } =
       await import("./lib/control-ui-module-attribution.mts");
-    if (!result.metrics.routeBoot) {
-      throw new Error("Module attribution requires a build with route preload templates");
-    }
-    attribution = collectControlUiModuleAttribution(distDir, result.metrics.routeBoot);
+    attribution = collectControlUiModuleAttribution(distDir, {
+      startup: result.metrics.startup,
+      ...result.metrics.routeBoot,
+    });
     result.report += `\n${formatControlUiModuleAttribution(attribution)}`;
   }
   if (json) {

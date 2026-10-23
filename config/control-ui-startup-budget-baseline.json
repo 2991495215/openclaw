@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 311084,
-  "reason": "Defer unused session recovery, delivery and preference code: matched 55477ab build, startup 311147 to 311084 B, Chat 1324214 to 1315637 B, New Session 814363 to 806611 B; requests unchanged at 7/22/16.",
+  "startupJsGzipBytes": 294961,
+  "reason": "Startup leaf icons, update classification, and lazy English: matched b5b24cf15c2 build 310773 to 294961 B gzip with 7 JS and 1 CSS request.",
   "updatedAt": "2026-10-23"
 }
