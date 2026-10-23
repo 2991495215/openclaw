@@ -514,6 +514,36 @@ describe("session lifecycle state", () => {
       ],
     });
 
+    const existingCycle = await persistLifecycle(
+      {
+        ...started,
+        mainRestartRecovery: {
+          cycleId: "existing-cycle",
+          revision: 4,
+          chargedAttempts: 2,
+        },
+      },
+      {
+        ts: 2_000,
+        sessionId: "session-id",
+        runId: "tool-run",
+        data: {
+          phase: "error",
+          startedAt: 1_000,
+          endedAt: 2_000,
+          status: "timed_out",
+          timeoutPhase: "tool_execution",
+          providerStarted: true,
+        },
+      },
+    );
+    expect(existingCycle.mainRestartRecovery).toEqual({
+      cycleId: "existing-cycle",
+      revision: 4,
+      chargedAttempts: 2,
+      safeToolsRequired: true,
+    });
+
     const settled: SessionEntry = {
       ...interrupted,
       status: "done",
