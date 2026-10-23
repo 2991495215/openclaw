@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { resolveStateDir } from "../../config/paths.js";
 import { readSessionEntrySummariesInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -327,7 +326,6 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
   getConfig: () => OpenClawConfig;
   maxRetries?: number;
   shouldContinue?: () => boolean;
-  stateDir?: string;
   startupCheckedStorePaths?: Set<string>;
   waitForStart?: () => Promise<void>;
   gatewayRuntime: GatewayRecoveryRuntime;
@@ -412,7 +410,6 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
         const marking = await markStartupOrphanedMainSessionsForRecovery({
           cfg,
           agentIds,
-          stateDir: params.stateDir,
           startupCheckedStorePaths,
           updatedBeforeMs: startupRecoveryCutoffMs,
           onOwnerPending: retainPendingOwner,
@@ -430,7 +427,6 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
               target,
             );
           },
-          stateDir: params.stateDir,
           handledSessionKeys,
           onPreparationPending: retainPendingPreparation,
           excludedStoreTargets: new Set(marking.failedTargets?.map(restartRecoveryStoreTargetKey)),
@@ -463,7 +459,6 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
               observationOnly: true,
               shouldContinue,
               signal: abortController.signal,
-              stateDir: params.stateDir,
               gatewayRuntime: params.gatewayRuntime,
             }),
           "main-session:target-recovery",
@@ -527,10 +522,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       },
     });
   };
-  const env = {
-    ...process.env,
-    OPENCLAW_STATE_DIR: params.stateDir ?? resolveStateDir(process.env),
-  };
+  const env = process.env;
   const pendingAgents = new Set(
     listAgentDatabaseAdmissionRefusals({ env })
       .filter((refusal) => refusal.code === "agent-database-inspection-pending")
@@ -547,7 +539,6 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
             ...target,
             expectedTarget: target,
             cfg: params.getConfig(),
-            stateDir: params.stateDir,
             gatewayRuntime: params.gatewayRuntime,
             lifecycleGeneration,
             shouldContinue,

@@ -7,6 +7,21 @@ import type { callGateway } from "../../gateway/call.js";
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
 import { sessionChanges } from "../../sessions/session-row-changes.js";
 import type { RequesterOrigin } from "../requester-origin.js";
+import { scheduleRestartAbortedMainSessionRecovery } from "./main-session-restart-recovery.js";
+
+export function createRecoveryScheduler(
+  stateDir: () => string,
+  gatewayRuntime: GatewayRecoveryRuntime,
+) {
+  return (params: Partial<Parameters<typeof scheduleRestartAbortedMainSessionRecovery>[0]>) => {
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir());
+    return scheduleRestartAbortedMainSessionRecovery({
+      gatewayRuntime,
+      getConfig: () => ({}),
+      ...params,
+    });
+  };
+}
 
 type RecoveryScope = { storePath: string; sessionKey: string };
 

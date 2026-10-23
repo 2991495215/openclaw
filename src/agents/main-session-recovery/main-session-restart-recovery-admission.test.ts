@@ -99,7 +99,6 @@ describe("startup recovery admission", () => {
   ) {
     const recovery = scheduleRestartAbortedMainSessionRecovery({
       getConfig: () => ({}),
-      stateDir: tmpDir,
       gatewayRuntime,
       ...options,
     });
@@ -177,6 +176,7 @@ describe("startup recovery admission", () => {
     resetAgentEventsForTest();
     resetGatewayWorkAdmission();
     tmpDir = tempDirs.make("openclaw-recovery-admission-");
+    vi.stubEnv("OPENCLAW_STATE_DIR", tmpDir);
     setRuntimeConfigSnapshot({});
   });
 

@@ -168,6 +168,7 @@ import * as recoveryOwnerRelease from "./main-session-recovery-owner-release.js"
 import { registerReplayBoundaryRecoveryCases } from "./main-session-recovery-replay-boundary.test-harness.js";
 import {
   createRecoveryRuntimeFixture,
+  createRecoveryScheduler,
   runRecoveryCommandDuringStop,
 } from "./main-session-recovery-runtime.test-support.js";
 import * as recoveryStore from "./main-session-recovery-store.js";
@@ -207,7 +208,6 @@ import {
   recoverRestartAbortedMainSessions as recoverRestartAbortedMainSessionsBase,
   retryRestartAbortedMainSessionRecovery as retryRestartAbortedMainSessionRecoveryBase,
   scheduleRestartAbortedMainSessionRecoveryAfterOwnerRelease,
-  scheduleRestartAbortedMainSessionRecovery as scheduleRestartAbortedMainSessionRecoveryBase,
 } from "./main-session-restart-recovery.js";
 import { registerTerminalApprovalRecoveryCases } from "./main-session-terminal-approval.test-harness.js";
 
@@ -252,18 +252,7 @@ const markInterrupted = (
 const markOrphans = (
   params: Parameters<typeof markStartupOrphanedMainSessionsForRecoveryBase>[0],
 ) => markStartupOrphanedMainSessionsForRecoveryBase({ stateDir: tmpDir, ...params });
-const scheduleRecovery = (
-  params: Omit<
-    RecoveryParams<Parameters<typeof scheduleRestartAbortedMainSessionRecoveryBase>[0]>,
-    "getConfig"
-  > & { getConfig?: () => OpenClawConfig },
-) =>
-  scheduleRestartAbortedMainSessionRecoveryBase({
-    gatewayRuntime: mockRecoveryRuntime,
-    getConfig: () => ({}),
-    stateDir: tmpDir,
-    ...params,
-  });
+const scheduleRecovery = createRecoveryScheduler(() => tmpDir, mockRecoveryRuntime);
 
 async function expectRecovery(
   expected: Partial<{ started: number; settled: number; failed: number; skipped: number }>,
@@ -422,6 +411,7 @@ beforeEach(async () => {
   resetAgentEventsForTest();
   resetGatewayWorkAdmission();
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-main-restart-recovery-"));
+  vi.stubEnv("OPENCLAW_STATE_DIR", tmpDir);
   freshTmpDir = tmpDir;
   setRuntimeConfigSnapshot({});
 });
