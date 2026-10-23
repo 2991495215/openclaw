@@ -50,7 +50,7 @@ import {
 import {
   completeUpdateCommandResult,
   captureUpdateFinalization,
-  createPostUpdateFailureResult,
+  createPostUpdateExceptionResult,
   publishSettledUpdateCommandResult,
   bindUpdateFinalizationFailure,
   withUpdateProgressSettlement,
@@ -411,6 +411,8 @@ async function finishSettledUpdate(
       onFailure: (cause) => reportResult(result, false, { cause }),
     });
 
+  let resultWithPostUpdate = params.result;
+  let activationVerified = false;
   const runPostUpdate = async (): Promise<UpdateRunResult> => {
     try {
       if (params.coreAlreadyCurrent && params.deferredMaintenance) {
@@ -471,7 +473,6 @@ async function finishSettledUpdate(
         }
         return convergence;
       };
-      let resultWithPostUpdate = params.result;
       let postUpdateConfigSnapshot: Awaited<ReturnType<typeof readConfigFileSnapshot>> | undefined;
       if (!deferPluginConvergence) {
         ({ resultWithPostUpdate, postUpdateConfigSnapshot } = await convergePlugins());
@@ -538,7 +539,6 @@ async function finishSettledUpdate(
         await restoreWindowsAutoStart(resultWithPostUpdate);
       }
       let verificationFailure = "restart-unhealthy";
-      let activationVerified = false;
       const restart = async () => {
         const restarted = await forward(() =>
           maybeRestartService({
@@ -577,6 +577,9 @@ async function finishSettledUpdate(
         );
         if (restarted !== "failed" && restarted !== "restart-health-failed") {
           return restarted === "ok";
+        }
+        if (activationVerified) {
+          throw new Error(`Gateway restart finalization reported ${verificationFailure}.`);
         }
         const failure: UpdateRunResult = {
           ...resultWithPostUpdate,
@@ -685,7 +688,7 @@ async function finishSettledUpdate(
         params,
         resultWithPostUpdate,
         assertCurrent,
-        { root: postUpdateRoot, sentinel: sentinelOptions },
+        { root: postUpdateRoot, sentinel: sentinelOptions, activationVerified },
       );
       if (maintenanceFailure) {
         const reported = await reportResult(maintenanceFailure.result, false, undefined, false);
@@ -706,7 +709,16 @@ async function finishSettledUpdate(
         // Unsettled commands may still change files. Keep intent/material for fenced reconciliation.
         throw error;
       }
-      const { result, message } = createPostUpdateFailureResult(params, error);
+      const { result, message } = createPostUpdateExceptionResult(
+        { ...params, result: resultWithPostUpdate },
+        error,
+        activationVerified,
+      );
+      if (result.status === "ok") {
+        assertCurrent();
+        defaultRuntime.error(message);
+        return result;
+      }
       defaultRuntime.error(`Post-update verification failed: ${message}`);
       const reported = await reportResult(result);
       throw createFailure(reported, message, { cause: error });

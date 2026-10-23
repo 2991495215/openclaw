@@ -73,7 +73,7 @@ export async function withUpdateProgressSettlement(
       throw cause;
     }
     failure = { cause };
-    const { result } = createPostUpdateFailureResult(params, cause);
+    const { result } = createPostUpdateExceptionResult(params, cause);
     settledParams = {
       ...params,
       result:
@@ -204,12 +204,38 @@ export async function publishSettledUpdateCommandResult(
   );
 }
 
-export function createPostUpdateFailureResult(
+export function createPostUpdateExceptionResult(
   params: Pick<FinishUpdateParams, "result" | "root" | "startedAt">,
   error: unknown,
+  activationVerified = false,
 ): { result: UpdateRunResult; message: string } {
   const message = formatErrorMessage(error);
   const failureFacts = collectUpdateDoctorFailureFacts(error);
+  const refusal = classifyDoctorMaintenanceRefusal(error);
+  if (
+    activationVerified &&
+    refusal.kind !== "data-at-risk" &&
+    !(params.result.recovery?.serviceRestartSafe === false && params.result.recovery.dataAtRisk)
+  ) {
+    const warning = `Gateway activation verified; post-update maintenance needs attention: ${message}`;
+    return {
+      message: warning,
+      result: {
+        ...params.result,
+        steps: [
+          ...params.result.steps,
+          {
+            name: "post-update maintenance",
+            command: "openclaw update",
+            cwd: params.result.root ?? params.root,
+            durationMs: Math.max(0, Date.now() - params.startedAt),
+            exitCode: 0,
+            advisory: { kind: "recoverable-maintenance", message: warning },
+          },
+        ],
+      },
+    };
+  }
   const version = params.result.after?.version?.trim();
   return {
     message,
@@ -218,7 +244,7 @@ export function createPostUpdateFailureResult(
       status: "error",
       reason: "post-update-failed",
       recovery:
-        classifyDoctorMaintenanceRefusal(error).kind === "data-at-risk"
+        refusal.kind === "data-at-risk"
           ? { serviceRestartSafe: false, reason: "runtime-verification-failed" }
           : isUpdateStateReadContention(error) && version
             ? (params.result.recovery ?? { serviceRestartSafe: true, version })
