@@ -16,6 +16,8 @@ export function workboardPopoverRef(align: "start" | "end" = "start", hover = fa
     // Conditional Solid fragments have no sibling anchor until their DOM is committed.
     const sibling = element.previousElementSibling;
     const trigger = sibling instanceof HTMLElement ? sibling : null;
+    const listeners = new AbortController();
+    const options = { signal: listeners.signal };
     let hoverTimer: ReturnType<typeof setTimeout> | undefined;
     const position = () => {
       if (!element.matches(":popover-open")) {
@@ -89,42 +91,29 @@ export function workboardPopoverRef(align: "start" | "end" = "start", hover = fa
       }, 150);
     };
     if (hover) {
-      trigger?.addEventListener("pointerenter", enter);
-      trigger?.addEventListener("pointerleave", leave);
-      trigger?.addEventListener("focusin", show);
-      trigger?.addEventListener("focusout", leave);
-      trigger?.addEventListener("keydown", keydown);
-      element.addEventListener("pointerenter", enter);
-      element.addEventListener("pointerleave", leave);
+      trigger?.addEventListener("pointerenter", enter, options);
+      trigger?.addEventListener("pointerleave", leave, options);
+      trigger?.addEventListener("focusin", show, options);
+      trigger?.addEventListener("focusout", leave, options);
+      trigger?.addEventListener("keydown", keydown, options);
+      element.addEventListener("pointerenter", enter, options);
+      element.addEventListener("pointerleave", leave, options);
     }
-    element.addEventListener("toggle", toggle);
-    element.addEventListener("keydown", keydown);
-    window.addEventListener("resize", position);
-    window.addEventListener("scroll", position, true);
+    element.addEventListener("toggle", toggle, options);
+    element.addEventListener("keydown", keydown, options);
+    window.addEventListener("resize", position, options);
+    window.addEventListener("scroll", position, { ...options, capture: true });
     let frame = requestAnimationFrame(position);
     const beforeToggle = () => {
       // Position before the first paint; the toggle event can arrive after it.
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(position);
     };
-    element.addEventListener("beforetoggle", beforeToggle);
+    element.addEventListener("beforetoggle", beforeToggle, options);
     return () => {
       clearTimeout(hoverTimer);
-      if (hover) {
-        trigger?.removeEventListener("pointerenter", enter);
-        trigger?.removeEventListener("pointerleave", leave);
-        trigger?.removeEventListener("focusin", show);
-        trigger?.removeEventListener("focusout", leave);
-        trigger?.removeEventListener("keydown", keydown);
-        element.removeEventListener("pointerenter", enter);
-        element.removeEventListener("pointerleave", leave);
-      }
       cancelAnimationFrame(frame);
-      element.removeEventListener("beforetoggle", beforeToggle);
-      element.removeEventListener("toggle", toggle);
-      element.removeEventListener("keydown", keydown);
-      window.removeEventListener("resize", position);
-      window.removeEventListener("scroll", position, true);
+      listeners.abort();
     };
   });
   return (element: HTMLElement) => {

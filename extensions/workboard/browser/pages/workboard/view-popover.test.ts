@@ -7,7 +7,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-it("anchors a popover whose preceding trigger is inserted after its Solid ref runs", () => {
+it.each([false, true])("anchors and retires a late-trigger popover (hover=%s)", (hover) => {
   vi.stubGlobal(
     "requestAnimationFrame",
     vi.fn(() => 1),
@@ -21,7 +21,7 @@ it("anchors a popover whose preceding trigger is inserted after its Solid ref ru
   let dispose!: () => void;
   createRoot((cleanup) => {
     dispose = cleanup;
-    workboardPopoverRef("end")(panel);
+    workboardPopoverRef("end", hover)(panel);
     document.body.append(trigger, panel);
   });
   flush();
@@ -30,4 +30,20 @@ it("anchors a popover whose preceding trigger is inserted after its Solid ref ru
   expect(panel.style.top).toBe("126px");
   expect(trigger.getAttribute("aria-expanded")).toBe("true");
   dispose();
+  panel.style.left = "";
+  panel.style.top = "";
+  trigger.removeAttribute("aria-expanded");
+  panel.dispatchEvent(new Event("toggle"));
+  window.dispatchEvent(new Event("resize"));
+  window.dispatchEvent(new Event("scroll"));
+  expect(panel.style.left).toBe("");
+  expect(panel.style.top).toBe("");
+  expect(trigger.hasAttribute("aria-expanded")).toBe(false);
+  const escape = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+  panel.dispatchEvent(escape);
+  expect(escape.defaultPrevented).toBe(false);
+  vi.spyOn(panel, "matches").mockReturnValue(false);
+  const show = vi.spyOn(panel, "showPopover");
+  trigger.dispatchEvent(new Event("focusin"));
+  expect(show).not.toHaveBeenCalled();
 });
