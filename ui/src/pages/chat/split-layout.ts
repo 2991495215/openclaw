@@ -155,11 +155,9 @@ export function setActivePane(layout: ChatSplitLayout, paneId: string): ChatSpli
   return next;
 }
 
-type UiSplitLayoutCommand = Extract<UiCommand, { kind: "split" | "focus" }>;
-
 export function applyUiCommandToSplitLayout(
   layout: ChatSplitLayout,
-  command: UiSplitLayoutCommand,
+  command: Extract<UiCommand, { kind: "split" | "focus" }>,
   sourceSessionKey?: string,
 ): ChatSplitLayout {
   if (command.kind === "split") {

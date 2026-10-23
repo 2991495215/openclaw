@@ -33,8 +33,7 @@ import { activeQueuedMessageEdit } from "./queued-message-edit.ts";
 
 registerModelControlsEnglish();
 
-type SessionActionAccess = ReturnType<typeof readChatSessionActionAccess>;
-type SessionAction = keyof SessionActionAccess;
+type SessionAction = keyof ReturnType<typeof readChatSessionActionAccess>;
 type SessionActionCallbacks = Pick<
   ChatProps,
   "onAbort" | "onCompact" | "onForkMessage" | "onRewindMessage"
