@@ -63,6 +63,7 @@ import {
   validateNpmPreflightRunSource,
   validateParallelsRegistryPackageArtifact,
   validatePreflightManifest,
+  validateReleaseScenarioCatalogCompatibility,
   validateTrustedToolingPin,
   validateWindowsSourceRelease,
 } from "../../scripts/release-candidate-checklist.mts";
@@ -581,6 +582,7 @@ describe("release candidate checklist", () => {
           TOOLING_ROOT: "/trusted/tooling",
           PUBLISH_TOOLING_TAG_PATTERN: /^release-publish\/[a-f0-9]{12}-[1-9][0-9]*$/u,
           TRUSTED_TOOLING_SHA_ENV: "OPENCLAW_RELEASE_CANDIDATE_TRUSTED_TOOLING_SHA",
+          UPGRADE_SURVIVOR_CATALOG_PATH: "scripts/lib/upgrade-survivor-scenarios.json",
           RELEASE_CANDIDATE_STATE_FILE: "release-candidate-state.json",
           parseArgs: () => options,
           gitTopLevel: (root: string) => root,
@@ -598,11 +600,25 @@ describe("release candidate checklist", () => {
           assertReleaseCandidateTag: () => {},
           validateTrustedToolingPin,
           validateCandidateCheckout,
+          validateReleaseScenarioCatalogCompatibility: () => ({
+            status: "passed",
+            unsupported: [],
+          }),
           buildReleaseCandidateState,
           reconcileReleaseCandidateState,
           writeReleaseCandidateState: writeState,
           updateReleaseCandidateState: updateState,
           run: (command: string, args: string[]) => {
+            if (
+              args[0] === "show" &&
+              args[1]?.endsWith(":scripts/lib/upgrade-survivor-scenarios.json")
+            ) {
+              return JSON.stringify({
+                oldestSupportedBaseline: null,
+                scenarios: ["base"],
+                assertionOnlyScenarios: [],
+              });
+            }
             if (args[0]?.endsWith("full-release-validation-at-sha.mjs")) {
               expect(generatedChecks).toHaveBeenCalledOnce();
               dispatches.push(args);
@@ -1385,6 +1401,59 @@ describe("release candidate checklist", () => {
         isAncestor: () => false,
       }),
     ).toThrow("pinned release candidate tooling");
+  });
+
+  it("rejects P/Q scenario catalogue skew and names compatible trusted tooling", () => {
+    const catalog = (scenarios: string[]) =>
+      JSON.stringify({
+        oldestSupportedBaseline: "2026.6.34",
+        scenarios,
+        assertionOnlyScenarios: [],
+      });
+    const pinned = "a".repeat(40);
+    const latest = "b".repeat(40);
+
+    expect(
+      validateReleaseScenarioCatalogCompatibility({
+        candidateCatalog: catalog(["base"]),
+        toolingCatalog: catalog(["base", "older-extra"]),
+        latestTrustedToolingCatalog: catalog(["base", "older-extra"]),
+        toolingSha: pinned,
+        latestTrustedToolingSha: latest,
+        workflowRef: "main",
+      }),
+    ).toEqual({ status: "passed", unsupported: [] });
+    expect(() =>
+      validateReleaseScenarioCatalogCompatibility({
+        candidateCatalog: catalog(["base", "package-publication-recovery"]),
+        toolingCatalog: catalog(["base"]),
+        latestTrustedToolingCatalog: catalog(["base", "package-publication-recovery"]),
+        toolingSha: pinned,
+        latestTrustedToolingSha: latest,
+        workflowRef: "main",
+      }),
+    ).toThrow(
+      `Pinned release tooling ${pinned} cannot consume candidate upgrade-survivor scenarios: package-publication-recovery. Trusted main tooling ${latest} supports this catalogue; rerun with --workflow-sha ${latest}.`,
+    );
+  });
+
+  it("does not recommend a trusted tooling tip that lacks the candidate catalogue", () => {
+    const catalog = (scenarios: string[]) =>
+      JSON.stringify({ oldestSupportedBaseline: null, scenarios, assertionOnlyScenarios: [] });
+    const latest = "b".repeat(40);
+
+    expect(() =>
+      validateReleaseScenarioCatalogCompatibility({
+        candidateCatalog: catalog(["base", "future-scenario"]),
+        toolingCatalog: catalog(["base"]),
+        latestTrustedToolingCatalog: catalog(["base"]),
+        toolingSha: "a".repeat(40),
+        latestTrustedToolingSha: latest,
+        workflowRef: "main",
+      }),
+    ).toThrow(
+      `Trusted main tip ${latest} also lacks support; land the catalogue consumer before qualifying this candidate.`,
+    );
   });
 
   it("validates the exact tag changelog before dispatching the release matrix", () => {

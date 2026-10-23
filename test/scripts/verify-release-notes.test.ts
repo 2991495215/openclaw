@@ -87,7 +87,80 @@ function git(cwd: string, args: string[], extraEnv: Record<string, string> = {})
   }).trim();
 }
 
+function runVerifier(
+  cwd: string,
+  {
+    base = "HEAD",
+    version = "2026.7.1",
+    target = "HEAD",
+    mainRef = target,
+    manifest,
+    extraArgs = [],
+    write = true,
+    json = true,
+    preload,
+    env = {},
+  }: {
+    base?: string | null;
+    version?: string;
+    target?: string;
+    mainRef?: string | null;
+    manifest?: string;
+    extraArgs?: string[];
+    write?: boolean;
+    json?: boolean;
+    preload?: string;
+    env?: NodeJS.ProcessEnv;
+  } = {},
+) {
+  return spawnSync(
+    process.execPath,
+    [
+      ...(preload ? ["--import", preload] : []),
+      verifier,
+      ...(base === null ? [] : ["--base", base]),
+      "--target",
+      target,
+      ...(mainRef === null ? [] : ["--main-ref", mainRef]),
+      "--version",
+      version,
+      ...(manifest ? ["--manifest", manifest] : []),
+      ...(write ? ["--write-ledger"] : []),
+      ...(json ? ["--json"] : []),
+      ...extraArgs,
+    ],
+    { cwd, encoding: "utf8", env: { ...process.env, ...env } },
+  );
+}
+
 describe("release-note verification", () => {
+  it("rejects an off-branch generation target before release-note discovery", () => {
+    const cwd = tempDirs.make("openclaw-off-branch-notes-");
+    git(cwd, ["init", "-q", "-b", "main"]);
+    git(cwd, ["config", "commit.gpgsign", "false"]);
+    writeFileSync(join(cwd, "CHANGELOG.md"), createReleaseNotesFixtureLines().join("\n"));
+    splitChangelog({ rootDir: cwd });
+    git(cwd, ["add", "."]);
+    git(cwd, ["commit", "-qm", "docs: seed changelog"]);
+    const base = git(cwd, ["rev-parse", "HEAD"]);
+    git(cwd, ["branch", "release/2026.7.1", base]);
+    writeFileSync(join(cwd, "off-branch.txt"), "wrong worktree\n");
+    git(cwd, ["add", "off-branch.txt"]);
+    git(cwd, ["commit", "-qm", "docs: prepare notes elsewhere"]);
+
+    const result = runVerifier(cwd, {
+      base,
+      target: "HEAD",
+      extraArgs: ["--release-branch", "release/2026.7.1"],
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "is not reachable from canonical release branch release/2026.7.1",
+    );
+    expect(readdirSync(join(cwd, ".git"))).not.toContain("openclaw-release-cache");
+  });
+
   it("verifies extended-stable GitHub notes with their regular-stable context", () => {
     const cwd = tempDirs.make("openclaw-extended-stable-notes-");
     const bin = join(cwd, "bin");
