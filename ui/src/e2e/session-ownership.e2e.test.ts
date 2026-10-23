@@ -287,11 +287,23 @@ suite.define(() => {
     const header = await page
       .locator("#sidebar-session-owner-title")
       .evaluate((element) => element.getBoundingClientRect().bottom);
-    const [idle, unread, running] = await Promise.all([
-      rowGeometry("idle"),
-      rowGeometry("unread"),
-      rowGeometry("running"),
-    ]);
+    // Compare rows in one browser task so ancestor motion cannot split the sample.
+    const { idle, unread, running } = await group.evaluate((element) => {
+      const geometry = (id: string) => {
+        const row = element.querySelector(`[data-session-key="agent:main:${id}"]`);
+        if (!row) {
+          throw new Error(`Missing inline-owner row: ${id}`);
+        }
+        const box = (selector: string) => row.querySelector(selector)?.getBoundingClientRect();
+        return {
+          top: row.getBoundingClientRect().top,
+          right: row.getBoundingClientRect().right,
+          text: box(".sidebar-recent-session__text"),
+          indicator: box(".sidebar-session-indicator:not(:empty)"),
+        };
+      };
+      return { idle: geometry("idle"), unread: geometry("unread"), running: geometry("running") };
+    });
     expect(idle.top - header).toBeLessThanOrEqual(12);
     expect(idle.indicator).toBeUndefined();
     for (const status of [unread, running]) {
