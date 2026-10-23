@@ -477,6 +477,7 @@ it.each([
   const restartContinue = createDeferredCore();
   let shutdownReleased: Promise<void> | undefined;
   let interruptedRunId: string | undefined;
+  let interruptedSourceRunId: string | undefined;
   let entered = 0;
   let offered: unknown;
   let admittedOperator = false;
@@ -507,7 +508,8 @@ it.each([
     if (restarting && entered === 1) {
       expect(params.toolsAllow).toEqual(["github_publish"]);
       const recorder = expectDefined(params.userTurnTranscriptRecorder, "cron transcript owner");
-      expect(await recorder.persistApproved()).toBeDefined();
+      const input = expectDefined(await recorder.persistApproved(), "persisted cron input");
+      interruptedSourceRunId = expectDefined(input.message.idempotencyKey, "cron input source id");
       interruptedRunId = params.runId;
       await persistGatewaySessionLifecycleEvent({
         agentId: "main",
@@ -763,7 +765,7 @@ it.each([
           expect(interrupted).toMatchObject({
             status: "interrupted",
             mainRestartRecovery: { cycleId: expect.any(String) },
-            restartRecoveryDeliverySourceRunId: interruptedRunId,
+            restartRecoveryDeliverySourceRunId: interruptedSourceRunId,
           });
           if (scenario !== "restart") {
             expect(interrupted.restartRecoveryTerminalRunIds).toContain(
