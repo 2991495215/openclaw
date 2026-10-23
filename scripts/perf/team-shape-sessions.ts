@@ -25,8 +25,6 @@ export type TeamShapeSessionsOptions = {
   transcriptBytes?: number;
   longTranscriptEntries?: number;
   longTranscriptSessions?: number;
-  /** Proof-only bounded rows: no thinking signatures or large payloads. */
-  boundedTranscriptEntries?: number;
 };
 
 const MESSAGE_BYTES = 64 * 1024;
@@ -61,25 +59,12 @@ export async function seedTeamShapeSessions(options: TeamShapeSessionsOptions) {
   const started = performance.now();
   const transcriptBytes = options.transcriptBytes ?? 64 * 1024 * 1024;
   const longTranscriptEntries = options.longTranscriptEntries ?? 0;
-  const boundedTranscriptEntries = options.boundedTranscriptEntries ?? 0;
-  if (
-    boundedTranscriptEntries > 0 &&
-    (boundedTranscriptEntries > 16384 ||
-      options.sessions !== 1 ||
-      transcriptBytes !== 0 ||
-      longTranscriptEntries !== 0)
-  ) {
-    throw new Error(
-      "Bounded retention proof requires one session, at most 16384 rows, and no other transcript payloads",
-    );
-  }
   const longTranscriptSessions = Math.min(options.longTranscriptSessions ?? 4, options.sessions);
   for (const [label, value] of Object.entries({
     sessions: options.sessions,
     retainedRuns: options.retainedRuns,
     transcriptBytes,
     longTranscriptEntries,
-    boundedTranscriptEntries,
     longTranscriptSessions,
     now: options.now,
   })) {
@@ -207,7 +192,6 @@ export async function seedTeamShapeSessions(options: TeamShapeSessionsOptions) {
     const target = Math.floor((cumulativeWeight / totalWeight) * transcriptBytes);
     let remaining = target - baselineTranscriptBytes;
     let longEntriesRemaining = index < longTranscriptSessions ? longTranscriptEntries : 0;
-    let boundedEntriesRemaining = boundedTranscriptEntries;
     let messageIndex = 0;
     let parentId: string | null = null;
     let events: TranscriptEvent[] = [
@@ -228,17 +212,13 @@ export async function seedTeamShapeSessions(options: TeamShapeSessionsOptions) {
       events = [];
       batchBytes = 0;
     };
-    while (remaining > 0 || longEntriesRemaining > 0 || boundedEntriesRemaining > 0) {
-      const boundedEntry = boundedEntriesRemaining > 0;
-      const longEntry = remaining === 0 && !boundedEntry;
-      const bytes = boundedEntry ? 512 : longEntry ? 1024 : Math.min(MESSAGE_BYTES, remaining);
-      let text = content
+    while (remaining > 0 || longEntriesRemaining > 0) {
+      const longEntry = remaining === 0;
+      const bytes = longEntry ? 1024 : Math.min(MESSAGE_BYTES, remaining);
+      const text = content
         .update(zeros.subarray(0, Math.ceil((bytes * 3) / 4)))
         .toString("base64")
         .slice(0, bytes);
-      if (boundedEntry) {
-        text = (`i2-retention-${index}-${messageIndex}:` + text).slice(0, bytes);
-      }
       const id = `team-shape-message-${index}-${messageIndex}`;
       const assistant = messageIndex % 2 === 1;
       const thinkingSignature =
@@ -267,16 +247,11 @@ export async function seedTeamShapeSessions(options: TeamShapeSessionsOptions) {
           timestamp: timestamps[index]!,
         },
       });
-      if (boundedEntry && Buffer.byteLength(JSON.stringify(events.at(-1))) > 1024) {
-        throw new Error("Bounded retention fixture row exceeds 1 KiB");
-      }
       parentId = id;
       messageIndex++;
       transcriptMessages++;
       logicalTranscriptBytes += bytes;
-      if (boundedEntry) {
-        boundedEntriesRemaining--;
-      } else if (longEntry) {
+      if (longEntry) {
         longEntriesRemaining--;
       } else {
         remaining -= bytes;
@@ -307,7 +282,6 @@ export async function seedTeamShapeSessions(options: TeamShapeSessionsOptions) {
     longTranscriptEntries,
     longTranscriptSessions: longTranscriptEntries > 0 ? longTranscriptSessions : 0,
     thinkingSignatureBytes,
-    boundedTranscriptEntries,
     visibilityCounts,
     ownerCount,
     participantCount,
