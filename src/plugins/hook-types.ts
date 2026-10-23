@@ -381,34 +381,30 @@ export type PluginHookInboundClaimResult = {
   reply?: ReplyPayload;
 };
 
-export type PluginHookBeforeDispatchEvent = {
-  messageId?: string;
+type PluginHookBeforeDispatchReplyContext = Pick<
+  PluginHookMessageContext,
+  | "messageId"
+  | "sessionKey"
+  | "senderId"
+  | "replyToId"
+  | "replyToIdFull"
+  | "replyToBody"
+  | "replyToSender"
+  | "replyToIsQuote"
+>;
+
+export type PluginHookBeforeDispatchEvent = PluginHookBeforeDispatchReplyContext & {
   content: string;
   body?: string;
   channel?: string;
-  sessionKey?: string;
-  senderId?: string;
-  replyToId?: string;
-  replyToIdFull?: string;
-  replyToBody?: string;
-  replyToSender?: string;
-  replyToIsQuote?: boolean;
   isGroup?: boolean;
   timestamp?: number;
 };
 
-export type PluginHookBeforeDispatchContext = {
-  messageId?: string;
+export type PluginHookBeforeDispatchContext = PluginHookBeforeDispatchReplyContext & {
   channelId?: string;
   accountId?: string;
   conversationId?: string;
-  sessionKey?: string;
-  senderId?: string;
-  replyToId?: string;
-  replyToIdFull?: string;
-  replyToBody?: string;
-  replyToSender?: string;
-  replyToIsQuote?: boolean;
 };
 
 export type PluginHookBeforeDispatchResult = {
@@ -588,22 +584,18 @@ export type PluginHookBeforeToolCallEvent = {
   derivedPaths?: readonly string[];
 };
 
-export type PluginHookAfterToolCallEvent = {
-  toolName: string;
-  params: Record<string, unknown>;
-  runId?: string;
-  toolCallId?: string;
+export type PluginHookAfterToolCallEvent = Pick<
+  PluginHookBeforeToolCallEvent,
+  "toolName" | "params" | "runId" | "toolCallId"
+> & {
   result?: unknown;
   error?: string;
   durationMs?: number;
 };
 
-export type PluginHookToolResultPersistContext = {
-  agentId?: string;
-  sessionKey?: string;
-  toolName?: string;
-  toolCallId?: string;
-};
+export type PluginHookToolResultPersistContext = Partial<
+  Pick<PluginHookToolContext, "agentId" | "sessionKey" | "toolName" | "toolCallId">
+>;
 
 export type PluginHookToolResultPersistEvent = {
   toolName?: string;
@@ -704,12 +696,7 @@ type PluginHookSubagentDeliveryTargetEvent = {
  * remains for plugin compatibility during the transition.
  */
 export type PluginHookSubagentDeliveryTargetResult = {
-  origin?: {
-    channel?: string;
-    accountId?: string;
-    to?: string;
-    threadId?: string | number;
-  };
+  origin?: NonNullable<PluginHookSubagentDeliveryTargetEvent["requesterOrigin"]>;
 };
 
 type PluginHookSubagentSpawnedEvent = PluginHookSubagentSpawnBase & {
@@ -720,21 +707,20 @@ type PluginHookSubagentSpawnedEvent = PluginHookSubagentSpawnBase & {
   resolvedProvider?: string;
 };
 
+type PluginHookSubagentProgressIdentity = Pick<
+  PluginHookSubagentSpawnedEvent,
+  "runId" | "childSessionKey" | "requester"
+>;
+
 /** Portable channel presentation signal for one background child run. */
 type PluginHookSubagentProgressEvent =
-  | {
+  | (PluginHookSubagentProgressIdentity & {
       phase: "started";
-      runId: string;
-      childSessionKey: string;
-      requester?: PluginHookSubagentRequester;
-    }
-  | {
+    })
+  | (PluginHookSubagentProgressIdentity & {
       phase: "ended";
-      runId: string;
-      childSessionKey: string;
       outcome: "ok" | "error" | "timeout" | "killed" | "unknown";
-      requester?: PluginHookSubagentRequester;
-    };
+    });
 
 type PluginHookSubagentEndedEvent = {
   targetSessionKey: string;

@@ -129,8 +129,6 @@ export type PluginHookInboundClaimContext = PluginHookMessageContext & {
   /** Resolved owner for session scopes whose canonical key does not encode an agent id. */
   agentId?: string;
   parentConversationId?: string;
-  senderId?: string;
-  messageId?: string;
   pluginBinding?: PluginConversationBinding;
 };
 

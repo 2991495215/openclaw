@@ -14,6 +14,8 @@ export function createDiagnosticsMetrics(
 ) {
   const createCounter = (name: string, description: string, unit = "1") =>
     meter.createCounter(`${metricNamePrefix}${name}`, { unit, description });
+  const createGauge = (name: string, description: string, unit = "1") =>
+    meter.createGauge(`${metricNamePrefix}${name}`, { unit, description });
   const createHistogram = (
     name: string,
     description: string,
@@ -90,39 +92,35 @@ export function createDiagnosticsMetrics(
       "gateway.ws.event_frame_bytes",
       "Cumulative counts of accepted raw Gateway event frames by byte-size upper bound",
     ),
-    gatewayWsOperatorConnectionsGauge: meter.createGauge(
-      `${metricNamePrefix}gateway.ws.operator_connections`,
-      { unit: "1", description: "Connected authenticated Gateway operator WebSockets" },
+    gatewayWsOperatorConnectionsGauge: createGauge(
+      "gateway.ws.operator_connections",
+      "Connected authenticated Gateway operator WebSockets",
     ),
-    sessionsListRetainedViewsGauge: meter.createGauge(
-      `${metricNamePrefix}sessions.list.retained_views`,
-      { unit: "1", description: "Retained session-list views across all publications" },
+    sessionsListRetainedViewsGauge: createGauge(
+      "sessions.list.retained_views",
+      "Retained session-list views across all publications",
     ),
-    sessionsListRetainedRefsGauge: meter.createGauge(
-      `${metricNamePrefix}sessions.list.retained_refs`,
-      {
-        unit: "1",
-        description: "Row references and selection entries retained by session-list views",
-      },
+    sessionsListRetainedRefsGauge: createGauge(
+      "sessions.list.retained_refs",
+      "Row references and selection entries retained by session-list views",
     ),
-    sessionsListRetainedBytesGauge: meter.createGauge(
-      `${metricNamePrefix}sessions.list.retained_bytes`,
-      { unit: "By", description: "Estimated memory retained by session-list views" },
+    sessionsListRetainedBytesGauge: createGauge(
+      "sessions.list.retained_bytes",
+      "Estimated memory retained by session-list views",
+      "By",
     ),
-    sessionEventRowsRetainedEntriesGauge: meter.createGauge(
-      `${metricNamePrefix}session_event_rows_retained_entries`,
-      {
-        unit: "1",
-        description: "Session-event field-hash vectors retained across all connections",
-      },
+    sessionEventRowsRetainedEntriesGauge: createGauge(
+      "session_event_rows_retained_entries",
+      "Session-event field-hash vectors retained across all connections",
     ),
     sessionEventRowsResetCounter: createCounter(
       "session_event_rows_reset",
       "Retained session-event wire baselines retired by cause",
     ),
-    sessionEventRowsRetainedBytesGauge: meter.createGauge(
-      `${metricNamePrefix}session_event_rows_retained_bytes`,
-      { unit: "By", description: "Estimated memory retained by session-event field-hash vectors" },
+    sessionEventRowsRetainedBytesGauge: createGauge(
+      "session_event_rows_retained_bytes",
+      "Estimated memory retained by session-event field-hash vectors",
+      "By",
     ),
     gatewayRpcOutcomesCounter: createCounter(
       "gateway.rpc.outcomes",
