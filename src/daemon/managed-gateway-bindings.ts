@@ -5,6 +5,7 @@ import { resolveGatewayProfileSuffix } from "./constants.js";
 import { listManagedOpenClawGatewayServices } from "./inspect.js";
 import type { LoadedLaunchAgentState } from "./launchd-runtime.js";
 import { resolveTaskName } from "./schtasks-layout.js";
+import { GATEWAY_SUPERVISOR_ENV_KEYS } from "./service-env-merge.js";
 import type { GatewayServiceEnv, SystemdServiceReadTarget } from "./service-types.js";
 import { resolveSystemdTemplateInstanceName } from "./systemd-scope.js";
 import { resolveSystemdServiceName } from "./systemd-service-files.js";
@@ -72,13 +73,7 @@ function hostBindingEnv(
     ...(env.HOME !== undefined ? { HOME: env.HOME } : {}),
     ...(env.USERPROFILE !== undefined ? { USERPROFILE: env.USERPROFILE } : {}),
   };
-  for (const key of [
-    "DBUS_SESSION_BUS_ADDRESS",
-    "XDG_RUNTIME_DIR",
-    "USER",
-    "LOGNAME",
-    "SUDO_USER",
-  ]) {
+  for (const key of GATEWAY_SUPERVISOR_ENV_KEYS) {
     if (Object.hasOwn(env, key)) {
       host[key] = env[key];
     }

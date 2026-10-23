@@ -5,6 +5,14 @@ import { mergeProcessEnv, resolveEnvironmentValue } from "../infra/process-env.j
 import { resolveRuntimeScriptPosition } from "./runtime-binary.js";
 import type { GatewayServiceCommandConfig, GatewayServiceEnv } from "./service-types.js";
 
+export const GATEWAY_SUPERVISOR_ENV_KEYS = [
+  "DBUS_SESSION_BUS_ADDRESS",
+  "XDG_RUNTIME_DIR",
+  "USER",
+  "LOGNAME",
+  "SUDO_USER",
+] as const;
+
 export function resolveWindowsServiceCommandProfile(
   command: Pick<GatewayServiceCommandConfig, "programArguments" | "environment">,
 ):
@@ -73,13 +81,7 @@ export function mergeGatewayServiceEnv(
     }
   }
   // Payload environment cannot redirect the caller's supervisor bus or account.
-  for (const key of [
-    "DBUS_SESSION_BUS_ADDRESS",
-    "XDG_RUNTIME_DIR",
-    "USER",
-    "LOGNAME",
-    "SUDO_USER",
-  ]) {
+  for (const key of GATEWAY_SUPERVISOR_ENV_KEYS) {
     if (Object.hasOwn(callerEnv, key)) {
       merged[key] = callerEnv[key];
     } else {
