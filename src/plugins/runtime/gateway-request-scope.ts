@@ -38,6 +38,15 @@ type PluginRuntimePluginScope = {
   pluginTrustedOfficialInstall?: boolean;
 };
 
+// Native async resources retain this resolver; do not capture the execution callback's frame.
+function createAgentInputRecoveryResolver(gatewayScope: PluginRuntimeGatewayRequestScope) {
+  return () =>
+    (gatewayScope.resolveGatewayContext
+      ? gatewayScope.resolveGatewayContext()
+      : gatewayScope.context
+    )?.inputRecovery;
+}
+
 function runWithPluginGatewayScope<T>(
   gatewayScope: PluginRuntimeGatewayRequestScope,
   run: () => T,
@@ -45,25 +54,19 @@ function runWithPluginGatewayScope<T>(
 ): T {
   const current = getPluginExecutionFrame();
   const runtime = getPluginRuntimeExecutionFrame(current);
-  return withAgentInputRecoveryContext(
-    () =>
-      (gatewayScope.resolveGatewayContext
-        ? gatewayScope.resolveGatewayContext()
-        : gatewayScope.context
-      )?.inputRecovery,
-    () =>
-      runWithPluginExecutionFrame(
-        runtime?.gatewayScope === gatewayScope && runtime.invocation === invocation
-          ? runtime
-          : new PluginRuntimeExecutionFrame(
-              // Reuse prepared frame facts; the mutable Gateway view remains call-local.
-              current ?? {},
-              gatewayScope,
-              runtime?.generationRegistry,
-              invocation,
-            ),
-        run,
-      ),
+  return withAgentInputRecoveryContext(createAgentInputRecoveryResolver(gatewayScope), () =>
+    runWithPluginExecutionFrame(
+      runtime?.gatewayScope === gatewayScope && runtime.invocation === invocation
+        ? runtime
+        : new PluginRuntimeExecutionFrame(
+            // Reuse prepared frame facts; the mutable Gateway view remains call-local.
+            current ?? {},
+            gatewayScope,
+            runtime?.generationRegistry,
+            invocation,
+          ),
+      run,
+    ),
   );
 }
 

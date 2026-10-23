@@ -183,13 +183,14 @@ describe("exec completion WebChat publication", () => {
         gatewayReplyMock.mockImplementation((ctx, options, config) =>
           getReplyFromConfig(ctx, options, withFullRuntimeReplyConfig(config ?? cfg)),
         );
+        const expectedTarget = await captureSessionEventTargetForHost("main", sessionKey);
         receipt = enqueueSessionEventForHost(
           `Exec completed (webchat-proof, code 0) :: ${marker}`,
           {
             agentId: "main",
             sessionKey,
             source: "exec",
-            expectedTarget: await captureSessionEventTargetForHost("main", sessionKey),
+            expectedTarget,
             abortSignal: signal,
           },
         );
