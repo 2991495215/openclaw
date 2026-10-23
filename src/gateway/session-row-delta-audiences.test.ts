@@ -191,7 +191,7 @@ it("preserves shared ancestor references across staggered roster reads and first
   });
 });
 
-it("separates equal versions with different contents when reusing recipient encodings", async () => {
+it("shares empty legacy histories while separating unequal row-delta histories", async () => {
   await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
     const cfg = { agents: { entries: { main: {} } } };
     const profile = ensureProfileForEmail("row-delta-audiences@example.test");
@@ -262,6 +262,30 @@ it("separates equal versions with different contents when reusing recipient enco
         }
       }
       expect(expected).toMatchObject({ session: { label: "After" } });
+      const late = createSessionRowEventPeer(profile, "late-legacy", 1);
+      connection.clients.add(late.client);
+      connection.sessionEventSubscribers.subscribe(late.client.connId);
+      const legacy = peers[4]!;
+      const previousSends = legacy.send.mock.calls.length;
+      const stringify = JSON.stringify;
+      let payloadEncodings = 0;
+      const encoding = vi.spyOn(JSON, "stringify").mockImplementation((...args) => {
+        const value: unknown = args[0];
+        if (isRecord(value) && isRecord(value.payload) && value.payload.sessionKey === key) {
+          payloadEncodings++;
+        }
+        return stringify(...args);
+      });
+      try {
+        publish([legacy.client.connId, late.client.connId]);
+      } finally {
+        encoding.mockRestore();
+      }
+      expect(legacy.send).toHaveBeenCalledTimes(previousSends + 1);
+      expect(late.send).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(late.send.mock.lastCall![0]).payload).toEqual(expected);
+      // Staggered legacy admission leaves no retained state for an ancestor-free row.
+      expect(payloadEncodings).toBe(1);
     } finally {
       detach();
       await connection.mentionInbox.dispose();

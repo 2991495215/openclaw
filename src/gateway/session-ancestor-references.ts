@@ -305,7 +305,11 @@ export class ConnectionSessionRows {
         this.#delete(this.#rows.keys().next().value!);
       }
     }
-    // Serialization can reenter delivery; a changed history must not join this cohort.
-    this.#history = unchanged ? plan.after : {};
+    if (this.#version === 0 && this.#rows.size === 0) {
+      this.#history = EMPTY_HISTORY;
+    } else {
+      // Serialization can reenter delivery; changed retained state must stay separate.
+      this.#history = unchanged ? plan.after : {};
+    }
   }
 }
