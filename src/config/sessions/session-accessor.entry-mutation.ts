@@ -486,7 +486,6 @@ export async function markSessionAbortTarget(params: {
   > | null;
   resolveAbortCutoff?: (context: SessionAbortTargetContext) => SessionAbortTargetCutoff | undefined;
   scope: SessionAccessScope;
-  now?: () => number;
 }): Promise<SessionAbortTargetResult | null> {
   const resolution: { target: SessionAbortTargetResult | null } = { target: null };
   try {
@@ -511,7 +510,7 @@ export async function markSessionAbortTarget(params: {
         const entry = {
           ...currentEntry,
           abortedLastRun: true,
-          updatedAt: params.now?.() ?? Date.now(),
+          updatedAt: Date.now(),
         };
         const cutoff = params.resolveAbortCutoff?.({ entry: { ...currentEntry }, sessionKey });
         entry.abortCutoffMessageSid = cutoff?.messageSid;

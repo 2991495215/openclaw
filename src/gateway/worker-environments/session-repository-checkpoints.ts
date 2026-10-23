@@ -399,9 +399,8 @@ export async function forkSessionRepositoryWorkspace(params: {
   agentId: string;
   sessionKey: string;
   assertCurrent: () => void;
-  store?: SessionRepositoryWorkspaceStore;
 }): Promise<SessionRepositoryWorkspaceRecord> {
-  const store = params.store ?? getSessionRepositoryWorkspaceStore();
+  const store = getSessionRepositoryWorkspaceStore();
   const sourceContext = captureOpenClawStateWorkerContext({ path: store.path });
   const assertCurrent = () => {
     sourceContext.admission.assertCurrent();

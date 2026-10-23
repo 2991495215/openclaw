@@ -237,7 +237,6 @@ describe("runDoctorHealthRepairs", () => {
     const result = await runDoctorHealthRepairs(ctx({}), {
       checks,
       dryRun: true,
-      diff: true,
     });
 
     expect(result.config).toEqual({});
@@ -246,6 +245,6 @@ describe("runDoctorHealthRepairs", () => {
     expect(result.effects).toMatchObject([{ kind: "config", action: "would-set" }]);
 
     expect(detectCalls).toBe(1);
-    expect(repairContexts[0]).toMatchObject({ dryRun: true, diff: true });
+    expect(repairContexts[0]).toMatchObject({ dryRun: true, diff: false });
   });
 });

@@ -15,7 +15,6 @@ import type {
 interface DoctorRepairRunOptions {
   readonly checks?: readonly DoctorHealthCheck[];
   readonly dryRun?: boolean;
-  readonly diff?: boolean;
   readonly progress?: boolean;
 }
 
@@ -84,10 +83,7 @@ export async function runDoctorHealthRepairs(
     try {
       const repair = check.repair.bind(check);
       const result = await phase("repair", () =>
-        repair(
-          { ...checkContext, dryRun: opts.dryRun === true, diff: opts.diff === true },
-          checkFindings,
-        ),
+        repair({ ...checkContext, dryRun: opts.dryRun === true, diff: false }, checkFindings),
       );
       outcome.warnings.push(...(result.warnings ?? []));
       outcome.diffs.push(...(result.diffs ?? []));

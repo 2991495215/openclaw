@@ -1260,9 +1260,9 @@ describe("host-hook fixture plugin contract", () => {
   it("reports duplicate next-turn injections as not newly enqueued", async () => {
     await withHostHookState(async ({ storePath, tempConfig }) => {
       await seedSession(storePath);
-      const now = Date.now();
+      using clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
 
-      const enqueue = (text: string, timestamp: number) =>
+      const enqueue = (text: string) =>
         enqueuePluginNextTurnInjection({
           cfg: tempConfig,
           pluginId: "approval-fixture",
@@ -1272,10 +1272,10 @@ describe("host-hook fixture plugin contract", () => {
             placement: "prepend_context",
             idempotencyKey: "approval:resume",
           },
-          now: timestamp,
         });
-      const first = await enqueue("resume approval workflow", now);
-      const duplicate = await enqueue("resume approval workflow again", now + 1);
+      const first = await enqueue("resume approval workflow");
+      clock.mockReturnValue(Date.now() + 1);
+      const duplicate = await enqueue("resume approval workflow again");
 
       expect(first.enqueued).toBe(true);
       expect(duplicate).toEqual({

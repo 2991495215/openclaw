@@ -10,7 +10,7 @@ import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { StateDatabaseReadAdmissionInvalidatedError } from "../../state/openclaw-state-db-async-lifecycle.js";
 import { closeOpenClawStateDatabaseByPathAsync } from "../../state/openclaw-state-db-cache.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
-import { createSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
+import * as repositoryWorkspaces from "../../state/session-repository-workspaces.js";
 import * as publicationSnapshot from "../github-repository-publication-snapshot.js";
 import {
   forkSessionRepositoryWorkspace as forkWorkspace,
@@ -76,7 +76,8 @@ async function fixture(editContent?: string) {
   );
   roots.push(root);
   const database = openOpenClawStateDatabase({ path: path.join(root, "openclaw.sqlite") });
-  const store = createSessionRepositoryWorkspaceStore({ path: database.path });
+  const store = repositoryWorkspaces.createSessionRepositoryWorkspaceStore({ path: database.path });
+  vi.spyOn(repositoryWorkspaces, "getSessionRepositoryWorkspaceStore").mockReturnValue(store);
   const remote = path.join(root, "remote");
   await fs.mkdir(remote);
   await fs.writeFile(path.join(remote, "keep.txt"), "upstream\n");
@@ -418,7 +419,9 @@ it("recovers a published artifact after the acceptance transaction fails, withou
   acceptance.mockRestore();
   await prepared.discard();
   await closeOpenClawStateDatabaseByPathAsync(database.path);
-  const reopened = createSessionRepositoryWorkspaceStore({ path: database.path });
+  const reopened = repositoryWorkspaces.createSessionRepositoryWorkspaceStore({
+    path: database.path,
+  });
   const recovery = {
     store: reopened,
     workspaceId: workspace.workspaceId,
@@ -472,7 +475,6 @@ it.each(["caller", "database"] as const)(
       return created;
     });
     const fork = forkWorkspace({
-      store,
       sourceWorkspaceId: workspace.workspaceId,
       ...targetOwner,
       assertCurrent: guard.assertCurrent,
@@ -517,7 +519,6 @@ it.each(["healthy", "corrupt-companion", "invalid-blob"])(
     let fork = workspace;
     if (!invalid) {
       fork = await forkWorkspace({
-        store,
         sourceWorkspaceId: workspace.workspaceId,
         agentId: "main",
         sessionKey: "agent:main:fork",

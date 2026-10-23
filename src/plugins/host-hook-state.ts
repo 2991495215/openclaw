@@ -66,7 +66,6 @@ export async function enqueuePluginNextTurnInjection(params: {
   pluginId: string;
   pluginName?: string;
   injection: PluginNextTurnInjection;
-  now?: number;
 }): Promise<PluginNextTurnInjectionEnqueueResult> {
   const sessionKey = normalizeOptionalString(params.injection.sessionKey) ?? "";
   if (!sessionKey) {
@@ -89,7 +88,7 @@ export async function enqueuePluginNextTurnInjection(params: {
   ) {
     return { enqueued: false, id: "", sessionKey };
   }
-  const now = params.now ?? Date.now();
+  const now = Date.now();
   const injection = { ...params.injection };
   const record: PluginNextTurnInjectionRecord = {
     id: injection.idempotencyKey?.trim() || randomUUID(),

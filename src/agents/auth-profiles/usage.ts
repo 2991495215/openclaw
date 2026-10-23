@@ -415,9 +415,8 @@ export async function maybeReprobeWhamBlockedProfiles(params: {
   agentDir?: string;
   cfg?: OpenClawConfig;
   forModel?: string;
-  now?: number;
 }): Promise<WhamReprobeResult> {
-  const now = params.now ?? Date.now();
+  const now = Date.now();
   const results = await Promise.allSettled(
     params.profileIds.map(async (profileId) => {
       const shouldProbe = shouldHalfOpenProbeWhamBlock({ ...params, profileId, now });

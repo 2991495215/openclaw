@@ -586,7 +586,6 @@ describe("markAuthProfileFailure — WHAM-aware Codex cooldowns", () => {
         store,
         profileIds: [codexId],
         forModel: "gpt-5.5",
-        now,
       });
       await vi.waitFor(() => {
         expect(store.usageStats?.[codexId]?.blockedUntil).toBe(now + 3_600_000);
@@ -715,7 +714,9 @@ describe("markAuthProfileFailure — WHAM-aware Codex cooldowns", () => {
         blockedReason: "subscription_limit" as const,
       };
       store.usageStats = { [codexId]: { ...block } };
-      await maybeReprobeWhamBlockedProfiles({ store, profileIds: [codexId], now });
+      await atTime(now, async () => {
+        await maybeReprobeWhamBlockedProfiles({ store, profileIds: [codexId] });
+      });
       expect(fetchMock).not.toHaveBeenCalled();
       expect(store.usageStats[codexId]).toEqual(block);
     },
