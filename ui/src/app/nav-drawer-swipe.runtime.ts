@@ -6,13 +6,6 @@ const OPEN_RATIO = 0.15;
 const LOCK_DISTANCE_PX = 7;
 const DIRECTION_RATIO = 1.25;
 
-type Swipe = {
-  identifier: number;
-  startX: number;
-  startY: number;
-  lockedHorizontal: boolean;
-};
-
 export type NavDrawerHost = Pick<HTMLElement, "isConnected"> & {
   readonly element: HTMLElement;
   readonly navDrawerElement?: HTMLElement;
@@ -21,7 +14,12 @@ export type NavDrawerHost = Pick<HTMLElement, "isConnected"> & {
 };
 
 export class NavDrawerSwipeOwner {
-  private swipe: Swipe | null = null;
+  private swipe: {
+    identifier: number;
+    startX: number;
+    startY: number;
+    lockedHorizontal: boolean;
+  } | null = null;
   private stops: (() => void)[] = [];
 
   constructor(

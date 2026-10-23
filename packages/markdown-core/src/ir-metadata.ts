@@ -79,7 +79,7 @@ export type MarkdownListItemMarker = {
   end?: number;
 };
 
-type MarkdownListItemMetadata = {
+export type MarkdownListItemWithMetadata = MarkdownListItemMarker & {
   /** Rendered content owned by this item after its native marker. */
   contentStart?: number;
   contentEnd?: number;
@@ -92,8 +92,6 @@ type MarkdownListItemMetadata = {
   sourceStartLine?: number;
   sourceEndLine?: number;
 };
-
-export type MarkdownListItemWithMetadata = MarkdownListItemMarker & MarkdownListItemMetadata;
 
 export type MarkdownBlockSpan = {
   kind: "blockquote" | "code_block" | "heading" | "thematic_break";

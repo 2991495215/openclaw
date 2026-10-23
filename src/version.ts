@@ -137,7 +137,6 @@ export type RuntimeVersionEnv = {
 };
 
 const RUNTIME_SERVICE_VERSION_FALLBACK = "unknown";
-type RuntimeVersionPreference = "env-first" | "runtime-first";
 
 export function resolveUsableRuntimeVersion(version: string | undefined): string | undefined {
   const trimmed = normalizeOptionalString(version);
@@ -153,7 +152,7 @@ function resolveVersionFromRuntimeSources(params: {
   env: RuntimeVersionEnv;
   runtimeVersion: string | undefined;
   fallback: string;
-  preference: RuntimeVersionPreference;
+  preference: "env-first" | "runtime-first";
 }): string {
   const preferredCandidates =
     params.preference === "env-first"

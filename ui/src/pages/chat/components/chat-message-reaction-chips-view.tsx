@@ -25,9 +25,8 @@ function reactorsLabel(reaction: MessageReactionSummary, userId: string | null |
   });
 }
 
-type ReactionGroup = Parameters<typeof messageReactionOptions>[0];
 export function GroupMessageReactions(props: {
-  group: ReactionGroup;
+  group: Parameters<typeof messageReactionOptions>[0];
   actionDetails: { reactionMessageId?: string } | null | undefined;
   isStreaming: boolean;
   options: MessageReactionOptions;

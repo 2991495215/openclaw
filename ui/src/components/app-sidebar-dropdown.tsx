@@ -12,14 +12,6 @@ import {
   type MenuItem,
 } from "./solid/menu.tsx";
 
-type SidebarMenuPosition = {
-  x: number;
-  y?: number;
-  top?: number;
-  bottom?: number;
-  placement?: "right-start" | "right-end";
-};
-
 export function renderSidebarMenuAction(
   value: string,
   label: string,
@@ -44,7 +36,13 @@ export function renderSidebarMenuAction(
 
 export type SidebarDropdownProps = {
   controls?: MenuControls;
-  position: SidebarMenuPosition;
+  position: {
+    x: number;
+    y?: number;
+    top?: number;
+    bottom?: number;
+    placement?: "right-start" | "right-end";
+  };
   class: JSX.ClassValue;
   label: string;
   anchor?: HTMLElement;

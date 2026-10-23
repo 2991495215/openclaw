@@ -39,17 +39,6 @@ export type SkillInvocationPolicy = {
   disableModelInvocation: boolean;
 };
 
-type SkillCommandDispatchSpec = {
-  kind: "tool";
-  /** Name of the tool to invoke (AnyAgentTool.name). */
-  toolName: string;
-  /**
-   * How to forward user-provided args to the tool.
-   * - raw: forward the raw args string (no core parsing).
-   */
-  argMode?: "raw";
-};
-
 export type SkillTelemetrySource = "bundled" | "unknown" | "workspace";
 
 export type SkillUsagePath = {
@@ -83,7 +72,16 @@ export type SkillCommandSpec = {
   /** Localized descriptions for native command surfaces that support them. */
   descriptionLocalizations?: Record<string, string>;
   /** Optional deterministic dispatch behavior for this command. */
-  dispatch?: SkillCommandDispatchSpec;
+  dispatch?: {
+    kind: "tool";
+    /** Name of the tool to invoke (AnyAgentTool.name). */
+    toolName: string;
+    /**
+     * How to forward user-provided args to the tool.
+     * - raw: forward the raw args string (no core parsing).
+     */
+    argMode?: "raw";
+  };
   /** Native prompt template used by Claude-bundle command markdown files. */
   promptTemplate?: string;
   /** Source markdown path for bundle-backed commands. */
@@ -97,18 +95,16 @@ export type SkillsInstallPreferences = {
 
 export type ParsedSkillFrontmatter = Record<string, string>;
 
-type SkillExposure = {
-  includeInRuntimeRegistry: boolean;
-  includeInAvailableSkillsPrompt: boolean;
-  userInvocable: boolean;
-};
-
 export type SkillEntry = {
   skill: Skill;
   frontmatter: ParsedSkillFrontmatter;
   metadata?: OpenClawSkillMetadata;
   invocation?: SkillInvocationPolicy;
-  exposure?: SkillExposure;
+  exposure?: {
+    includeInRuntimeRegistry: boolean;
+    includeInAvailableSkillsPrompt: boolean;
+    userInvocable: boolean;
+  };
   syncSourceDir?: string;
   syncDirName?: string;
   disableCommandDispatch?: boolean;

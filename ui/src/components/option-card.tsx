@@ -4,17 +4,15 @@ import { t } from "../lib/reactive/i18n.ts";
 import { createPendingFocus } from "../lib/reactive/pending-focus.ts";
 import "../styles/option-card.css";
 
-type OptionCardOption = {
-  value: string;
-  label: string;
-  description?: string;
-  recommended?: boolean;
-};
-
 type OptionCardProps = {
   header?: string;
   question: string;
-  options: readonly OptionCardOption[];
+  options: readonly {
+    value: string;
+    label: string;
+    description?: string;
+    recommended?: boolean;
+  }[];
   disabled?: boolean;
   onSelect?: (value: string) => void;
   onSkip?: () => void;

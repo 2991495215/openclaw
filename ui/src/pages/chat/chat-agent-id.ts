@@ -10,11 +10,6 @@ import {
 } from "../../lib/sessions/session-key.ts";
 import type { ChatState } from "./chat-state-contract.ts";
 
-type ChatAgentIdentityState = ChatState & {
-  assistantName: string;
-  assistantAvatar: string | null;
-};
-
 export function resolveChatAgentId(state: ChatState) {
   return normalizeAgentId(
     parseAgentSessionKey(state.sessionKey)?.agentId ??
@@ -24,7 +19,10 @@ export function resolveChatAgentId(state: ChatState) {
 }
 
 export function resolveChatAgentIdentity(
-  state: ChatAgentIdentityState,
+  state: ChatState & {
+    assistantName: string;
+    assistantAvatar: string | null;
+  },
   context: Pick<ApplicationContext, "agents" | "agentIdentity">,
 ): AgentIdentity & { name: string } {
   const id = resolveChatAgentId(state);

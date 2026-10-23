@@ -4,12 +4,9 @@ import type { MessageContentItem } from "../../../lib/chat/chat-types.ts";
 
 registerChatComposerEnglish();
 
-type AttachmentFailureCode = Extract<
-  MessageContentItem,
-  { type: "attachment_error" }
->["attachment"]["code"];
-
-export function attachmentFailureReason(code: AttachmentFailureCode): string {
+export function attachmentFailureReason(
+  code: Extract<MessageContentItem, { type: "attachment_error" }>["attachment"]["code"],
+): string {
   return code === "file-not-found"
     ? t("chat.attachments.failureFileNotFound")
     : code === "unsupported-format"

@@ -1,15 +1,13 @@
 const SESSION_EVENT_REFRESH_DEBOUNCE_MS = 5_000;
 
-type SessionEventRefreshCoordinatorOptions = {
-  active: boolean;
-  refresh: (isCurrent: () => boolean) => Promise<void>;
-};
-
 /** Canonical bounded event refresh policy shared by session-list owners. */
 export function createSessionEventRefreshCoordinator({
   active: initialActive,
   refresh,
-}: SessionEventRefreshCoordinatorOptions) {
+}: {
+  active: boolean;
+  refresh: (isCurrent: () => boolean) => Promise<void>;
+}) {
   let active = initialActive;
   let timer: ReturnType<typeof setTimeout> | 0 = 0;
   let nextAllowed = 0;

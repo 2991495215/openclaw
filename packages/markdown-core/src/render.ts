@@ -23,8 +23,6 @@ type RenderAnnotationMarker = {
   suppressNestedFormatting?: boolean;
 };
 
-type RenderAnnotationMap = Partial<Record<MarkdownAnnotationSpan["type"], RenderAnnotationMarker>>;
-
 /** Link wrapper boundaries after a renderer has accepted or rewritten a link span. */
 export type RenderLink = {
   start: number;
@@ -33,16 +31,14 @@ export type RenderLink = {
   close: string;
 };
 
-type MarkdownLinkOrigin = "authored" | "linkify";
-
 export type RenderOptions = {
   styleMarkers: RenderStyleMap;
-  annotationMarkers?: RenderAnnotationMap;
+  annotationMarkers?: Partial<Record<MarkdownAnnotationSpan["type"], RenderAnnotationMarker>>;
   escapeText: (text: string) => string;
   buildLink?: (
     link: MarkdownLinkSpan,
     text: string,
-    context: { origin: MarkdownLinkOrigin },
+    context: { origin: "authored" | "linkify" },
   ) => RenderLink | null;
 };
 
@@ -263,12 +259,6 @@ export function renderMarkdownWithMarkers(
   const points = [...boundaries].toSorted((a, b) => a - b);
   // Links and styles share one stack so equal-end spans close in exact reverse open order.
   const stack: { open: string; close: string; end: number }[] = [];
-  type OpeningItem = {
-    end: number;
-    open: string;
-    close: string;
-    rank: number;
-  };
   let out = "";
 
   for (const [i, pos] of points.entries()) {
@@ -288,7 +278,12 @@ export function renderMarkdownWithMarkers(
       }
     }
 
-    const openingItems: OpeningItem[] = [];
+    const openingItems: {
+      end: number;
+      open: string;
+      close: string;
+      rank: number;
+    }[] = [];
 
     for (const span of annotationStarts.get(pos) ?? []) {
       const marker = annotationMarkers[span.type];

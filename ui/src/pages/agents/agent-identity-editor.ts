@@ -14,16 +14,15 @@ import {
 import type { RetainedIdentitySave } from "./selection-drafts.ts";
 
 type IdentityOwners = Pick<ApplicationContext, "agents" | "agentIdentity">;
-type IdentityHost = Parameters<typeof saveIdentityDraft>[0]["host"] & {
-  client: GatewayBrowserClient | null;
-  agentsSelectedId: string | null;
-  requestGeneration: number;
-};
 
 /** Coordinates editor work; identity-actions retains mutation authority and draft settlement. */
 export function createAgentIdentityEditor(
   context: IdentityOwners & Pick<ApplicationContext, "config" | "runtimeConfig">,
-  state: IdentityHost,
+  state: Parameters<typeof saveIdentityDraft>[0]["host"] & {
+    client: GatewayBrowserClient | null;
+    agentsSelectedId: string | null;
+    requestGeneration: number;
+  },
   options: {
     snapshot: () => ApplicationGatewaySnapshot | null;
     saves: () => Map<string, RetainedIdentitySave>;

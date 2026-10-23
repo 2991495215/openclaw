@@ -3,7 +3,6 @@ import { isAbortError } from "../../infra/abort-signal.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { buildTrajectoryRunMetadata } from "../../trajectory/metadata.js";
 import { createTrajectoryRuntimeRecorder } from "../../trajectory/runtime.js";
-import type { CliOutput } from "../cli-output-contracts.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent-runner.js";
 import { isFailoverError, isSignalTimeoutReason } from "../failover-error.js";
 import { runAgentCleanupStep } from "../run-cleanup-timeout.js";
@@ -32,18 +31,6 @@ export function recordCliTrajectoryEvent(
       `cli trajectory event failed: type=${type} error=${formatErrorMessage(error)}`,
     );
   }
-}
-
-export function recordCliModelCompleted(
-  recorder: CliTrajectoryEventRecorder,
-  output: CliOutput,
-): void {
-  recordCliTrajectoryEvent(recorder, "model.completed", {
-    assistantTexts: output.text ? [output.text] : [],
-    usage: output.diagnosticUsage ?? output.usage,
-    finalPromptText: output.finalPromptText,
-    stopReason: output.terminalInterruption?.reason ?? (output.yielded ? "end_turn" : "completed"),
-  });
 }
 
 async function prepareCliTrajectory(

@@ -16,16 +16,14 @@ registerChatProviderReviewEnglish();
 
 export type ChatProviderReview = NonNullable<GatewaySessionRow["providerReview"]>;
 
-type ReviewHost = UiSessionDefaultsHost & {
-  sessionKey: string;
-  sessions?: Partial<SessionCapability>;
-  sessionsResult?: SessionsListResult | null;
-  sessionsResultAgentId?: string | null;
-};
-
 /** Read the shared row owner's latest facts, including a pane's independently observed row. */
 export function chatProviderReviewRow(
-  host: ReviewHost,
+  host: UiSessionDefaultsHost & {
+    sessionKey: string;
+    sessions?: Partial<SessionCapability>;
+    sessionsResult?: SessionsListResult | null;
+    sessionsResultAgentId?: string | null;
+  },
   sessionKey = host.sessionKey,
   agentId = resolveUiSelectedSessionAgentId(host),
 ): GatewaySessionRow | undefined {

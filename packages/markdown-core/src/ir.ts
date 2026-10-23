@@ -47,20 +47,6 @@ import type { MarkdownTableMode } from "./types.js";
 export { sliceMarkdownIR } from "./ir-slice.js";
 export type { MarkdownLinkSpan, MarkdownStyle, MarkdownStyleSpan } from "./ir-spans.js";
 
-type ListState = {
-  type: "bullet" | "ordered";
-  index: number;
-  openLevel: number;
-  id: number;
-  parentId?: number;
-};
-
-type LinkState = {
-  href: string;
-  labelStart: number;
-  autoLinked: boolean;
-};
-
 const INLINE_STYLE_BY_TOKEN = new Map<string, MarkdownStyle>([
   ["underline_open", "underline"],
   ["underline_close", "underline"],
@@ -86,7 +72,13 @@ const HEADING_STYLE_BY_TAG = new Map<string, MarkdownStyle>([
 type RenderEnv = {
   assistantTranscriptRoleHeaders?: boolean;
   assistantTranscriptRolePreserveLinks?: boolean;
-  listStack: ListState[];
+  listStack: {
+    type: "bullet" | "ordered";
+    index: number;
+    openLevel: number;
+    id: number;
+    parentId?: number;
+  }[];
   tableSourceColumns?: Map<number, number>;
 };
 
@@ -149,17 +141,19 @@ export function getMarkdownTableSource(table: MarkdownTableWithSource) {
   return table.source;
 }
 
-type OpenStyle = {
-  style: MarkdownStyle;
-  start: number;
-};
-
 type RenderTarget = {
   text: string;
   styles: MarkdownStyleSpan[];
-  openStyles: OpenStyle[];
+  openStyles: {
+    style: MarkdownStyle;
+    start: number;
+  }[];
   links: MarkdownLinkSpan[];
-  linkStack: LinkState[];
+  linkStack: {
+    href: string;
+    labelStart: number;
+    autoLinked: boolean;
+  }[];
   annotations: MarkdownAnnotationSpan[];
 };
 

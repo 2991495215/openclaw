@@ -36,15 +36,13 @@ function manualProviderMethod(provider: ManualProvider): string | undefined {
   return method === manualProviderName(provider) ? undefined : method;
 }
 
-type ManualProviderPickerProps = Parameters<typeof renderProviderIcon>[0] & {
-  manualProviderId: string;
-  actionsDisabled: boolean;
-  onManualProviderChange: (providerId: string) => void;
-  nextTabTarget?: () => HTMLInputElement | undefined;
-};
-
 export function ManualProviderPicker(
-  props: ManualProviderPickerProps & {
+  props: Parameters<typeof renderProviderIcon>[0] & {
+    manualProviderId: string;
+    actionsDisabled: boolean;
+    onManualProviderChange: (providerId: string) => void;
+    nextTabTarget?: () => HTMLInputElement | undefined;
+  } & {
     result: Pick<SystemAgentSetupDetectResult, "manualProviders">;
     provider: ManualProvider | undefined;
   },

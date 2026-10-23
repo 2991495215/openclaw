@@ -54,7 +54,7 @@ import { cliBackendLog, CLI_BACKEND_LOG_OUTPUT_ENV } from "./log.js";
 import { createClaudeCliModelCallDiagnostics } from "./model-call-diagnostics.js";
 import { composeCliPromptContext } from "./prompt-context.js";
 import { resolveCliNoOutputTimeoutMs, resolveCliRunTimeoutOverrideMs } from "./reliability.js";
-import { recordCliModelCompleted, recordCliTrajectoryEvent } from "./trajectory.js";
+import { recordCliTrajectoryEvent } from "./trajectory.js";
 import type { PreparedCliRunContext } from "./types.js";
 
 function exactToolAvailabilityError(params: {
@@ -652,7 +652,14 @@ export async function executePreparedCliRun(
   // a rejected turn would be exported as completed.
   diagnostics?.emitCompleted(completedOutput);
   if (context.trajectoryRecorder) {
-    recordCliModelCompleted(context.trajectoryRecorder, completedOutput);
+    recordCliTrajectoryEvent(context.trajectoryRecorder, "model.completed", {
+      assistantTexts: completedOutput.text ? [completedOutput.text] : [],
+      usage: completedOutput.diagnosticUsage ?? completedOutput.usage,
+      finalPromptText: completedOutput.finalPromptText,
+      stopReason:
+        completedOutput.terminalInterruption?.reason ??
+        (completedOutput.yielded ? "end_turn" : "completed"),
+    });
   }
   return completedOutput;
 }

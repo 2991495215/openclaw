@@ -4,12 +4,6 @@ import type { CatalogBackingSessionDisplay } from "./app-sidebar-session-catalog
 import type { SidebarRecentSession, SidebarToolActivity } from "./app-sidebar-session-types.ts";
 import { sessionAttentionSubtitle } from "./session-attention-presentation.ts";
 
-type SidebarSessionSubtitle = {
-  subtitle: string | undefined;
-  narration: string | undefined;
-  toolName?: string;
-};
-
 export function resolveSidebarSessionRowSubtitle(
   host: {
     readonly sidebarAgentsMode?: "chip" | "roster";
@@ -59,7 +53,11 @@ export function resolveSidebarSessionSubtitle(params: {
     SessionObserverDigest,
     "agentId" | "runId" | "headline" | "health" | "updatedAt" | "revision"
   > | null;
-}): SidebarSessionSubtitle {
+}): {
+  subtitle: string | undefined;
+  narration: string | undefined;
+  toolName?: string;
+} {
   const { session } = params;
   // Questions and approvals use the leading attention icon tooltip; failures use
   // the session hovercard. None should grow a second line or fall back to

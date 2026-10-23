@@ -19,14 +19,12 @@ export type WebKitHostMessages = {
       };
 };
 
-type WebKitMessageHandler<Message> = {
-  postMessage(message: Message): void;
-};
-
 type WebKitHostWindow = Window & {
   webkit?: {
     messageHandlers?: {
-      [Name in keyof WebKitHostMessages]?: WebKitMessageHandler<WebKitHostMessages[Name]>;
+      [Name in keyof WebKitHostMessages]?: {
+        postMessage(message: WebKitHostMessages[Name]): void;
+      };
     };
   };
 };
