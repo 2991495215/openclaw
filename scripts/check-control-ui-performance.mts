@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Person-card detail split: 1,346,936 B -> 1,344,848 B Chat.
-  // Preserve the incoming Chat cap's relative headroom against the matched main build.
-  chatBootJsGzipBytes: 1_396_570,
-  newBootJsGzipBytes: 833_875,
+  // Person-card detail split: 1,345,509 B -> 1,343,463 B Chat.
+  // Preserve the incoming Chat cap's relative headroom against the matched d335 build.
+  chatBootJsGzipBytes: 1_394_095,
+  newBootJsGzipBytes: 831_382,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
