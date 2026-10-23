@@ -105,7 +105,10 @@ suite.define(() => {
             index === 0 ? sessionKey : `agent:main:fixture-${index}`,
             index === 0 ? label : `Synthetic session ${index}`,
             1_800_000_000_000 - index,
-            Object.assign({}, shared, { pinned: index > 0 && index <= 30 }),
+            Object.assign({}, shared, {
+              ...(index === 0 ? { visibility: "read-only" as const } : {}),
+              pinned: index > 0 && index <= 30,
+            }),
           ),
         );
         const historyMessages = Array.from({ length: 160 }, (_, index) => ({
@@ -159,6 +162,11 @@ suite.define(() => {
               members: [],
               role: "owner",
               identities,
+              permissions: identities.slice(1).map(({ id }) => ({
+                identityId: id,
+                level: "read",
+                options: ["read", "send"],
+              })),
               allowedVisibilities: ["shared", "read-only", "suggest", "draft"],
             },
             "session.suggestions.list": { suggestions: [], role: "owner" },
@@ -240,7 +248,7 @@ suite.define(() => {
         expect(await sharing.locator(".chat-pane__sharing-person").count()).toBe(1);
         expect(
           await sharing
-            .locator('[data-value="member:person-109"]')
+            .locator('button.chat-pane__sharing-permission[data-value="permission:person-109"]')
             .evaluate((element) => element === document.activeElement),
         ).toBe(true);
         await page.keyboard.press("ArrowUp");
