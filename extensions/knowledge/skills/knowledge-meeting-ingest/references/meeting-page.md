@@ -41,8 +41,12 @@ they come up.}
 update → Gideon Adegbesan"), and any split boundary or real transcription gap.}
 ```
 
+- The Attendees line links only people in the room identified with high or
+  medium confidence. Low-confidence guesses, roles and unresolved speakers go
+  in Discussion Notes or Source Context, not on that line.
 - Summary, Key Decisions, Action Items and Notable Quotes are required. Check the
-  transcript before writing "none"; a bare `None` is not a reason.
+  transcript before writing "none"; a bare `None` is not a reason. Short
+  logistics meetings still get every section.
 - An action item with an unresolved owner names the speaker label instead
   ("Unidentified remote speaker: …"). Don't explain why it's unresolved.
 - Cite transcript passages through the meeting's own observed path with verified

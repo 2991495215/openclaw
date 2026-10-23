@@ -20,8 +20,10 @@
   `attachments` (pages) or `evidence` (claims, relationships). Uploading alone
   creates no page. Keep receipts and reuse them after an interruption.
 - Small inline user text may use `save_page.source: {text, attribution}`.
-- Before retaining, check for live secrets. Redact them and label the result as a
-  redacted derivative, not the original.
+- Before retaining, check for live secrets (`sk-…`, `ghp_…`, `AKIA…`, bearer
+  tokens, long hex or base64 strings) and private details such as phone numbers
+  read aloud. Redact them and label the result as a redacted derivative, not the
+  original.
 
 Keep the original plus any normalized, OCR or redacted text as separate, labeled
 files. Record source, author or speaker, source date if known, acquisition date

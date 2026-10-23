@@ -49,7 +49,8 @@ say the meeting ingestion is not complete.
 
 Normalize in working context to: source, source_id, title, date, time, duration,
 attendees (source claims), ordered segments with `speaker`, `speaker_raw` and
-`text`, source summary, URL. Unknown values are null.
+`text`, source summary, URL. Unknown values are null. Recorder-specific handling
+ends here; every recorder runs the same steps after this.
 
 Retain the original export and the transcript ([sources](references/sources.md)).
 Normalized text is a labeled derivative. Report acquisition, retention and
@@ -72,13 +73,26 @@ the same entity.
 
 - Role or relationship: explicit passage, not implication.
 - Ownership: explicit ownership language; mentioning a name is not owning it.
-- New proper noun: search Knowledge for the spelling; otherwise write it as
-  `Name (unverified spelling)` and give it no page or link.
+- New proper noun: search Knowledge, then the web if allowed, for the canonical
+  spelling; otherwise write it as `Name (unverified spelling)` and give it no
+  page or link.
 - Major life or deal event: verbatim support, checked against existing chronology.
 
-Surprising claims get more scrutiny. Keep conflicting accounts with both
-citations. Inferences and uncertain identities stay labeled on the meeting page
-and never enter profiles, timelines, metadata or relationships as fact.
+Transcript support is not enough on its own. Also check:
+
+- **Contradiction:** does it conflict with what Knowledge already establishes?
+  Established content wins by default. Don't write the conflicting claim into
+  profiles; keep it on the meeting page with both citations and list it in the
+  report for the user to resolve. Override only with explicit, verbatim support,
+  and still report the change.
+- **Plausibility:** is it possible given what else is known? (Two people can't
+  both have started the same project; a company founded last year wasn't
+  acquired five years ago.) An impossibility usually means a garble.
+- **Surprise:** if the user would say "wait, what?", apply every check. Surface
+  the surprise as a question; don't explain it away.
+
+Inferences and uncertain identities stay labeled on the meeting page and never
+enter profiles, timelines, metadata or relationships as fact.
 
 **Done when:** each claim is marked publish, label-as-uncertain or withhold.
 
@@ -110,27 +124,34 @@ Run [verify](references/verify.md) first. Then check:
 - **Substance:** required sections have content or a source-grounded reason.
 - **Links:** `knowledge_verify` `expectedLinks` for meeting ↔ each entity, plus
   claim `entities`/`dependencies`, commitment `owner`, and edge
-  `from`/`to`/`label`/`source_page`.
+  `from`/`to`/`label`/`source_page`. Every linked profile has a Timeline line
+  for this meeting.
 - **State:** no updated profile has a State topic named for a date or meeting.
 - **Style:** reread each page against [writing](references/writing.md): names
   first, no stacked caveats, no notes to yourself, no filler lines.
 - **Speakers:** no raw label passes as a known person; run the
   fabricated-attendee check in [speakers](references/speakers.md).
-- **Quotes:** read each quoted span's lines with `knowledge_evidence_read`. Fix
-  any that aren't verbatim.
+- **Quotes:** read each quoted span's lines with `knowledge_evidence_read`. Only
+  filler ("like", "you know") may differ. Fix a failing quote by restoring the
+  spoken words or choosing a cleaner span; never keep a paraphrase in a quote.
 - **Sequence:** compare narrated order (before/during/after, places, people) with
   timestamps, independently of heading order. Use
   `knowledge_chronicle_day` (meeting date and timezone) and `knowledge_timeline`
   for related entities. An inversion or impossible place/time is a contradiction;
   never invent transit. Fix and recheck, or record an explicit user waiver as
-  WAIVED, not resolved. A waiver covers sequence only.
+  WAIVED, not resolved. A waiver covers sequence only. A participant missing from
+  the day's chronicle usually means a missing Timeline line: investigate, don't
+  block. Genuinely ambiguous order is flagged in the report, not blocked.
 
 **Done when:** all checks pass, or failures are fixed and rechecked.
 
 ## Report
 
-Per meeting: page, retained sources, participants enriched, entities updated or
-reused, claims and edges, verification result, sequence PASS or WAIVED with the
-open contradiction. List withheld claims, unresolved identities and remaining
-work here, in the report, not on the pages. A partial report is honest progress,
-not completion.
+One line per meeting (one per page for a split recording): page, retained
+sources, participants enriched, entities updated or reused, action items, claims
+and edges, verification result, sequence PASS or WAIVED with the open
+contradiction. List contradictions with existing Knowledge, withheld claims,
+unresolved identities and remaining work here, in the report, not on the pages;
+the user resolves them. If a check can't pass, report the meeting as not
+ingested and name the check. A partial report is honest progress, not
+completion.
