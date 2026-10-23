@@ -58,18 +58,22 @@ export async function findPendingWorkerWorkspaceResult(
   );
 }
 
+function readPendingWorkspaceResult(db: EngineConnection, sessionId: string) {
+  return executeSqliteQuerySync(
+    db,
+    query(db)
+      .selectFrom("worker_workspace_pending_results")
+      .selectAll()
+      .where("session_id", "=", sessionId),
+  ).rows[0];
+}
+
 export function hasCurrentWorkspaceResultClaim(
   db: EngineConnection,
   claim: WorkerSessionTurnClaim,
 ): boolean {
   const placement = getRequired(db, claim.sessionId);
-  const row = executeSqliteQuerySync(
-    db,
-    query(db)
-      .selectFrom("worker_workspace_pending_results")
-      .selectAll()
-      .where("session_id", "=", claim.sessionId),
-  ).rows[0];
+  const row = readPendingWorkspaceResult(db, claim.sessionId);
   return Boolean(row && matchesWorkspaceResultClaim(placement, pendingResultFromRow(row), claim));
 }
 
@@ -194,13 +198,7 @@ export function insertWorkerWorkspacePendingResult(
     publishPendingResult(db, placement, result.rows[0]!);
     return placement;
   }
-  const existing = executeSqliteQuerySync(
-    db,
-    query(db)
-      .selectFrom("worker_workspace_pending_results")
-      .selectAll()
-      .where("session_id", "=", claim.sessionId),
-  ).rows[0];
+  const existing = readPendingWorkspaceResult(db, claim.sessionId);
   if (
     !existing ||
     existing.environment_id !== environmentId ||
@@ -216,13 +214,7 @@ export function insertWorkerWorkspacePendingResult(
 
 const assertPendingClaim = (db: EngineConnection, claim: WorkerSessionTurnClaim) => {
   const placement = getRequired(db, claim.sessionId);
-  const row = executeSqliteQuerySync(
-    db,
-    query(db)
-      .selectFrom("worker_workspace_pending_results")
-      .selectAll()
-      .where("session_id", "=", claim.sessionId),
-  ).rows[0];
+  const row = readPendingWorkspaceResult(db, claim.sessionId);
   if (!row || !matchesWorkspaceResultClaim(placement, pendingResultFromRow(row), claim)) {
     throw new Error(`Cannot update stale worker workspace result for ${claim.sessionId}`);
   }
