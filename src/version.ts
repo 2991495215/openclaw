@@ -17,10 +17,9 @@ const BUILD_INFO_CANDIDATES = [
   "./build-info.json",
 ] as const;
 
-function readStringFromJsonCandidates(
+function readVersionFromJsonCandidates(
   moduleUrl: string,
   candidates: readonly string[],
-  field: "version",
   requirePackageName = false,
 ): string | null {
   try {
@@ -28,7 +27,7 @@ function readStringFromJsonCandidates(
     for (const candidate of candidates) {
       try {
         const parsed = require(candidate) as { name?: unknown; version?: unknown };
-        const value = normalizeOptionalString(parsed[field]);
+        const value = normalizeOptionalString(parsed.version);
         if (!value) {
           continue;
         }
@@ -57,11 +56,11 @@ function firstNonEmpty(...values: Array<string | undefined>): string | undefined
 }
 
 export function readVersionFromPackageJsonForModuleUrl(moduleUrl: string): string | null {
-  return readStringFromJsonCandidates(moduleUrl, PACKAGE_JSON_CANDIDATES, "version", true);
+  return readVersionFromJsonCandidates(moduleUrl, PACKAGE_JSON_CANDIDATES, true);
 }
 
 export function readVersionFromBuildInfoForModuleUrl(moduleUrl: string): string | null {
-  return readStringFromJsonCandidates(moduleUrl, BUILD_INFO_CANDIDATES, "version");
+  return readVersionFromJsonCandidates(moduleUrl, BUILD_INFO_CANDIDATES);
 }
 
 export function readBuildIdFromBuildInfoForModuleUrl(moduleUrl: string): string | null {
