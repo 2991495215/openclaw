@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { GatewayServiceAuthorityError } from "../../daemon/service-update-authority.js";
 import * as updateCheck from "../../infra/update-check.js";
 import { DoctorMaintenanceRefusalError } from "../../infra/update-doctor-result.js";
 import { createRetainedUpdateRecovery } from "../../infra/update-retained-recovery.test-support.js";
@@ -34,6 +35,7 @@ import {
   taskRecovery,
   validConfigSnapshot,
 } from "./update-command-post-update.test-support.js";
+import { GatewayRestartHealthError } from "./update-command-service-command.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const mocks = vi.hoisted(() => ({
@@ -363,8 +365,16 @@ describe("successful update finalization ordering", () => {
     );
   });
 
-  it.each(["exception", "reported-failure", "data-at-risk"] as const)(
-    "preserves verified activation after a later error unless data is at risk (%s)",
+  it.each([
+    "restart-health",
+    "reported-failure",
+    "authority",
+    "unknown",
+    "data-at-risk",
+    "health-with-authority",
+    "admission-unavailable",
+  ] as const)(
+    "classifies post-activation failures without granting authority (%s)",
     async (outcome) => {
       const env = { OPENCLAW_STATE_DIR: tempDirs.make("update-verified-target-") };
       const run = createUpdateRun({ trigger: "cli" }, { env });
@@ -380,17 +390,41 @@ describe("successful update finalization ordering", () => {
         if (outcome === "reported-failure") {
           return "restart-health-failed";
         }
-        throw new Error("post-activation receipt unavailable");
+        if (outcome === "authority") {
+          throw new GatewayServiceAuthorityError(new Error("Service authority revoked"));
+        }
+        if (outcome === "admission-unavailable") {
+          throw new DoctorMaintenanceRefusalError("Admission unavailable", {
+            kind: "deferred",
+            reason: "admission-unavailable",
+          });
+        }
+        if (outcome === "health-with-authority") {
+          throw new GatewayRestartHealthError("Health reporting failed", {
+            cause: new GatewayServiceAuthorityError(new Error("Service authority revoked")),
+          });
+        }
+        if (outcome === "unknown") {
+          throw new Error("Unknown post-activation failure");
+        }
+        throw new GatewayRestartHealthError("post-activation receipt unavailable");
       });
       const finishing = finishSuccessfulPackageSwitch({
         run: { runId: run.runId, env },
         restartEnvironment: process.env,
       });
-      if (outcome === "data-at-risk") {
+      if (outcome !== "restart-health" && outcome !== "reported-failure") {
         await expect(finishing).rejects.toMatchObject({
           result: {
             status: "error",
-            recovery: { serviceRestartSafe: false, reason: "runtime-verification-failed" },
+            ...(outcome === "data-at-risk"
+              ? {
+                  recovery: {
+                    serviceRestartSafe: false,
+                    reason: "runtime-verification-failed",
+                  },
+                }
+              : {}),
           },
         });
         expect(getUpdateRun(run.runId, { env })?.status).toBe("failed");
@@ -406,7 +440,9 @@ describe("successful update finalization ordering", () => {
         ).toMatchObject({
           kind: "recoverable-maintenance",
           message: expect.stringContaining(
-            outcome === "exception" ? "post-activation receipt unavailable" : "restart-unhealthy",
+            outcome === "restart-health"
+              ? "post-activation receipt unavailable"
+              : "restart-unhealthy",
           ),
         });
       }
