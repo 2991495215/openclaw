@@ -31,6 +31,7 @@ import {
   mutateSubagentRuns,
   SubagentRegistryMutationRejectedError,
 } from "./subagent-registry-persistence.js";
+import type { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
 import { createTestSubagentRegistryRestorer as createRestorer } from "./subagent-registry-restore.test-support.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import type { SubagentManagerOptions } from "./subagent-registry-run-wait.js";
