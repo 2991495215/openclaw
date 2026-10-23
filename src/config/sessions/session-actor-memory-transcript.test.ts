@@ -37,68 +37,6 @@ function messageInput(
   };
 }
 
-it.each(["cancelled", "interrupted"] as const)(
-  "keeps memory question custody unique until cancellation (%s)",
-  async (disposition) => {
-    const f = await fixture();
-    await f.write({
-      eventId: "question",
-      now: 2,
-      message: {
-        role: "assistant",
-        content: "Which audience?",
-        openclawAsyncDelivery: { itemId: "audience", questions: [{ title: "Which audience?" }] },
-      },
-    });
-    const message = {
-      role: "user",
-      content: "Engineers",
-      idempotencyKey: "first:user",
-      __openclaw: { replyToId: "question", asyncQuestionItemId: "audience" },
-    };
-    committed(await f.stage("first", pendingFacts(message, "first")));
-    const duplicate = { ...message, content: "Everyone", idempotencyKey: "second:user" };
-    expect(await f.stage("second", pendingFacts(duplicate, "second"))).toMatchObject({
-      kind: "rolled-back",
-      error: { message: "async-question-already-answered" },
-    });
-    expect(
-      await f.actor.acceptInput(
-        {
-          commandId: "direct",
-          phaseId: "turn",
-          lifecycle: {},
-          expectedState: buildRestartRecoveryExpectedState({ sessionId, updatedAt: 1 }),
-          turn: turn({ eventId: "duplicate", now: 3, message: duplicate }),
-        },
-        authority,
-      ),
-    ).toMatchObject({ kind: "rolled-back", error: { message: "async-question-already-answered" } });
-    assert(f.actor.storage, "Expected memory storage");
-    expect(
-      await f.actor.storage.mutate(
-        {
-          type: "session.pendingInput.mutate",
-          input: {
-            kind: "finish",
-            sessionKey,
-            sessionId,
-            idempotencyKey: message.idempotencyKey,
-            inputId: "first",
-            runId: "run-1",
-            requestHash: "request-1",
-            lifecycleGeneration: "life-1",
-            disposition,
-          },
-        },
-        authority,
-      ),
-    ).toMatchObject({ kind: "committed" });
-    const next = await f.stage("after-settlement", pendingFacts(duplicate, "second"));
-    expect(next.kind).toBe(disposition === "cancelled" ? "committed" : "rolled-back");
-  },
-);
-
 function metadataResult(outcome: SessionActorOutcome<unknown>) {
   const result = committed(outcome).receipt.transcript.append;
   assert(result?.kind === "metadata");

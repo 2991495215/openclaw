@@ -13,7 +13,7 @@ import { hasSessionPendingInputsSchema } from "../../state/openclaw-agent-pendin
 import { getSessionKysely } from "./session-accessor.sqlite-scope.js";
 import { readTranscriptMessageByEventId } from "./session-accessor.sqlite-transcript-identity.js";
 import { isTranscriptEntryOnActivePathInTransaction } from "./session-accessor.sqlite-transcript-parent.js";
-import { transcriptEventJsonSql } from "./transcript-payload.js";
+import { transcriptEventJsonSql, transcriptPredicateSql } from "./transcript-payload.js";
 
 /** Runs in the existing acceptInput transaction, before either queued or transcript custody. */
 export function assertSessionAsyncQuestionAdmission(
@@ -25,23 +25,16 @@ export function assertSessionAsyncQuestionAdmission(
   if (!answer) {
     return;
   }
-  if (
-    typeof answer.sourceMessageId !== "string" ||
-    !isTranscriptEntryOnActivePathInTransaction(database, scope.sessionId, answer.sourceMessageId)
-  ) {
-    assertAsyncQuestionSource(undefined, answer.itemId);
-    return;
-  }
-  const source = readTranscriptMessageByEventId(
-    database,
-    {
-      ...scope,
-      agentId: database.agentId,
-      path: database.path,
-    },
-    answer.sourceMessageId,
-  );
-  assertAsyncQuestionSource(source?.message, answer.itemId);
+  const { sessionId } = scope;
+  const { sourceMessageId, itemId, idempotencyKey } = answer;
+  const source = isTranscriptEntryOnActivePathInTransaction(database, sessionId, sourceMessageId)
+    ? readTranscriptMessageByEventId(
+        database,
+        { ...scope, agentId: database.agentId, path: database.path },
+        sourceMessageId,
+      )
+    : undefined;
+  assertAsyncQuestionSource(source?.message, itemId);
   const db = getSessionKysely(database.db);
   const pending =
     hasSessionPendingInputsSchema(database.db) &&
@@ -51,15 +44,15 @@ export function assertSessionAsyncQuestionAdmission(
         .selectFrom("session_pending_inputs")
         .select("input_id")
         .where("session_key", "=", scope.sessionKey)
-        .where("session_id", "=", scope.sessionId)
+        .where("session_id", "=", sessionId)
         .where("state", "!=", "cancelled")
         .where("consumed_event_id", "is", null)
-        .where("idempotency_key", "!=", answer.idempotencyKey)
+        .where("idempotency_key", "!=", idempotencyKey)
         .where((eb) =>
           eb(
             jsonPathValue(database.db, eb.ref("message_json"), eb.val("$.__openclaw.replyToId")),
             "=",
-            answer.sourceMessageId,
+            sourceMessageId,
           ),
         ),
     );
@@ -78,18 +71,8 @@ export function assertSessionAsyncQuestionAdmission(
           .onRef("identity.seq", "=", "event.seq"),
       )
       .select(["identity.event_id", "identity.message_idempotency_key"])
-      .where("event.session_id", "=", scope.sessionId)
-      .where((eb) =>
-        eb(
-          jsonPathValue(
-            database.db,
-            transcriptEventJsonSql(database.db, "event"),
-            eb.val("$.message.role"),
-          ),
-          "=",
-          "user",
-        ),
-      )
+      .where("event.session_id", "=", sessionId)
+      .where((eb) => eb(transcriptPredicateSql(database.db, "message_role", "event"), "=", "user"))
       .where((eb) =>
         eb(
           jsonPathValue(
@@ -98,15 +81,15 @@ export function assertSessionAsyncQuestionAdmission(
             eb.val("$.message.__openclaw.replyToId"),
           ),
           "=",
-          answer.sourceMessageId,
+          sourceMessageId,
         ),
       ),
   ).rows;
   if (
     candidates.some(
       (candidate) =>
-        candidate.message_idempotency_key !== answer.idempotencyKey &&
-        isTranscriptEntryOnActivePathInTransaction(database, scope.sessionId, candidate.event_id),
+        candidate.message_idempotency_key !== idempotencyKey &&
+        isTranscriptEntryOnActivePathInTransaction(database, sessionId, candidate.event_id),
     )
   ) {
     throw new Error(ASYNC_QUESTION_ANSWERED);

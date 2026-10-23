@@ -4,14 +4,14 @@ import {
   assertAsyncQuestionSource,
   readAsyncQuestionAnswer,
 } from "../../shared/async-question-answer.js";
-import type { SessionActorMemoryState } from "./session-actor-memory-state.js";
+import type { SessionActorMemoryWindow } from "./session-actor-memory-state.js";
 import {
   scanSessionTranscriptTree,
   selectSessionTranscriptTreePathNodes,
 } from "./transcript-tree.js";
 
 export function assertMemoryAsyncQuestionAdmission(
-  state: SessionActorMemoryState,
+  state: SessionActorMemoryWindow,
   message: unknown,
 ): void {
   const answer = readAsyncQuestionAnswer(message);

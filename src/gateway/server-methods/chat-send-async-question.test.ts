@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appendTranscriptMessage,
   listSessionPendingInputs,
@@ -24,23 +24,34 @@ installGatewayTestHooks();
 const createFixture = useBrowserFollowupFixture();
 const prepareProfiles = useUserProfileCatalogForTest();
 beforeEach(() => prepareProfiles());
+type Fixture = Awaited<ReturnType<typeof createFixture>>;
+async function send(fixture: Fixture, params: Fixture["params"]) {
+  return (await fixture.send(vi.fn<RespondFn>(), undefined, params)).mock.calls[0]!;
+}
+async function accept(fixture: Fixture, params: Fixture["params"]) {
+  expect((await send(fixture, params))[0]).toBe(true);
+}
+const answered = { details: { reason: "async-question-already-answered" } };
 
-async function appendAudienceQuestion(
-  scope: Parameters<typeof appendTranscriptMessage>[0],
-  itemId = "audience",
-  eventId?: string,
-) {
-  const source = await appendTranscriptMessage(scope, {
-    eventId,
-    message: {
-      role: "assistant",
-      content: "Which audience?",
-      timestamp: 2,
-      openclawAsyncDelivery: { itemId, questions: [{ title: "Which audience?" }] },
-    },
-  });
+async function questionAnswer(fixture: Fixture, itemId = "audience", eventId?: string) {
+  const source = await fixture.withStorage(() =>
+    appendTranscriptMessage(fixture.scope, {
+      eventId,
+      message: {
+        role: "assistant",
+        content: "Which audience?",
+        timestamp: 2,
+        openclawAsyncDelivery: { itemId, questions: [{ title: "Which audience?" }] },
+      },
+    }),
+  );
   assert(source, "Expected a persisted question");
-  return source;
+  return {
+    ...fixture.params,
+    replyToId: source.messageId,
+    asyncQuestionItemId: itemId,
+    message: "> Which audience?\n\nEngineers",
+  };
 }
 
 // These answer bytes were captured from openclaw@2026.10.6's published storage
@@ -52,7 +63,7 @@ it.each(["queued", "saved"] as const)(
   async (kind) => {
     await using fixture = await createFixture({ preserveContent: true });
     const questionId = "legacy-question-" + kind;
-    await appendAudienceQuestion(fixture.scope, "legacy-" + kind, questionId);
+    const answer = await questionAnswer(fixture, "legacy-" + kind, questionId);
     const runId = "legacy-answer-" + kind;
     const message = {
       role: "user" as const,
@@ -79,147 +90,99 @@ it.each(["queued", "saved"] as const)(
       fixture.scope.agentId,
     );
     const params = {
-      ...fixture.params,
+      ...answer,
       idempotencyKey: "legacy-duplicate",
       message: "> Which audience?\n\nEveryone",
-      replyToId: questionId,
-      asyncQuestionItemId: "legacy-" + kind,
     };
-    const duplicate = await fixture.send(vi.fn<RespondFn>(), undefined, params);
-    expect(duplicate.mock.calls[0]?.[2]).toMatchObject({
-      details: { reason: "async-question-already-answered" },
-    });
+    const duplicate = await send(fixture, params);
+    expect(duplicate[2]).toMatchObject(answered);
     expect(fixture.readTranscript()).toEqual(original);
     if (kind === "queued") {
       expect((await listSessionPendingInputs(fixture.scope)).items[0]?.message).toEqual(message);
       expect(await discardSessionPendingInput(fixture.scope, runId, () => {})).toBe(true);
-      const replacement = await fixture.send(vi.fn<RespondFn>(), undefined, {
+      const replacement = await send(fixture, {
         ...params,
         idempotencyKey: "legacy-replacement",
       });
-      expect(replacement.mock.calls[0]?.[0]).toBe(true);
+      expect(replacement[0]).toBe(true);
     }
   },
 );
 
-it.each(["cancelled", "interrupted"] as const)(
-  "releases only cancelled question custody (%s)",
-  async (disposition) => {
-    await using fixture = await createFixture({ preserveContent: true });
-    const source = await appendAudienceQuestion(fixture.scope);
-    const params = {
-      ...fixture.params,
-      replyToId: source.messageId,
-      asyncQuestionItemId: "audience",
-      message: "Engineers",
-    };
-    expect((await fixture.send(vi.fn<RespondFn>(), undefined, params)).mock.calls[0]?.[0]).toBe(
-      true,
-    );
+describe.each(["durable", "memory"] as const)("%s question custody", (storage) => {
+  it.each(["cancelled", "interrupted"] as const)("settles as %s", async (disposition) => {
+    await using fixture = await createFixture({ storage, preserveContent: true });
+    const params = await questionAnswer(fixture);
+    await accept(fixture, params);
     const recorder = await fixture.dispatchedRecorder;
     recorder.finishPendingInput?.(disposition);
     await recorder.waitForPendingInputSettlement?.();
     expect((await listSessionPendingInputs(fixture.scope)).items[0]?.state).toBe(disposition);
-    const next = await fixture.send(vi.fn<RespondFn>(), undefined, {
+    const next = await send(fixture, {
       ...params,
       idempotencyKey: "after-settlement",
       message: "Everyone",
     });
-    expect(next.mock.calls[0]?.[0]).toBe(disposition === "cancelled");
+    expect(next[0]).toBe(disposition === "cancelled");
     if (disposition === "interrupted") {
-      expect(next.mock.calls[0]?.[2]).toMatchObject({
-        details: { reason: "async-question-already-answered" },
-      });
+      expect(next[2]).toMatchObject(answered);
     }
-  },
-);
+  });
 
-it("atomically accepts only one of two concurrent viewer answers", async () => {
-  await using fixture = await createFixture({ preserveContent: true });
-  const source = await appendAudienceQuestion(fixture.scope);
-  const replies = await Promise.all(
-    ["Engineers", "Everyone"].map((answer, index) =>
-      fixture.send(vi.fn<RespondFn>(), undefined, {
-        ...fixture.params,
-        idempotencyKey: "concurrent-" + index,
-        replyToId: source.messageId,
-        asyncQuestionItemId: "audience",
-        message: answer,
-      }),
-    ),
+  it.each([true, false])(
+    "admits one answer across racing and stale viewers (active=%s)",
+    async (active) => {
+      await using fixture = await createFixture({ storage, active, preserveContent: true });
+      const params = await questionAnswer(fixture);
+      const invalid = await send(fixture, {
+        ...params,
+        replyToId: "another-session-question",
+        idempotencyKey: "invalid",
+      });
+      expect(invalid[0]).toBe(false);
+      expect((await listSessionPendingInputs(fixture.scope)).total).toBe(0);
+      const requests = [
+        { ...params, idempotencyKey: "racing-first" },
+        { ...params, idempotencyKey: "racing-second", message: "> Which audience?\n\nEveryone" },
+      ];
+      const replies = await Promise.all(requests.map((request) => send(fixture, request)));
+      expect(replies.filter(([ok]) => ok)).toHaveLength(1);
+      expect(replies.find(([ok]) => !ok)?.[2]).toMatchObject(answered);
+      const winner = requests[replies.findIndex(([ok]) => ok)]!;
+      await accept(fixture, winner);
+      if (!active) {
+        await (await fixture.dispatchedRecorder).persistApproved();
+      }
+      fixture.client.connId = "another-authorized-viewer";
+      for (const [index, request] of requests.entries()) {
+        const stale = await send(fixture, { ...request, idempotencyKey: "stale-" + index });
+        expect(stale[0]).toBe(false);
+        expect(stale[2]).toMatchObject(answered);
+      }
+      const accepted = [
+        ...(await listSessionPendingInputs(fixture.scope)).items.map((input) => input.message),
+        ...fixture.readTranscript().flatMap((event) => {
+          const record = asOptionalRecord(event);
+          return record?.type === "message" ? [record.message] : [];
+        }),
+      ];
+      const answers = accepted.filter((message) => {
+        const record = asOptionalRecord(message);
+        return (
+          record?.role === "user" &&
+          asOptionalRecord(record["__openclaw"])?.asyncQuestionItemId === "audience"
+        );
+      });
+      expect(answers).toHaveLength(1);
+      expect(asOptionalRecord(answers[0])?.content).toBe(winner.message);
+      const { asyncQuestionItemId: _question, ...ordinary } = winner;
+      await accept(fixture, {
+        ...ordinary,
+        idempotencyKey: "manual-correction",
+        message: "Actually, use Everyone.",
+      });
+      const next = await questionAnswer(fixture, "next-audience");
+      await accept(fixture, { ...next, idempotencyKey: "new-question" });
+    },
   );
-  expect(replies.filter((reply) => reply.mock.calls[0]?.[0] === true)).toHaveLength(1);
-  expect((await listSessionPendingInputs(fixture.scope)).total).toBe(1);
-  expect(
-    replies.find((reply) => reply.mock.calls[0]?.[0] === false)?.mock.calls[0]?.[2],
-  ).toMatchObject({ details: { reason: "async-question-already-answered" } });
-});
-
-it.each([true, false])("admits one answer across stale viewers (queued=%s)", async (active) => {
-  await using fixture = await createFixture({ active, preserveContent: true });
-  const source = await appendAudienceQuestion(fixture.scope);
-  const first = {
-    ...fixture.params,
-    replyToId: source.messageId,
-    asyncQuestionItemId: "audience",
-    message: "> Which audience?\n\nEngineers",
-  };
-  const invalid = await fixture.send(vi.fn<RespondFn>(), undefined, {
-    ...first,
-    replyToId: "another-session-question",
-    idempotencyKey: "invalid-question",
-  });
-  expect(invalid.mock.calls[0]?.[0]).toBe(false);
-  expect((await listSessionPendingInputs(fixture.scope)).total).toBe(0);
-  const admitted = await fixture.send(vi.fn<RespondFn>(), undefined, first);
-  expect(admitted).toHaveBeenCalledWith(true, expect.anything(), undefined, expect.anything());
-  const retry = await fixture.send(vi.fn<RespondFn>(), undefined, first);
-  expect(retry).toHaveBeenCalledWith(true, expect.anything(), undefined, expect.anything());
-  fixture.client.connId = "another-authorized-viewer";
-  for (const [index, message] of [first.message, "> Which audience?\n\nEveryone"].entries()) {
-    const second = await fixture.send(vi.fn<RespondFn>(), undefined, {
-      ...first,
-      idempotencyKey: "stale-answer-" + index,
-      message,
-    });
-    expect(second).toHaveBeenCalledWith(
-      false,
-      expect.anything(),
-      expect.objectContaining({ details: { reason: "async-question-already-answered" } }),
-      expect.anything(),
-    );
-  }
-  const pending = await listSessionPendingInputs(fixture.scope);
-  const transcript = fixture.readTranscript();
-  const accepted = [
-    ...pending.items.map((input) => input.message),
-    ...transcript.flatMap((event) => {
-      const record = asOptionalRecord(event);
-      return record?.type === "message" ? [record.message] : [];
-    }),
-  ];
-  expect(
-    accepted.filter((message) => {
-      const record = asOptionalRecord(message);
-      return (
-        record?.role === "user" &&
-        asOptionalRecord(record["__openclaw"])?.asyncQuestionItemId === "audience"
-      );
-    }),
-  ).toHaveLength(1);
-  const { asyncQuestionItemId: _question, ...ordinary } = first;
-  const correction = await fixture.send(vi.fn<RespondFn>(), undefined, {
-    ...ordinary,
-    idempotencyKey: "manual-correction",
-    message: "Actually, use Everyone.",
-  });
-  expect(correction.mock.calls[0]?.[0]).toBe(true);
-  const nextSource = await appendAudienceQuestion(fixture.scope, "next-audience");
-  const next = await fixture.send(vi.fn<RespondFn>(), undefined, {
-    ...first,
-    replyToId: nextSource.messageId,
-    asyncQuestionItemId: "next-audience",
-    idempotencyKey: "new-question-answer",
-  });
-  expect(next.mock.calls[0]?.[0]).toBe(true);
 });
