@@ -36,9 +36,7 @@ export type CandidateSkillDir = {
   name: string;
 };
 
-type PluginSkillCandidate = {
-  skillDir: string;
-  skillDirRealPath: string;
+type PluginSkillCandidate = Pick<CandidateSkillDir, "skillDir" | "skillDirRealPath"> & {
   rejectHardlinks: boolean;
 };
 

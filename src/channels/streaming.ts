@@ -161,31 +161,30 @@ export function normalizeAgentPlanSteps(value: unknown): AgentPlanStep[] | undef
 
 const EMOJI_PREFIX_RE = /^\p{Extended_Pictographic}/u;
 
+type ChannelProgressDraftToolIdentity = {
+  itemId?: string;
+  toolCallId?: string;
+  name?: string;
+  phase?: string;
+};
+
 export type ChannelProgressDraftLineInput =
-  | {
+  | (ChannelProgressDraftToolIdentity & {
       event: "tool";
-      itemId?: string;
-      toolCallId?: string;
-      name?: string;
-      phase?: string;
       args?: Record<string, unknown>;
-    }
-  | {
+    })
+  | (ChannelProgressDraftToolIdentity & {
       event: "item";
-      itemId?: string;
-      toolCallId?: string;
       itemKind?: string;
       hideFromChannelProgress?: boolean;
       suppressChannelProgress?: boolean;
       title?: string;
-      name?: string;
-      phase?: string;
       status?: string;
       summary?: string;
       progressText?: string;
       meta?: string;
       commandBearing?: boolean;
-    }
+    })
   | {
       event: "plan";
       phase?: string;
@@ -202,28 +201,20 @@ export type ChannelProgressDraftLineInput =
       reason?: string;
       message?: string;
     }
-  | {
+  | (ChannelProgressDraftToolIdentity & {
       event: "command-output";
-      itemId?: string;
-      toolCallId?: string;
-      phase?: string;
       title?: string;
-      name?: string;
       status?: string;
       exitCode?: number | null;
-    }
-  | {
+    })
+  | (ChannelProgressDraftToolIdentity & {
       event: "patch";
-      itemId?: string;
-      toolCallId?: string;
-      phase?: string;
       title?: string;
-      name?: string;
       added?: string[];
       modified?: string[];
       deleted?: string[];
       summary?: string;
-    };
+    });
 
 type ChannelProgressDraftLineKind = ChannelProgressDraftLineInput["event"];
 
@@ -334,10 +325,7 @@ function isCommandProgressItem(input: Extract<ChannelProgressDraftLineInput, { e
 }
 
 function resolveProgressDraftLineId(
-  input: {
-    itemId?: string;
-    toolCallId?: string;
-  },
+  input: Pick<ChannelProgressDraftToolIdentity, "itemId" | "toolCallId">,
   useToolCallIdFallback = false,
 ): string | undefined {
   const itemId = input.itemId?.trim();
