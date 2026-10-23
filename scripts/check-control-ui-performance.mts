@@ -56,9 +56,9 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 26,
   newBootJsRequests: 20,
-  // Detailed tool rows reduce Chat to 1,403,881 B; retain the tighter New Session cap.
+  // Lazy Online sidebar: 1,402,242 B Chat and 914,521 B New Session.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_457_159,
+  chatBootJsGzipBytes: 1_455_417,
   newBootJsGzipBytes: 927_306,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
