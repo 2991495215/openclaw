@@ -203,11 +203,8 @@ export function createChannelIngressQueue<
     now: at,
   });
 
-  const recoverStaleClaims: ChannelIngressQueue<
-    TPayload,
-    TMetadata,
-    TCompletedMetadata
-  >["recoverStaleClaims"] = async (recoverOptions) => {
+  type Queue = ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>;
+  const recoverStaleClaims: Queue["recoverStaleClaims"] = async (recoverOptions) => {
     const context = capture();
     const shouldRecover = recoverOptions?.shouldRecover;
     const shouldRecoverCorrupt = recoverOptions?.shouldRecoverCorrupt;
@@ -247,11 +244,7 @@ export function createChannelIngressQueue<
     return recovered;
   };
 
-  const claimNext: ChannelIngressQueue<
-    TPayload,
-    TMetadata,
-    TCompletedMetadata
-  >["claimNext"] = async (claimOptions) => {
+  const claimNext: Queue["claimNext"] = async (claimOptions) => {
     const context = capture();
     const deriveLaneKey = claimOptions?.deriveLaneKey;
     const reconcileStoredLaneKey = claimOptions?.reconcileStoredLaneKey;
@@ -344,7 +337,6 @@ export function createChannelIngressQueue<
     }
   };
 
-  type Queue = ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>;
   const enqueueResult = (
     result: ChannelIngressWorkerOperations["channelIngress.enqueue"]["output"][number],
   ): Awaited<ReturnType<Queue["enqueue"]>> => {
