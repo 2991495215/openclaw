@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 describe("normalization-core/agent-id", () => {
   it.each([
     [undefined, "main"],
+    ["worker-12", "worker-12"],
     ["  OPS  ", "ops"],
     ["Agent not found: xyz", "agent-not-found-xyz"],
     ["../../../etc/passwd", "etc-passwd"],

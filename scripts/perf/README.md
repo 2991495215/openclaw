@@ -2818,6 +2818,22 @@ exercises the session-event handoff and delivery-generation owners; ordinary
 `chat.send` does not. Report these workloads separately: the internal event uses
 session authority while ordinary chat carries the operator run authority.
 
+Add `--cron-operator-turn --sessions 1 --reset-every-rounds 0` instead to create
+a scheduled job through the authenticated operator's `automations` tool and run
+its same-conversation continuation. Use a fresh fixture for each side. The driver
+checks the waited cron receipt, restored operator source, and tool completions.
+Run `--authority-counts` separately from `--allocations`; the count pass includes
+cron availability and operator-source assertions. This mode rejects
+`--session-event-wake` and session resets so both sides retain the same authority
+and reset boundaries.
+
+For isolated availability cost across 10, 100, and 500 agents in both roster
+forms, use `scripts/perf/cron-availability-measure.ts`. Run `--mode baseline` on
+the original source and `--mode candidate` on the changed source; `--mode both`
+shares the current normalizer and only compares callbacks. Defaults are five
+rounds of 20,000 calls per cell; `--rounds 1` supports externally alternating
+process order. See the script's invocation examples for allocation and GC flags.
+
 Add `--authority-counts --entry src/entry.ts` in a separate count pass to observe
 main-isolate named authority assertion closures, source-composition guards,
 identity-owner `statSync` and `realpathSync.native` calls, all main-isolate `statSync` calls, tool-override

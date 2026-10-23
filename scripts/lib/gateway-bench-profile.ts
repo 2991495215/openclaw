@@ -124,6 +124,8 @@ export function readGatewayGcTrace(
   let completed = false;
   let promotedBytes = 0;
   let gcCount = 0;
+  let totalPauseMs = 0;
+  let maxPauseMs = 0;
   let excludedWorkerGcCount = 0;
   for (const line of readFileSync(logPath, "utf8").split("\n")) {
     if (line.startsWith(GATEWAY_GC_TRACE_MARKER)) {
@@ -175,11 +177,12 @@ export function readGatewayGcTrace(
       continue;
     }
     // Recent V8 versions retain the flag but emit JSON instead of name=value pairs.
-    const collection: { gc?: string; promoted?: number } = fields.startsWith("GC: ")
+    const collection: { gc?: string; promoted?: number; pause?: number } = fields.startsWith("GC: ")
       ? JSON.parse(fields.slice(4))
       : {
           gc: /(?:^|\s)gc=(\S+)/.exec(fields)?.[1],
           promoted: Number(/(?:^|\s)promoted=(\S+)/.exec(fields)?.[1]),
+          pause: Number(/(?:^|\s)pause=(\S+)/.exec(fields)?.[1]),
         };
     if (!collection.gc) {
       continue;
@@ -191,6 +194,12 @@ export function readGatewayGcTrace(
       if (typeof bytes !== "number" || !Number.isSafeInteger(bytes) || bytes < 0) {
         throw new Error("Main-isolate GC trace is missing a valid promoted byte count");
       }
+      const pauseMs = collection.pause;
+      if (typeof pauseMs !== "number" || !Number.isFinite(pauseMs) || pauseMs < 0) {
+        throw new Error("Main-isolate GC trace is missing a valid pause duration");
+      }
+      totalPauseMs += pauseMs;
+      maxPauseMs = Math.max(maxPauseMs, pauseMs);
       promotedBytes += bytes;
       gcCount += 1;
     }
@@ -209,6 +218,8 @@ export function readGatewayGcTrace(
     isolate: [...isolates][0],
     promotedBytes,
     gcCount,
+    totalPauseMs,
+    maxPauseMs,
     excludedWorkerGcCount,
   };
 }

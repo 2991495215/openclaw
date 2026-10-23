@@ -77,6 +77,7 @@ const { values } = parseArgs({
     "transcript-hydration-counts": { type: "boolean", default: false },
     "operator-access-policy": { type: "boolean", default: false },
     "session-event-wake": { type: "boolean", default: false },
+    "cron-operator-turn": { type: "boolean", default: false },
     "authority-counts": { type: "boolean", default: false },
     "authority-source-preload": { type: "string" },
     "stress-subagents": { type: "boolean", default: false },
@@ -398,6 +399,17 @@ if (values["session-event-wake"] && !values["operator-access-policy"]) {
   throw new Error("--session-event-wake requires --operator-access-policy");
 }
 if (
+  values["cron-operator-turn"] &&
+  (!values["operator-access-policy"] ||
+    values["session-event-wake"] ||
+    sessionCount !== 1 ||
+    resetEveryRounds !== 0)
+) {
+  throw new Error(
+    "--cron-operator-turn requires --operator-access-policy --sessions 1 --reset-every-rounds 0 and no session-event wake",
+  );
+}
+if (
   values["authority-counts"] &&
   (!values["operator-access-policy"] ||
     path.resolve(values.entry) !== path.resolve("src/entry.ts") ||
@@ -674,6 +686,9 @@ cfg.tools = {
   codeMode: values["stress-tools"],
   ...(values["stress-tools"] ? { exec: { host: "gateway", mode: "full" } } : {}),
 };
+if (values["cron-operator-turn"]) {
+  cfg.cron = { ...cfg.cron, enabled: true };
+}
 if (stressWorktree) {
   cfg.agents.entries.main.workspace = stressWorktree;
 }
@@ -874,7 +889,7 @@ if (isMainThread) {
     "session-source-authority", "admitted-run-context", "operator-run-authority",
     "session-delivery-generation", "session-entry-source-authority", "session-event-handoff",
     "session-tool-overrides", "auth-policy", "sqlite-worker-identity",
-    "user-profile-events", "user-profile-authority"
+    "user-profile-events", "user-profile-authority", "server-cron", "cron-operator-source"
   ]);
   registerHooks({ load(url, context, nextLoad) {
     const loaded = nextLoad(url, context);
@@ -890,6 +905,10 @@ if (isMainThread) {
       installed[key] = (installed[key] ?? 0) + 1;
       return "__authorityCounts.count(" + JSON.stringify(key) + ");";
     };
+    if (owner === "server-cron") {
+      source = source.replace(/isAgentAvailable: \(agentId, facts\) =>([\s\S]*?),\n    resolveSessionStorePath,/,
+        (_match, expression) => "isAgentAvailable: (agentId, facts) => {" + count("isAgentAvailable") + "return " + expression + "; },\n    resolveSessionStorePath,");
+    }
     source = source.replace(/const (assert\w*) = \((?:[^()]|\([^()]*\))*\) => \{/g,
       (match, name) => match + count(name));
     source = source.replace(/function (assert\w+)\([^{}]*\)(?::[^{}]+)? \{/g,
@@ -1343,6 +1362,12 @@ function createPollRandom(round: number, client: number) {
 const sessionEventRuns = new Map<string, { resolve: (runId: string) => void }>();
 const queuedChatInputs = new Map<string, () => void>();
 const terminalChatInputs = new Map<string, (state: string) => void>();
+const cronOperatorSetupPrompt = "Create the synthetic scheduled operator continuation fixtures.";
+const cronOperatorSetupCallId = "call_cron_operator_setup";
+const cronOperatorJobs: Array<{ id?: string; cohortId: string }> = values["cron-operator-turn"]
+  ? [{ cohortId: randomUUID() }]
+  : [];
+let cronOperatorSetupCompleted = false;
 let cohort:
   | {
       id: string;
@@ -1415,6 +1440,51 @@ const mock = createServer((req, res) => {
           .map(readMockUserText)
           .find((text) => text !== undefined)
       : undefined;
+    if (values["cron-operator-turn"] && lastUser?.includes(cronOperatorSetupPrompt)) {
+      const setupOutput =
+        facts.hasToolOutput && Array.isArray(input)
+          ? input.findLast((item) => isRecord(item) && item.type === "function_call_output")
+          : undefined;
+      let setupEvents;
+      if (setupOutput) {
+        if (!contentText(setupOutput.output).includes("synthetic-cron-operator-created")) {
+          throw new Error(`Cron operator setup failed: ${contentText(setupOutput.output)}`);
+        }
+        cronOperatorSetupCompleted = true;
+        setupEvents = responseEvents(["Synthetic scheduled operator continuations created."]);
+      } else {
+        const jobs = cronOperatorJobs.map(({ cohortId }) => ({
+          name: `Synthetic operator continuation ${cohortId}`,
+          enabled: false,
+          schedule: { kind: "every", everyMs: 3_600_000 },
+          sessionTarget: `session:${keys[0]}`,
+          wakeMode: "now",
+          payload: {
+            kind: "agentTurn",
+            message: `Reply with benchmark stream 1. Transcript-broadcast cohort ${cohortId}.`,
+            toolsAllow: ["*"],
+            timeoutSeconds: 120,
+          },
+          delivery: { mode: "none" },
+          failureAlert: false,
+        }));
+        setupEvents = functionCallEvents(
+          "exec",
+          {
+            title: "Create synthetic scheduled continuations",
+            awaitResults: true,
+            code: `for (const job of ${JSON.stringify(jobs)}) json(await automations({ action: "add", job })); return "synthetic-cron-operator-created";`,
+          },
+          cronOperatorSetupCallId,
+        );
+      }
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      for (const event of setupEvents) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+      res.end();
+      return;
+    }
     const index = facts.turnIndex;
     const toolOutputs =
       Array.isArray(input) &&
@@ -1429,7 +1499,7 @@ const mock = createServer((req, res) => {
     const toolOutput = toolOutputs.at(-1);
     const continuation = toolScenario && toolOutput !== undefined;
     const primaryMessage = cohort
-      ? `Reply with benchmark stream ${index}. Transcript-broadcast cohort ${cohort.id}.`
+      ? `Reply with benchmark stream ${index}. Transcript-broadcast cohort ${cronOperatorJobs[0]?.cohortId ?? cohort.id}.`
       : undefined;
     const primary =
       primaryMessage !== undefined &&
@@ -1440,7 +1510,7 @@ const mock = createServer((req, res) => {
       index >= 1 &&
       index <= runCount &&
       lastUser !== undefined &&
-      (values["session-event-wake"]
+      (values["session-event-wake"] || values["cron-operator-turn"]
         ? lastUser.includes(primaryMessage)
         : chatAttachmentContent
           ? lastUser
@@ -2845,6 +2915,10 @@ async function runRound(
   measuredRound?: number,
   roundKeys = keys,
 ) {
+  const cronOperatorJob = values["cron-operator-turn"] ? cronOperatorJobs[0] : undefined;
+  if (values["cron-operator-turn"] && !cronOperatorJob) {
+    throw new Error("Cron operator fixture exhausted");
+  }
   if (
     retentionScenario ||
     (soakScenario &&
@@ -3065,6 +3139,40 @@ async function runRound(
           (retentionScenario || idleScenario
             ? `\nSynthetic prompt payload: ${promptContent.update(Buffer.alloc(promptBytes / 2)).toString("hex")}`
             : "");
+        if (cronOperatorJob) {
+          const started = Promise.withResolvers<string>();
+          const timer = setTimeout(
+            () => started.reject(new Error("Cron operator turn did not start")),
+            45_000,
+          );
+          sessionEventRuns.set(sessionKey, started);
+          try {
+            const [, result] = await Promise.all([
+              started.promise.then((id) => {
+                runId = id;
+                current.turns.get(index + 1)!.runId = id;
+              }),
+              rpc(client, "cron.run", {
+                id: cronOperatorJob.id,
+                mode: "force",
+                waitTimeoutMs: 170_000,
+              }),
+            ]);
+            if (
+              !isRecord(result) ||
+              !isRecord(result.run) ||
+              result.run.status !== "ok" ||
+              result.run.sessionKey !== sessionKey
+            ) {
+              throw new Error(`Scheduled operator continuation failed: ${JSON.stringify(result)}`);
+            }
+          } finally {
+            clearTimeout(timer);
+            sessionEventRuns.delete(sessionKey);
+          }
+          turnLatencies.push(performance.now() - turnStarted);
+          return;
+        }
         if (values["session-event-wake"]) {
           const started = Promise.withResolvers<string>();
           const timer = setTimeout(
@@ -3631,9 +3739,12 @@ function cleanup() {
   return (cleanupPromise ??= (async () => {
     closing = true;
     cohort?.release();
-    if (stressCronJobId) {
+    for (const id of [
+      ...(stressCronJobId ? [stressCronJobId] : []),
+      ...cronOperatorJobs.flatMap((job) => (job.id ? [job.id] : [])),
+    ]) {
       try {
-        const result = await clients[0]?.request("cron.remove", { id: stressCronJobId }, 5000);
+        const result = await clients[0]?.request("cron.remove", { id }, 5000);
         if (!result?.ok) {
           throw new Error("cron.remove did not succeed");
         }
@@ -3758,7 +3869,9 @@ try {
         await rpc(client, "sessions.create", {
           key,
           ...(stressWorktree ? { cwd: stressWorktree } : {}),
-          ...(values["activity-summaries"] ? {} : { parentSessionKey: parentKey, spawnDepth: 1 }),
+          ...(values["activity-summaries"] || values["cron-operator-turn"]
+            ? {}
+            : { parentSessionKey: parentKey, spawnDepth: 1 }),
           fork: false,
           visibility: "shared",
           displayName: "Synthetic broadcast child",
@@ -4090,6 +4203,41 @@ try {
     }
     return undefined;
   };
+  if (values["cron-operator-turn"]) {
+    const runId = randomUUID();
+    await rpc(sender, "chat.send", {
+      sessionKey: keys[0],
+      message: cronOperatorSetupPrompt,
+      deliver: false,
+      idempotencyKey: runId,
+    });
+    const result = await rpc(sender, "agent.wait", { runId, timeoutMs: 170_000 });
+    if (!isRecord(result) || result.status !== "ok" || !cronOperatorSetupCompleted) {
+      throw new Error("Scheduled operator fixture creation failed");
+    }
+    const listed = await rpc(sender, "cron.list", {
+      includeDisabled: true,
+      includeDeliveryPreviews: false,
+    });
+    if (!isRecord(listed) || !Array.isArray(listed.jobs)) {
+      throw new Error("Scheduled operator jobs were not listed");
+    }
+    for (const fixtureJob of cronOperatorJobs) {
+      const job = listed.jobs.find(
+        (item) =>
+          isRecord(item) && item.name === `Synthetic operator continuation ${fixtureJob.cohortId}`,
+      );
+      if (
+        !isRecord(job) ||
+        typeof job.id !== "string" ||
+        job.sessionTarget !== `session:${keys[0]}`
+      ) {
+        throw new Error("Scheduled operator job did not bind its creator conversation");
+      }
+      fixtureJob.id = job.id;
+    }
+    await drainEvents();
+  }
   const warmupStartedAt = performance.now();
   // Equal warmup work keeps paired runs at the same retained-history boundary.
   const warmupRoundCount = soakScenario ? Math.max(1, Math.ceil(warmupMs / roundIntervalMs)) : 1;
@@ -4569,6 +4717,22 @@ try {
     const authorityCounts = values["operator-access-policy"]
       ? await controlAuthorityCounters(gateway, "stop")
       : undefined;
+    if (
+      values["cron-operator-turn"] &&
+      (!authorityCounts?.resume ||
+        (values["authority-counts"] &&
+          (!authorityCounts.host?.counts["cron-operator-source.assertCurrent"] ||
+            !authorityCounts.host?.counts["server-cron.isAgentAvailable"])))
+    ) {
+      throw new Error(
+        `Scheduled turn did not restore its captured operator source: ${JSON.stringify({
+          round,
+          resumes: authorityCounts?.resume,
+          sourceAssertions: authorityCounts?.host?.counts["cron-operator-source.assertCurrent"],
+          availabilityChecks: authorityCounts?.host?.counts["server-cron.isAgentAvailable"],
+        })}`,
+      );
+    }
     if (
       authorityCounts &&
       (!authorityCounts.assert || !authorityCounts.tools || !authorityCounts.messageAppends)
@@ -5235,6 +5399,7 @@ try {
     stressSessionStore: values["stress-session-store"],
     transcriptHydrationCounts: values["transcript-hydration-counts"],
     operatorAccessPolicy: values["operator-access-policy"],
+    cronOperatorTurn: values["cron-operator-turn"],
     sessionEventWake: values["session-event-wake"],
     authorityCounts: values["authority-counts"],
     authoritySourcePreload,

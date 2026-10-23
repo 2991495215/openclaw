@@ -86,22 +86,25 @@ export function listAgentEntries(cfg: AgentRosterConfig): AgentEntry[] {
   return collectAgentEntries(cfg, false);
 }
 
-/** Reads the explicitly owned raw roster without normalizing malformed values. */
-export function readAgentRosterProperty(raw: unknown): AgentRosterProperty | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
+function readAgentRosterKind(
+  agents: Record<string, unknown>,
+): AgentRosterProperty["kind"] | undefined {
+  if (Object.hasOwn(agents, "entries") && agents.entries !== undefined) {
+    return "entries";
   }
-  const agents = raw.agents;
-  if (!isRecord(agents)) {
-    return undefined;
-  }
-  for (const kind of ["entries", "list"] as const) {
-    const value = agents[kind];
-    if (Object.hasOwn(agents, kind) && value !== undefined) {
-      return { kind, value };
-    }
+  if (Object.hasOwn(agents, "list") && agents.list !== undefined) {
+    return "list";
   }
   return undefined;
+}
+
+/** Reads the explicitly owned raw roster without normalizing malformed values. */
+export function readAgentRosterProperty(raw: unknown): AgentRosterProperty | undefined {
+  if (!isRecord(raw) || !isRecord(raw.agents)) {
+    return undefined;
+  }
+  const kind = readAgentRosterKind(raw.agents);
+  return kind ? { kind, value: raw.agents[kind] } : undefined;
 }
 
 /** True when raw config explicitly owns either supported roster representation. */
@@ -121,28 +124,23 @@ export function listAgentIds(cfg: AgentRosterConfig): string[] {
 
 /** Tests a normalized id without projecting the roster; raw SDK rosters keep legacy semantics. */
 export function hasAgentId(cfg: AgentRosterConfig, agentId: string): boolean {
-  const entries = cfg.agents?.entries;
-  if (
-    Object.hasOwn(cfg.agents ?? {}, "entries") &&
-    isRecord(entries) &&
-    Object.prototype.propertyIsEnumerable.call(entries, agentId) &&
-    isRecord(entries[agentId])
-  ) {
-    return true;
+  const agents = cfg.agents;
+  if (!isRecord(agents)) {
+    return agentId === LEGACY_IMPLICIT_AGENT_ID;
   }
-  const roster = readAgentRosterProperty(cfg);
-  if (roster?.kind === "entries" && isRecord(roster.value)) {
-    for (const id in roster.value) {
-      if (
-        Object.hasOwn(roster.value, id) &&
-        isRecord(roster.value[id]) &&
-        normalizeAgentId(id) === agentId
-      ) {
+  const kind = readAgentRosterKind(agents);
+  const value = kind ? agents[kind] : undefined;
+  if (kind === "entries" && isRecord(value)) {
+    if (Object.prototype.propertyIsEnumerable.call(value, agentId) && isRecord(value[agentId])) {
+      return true;
+    }
+    for (const id in value) {
+      if (Object.hasOwn(value, id) && isRecord(value[id]) && normalizeAgentId(id) === agentId) {
         return true;
       }
     }
-  } else if (roster?.kind === "list" && Array.isArray(roster.value)) {
-    for (const entry of roster.value) {
+  } else if (kind === "list" && Array.isArray(value)) {
+    for (const entry of value) {
       if (
         entry !== null &&
         typeof entry === "object" &&
@@ -152,7 +150,7 @@ export function hasAgentId(cfg: AgentRosterConfig, agentId: string): boolean {
       }
     }
   }
-  return !roster && agentId === LEGACY_IMPLICIT_AGENT_ID;
+  return !kind && agentId === LEGACY_IMPLICIT_AGENT_ID;
 }
 
 /** Lists configured roster and ACP harness targets for subagent policy. */

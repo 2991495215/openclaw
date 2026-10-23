@@ -929,7 +929,7 @@ it("accounts only the identified main isolate inside the requested heap capture"
     '[42:0xdef:1] 16 ms: GC: {"gc":"s",interleaved worker log',
     "[43:0xabc] 17 ms: pause=1.0 gc=s promoted=65536",
     'OPENCLAW_GATEWAY_BENCH_GC {"phase":"diagnostics-stop","pid":42,"profilePath":"soak"}',
-    '[42:0xabc:0] 18 ms: GC: {"gc":"mc","promoted":256}',
+    '[42:0xabc:0] 18 ms: GC: {"gc":"mc","promoted":256,"pause":2.5}',
     'OPENCLAW_GATEWAY_BENCH_GC {"phase":"heap-stop","pid":42,"profilePath":"measured"}',
     "[42:0xabc] 20 ms: pause=1.0 gc=s promoted=4096",
     '[42:0xabc:0] 25 ms: GC: {"gc":"s",interleaved shutdown log',
@@ -940,11 +940,15 @@ it("accounts only the identified main isolate inside the requested heap capture"
     isolate: "0xabc",
     promotedBytes: 1280,
     gcCount: 2,
+    totalPauseMs: 3.5,
+    maxPauseMs: 2.5,
     excludedWorkerGcCount: 2,
   });
   expect(readGatewayGcTrace(logPath, "soak", "diagnostics")).toMatchObject({
     promotedBytes: 1024,
     gcCount: 1,
+    totalPauseMs: 1,
+    maxPauseMs: 1,
     excludedWorkerGcCount: 2,
   });
   expect(() => readGatewayGcTrace(logPath, "missing")).toThrow("complete heap capture window");
@@ -955,6 +959,10 @@ it("accounts only the identified main isolate inside the requested heap capture"
   ]) {
     await writeFile(logPath, malformed);
     expect(() => readGatewayGcTrace(logPath, "measured")).toThrow("promoted byte count");
+  }
+  for (const pause of ["NaN", "-1", "Infinity"]) {
+    await writeFile(logPath, trace.replace("15 ms: pause=1.0", `15 ms: pause=${pause}`));
+    expect(() => readGatewayGcTrace(logPath, "measured")).toThrow("pause duration");
   }
   await writeFile(logPath, trace.replace('"phase":"identify-stop"', '"phase":"missing"'));
   expect(() => readGatewayGcTrace(logPath, "measured")).toThrow("invalid heap capture start");
