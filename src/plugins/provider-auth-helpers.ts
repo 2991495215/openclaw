@@ -108,6 +108,19 @@ export function buildApiKeyCredential(
   };
 }
 
+function prepareApiKeyProfile(params: Parameters<typeof upsertApiKeyProfile>[0]) {
+  return {
+    profileId: params.profileId ?? buildAuthProfileId({ providerId: params.provider }),
+    credential: buildApiKeyCredential(
+      params.provider,
+      params.input,
+      params.metadata,
+      params.options,
+    ),
+    agentDir: resolveAuthAgentDir(params.agentDir, params.options?.config),
+  };
+}
+
 /** @deprecated Use upsertApiKeyProfileAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
 export function upsertApiKeyProfile(params: {
   provider: string;
@@ -122,35 +135,17 @@ export function upsertApiKeyProfile(params: {
     method: "upsertApiKeyProfile",
     replacement: "upsertApiKeyProfileAsync",
   });
-  const profileId = params.profileId ?? buildAuthProfileId({ providerId: params.provider });
-  upsertAuthProfile({
-    profileId,
-    credential: buildApiKeyCredential(
-      params.provider,
-      params.input,
-      params.metadata,
-      params.options,
-    ),
-    agentDir: resolveAuthAgentDir(params.agentDir, params.options?.config),
-  });
-  return profileId;
+  const profile = prepareApiKeyProfile(params);
+  upsertAuthProfile(profile);
+  return profile.profileId;
 }
 
 export async function upsertApiKeyProfileAsync(
   params: Parameters<typeof upsertApiKeyProfile>[0],
 ): Promise<string> {
-  const profileId = params.profileId ?? buildAuthProfileId({ providerId: params.provider });
-  await upsertAuthProfileAsync({
-    profileId,
-    credential: buildApiKeyCredential(
-      params.provider,
-      params.input,
-      params.metadata,
-      params.options,
-    ),
-    agentDir: resolveAuthAgentDir(params.agentDir, params.options?.config),
-  });
-  return profileId;
+  const profile = prepareApiKeyProfile(params);
+  await upsertAuthProfileAsync(profile);
+  return profile.profileId;
 }
 
 export function applyAuthProfileConfig(
