@@ -59,6 +59,9 @@ import {
   resolveUpdatedGatewayRestartPort,
 } from "./update-command-service-plan.js";
 
+// Published updater chunks resolve this binding after replacing the installation.
+export { isPackageManagerUpdateMode } from "./update-command-service-command.js";
+
 const QUIET_SERVICE_STDOUT = createNullWriter();
 
 export async function recoverLaunchAgentAndRecheckGatewayHealth(params: {
