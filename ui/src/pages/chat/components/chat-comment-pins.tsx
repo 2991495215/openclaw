@@ -6,9 +6,9 @@ import { cancelLayout, scheduleLayout } from "../../../lib/layout-frame.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
 import { defineSolidBridge } from "../../../lib/solid-bridge.ts";
+import { dispatchChatCommentAction } from "./chat-comment-action.ts";
 import { chatCommentLineEnd, resolveChatCommentAnchor } from "./chat-comment-anchor.ts";
 import { currentChatComments } from "./chat-comment-controller.ts";
-import { dispatchChatCommentAction } from "./chat-selection-annotations.tsx";
 import type { TranscriptMessageElements } from "./chat-transcript-message-elements.ts";
 import "../../../styles/chat/selection-annotations.css";
 

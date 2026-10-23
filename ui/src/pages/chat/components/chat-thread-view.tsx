@@ -1,4 +1,4 @@
-import { Show, createMemo, onSettled, useContext } from "solid-js";
+import { Show, createMemo, lazy, onSettled, useContext } from "solid-js";
 import { handleMarkdownCodeBlockClick } from "../../../components/markdown-code-blocks.ts";
 import {
   linkReaderPrefetchRef as createLinkReaderPrefetchRef,
@@ -31,10 +31,10 @@ import {
   getExpansionStateVersion,
   subscribeExpansionState,
 } from "../chat-thread.ts";
-import { ChatCommentPins } from "./chat-comment-pins.tsx";
 import { ChatConversationLoading } from "./chat-conversation-loading.tsx";
 import { ChatConversationMobile } from "./chat-conversation-presentation.ts";
 import { CHAT_HISTORY_BOUNDARY_HEIGHT_PX, ChatHistoryBoundary } from "./chat-history-boundary.tsx";
+import { ChatLazyBoundary } from "./chat-lazy-boundary.tsx";
 import { ChatPositionRail } from "./chat-position-rail-solid.tsx";
 import {
   getTranscriptState,
@@ -51,6 +51,9 @@ import { ChatWelcome } from "./chat-welcome.tsx";
 registerEnglishCatalog(registerChatSessionEnglish);
 
 const EMPTY_ENTRY_KEYS: ReadonlyMap<string, string> = new Map();
+const ChatCommentPins = lazy(() => import("./chat-comment-pins.tsx"), {
+  export: "ChatCommentPins",
+});
 
 function navigateCronRunLink(event: Event, props: ChatThreadProps): boolean {
   const anchor = anchorFromNavigationEvent(event);
@@ -293,13 +296,15 @@ export function ChatThread(input: {
         {contents()}
         <Show when={commentPins() ? getTranscriptState(paneId()) : undefined} keyed>
           {(threadState) => (
-            <ChatCommentPins
-              threadState={threadState}
-              transcript={current().session}
-              attachments={input.props.commentAttachments}
-              sessionKey={input.props.sessionKey}
-              disabled={input.props.commentsDisabled ?? false}
-            />
+            <ChatLazyBoundary>
+              <ChatCommentPins
+                threadState={threadState}
+                transcript={current().session}
+                attachments={input.props.commentAttachments}
+                sessionKey={input.props.sessionKey}
+                disabled={input.props.commentsDisabled ?? false}
+              />
+            </ChatLazyBoundary>
           )}
         </Show>
       </div>

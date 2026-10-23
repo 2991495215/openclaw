@@ -11,8 +11,9 @@ import {
 import { createComposerContainer } from "../chat-composer.test-support.ts";
 import { createChatProps, renderChatPropsInto } from "../chat-view.test-helpers.ts";
 import type { ChatAttachmentControlsProps } from "./chat-attachment-controls.types.ts";
+import type { ChatCommentAction } from "./chat-comment-action.ts";
 import { ChatCommentController } from "./chat-comment-controller.ts";
-import { ChatSelectionAnnotations, type ChatCommentAction } from "./chat-selection-annotations.tsx";
+import { ChatSelectionAnnotations } from "./chat-selection-annotations.tsx";
 import { createChatSelectionAttachment } from "./chat-selection-attachment.ts";
 import { removeChatSelectionPopup } from "./chat-selection-popup.tsx";
 
@@ -98,7 +99,9 @@ async function mountComments(additional: ChatAttachment[] = []) {
     "openclaw-chat-comment-controller",
   )!;
   document.body.append(card);
-  flush();
+  await waitForSolid(() =>
+    expect(composer.querySelector('button[aria-label="Edit comment 1"]')).not.toBeNull(),
+  );
   const edit = () =>
     composer.querySelector<HTMLButtonElement>('button[aria-label="Edit comment 1"]')!.click();
   const input = () =>
