@@ -155,7 +155,7 @@ describe("managed attachment branch retention", () => {
       if (switchAt !== "after cleanup") {
         ordering.afterRead = restoreBranch;
       }
-      const cleanup = cleanupManagedOutgoingMediaRecords({ stateDir, sessionKey });
+      const cleanup = cleanupManagedOutgoingMediaRecords();
       if (switchAt === "between hidden-tail pages") {
         await expect(cleanup).rejects.toMatchObject({
           name: "SessionTranscriptProjectionUnavailableError",

@@ -402,7 +402,7 @@ describe("Gateway agent and artifact APIs", () => {
     });
     expect(managedBlocks).toHaveLength(2);
     // Startup maintenance may run after preparation but before transcript commit.
-    await cleanupManagedOutgoingMediaRecords({ stateDir });
+    await cleanupManagedOutgoingMediaRecords();
     expect(await listManagedImageRecordEntries({ stateDir, sessionKey })).toHaveLength(2);
     await appendTranscriptMessage(scope, {
       eventId: messageId,

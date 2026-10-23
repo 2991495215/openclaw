@@ -17,8 +17,11 @@ import {
 } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseByPathAsync } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
+import { withEnvAsync } from "../test-utils/env.js";
 import {
+  claimManagedImageRecordCleanupIfCurrent,
   insertManagedImageRecord,
+  listManagedImageRecordEntries,
   MANAGED_OUTGOING_ORIGINALS_SUBDIR,
   readManagedImageRecord,
 } from "./managed-image-record-store.js";
@@ -223,10 +226,7 @@ export function usePreparedManagedImageState(params: {
   bindState: (stateDir: string) => void;
   prepareSessionStore: (stateDir: string) => Promise<void>;
   resetMocks: (stateDir: string) => void;
-  cleanupRecords: (params: {
-    stateDir: string;
-    forceDeleteSessionRecords: true;
-  }) => Promise<unknown>;
+  cleanupRecords: () => Promise<unknown>;
 }): void {
   let stateDir: string;
   const suiteDirs = useAutoCleanupTempDirTracker((cleanup) =>
@@ -247,7 +247,10 @@ export function usePreparedManagedImageState(params: {
   });
   beforeEach(() => params.resetMocks(stateDir));
   afterEach(async () => {
-    await params.cleanupRecords({ stateDir, forceDeleteSessionRecords: true });
+    for (const { record } of await listManagedImageRecordEntries({ stateDir })) {
+      await claimManagedImageRecordCleanupIfCurrent(record, stateDir);
+    }
+    await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, () => params.cleanupRecords());
     // Keep both database identities and their workers; discard only case-owned artifacts.
     const retained = new Set([
       "state",

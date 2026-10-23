@@ -1337,6 +1337,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     stateDir = tempDirs.make("managed-image-cleanup-");
     vi.clearAllMocks();
     await prepareManagedSessionStore(stateDir);
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
   });
 
   it("retains an aged transient record while its session still has an active run", async () => {
@@ -1347,7 +1348,6 @@ describe("cleanupManagedOutgoingImageRecords", () => {
 
     const checkedSessionKeys: string[] = [];
     await cleanupManagedOutgoingImageRecords({
-      stateDir,
       hasActiveSessionRun: (sessionKey) => {
         checkedSessionKeys.push(sessionKey);
         return sessionKey === fixture.sessionKey;
@@ -1403,12 +1403,14 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       record.original.mediaSubdir,
       record.original.mediaId,
     );
-    await cleanupManagedOutgoingImageRecords({ stateDir, nowMs: afterTtl });
+    using clock = vi.spyOn(Date, "now").mockReturnValueOnce(afterTtl);
+    await cleanupManagedOutgoingImageRecords();
     expect(await readManagedImageRecord(attachmentId, stateDir)).not.toBeNull();
     await fs.access(originalPath);
 
     await completeSessionDelivery(queueId, queueContext);
-    await cleanupManagedOutgoingImageRecords({ stateDir, nowMs: afterTtl });
+    clock.mockReturnValueOnce(afterTtl);
+    await cleanupManagedOutgoingImageRecords();
     expect(await readManagedImageRecord(attachmentId, stateDir)).toBeNull();
     await expectPathMissing(originalPath);
   });
@@ -1424,7 +1426,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     const rmSpy = vi.spyOn(fs, "rm").mockRejectedValueOnce(new Error("synthetic rm failure"));
 
     try {
-      await cleanupManagedOutgoingImageRecords({ stateDir });
+      await cleanupManagedOutgoingImageRecords();
     } finally {
       rmSpy.mockRestore();
     }
@@ -1432,7 +1434,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     expect(await readManagedImageRecord(fixture.attachmentId, stateDir)).toBeNull();
     await fs.access(fixture.originalPath);
 
-    await cleanupManagedOutgoingImageRecords({ stateDir });
+    await cleanupManagedOutgoingImageRecords();
 
     await expectPathMissing(fixture.originalPath);
   });
@@ -1461,11 +1463,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       }
       await fs.utimes(orphanPath, new Date(0), new Date(0));
 
-      await cleanupManagedOutgoingImageRecords({
-        stateDir,
-        nowMs: 1_000_000,
-        transientMaxAgeMs: 1_000,
-      });
+      await cleanupManagedOutgoingImageRecords();
 
       if (legacy) {
         await fs.access(orphanPath);
@@ -1490,7 +1488,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     mockSessionEntry(databasePath, "fallback-session", "/tmp/fallback.jsonl");
 
     await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, () =>
-      cleanupManagedOutgoingImageRecords({ stateDir }),
+      cleanupManagedOutgoingImageRecords(),
     );
 
     await expectRetained(stateDir, fixture);
@@ -1526,7 +1524,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     });
     loadSessionEntryMock.mockReturnValue({ storePath, entry: undefined });
 
-    await cleanupManagedOutgoingImageRecords({ stateDir });
+    await cleanupManagedOutgoingImageRecords();
     expect(await readManagedImageRecord(fixture.attachmentId, stateDir)).not.toBeNull();
     expect(await fs.readFile(fixture.originalPath, "utf8")).toBe("original-image");
     expect(readSessionMessagesMock).not.toHaveBeenCalled();
@@ -1553,7 +1551,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     loadSessionEntryMock.mockReturnValue({ storePath: configuredStorePath, entry: undefined });
 
     await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, () =>
-      cleanupManagedOutgoingImageRecords({ stateDir }),
+      cleanupManagedOutgoingImageRecords(),
     );
 
     await expectRetained(stateDir, fixture);
@@ -1585,7 +1583,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       ),
     ]);
 
-    await cleanupManagedOutgoingImageRecords({ stateDir });
+    await cleanupManagedOutgoingImageRecords();
 
     expect(await readManagedImageRecord(firstFixture.attachmentId, stateDir)).not.toBeNull();
     expect(await readManagedImageRecord(secondFixture.attachmentId, stateDir)).not.toBeNull();
@@ -1594,7 +1592,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     expect(readSessionMessagesMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not delete files still referenced by other sessions during session-scoped cleanup", async () => {
+  it("retains other-session references while deleting dereferenced records", async () => {
     const retainedFixture = await createFixture(stateDir, {
       sessionKey: "agent:other:session",
       attachmentId: "33333333-3333-4333-8333-333333333333",
@@ -1604,37 +1602,27 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       attachmentId: "44444444-4444-4444-8444-444444444444",
     });
 
-    loadSessionEntryMock.mockImplementation((sessionKey: string) => ({
-      storePath: path.join(stateDir, "gateway-sessions.json"),
-      entry: {
-        sessionId: sessionKey === retainedFixture.sessionKey ? "sess-other" : "sess-main",
-        sessionFile: "/tmp/session.jsonl",
-      },
-    }));
-    readSessionMessagesMock.mockReturnValue([]);
+    getRuntimeConfigMock.mockReturnValue({});
+    await seedSession(stateDir, "main", deletedFixture.sessionKey, "sess-main");
+    await seedSession(stateDir, "other", retainedFixture.sessionKey, "sess-other");
+    readSessionMessagesMock.mockImplementation((scope: { sessionKey: string }) =>
+      scope.sessionKey === retainedFixture.sessionKey
+        ? [assistantMessage([{ type: "image", url: mediaPath(retainedFixture) }])]
+        : [],
+    );
 
-    await cleanupManagedOutgoingImageRecords({
-      stateDir,
-      sessionKey: deletedFixture.sessionKey,
-      forceDeleteSessionRecords: true,
-    });
+    await cleanupManagedOutgoingImageRecords();
 
     await expectDeleted(stateDir, deletedFixture);
     await expectRetained(stateDir, retainedFixture);
   });
 
-  it("retains other selected-agent global records during scoped cleanup", async () => {
+  it("retains global references belonging to another recorded owner", async () => {
     getRuntimeConfigMock.mockReturnValue({
       agents: { entries: { main: {}, work: {} } },
-      session: { store: path.join(stateDir, "sessions.sqlite") },
     });
-    await seedSession(
-      stateDir,
-      "main",
-      "global",
-      "sess-main-global",
-      path.join(stateDir, "sessions.sqlite"),
-    );
+    await seedSession(stateDir, "main", "global", "sess-main-global");
+    await seedSession(stateDir, "work", "global", "sess-work-global");
     const retainedFixture = await createFixture(stateDir, {
       sessionKey: "global",
       agentId: "work",
@@ -1645,17 +1633,13 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       agentId: "main",
       attachmentId: "66666666-6666-4666-8666-666666666666",
     });
-    loadSessionEntryMock.mockReturnValue({
-      storePath: path.join(stateDir, "gateway-sessions.json"),
-      entry: { sessionId: "sess-main-global", sessionFile: "/tmp/global-main.jsonl" },
-    });
-    readSessionMessagesMock.mockReturnValue([]);
+    readSessionMessagesMock.mockImplementation((scope: { agentId: string }) =>
+      scope.agentId === "work"
+        ? [assistantMessage([{ type: "image", url: mediaPath(retainedFixture) }])]
+        : [],
+    );
 
-    await cleanupManagedOutgoingImageRecords({
-      stateDir,
-      sessionKey: "global",
-      agentId: "main",
-    });
+    await cleanupManagedOutgoingImageRecords();
 
     expect(await readManagedImageRecord(deletedFixture.attachmentId, stateDir)).toBeNull();
     await expectRetained(stateDir, retainedFixture);
@@ -1690,7 +1674,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       assistantMessage([{ type: "image", url: mediaPath(fixture) }]),
     ]);
 
-    await cleanupManagedOutgoingImageRecords({ stateDir });
+    await cleanupManagedOutgoingImageRecords();
 
     expect(readSessionMessagesMock).toHaveBeenCalled();
     await expectRetained(stateDir, fixture);
@@ -1703,6 +1687,8 @@ describe("cleanupManagedOutgoingImageRecords", () => {
     getRuntimeConfigMock.mockReturnValue(config);
     prepareAgentSessionStore(stateDir, "work");
     await seedSession(stateDir, "work", "global", "sess-work-global");
+    prepareAgentSessionStore(stateDir, "main");
+    await seedSession(stateDir, "main", "global", "sess-main-global");
     expect(
       resolveExistingAgentSessionStoreTargetsReadOnlyResult(config, "work", {
         env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
@@ -1730,13 +1716,13 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       storePath: path.join(stateDir, "gateway-sessions.json"),
       entry: { sessionId: "sess-work-global", sessionFile: "/tmp/global-work.jsonl" },
     });
-    readSessionMessagesMock.mockReturnValue([]);
+    readSessionMessagesMock.mockImplementation((scope: { agentId: string }) =>
+      scope.agentId === "main"
+        ? [assistantMessage([{ type: "image", url: mediaPath(retainedFixture) }])]
+        : [],
+    );
 
-    await cleanupManagedOutgoingImageRecords({
-      stateDir,
-      sessionKey: "global",
-      agentId: "work",
-    });
+    await cleanupManagedOutgoingImageRecords();
 
     expect(readSessionMessagesMock).toHaveBeenCalled();
     expect(await readManagedImageRecord(deletedFixture.attachmentId, stateDir)).toBeNull();
@@ -1754,10 +1740,7 @@ describe("cleanupManagedOutgoingImageRecords", () => {
       attachmentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     });
 
-    await cleanupManagedOutgoingImageRecords({
-      stateDir,
-      sessionKey: "global",
-    });
+    await cleanupManagedOutgoingImageRecords();
 
     await expectRetained(stateDir, fixture);
     expect(loadSessionEntryMock).not.toHaveBeenCalled();

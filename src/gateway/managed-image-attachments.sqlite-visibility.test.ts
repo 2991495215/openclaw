@@ -185,7 +185,8 @@ describe("managed attachment SQLite visibility", () => {
     );
     const cleanup = async (expectedReads: number) => {
       reads.length = 0;
-      await cleanupManagedOutgoingMediaRecords({ stateDir, nowMs });
+      using _ = vi.spyOn(Date, "now").mockReturnValueOnce(nowMs);
+      await cleanupManagedOutgoingMediaRecords();
       await waitForDiagnosticEventsDrained();
       expect(reads).toHaveLength(expectedReads);
     };
@@ -232,7 +233,7 @@ describe("managed attachment SQLite visibility", () => {
         });
       }
       expect(await f.download()).toBeNull();
-      await cleanupManagedOutgoingMediaRecords({ stateDir, sessionKey: f.scope.sessionKey });
+      await cleanupManagedOutgoingMediaRecords();
       expect(await readManagedImageRecord(f.attachmentId, stateDir)).not.toBeNull();
       expect(fs.existsSync(f.originalPath)).toBe(true);
     },
@@ -261,7 +262,7 @@ describe("managed attachment SQLite visibility", () => {
       );
       await seed(orphan, [message("different", null, "no attachment")]);
 
-      await cleanupManagedOutgoingMediaRecords({ stateDir });
+      await cleanupManagedOutgoingMediaRecords();
       expect(await readManagedImageRecord(oversized.attachmentId, stateDir)).not.toBeNull();
       expect(fs.existsSync(oversized.originalPath)).toBe(true);
       expect(await readManagedImageRecord(orphan.attachmentId, stateDir)).toBeNull();
@@ -425,7 +426,7 @@ describe("managed attachment SQLite visibility", () => {
     expect(await f.download()).toBeNull();
     const hostSql = observeHostDataSql();
     try {
-      await cleanupManagedOutgoingMediaRecords({ stateDir, sessionKey: f.scope.sessionKey });
+      await cleanupManagedOutgoingMediaRecords();
       expect(hostSql.queries.filter(isSessionEntryDataSql)).toEqual([]);
     } finally {
       hostSql.restore();
@@ -436,7 +437,7 @@ describe("managed attachment SQLite visibility", () => {
     expect(fs.readFileSync(archivePath)).toEqual(archiveBefore);
   });
 
-  it("ignores NUL-corrupt history in another session", async () => {
+  it("retains healthy and corrupt history media when unfiltered cleanup fails", async () => {
     const f = await fixture();
     const corrupt = await fixture("hidden");
     await seed(corrupt, [message("hidden", null, "hidden history")]);
@@ -447,11 +448,14 @@ describe("managed attachment SQLite visibility", () => {
       )`)
       .run("\u0000trailing", corrupt.scope.sessionId, corrupt.scope.sessionId);
     expect(await f.download()).not.toBeNull();
-    await cleanupManagedOutgoingMediaRecords({ stateDir, sessionKey: f.scope.sessionKey });
+    await expect(cleanupManagedOutgoingMediaRecords()).rejects.toMatchObject({
+      name: "SyntaxError",
+    });
     expect(await readManagedImageRecord(f.attachmentId, stateDir)).not.toBeNull();
     expect(await readManagedImageRecord(corrupt.attachmentId, stateDir)).not.toBeNull();
     expect(fs.existsSync(f.originalPath)).toBe(true);
     expect(fs.existsSync(corrupt.originalPath)).toBe(true);
+    expect(await f.download()).not.toBeNull();
   });
 });
 

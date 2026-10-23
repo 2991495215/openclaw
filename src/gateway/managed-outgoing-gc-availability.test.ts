@@ -65,13 +65,10 @@ async function seedManagedRecord(
 }
 
 function cleanup(
-  options: Omit<
-    NonNullable<Parameters<typeof cleanupManagedOutgoingMediaRecords>[0]>,
-    "stateDir"
-  > = {},
+  options: NonNullable<Parameters<typeof cleanupManagedOutgoingMediaRecords>[0]> = {},
 ) {
   return withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, () =>
-    cleanupManagedOutgoingMediaRecords({ stateDir, ...options }),
+    cleanupManagedOutgoingMediaRecords(options),
   );
 }
 
@@ -130,7 +127,7 @@ describe("cleanupManagedOutgoingMediaRecords availability fail-safe", () => {
     },
   );
 
-  it("keeps other agents' claimed and unclaimed bytes without rereading full metadata", async () => {
+  it("retains unclaimed bytes and retries claimed cleanup without rereading full metadata", async () => {
     agentDatabase();
     const metadata = "synthetic-alt ".repeat(1024);
     const survivorIds = [
@@ -171,7 +168,7 @@ describe("cleanupManagedOutgoingMediaRecords availability fail-safe", () => {
           : null,
     );
     try {
-      await cleanup({ sessionKey: "agent:main:main" });
+      await cleanup();
       expect([
         counter.counts.records,
         counter.rowCounts.records,
@@ -180,13 +177,19 @@ describe("cleanupManagedOutgoingMediaRecords availability fail-safe", () => {
     } finally {
       counter.restore();
     }
-    for (const file of survivors) {
-      expect(fs.readFileSync(file, "utf8")).toBe("original-image");
+    for (const [index, file] of survivors.entries()) {
+      if (index === 2) {
+        expect(fs.existsSync(file)).toBe(false);
+      } else {
+        expect(fs.readFileSync(file, "utf8")).toBe("original-image");
+      }
     }
     expect(fs.existsSync(deleted)).toBe(false);
     expect(fs.existsSync(orphan)).toBe(false);
     expect(readPersistedRecords()).toEqual(
-      persistedBefore.filter((row) => row.attachment_id !== deletedId),
+      persistedBefore.filter(
+        (row) => row.attachment_id !== deletedId && row.attachment_id !== survivorIds[2],
+      ),
     );
   });
 

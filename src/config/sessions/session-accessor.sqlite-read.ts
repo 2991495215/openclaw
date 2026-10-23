@@ -500,7 +500,6 @@ export function prepareTranscriptEventReadQuery(
   sessionId: string,
   options: {
     beforeEventSeq?: number;
-    afterEventSeq?: number;
     maxEventBytes?: number;
   } = {},
 ) {
@@ -508,9 +507,6 @@ export function prepareTranscriptEventReadQuery(
   return getSessionKysely(database.db)
     .selectFrom("transcript_events")
     .where("session_id", "=", sessionId)
-    .$if(options.afterEventSeq !== undefined, (query) =>
-      query.where("seq", ">", options.afterEventSeq!),
-    )
     .$if(options.beforeEventSeq !== undefined, (query) =>
       query.where("seq", "<", options.beforeEventSeq!),
     );
@@ -521,7 +517,6 @@ export function loadTranscriptEventsFromDatabase(
   sessionId: string,
   options: {
     beforeEventSeq?: number;
-    afterEventSeq?: number;
     projection?: "reset-boundary";
     maxEventBytes?: number;
     projectEvent?: (event: TranscriptEvent) => TranscriptEvent;

@@ -560,9 +560,9 @@ it.for([
       await run;
       if (gcDuringPreparation) {
         // Committed originals must outlive transient retention even after the run ends.
-        await cleanupManagedOutgoingMediaRecords({
-          nowMs: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        });
+        using clock = vi.spyOn(Date, "now");
+        clock.mockReturnValueOnce(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await cleanupManagedOutgoingMediaRecords();
         const entries = await readManaged();
         expect(entries).toHaveLength(2);
         for (const { record } of entries) {

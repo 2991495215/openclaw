@@ -683,7 +683,7 @@ describe("WebChat message tool internal source reply", () => {
         const appendSpy = vi
           .spyOn(sessionTranscript, "appendAssistantMessageToSessionTranscript")
           .mockImplementationOnce(async (params) => {
-            await cleanupManagedOutgoingMediaRecords({ stateDir });
+            await cleanupManagedOutgoingMediaRecords();
             preCommitEntries = await listManagedImageRecordEntries({ stateDir, sessionKey });
             for (const { record } of preCommitEntries) {
               const { mediaRoot, mediaSubdir, mediaId, contentType } = record.original;

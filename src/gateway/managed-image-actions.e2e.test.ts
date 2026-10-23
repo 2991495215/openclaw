@@ -24,6 +24,7 @@ import {
   MANAGED_OUTGOING_MEDIA_ARTIFACT_ID_PREFIX,
 } from "./managed-image-attachments.js";
 import {
+  claimManagedImageRecordCleanupIfCurrent,
   MANAGED_OUTGOING_ORIGINALS_SUBDIR,
   readManagedImageRecord,
   type ManagedImageRecord,
@@ -549,11 +550,8 @@ describe("managed image actions Gateway E2E", () => {
             record.original.mediaSubdir,
             record.original.mediaId,
           );
-          await cleanupManagedOutgoingMediaRecords({
-            stateDir,
-            sessionKey: SESSION_KEY,
-            forceDeleteSessionRecords: true,
-          });
+          await claimManagedImageRecordCleanupIfCurrent(record, stateDir);
+          await cleanupManagedOutgoingMediaRecords();
           expect(await readManagedImageRecord(record.attachmentId, stateDir)).toBeNull();
           await expect(fs.access(originalPath)).rejects.toMatchObject({ code: "ENOENT" });
 

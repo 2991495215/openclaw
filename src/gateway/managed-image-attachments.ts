@@ -319,24 +319,10 @@ function parseMediaDataUrl(
 }
 
 export async function cleanupManagedOutgoingMediaRecords(params?: {
-  stateDir?: string;
-  nowMs?: number;
-  transientMaxAgeMs?: number;
-  sessionKey?: string;
-  agentId?: string;
-  forceDeleteSessionRecords?: boolean;
   hasActiveSessionRun?: (sessionKey: string, agentId: string | undefined) => boolean;
 }): Promise<void> {
-  const stateDir = params?.stateDir ?? resolveStateDir();
-  const nowMs = params?.nowMs ?? Date.now();
-  const transientMaxAgeMs = params?.transientMaxAgeMs ?? DEFAULT_TRANSIENT_OUTGOING_IMAGE_TTL_MS;
-  const sessionKeyFilter = params?.sessionKey ?? null;
-  const agentIdFilter = params?.agentId?.trim() ? normalizeAgentId(params.agentId) : undefined;
-  const globalCompatibilityOwnerAgentId =
-    sessionKeyFilter === "global" && agentIdFilter
-      ? tryResolveSessionCompatibilityOwnerAgentId(getRuntimeConfig(), "global")
-      : undefined;
-  const forceDeleteSessionRecords = params?.forceDeleteSessionRecords === true;
+  const stateDir = resolveStateDir();
+  const nowMs = Date.now();
   const entries = await listManagedImageRecordEntries({ stateDir });
   let pendingPreparedAttachmentIds: Set<string> | null | undefined;
 
@@ -346,26 +332,8 @@ export async function cleanupManagedOutgoingMediaRecords(params?: {
   >();
   for (const entry of entries) {
     const { record } = entry;
-    if (sessionKeyFilter && record.sessionKey !== sessionKeyFilter) {
-      continue;
-    }
-    if (
-      sessionKeyFilter === "global" &&
-      record.sessionKey === "global" &&
-      (!agentIdFilter ||
-        resolveManagedSessionOwnerAgentId(
-          record.sessionKey,
-          record.agentId,
-          globalCompatibilityOwnerAgentId,
-        ) !== agentIdFilter)
-    ) {
-      continue;
-    }
-
     let shouldDelete = entry.cleanupPending;
-    if (!entry.cleanupPending && forceDeleteSessionRecords) {
-      shouldDelete = true;
-    } else if (!entry.cleanupPending && record.messageId) {
+    if (!entry.cleanupPending && record.messageId) {
       const transcriptMatch = await recordMatchesTranscriptMessage(
         record,
         transcriptAttachmentIndexCache,
@@ -377,7 +345,7 @@ export async function cleanupManagedOutgoingMediaRecords(params?: {
       const createdAtMs = Date.parse(record.createdAt);
       const otherwiseDeletable =
         Number.isFinite(createdAtMs) &&
-        nowMs - createdAtMs >= transientMaxAgeMs &&
+        nowMs - createdAtMs >= DEFAULT_TRANSIENT_OUTGOING_IMAGE_TTL_MS &&
         params?.hasActiveSessionRun?.(record.sessionKey, record.agentId?.trim() || undefined) !==
           true;
       if (otherwiseDeletable) {
@@ -398,7 +366,7 @@ export async function cleanupManagedOutgoingMediaRecords(params?: {
   await deleteAgedOrphanManagedImageFiles({
     stateDir,
     nowMs,
-    minAgeMs: Math.max(transientMaxAgeMs, DEFAULT_TRANSIENT_OUTGOING_IMAGE_TTL_MS),
+    minAgeMs: DEFAULT_TRANSIENT_OUTGOING_IMAGE_TTL_MS,
   });
 }
 

@@ -3,6 +3,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { cleanupManagedOutgoingMediaRecords } from "../gateway/managed-image-attachments.js";
 import {
   insertManagedImageRecord,
@@ -25,12 +29,14 @@ describe("cleanOldMedia managed-subtree retention", () => {
 
   beforeAll(async () => {
     tempHome = await createTempHomeEnv("openclaw-test-home-");
+    setRuntimeConfigSnapshot({});
     store = await import("./store.js");
   });
 
   afterAll(async () => {
     await closeOpenClawStateDatabaseAsync();
     closeOpenClawStateDatabaseForTest();
+    clearRuntimeConfigSnapshot();
     await tempHome.restore();
   });
 
@@ -91,12 +97,7 @@ describe("cleanOldMedia managed-subtree retention", () => {
     expect(await readManagedImageRecord(attachmentId, stateDir)).not.toBeNull();
     await expect(fs.stat(legacyRecordPath)).resolves.toMatchObject({ size: 2 });
 
-    await cleanupManagedOutgoingMediaRecords({
-      stateDir,
-      sessionKey: "agent:other:main",
-      nowMs: Date.now(),
-      transientMaxAgeMs: 1_000,
-    });
+    await cleanupManagedOutgoingMediaRecords();
 
     expect(await readManagedImageRecord(attachmentId, stateDir)).not.toBeNull();
     await expect(fs.readFile(historyOriginal.path, "utf8")).resolves.toBe("history original");
