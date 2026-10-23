@@ -9,6 +9,14 @@ or it has a material new event. Don't enrich random mentions with no relationshi
 signal, bots or spam, entities with no connection to the user's work, or a page
 enriched in the past week without new signal.
 
+## During ingestion
+
+When another skill (meeting, document) sends you here, the source is the
+enrichment. Use Knowledge and the source itself. Go to the web only to confirm an
+identity or a proper-noun spelling, with a targeted query, and keep only the
+passage that settles it. Full tier research below is for an explicit enrichment
+request.
+
 ## Tiers
 
 | Tier    | Who                                                 | Effort                                                                                 |

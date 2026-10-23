@@ -15,7 +15,8 @@ when Knowledge or the source already says.
 3. Check retained sources and context: `knowledge_connections` (`claims`,
    `incoming`, `outgoing`, `dependents`), `knowledge_timeline({entity: id})` and
    `knowledge_chronicle_last_seen`.
-4. Web research only when needed, with public hints from steps 1–3. Never send
+4. Web research only when needed to settle identity or spelling, with public
+   hints from steps 1–3. Never send
    private context to public search. Fold what you learn back into the page.
 5. Ask only if ambiguity blocks a write, and ask with a hypothesis: what you
    searched, what you found, and a confirmable guess ("Is X the ops lead at
@@ -56,9 +57,10 @@ attention and degrades search.
   a low-confidence identification; bots or spam.
 - **Sub-features and small workstreams** (one plugin, one PR) go into the parent
   project's Timeline.
-- **Type:** pick the best-fitting declared ontology type for what the thing is (a
-  product is not a company; an investment firm may have its own type). If no
-  declared type fits, say so rather than forcing one.
+- **Type:** pick the best-fitting declared ontology type, using its definition
+  (`knowledge_ontology`). Prefer a specific type (an investment firm may have its
+  own). If the closest type is broad (the shipped `company` covers products and
+  open-source projects), use it without comment.
 - Find before creating: search, then create only if nothing matches.
 
 ## Links

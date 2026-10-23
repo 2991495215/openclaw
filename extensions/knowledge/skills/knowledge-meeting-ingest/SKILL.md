@@ -102,9 +102,12 @@ Order: meeting page → entity pages → claims and edges → link edits.
 Batch related records ([publish](references/publish.md)).
 
 - Meeting page per [meeting page](references/meeting-page.md).
-- For each participant and substantive entity, run `knowledge-entities`: it
-  resolves the entity, decides whether it gets a page, and writes the profile and
-  Timeline line. It shares this skill's references, so it adds little reading.
+- For each participant and substantive entity, follow the steps in
+  `knowledge-entities`' SKILL.md: it resolves the entity, decides whether it gets
+  a page, and writes the profile and Timeline line. Its references with the same
+  names as this skill's are identical copies; use the ones you already read and
+  don't reread them. Its only extra reference is enrichment (read its
+  "During ingestion" section).
 - Claims per [assertions](references/assertions.md): decisions, commitments,
   facts and one `source_event: true` event for the meeting itself, with all
   relevant `entities`. Other events keep their own dates.

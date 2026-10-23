@@ -38,6 +38,9 @@ data point is a Timeline entry, not a pattern.
 - Attribute beliefs to the speaker. Your assessment is not their belief.
 - Never overwrite user-written assessments. Flag conflicts with both citations.
 - Different companies' feedback gets separate context, not a copied meeting blob.
+- A page holds what the source says about that entity. Someone else's response
+  to it (a team's fix for a vendor's incident) belongs on the meeting page or the
+  responding project, with at most one Timeline line here.
 - A rerun or repeat report changes nothing; don't save a no-op.
 - Partial identity goes in structured `identity`, not only a parenthetical.
 - Follow [writing](writing.md); no email addresses in prose.

@@ -7,7 +7,8 @@ description: Resolve and enrich Knowledge people, companies, projects, and conce
 
 Find who or what an entity is before asking, decide whether it deserves a page,
 then write a sourced profile and link it both ways. Read a reference only when
-its step needs it:
+its step needs it. Shared references are identical across Knowledge skills; if
+another Knowledge skill brought you here, don't reread ones you already read.
 
 - [setup](references/setup.md): always, first (status, ontology, search)
 - [identity](references/identity.md): resolving an entity; whether to create a page
