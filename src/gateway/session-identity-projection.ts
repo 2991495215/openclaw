@@ -10,6 +10,7 @@ import type {
 import { listAgentIds } from "../agents/agent-scope-config.js";
 import { resolveAgentIdentity } from "../agents/identity.js";
 import {
+  resolveSessionCreatorActor,
   sessionCreatorProfileId,
   type SessionActor,
 } from "../config/sessions/session-entry-provenance.js";
@@ -107,6 +108,17 @@ export function createSessionIdentityProjection() {
   };
 }
 
+export function resolveSessionProfileId(
+  id: string,
+  profiles: Map<string, SessionActorProfileIdentity | undefined>,
+): string {
+  if (!profiles.has(id)) {
+    const display = resolveCurrentUserProfileDisplay(id);
+    profiles.set(id, display.kind === "resolved" ? display : undefined);
+  }
+  return profiles.get(id)?.profileId ?? id;
+}
+
 export function projectSessionParticipant(
   identity: SessionParticipantIdentity,
   profiles: Map<string, SessionActorProfileIdentity | undefined>,
@@ -133,13 +145,10 @@ export function projectSessionParticipant(
   if (identity.type !== "profile") {
     return { identity };
   }
-  if (!profiles.has(identity.id)) {
-    const display = resolveCurrentUserProfileDisplay(identity.id);
-    profiles.set(identity.id, display.kind === "resolved" ? display : undefined);
-  }
+  const id = resolveSessionProfileId(identity.id, profiles);
   const profile = profiles.get(identity.id);
   return {
-    identity: { type: "profile", id: profile?.profileId ?? identity.id },
+    identity: { type: "profile", id },
     ...(profile?.label ? { label: profile.label } : {}),
     ...(profile?.hasUploadedAvatar ? { avatarUrl: profile.avatarUrl } : {}),
   };
@@ -152,7 +161,7 @@ export function projectSessionProfileInvolvements(
 ): Map<string, SessionProfileInvolvement> {
   const projected = new Map<string, SessionProfileInvolvement>();
   for (const [id, state] of Object.entries(entry.profileInvolvement?.profiles ?? {})) {
-    const canonical = projectSessionParticipant({ type: "profile", id }, profiles).identity.id;
+    const canonical = resolveSessionProfileId(id, profiles);
     const merged = mergeSessionProfileInvolvement([projected.get(canonical), state]);
     if (merged) {
       projected.set(canonical, merged);
@@ -222,7 +231,7 @@ export function projectSessionOwner(
   const persisted = entry?.owner;
   const identities = userProfileIdentityById ?? new Map();
   const actor = projectAssignableSessionOwner(
-    persisted?.actor ?? entry?.createdActor,
+    persisted?.actor ?? resolveSessionCreatorActor(entry?.createdActor),
     identities,
     cfg,
     configuredAgentIds,
@@ -320,34 +329,31 @@ export function* resolveSessionListProfileReference(
   allowedProfileIds: ReadonlySet<string> | undefined,
   shouldYield?: () => boolean,
 ): SynchronousWork<Result<string | undefined, "ambiguous">> {
-  const exact = projectSessionParticipant({ type: "profile", id: reference }, identities);
-  if (
-    identities.get(reference) &&
-    (!allowedProfileIds || allowedProfileIds.has(exact.identity.id))
-  ) {
-    return ok(exact.identity.id);
+  const exact = resolveSessionProfileId(reference, identities);
+  if (identities.get(reference) && (!allowedProfileIds || allowedProfileIds.has(exact))) {
+    return ok(exact);
   }
   const prefix = /^[0-9a-f]{8,32}$/.test(reference);
   const matches = new Set<string>();
+  const matchesReference = (id: string | undefined) => {
+    if (id && prefix && id.replaceAll("-", "").toLowerCase().startsWith(reference)) {
+      matches.add(resolveSessionProfileId(id, identities));
+    }
+    return id === reference;
+  };
+  const matchesParticipant = ({ identity }: SessionParticipant) =>
+    identity.type === "profile" && matchesReference(identity.id);
   // Qualified associations outlive profile rows. Resolve over caller-visible identities
   // before time/search filters so hidden associations cannot affect the result.
   for (const [, entry] of entries) {
     if (shouldYield?.()) {
       yield;
     }
-    const ids = [
-      sessionCreatorProfileId(entry.createdActor),
-      ...(entry.participants ?? []).flatMap(({ identity }) =>
-        identity.type === "profile" ? [identity.id] : [],
-      ),
-    ];
-    for (const id of ids) {
-      if (id === reference) {
-        return ok(exact.identity.id);
-      }
-      if (id && prefix && id.replaceAll("-", "").toLowerCase().startsWith(reference)) {
-        matches.add(projectSessionParticipant({ type: "profile", id }, identities).identity.id);
-      }
+    if (
+      matchesReference(sessionCreatorProfileId(entry.createdActor)) ||
+      entry.participants?.some(matchesParticipant)
+    ) {
+      return ok(exact);
     }
   }
   const durable = resolveUserProfileReference(

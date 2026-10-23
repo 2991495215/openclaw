@@ -13,6 +13,7 @@ import {
   sessionCatalogPaging,
   type SessionCatalogSession,
 } from "openclaw/plugin-sdk/session-catalog";
+import { prepareSessionCatalogGitHubLinker } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSessionShareCatalog } from "./session-catalog.js";
 
@@ -28,6 +29,15 @@ vi.mock("openclaw/plugin-sdk/diagnostic-runtime", async (importOriginal) => {
         ? { ...logger, isEnabled: () => diagnostics.warnEnabled, warn: diagnostics.warn }
         : logger;
     },
+  };
+});
+
+vi.mock("openclaw/plugin-sdk/session-transcript-runtime", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("openclaw/plugin-sdk/session-transcript-runtime")>();
+  return {
+    ...actual,
+    prepareSessionCatalogGitHubLinker: vi.fn(actual.prepareSessionCatalogGitHubLinker),
   };
 });
 
@@ -743,6 +753,88 @@ describe("session-share receiver catalog", () => {
     await expect(fixture.read({ signal: controller.signal, onHost })).rejects.toBe(reason);
     expect(onHost).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["empty", "revoked"] as const)(
+    "rejects an aggregated publication withdrawn by a same-owner %s refresh",
+    async (replacement) => {
+      const fixture = await catalogFixture();
+      fixture.list.mockResolvedValue({
+        nodes: ["alpha", "beta"].map((nodeId) => ({ nodeId, connected: true, commands })),
+      });
+      const beta = createDeferred<unknown>();
+      const projected = createDeferred<void>();
+      let withdrawn = false;
+      fixture.invoke.mockImplementation(async ({ nodeId }) => {
+        if (nodeId === "beta") {
+          return beta.promise;
+        }
+        if (withdrawn && replacement === "revoked") {
+          throw new Error("sharing revoked");
+        }
+        return { sessions: withdrawn ? [] : [nativeSession] };
+      });
+      const outcome = fixture.catalog.list({
+        onHost: (host) => host.hostId === "node:alpha" && projected.resolve(),
+      });
+      void outcome.catch(() => {});
+      await vi.advanceTimersByTimeAsync(2);
+      await projected.promise;
+      withdrawn = true;
+      const refreshed = await fixture.read({ hostIds: ["node:alpha"] });
+      expect(refreshed[0]?.sessions).toEqual([]);
+      if (replacement === "revoked") {
+        expect(refreshed[0]?.error?.code).toBe("NODE_INVOKE_FAILED");
+      }
+      beta.resolve({ sessions: [] });
+      await vi.advanceTimersByTimeAsync(2);
+      await expect(outcome).rejects.toThrow("Session Share is unavailable. Refresh the catalog.");
+    },
+  );
+
+  it.each(["direct", "progressive"] as const)(
+    "rejects a publication refreshed after projection but before %s delivery",
+    async (delivery) => {
+      const fixture = await catalogFixture();
+      fixture.configure({
+        plugins: {
+          entries: { "session-share": { config: { nodes: { alpha: { owner: "source" } } } } },
+        },
+      });
+      let replacement: ReturnType<typeof fixture.catalog.list> | undefined;
+      vi.mocked(prepareSessionCatalogGitHubLinker).mockResolvedValueOnce({
+        assertCurrent() {},
+        linkParticipant: (participant) => participant,
+        resolveOwner: () => {
+          // Start an actual same-owner refresh at the last synchronous projection step.
+          fixture.invoke.mockResolvedValue({ sessions: [] });
+          replacement = fixture.catalog.list({ hostIds: ["node:alpha"] });
+          return undefined;
+        },
+      });
+      const onHost = vi.fn();
+      const publications: Promise<void>[] = [];
+      const outcome = fixture.catalog.list({
+        onHost,
+        allowPartialResults: delivery === "progressive",
+        waitUntil: (work) => publications.push(work),
+      });
+      void outcome.catch(() => {});
+      await vi.advanceTimersByTimeAsync(2);
+      expect(replacement).toBeDefined();
+      await vi.advanceTimersByTimeAsync(2);
+      expect((await replacement)?.[0]?.sessions).toEqual([]);
+      expect(onHost).not.toHaveBeenCalled();
+      if (delivery === "direct") {
+        await expect(outcome).rejects.toThrow("Session Share is unavailable. Refresh the catalog.");
+      } else {
+        await expect(outcome).resolves.toMatchObject([{ sessions: [], pending: true }]);
+        expect(publications).toHaveLength(1);
+        await expect(publications[0]).rejects.toThrow(
+          "Session Share is unavailable. Refresh the catalog.",
+        );
+      }
+    },
+  );
 
   it("does not start catalog work after cancellation during node discovery", async () => {
     const fixture = await catalogFixture();

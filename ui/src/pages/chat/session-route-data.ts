@@ -22,7 +22,8 @@ export type ChatRouteData =
       shortId?: string;
       literalKey?: true;
       routeLoadingSkeleton?: true;
-      sessionResolutionFromCache?: true;
+      deferSnapshotRows?: true;
+      sessionResolutionFromCache?: "roster" | "snapshot";
       canonicalLocation?: RouteLocation;
       canonicalLocationReady?: Promise<RouteLocation | null>;
       canonicalLocationSource?: RouteLocation;

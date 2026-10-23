@@ -6,6 +6,7 @@ import codexPlugin from "../../extensions/codex/index.js";
 import {
   dualRoutes,
   routeResolverFactory,
+  mockRouteResolverFactory,
 } from "../../src/agents/model-auth-availability.test-support.js";
 import { createModelCatalogDecisions } from "../../src/agents/model-catalog-decisions.js";
 import type { OpenClawConfig } from "../../src/config/types.openclaw.js";
@@ -57,14 +58,15 @@ describe("registered Codex runtime choices", () => {
             preparedSyntheticAuthComplete: true,
             pluginRegistry: registry,
             isCurrent: () => true,
-            routeResolverFactory: routeResolverFactory(dualRoutes),
           };
+          mockRouteResolverFactory(routeResolverFactory(dualRoutes));
           const owner = createModelCatalogDecisions({
             ...params,
             preparedRuntimeAuthModes: { codex: { source: "native", mode } },
           });
 
           expect(owner.runtimeChoices(entry)).toEqual(["codex"]);
+          mockRouteResolverFactory(routeResolverFactory(dualRoutes));
           expect(
             createModelCatalogDecisions({
               ...params,
@@ -72,6 +74,7 @@ describe("registered Codex runtime choices", () => {
             }).runtimeChoices(entry),
           ).toBeUndefined();
           const observedEntry = { ...entry, nativeRuntime: "codex" };
+          mockRouteResolverFactory(routeResolverFactory(dualRoutes));
           expect(
             createModelCatalogDecisions({
               ...params,

@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import { lazy, Loading } from "solid-js";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { cleanupSolid, mountSolid } from "../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
@@ -21,6 +22,15 @@ vi.mock("./app-sidebar-catalog-menu-view.tsx", async (original) => {
   loading.finished = true;
   return module;
 });
+
+const LazyMenuView = lazy(() => import("./app-sidebar-catalog-menu-view.tsx"), {
+  export: "SidebarCatalogMenuView",
+});
+const MenuView = (props: Parameters<typeof LazyMenuView>[0]) => (
+  <Loading>
+    <LazyMenuView {...props} />
+  </Loading>
+);
 
 const request: CatalogSessionMenuRequest = {
   key: { catalogId: "codex", hostId: "gateway:local", threadId: "thread-1" },
@@ -56,7 +66,7 @@ function fixture(beforeOpen = () => {}) {
       return (
         <>
           <output>{view.isOpenFor(request.key) ? "open" : "closed"}</output>
-          {view.render()}
+          {view.render(MenuView)}
         </>
       );
     });
@@ -153,5 +163,35 @@ describe("sidebar catalog menu", () => {
     owner.retargetTrigger(request.key, replacement);
     await waitForSolid(() => expect(popup.trigger).toBe(replacement));
     expect(view.container.querySelector("openclaw-catalog-session-menu")).toBe(popup);
+  });
+});
+
+it.each([false, true])("projects open/close menu state (replace view=%s)", async (replace) => {
+  const trigger = document.createElement("button");
+  document.body.append(trigger);
+  const order: string[] = [];
+  trigger.addEventListener(SESSION_MENU_OPEN_EVENT, () => order.push("dismiss"));
+  const { owner, mount } = fixture(() => order.push("open"));
+  let view = mount();
+  owner.open(request, 10, 20, replace ? undefined : trigger);
+  expect(order).toEqual(replace ? ["open"] : ["dismiss", "open"]);
+  expect(owner.isOpen()).toBe(true);
+  expect(owner.isOpenFor(request.key)).toBe(true);
+  await waitForSolid(() => {
+    expect(view.container.querySelector("output")?.textContent).toBe("open");
+    expect(view.container.querySelector('[data-value="viewer"]')).not.toBeNull();
+  });
+  if (replace) {
+    view.unmount();
+    view = mount();
+    await waitForSolid(() =>
+      expect(view.container.querySelector("output")?.textContent).toBe("open"),
+    );
+  }
+  owner.close();
+  expect(owner.isOpen()).toBe(false);
+  await waitForSolid(() => {
+    expect(view.container.querySelector("output")?.textContent).toBe("closed");
+    expect(view.container.querySelector("openclaw-catalog-session-menu")).toBeNull();
   });
 });

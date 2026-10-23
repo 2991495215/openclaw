@@ -463,7 +463,6 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
         if (!current(entry) || entry.sessions !== publication || signal?.aborted) {
           throw new Error("Session Share is unavailable. Refresh the catalog.");
         }
-        linker?.assertCurrent();
       });
       return host;
     };
@@ -489,7 +488,6 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
     if ((entry && !current(entry)) || signal?.aborted) {
       return failed("NODE_INVOKE_FAILED", "Session Share is unavailable. Refresh the catalog.");
     }
-    publicationGuards.get(host)?.();
     if (entry?.pending && allowPartialResults === true && onHost && waitUntil) {
       publishSessionCatalogHost(
         {
@@ -506,12 +504,14 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
       if (!entry.error) {
         const pendingHost = { ...common, sessions: [], pending: true };
         const guard = publicationGuards.get(host);
+        guard?.();
         if (guard) {
           publicationGuards.set(pendingHost, guard);
         }
         return pendingHost;
       }
     }
+    publicationGuards.get(host)?.();
     onHost?.(host);
     return host;
   }
@@ -562,7 +562,7 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
         }),
       );
       query.signal?.throwIfAborted();
-      if (context !== owner || api.runtime.config.current() !== config) {
+      if (context !== owner) {
         return [];
       }
       for (const host of hosts) {
@@ -596,7 +596,6 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
         },
       });
       const page = parseSessionShareTranscriptPage(raw, request.threadId);
-      const config = api.runtime.config.current();
       const linkParticipant = bindingFor(nodeId).linkGitHubIdentities
         ? (
             await prepareSessionCatalogGitHubLinker({
@@ -604,11 +603,6 @@ export function createSessionShareCatalog(api: OpenClawPluginApi): SessionCatalo
             })
           ).linkParticipant
         : undefined;
-      if (api.runtime.config.current() !== config) {
-        throw new Error(
-          "Session Share configuration changed while preparing the page. Retry the request.",
-        );
-      }
       return {
         ...page,
         hostId: request.hostId,

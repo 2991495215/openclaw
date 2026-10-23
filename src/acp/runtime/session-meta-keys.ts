@@ -16,7 +16,10 @@ import {
   type SqliteDatabaseAdmissionKey,
 } from "../../infra/sqlite-database-admission.js";
 import { stageSqliteTransactionState } from "../../infra/sqlite-post-commit.js";
-import { getSqliteReadOperationRevision } from "../../infra/sqlite-schema-facts.js";
+import {
+  getSqliteReadOperationRevision,
+  publishSqliteReadOperationFacts,
+} from "../../infra/sqlite-schema-facts.js";
 import type { DatabaseFileIdentity } from "../../infra/sqlite-worker-identity.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../state/openclaw-state-db.generated.js";
@@ -172,10 +175,12 @@ export function* selectAcpSessionRowsByKeys(
             ).rows;
     if (revision && missing.length > 0) {
       const rows = new Map(selected.map((row) => [row.session_key, { ...row }]));
-      publishAcpMetadataRows(
-        db,
-        missing.map((key) => [key, rows.get(key)] as const),
-        true,
+      publishSqliteReadOperationFacts(db, revision, () =>
+        publishAcpMetadataRows(
+          db,
+          missing.map((key) => [key, rows.get(key)] as const),
+          true,
+        ),
       );
     }
     for (const key of new Set(cohort)) {

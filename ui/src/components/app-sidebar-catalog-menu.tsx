@@ -1,15 +1,11 @@
 // Owns catalog-row menu state and its focus anchor for AppSidebar.
-import { lazy, Loading, Show } from "solid-js";
+import { Show, type Component } from "solid-js";
 import { projectSource } from "../lib/reactive/projection.ts";
 import type { CatalogSessionKey } from "../lib/sessions/catalog-key.ts";
+import type { SidebarCatalogMenuView } from "./app-sidebar-catalog-menu-view.tsx";
 import type { CatalogSessionMenuRequest } from "./app-sidebar-session-catalogs.ts";
 import { SESSION_MENU_OPEN_EVENT } from "./session-progress-hovercard-target.ts";
 import type { SidebarMenusOwner } from "./sidebar-menus-types.ts";
-
-// The menu state survives view replacement; view/actions are needed only when opened.
-const SidebarCatalogMenuView = lazy(() => import("./app-sidebar-catalog-menu-view.tsx"), {
-  export: "SidebarCatalogMenuView",
-});
 
 export type SidebarCatalogSessionMenuState = CatalogSessionMenuRequest & { x: number; y: number };
 
@@ -89,18 +85,16 @@ export function createSidebarCatalogMenu(host: SidebarCatalogMenuHost, beforeOpe
       });
       return {
         isOpenFor: (key: CatalogSessionKey) => matchesMenu(snapshot.read()?.menu, key),
-        render: () => (
+        render: (CatalogMenu: Component<Parameters<typeof SidebarCatalogMenuView>[0]>) => (
           <Show when={snapshot.read()?.menu} keyed>
             {(menu) => (
-              <Loading>
-                <SidebarCatalogMenuView
-                  host={host}
-                  viewHost={viewHost}
-                  menu={menu}
-                  trigger={snapshot.read()?.trigger ?? null}
-                  close={close}
-                />
-              </Loading>
+              <CatalogMenu
+                host={host}
+                viewHost={viewHost}
+                menu={menu}
+                trigger={snapshot.read()?.trigger ?? null}
+                close={close}
+              />
             )}
           </Show>
         ),

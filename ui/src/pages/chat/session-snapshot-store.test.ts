@@ -10,6 +10,7 @@ import {
 } from "../../lib/chat/control-ui-database.runtime.ts";
 import { collectGarbageForTest } from "../../test-helpers/garbage-collection.ts";
 import { createStorageMock } from "../../test-helpers/storage.ts";
+import { cacheChatBoardSnapshotAfterHydration } from "./chat-board-snapshot.ts";
 import { MAX_CACHED_CHAT_SESSIONS } from "./session-cache.ts";
 import {
   appendChatMessageToCache,
@@ -141,6 +142,179 @@ describe("persistent chat session snapshots", () => {
     vi.unstubAllGlobals();
   });
 
+  it("restores a board snapshot and its original ticket receipt with the conversation", async () => {
+    const sessionKey = key("agent:main:dashboard");
+    const value: ChatSessionSnapshot = {
+      ...snapshot("dashboard conversation"),
+      board: {
+        receivedAtMs: 100,
+        snapshot: {
+          sessionKey: "agent:main:dashboard",
+          revision: 1,
+          tabs: [{ tabId: "overview", title: "Overview", position: 0, chatDock: "right" }],
+          widgets: [
+            {
+              name: "chart",
+              tabId: "overview",
+              contentKind: "html",
+              sizeW: 12,
+              sizeH: 8,
+              position: 0,
+              grantState: "none",
+              revision: 1,
+              frameUrl: "/__openclaw__/board/dashboard/chart/index.html?bt=synthetic-ticket",
+              viewTicket: "synthetic-ticket",
+              viewTicketTtlMs: 1200000,
+            },
+          ],
+        },
+      },
+    };
+    await persist(writer, sessionKey, value);
+    expect(await new SessionSnapshotStore().read(sessionKey)).toEqual(value);
+    await deleteStoredChatSnapshot(sessionKey);
+    expect(await new SessionSnapshotStore().read(sessionKey)).toBeNull();
+  });
+
+  it("does not present a cached board after its pending read is invalidated", async () => {
+    const sessionKey = key("agent:main:retired-dashboard");
+    await persist(writer, sessionKey, {
+      ...snapshot("retired conversation"),
+      historyState: { stateRevision: {}, commands: [] },
+      board: {
+        snapshot: { sessionKey: rawKey(sessionKey), revision: 1, tabs: [], widgets: [] },
+        receivedAtMs: 100,
+      },
+    });
+    const reader = new SessionSnapshotStore();
+    const presentBoard = vi.fn();
+    const reading = reader.read(sessionKey, presentBoard);
+    reader.forget(sessionKey);
+    expect(await reading).toBeNull();
+    expect(presentBoard).not.toHaveBeenCalled();
+  });
+
+  it("persists board removal before any transcript is in memory", async () => {
+    const memory: ChatMessageCache = new Map();
+    const store = makeStore(memory);
+    const sessionKey = key("agent:main:removed-dashboard");
+    await persist(writer, sessionKey, {
+      ...snapshot("saved conversation"),
+      board: {
+        snapshot: { sessionKey: rawKey(sessionKey), revision: 1, tabs: [], widgets: [] },
+        receivedAtMs: 100,
+      },
+    });
+    cacheChatBoardSnapshotAfterHydration(
+      { ...snapshotHost, chatMessagesBySession: memory },
+      { sessionKey: rawKey(sessionKey) },
+      null,
+      100,
+      () => true,
+    );
+    await store.flush();
+    expect((await new SessionSnapshotStore().read(sessionKey))?.board).toBeNull();
+  });
+
+  it("discards an invalid persisted board receipt", async () => {
+    const sessionKey = key("agent:main:invalid-board");
+    await persist(writer, sessionKey, snapshot("initialize database"));
+    await putRawRecord({
+      ...envelope(sessionKey, snapshot("conversation")),
+      snapshot: {
+        ...snapshot("conversation"),
+        board: {
+          receivedAtMs: -1,
+          snapshot: { sessionKey: "dashboard", revision: 1, tabs: [], widgets: [] },
+        },
+      },
+    });
+    const presentBoard = vi.fn();
+    expect(await new SessionSnapshotStore().read(sessionKey, presentBoard)).toBeNull();
+    expect(presentBoard).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "persists raw metadata with its receipts unless privacy projection changes it (pairing: %s)",
+    async (pairing) => {
+      const sessionKey = key("agent:main:metadata");
+      const value: ChatSessionSnapshot = {
+        ...snapshot("history"),
+        deltaCursor: "cursor-1",
+        historyState: {
+          stateRevision: {
+            pendingInputs: "inputs-1",
+            sessionInfo: "info-1",
+            commands: "commands-1",
+          },
+          commands: [
+            {
+              name: "skill",
+              description: "Run skill",
+              source: "skill",
+              scope: "text",
+              acceptsArgs: true,
+            },
+          ],
+          pendingInputs: {
+            items: [
+              {
+                id: "input-1",
+                acceptedAt: 1,
+                state: "queued",
+                queued: true,
+                message: {
+                  role: "user",
+                  content: pairing
+                    ? [{ type: "openclaw_pairing_qr", data: "synthetic-private-pairing" }]
+                    : "Follow up.",
+                },
+              },
+            ],
+            total: 1,
+            queuedCount: 1,
+          },
+          sessionInfo: {
+            key: "agent:main:metadata",
+            kind: "direct",
+            sessionId: "session-1",
+            updatedAt: 1,
+          },
+        },
+      };
+      const store = new SessionSnapshotStore();
+      store.write(sessionKey, value);
+      await store.flush();
+      const restored = await new SessionSnapshotStore().read(sessionKey);
+      expect(restored?.deltaCursor).toBe("cursor-1");
+      expect(restored?.historyState).toEqual(pairing ? undefined : value.historyState);
+      expect(JSON.stringify(await readStoredChatSnapshotRecord(sessionKey))).not.toContain(
+        "synthetic-private-pairing",
+      );
+    },
+  );
+
+  it("restores persisted startup state from before command receipts were added", async () => {
+    const sessionKey = key("agent:main:existing-snapshot");
+    await persist(writer, sessionKey, snapshot("initialize database"));
+    const previous: ChatSessionSnapshot = {
+      ...snapshot("Existing conversation"),
+      deltaCursor: "existing-cursor",
+      historyState: {
+        stateRevision: { pendingInputs: "inputs-1", sessionInfo: "info-1" },
+        pendingInputs: { items: [], total: 0 },
+        sessionInfo: {
+          key: "agent:main:existing-snapshot",
+          kind: "direct",
+          sessionId: "session-1",
+          updatedAt: 1,
+        },
+      },
+    };
+    await putRawRecord(envelope(sessionKey, previous));
+    expect(await new SessionSnapshotStore().read(sessionKey)).toEqual(previous);
+  });
+
   it("restores bounded sidebar facts with legacy defaults and strips live-only fields", async () => {
     const store = makeStore(undefined, true);
     const sidebarKey = `${key("").split("\u0000")[0]}\u0000sidebar:operator`;
@@ -200,6 +374,15 @@ describe("persistent chat session snapshots", () => {
     { snapshot: { ...snapshot("message"), unexpected: true } },
     { snapshot: { ...snapshot("message"), pagination: { hasMore: false, nextOffset: 1 } } },
     { snapshot: { ...snapshot("message"), pagination: { hasMore: true, nextOffset: -1 } } },
+    {
+      snapshot: {
+        ...snapshot("message"),
+        historyState: {
+          stateRevision: { sessionInfo: "info-1" },
+          sessionInfo: { key: "s", kind: "direct", owner: { actor: { type: "unknown" } } },
+        },
+      },
+    },
     { sessionId: "different-session" },
   ])(
     "rejects malformed durable snapshot envelopes without exposing cached history ($snapshot)",
@@ -563,6 +746,39 @@ describe("persistent chat session snapshots", () => {
       }
     },
   );
+
+  it("retains persisted snapshots through a temporary database open failure", async () => {
+    const sessionKey = key("agent:main:temporary-open-failure");
+    const value = snapshot("Retained conversation");
+    writer.write(sessionKey, value);
+    await writer.flush();
+    vi.spyOn(indexedDB, "open").mockImplementationOnce(() => {
+      throw new DOMException("temporarily unavailable", "UnknownError");
+    });
+
+    const reader = new SessionSnapshotStore();
+    expect(await reader.read(sessionKey)).toBeNull();
+    expect(await reader.read(sessionKey)).toEqual(value);
+  });
+
+  it("rebuilds a missing snapshot store after a non-fatal read failure", async () => {
+    const request = indexedDB.open(DB, 8);
+    request.addEventListener("upgradeneeded", () => {
+      for (const name of [METADATA, SIDEBAR]) {
+        request.result.createObjectStore(name, { keyPath: "sessionKey" });
+      }
+    });
+    const database = await requestResult(request);
+    database.close();
+    const sessionKey = key("agent:main:missing-snapshot-store");
+    const store = new SessionSnapshotStore();
+    expect(await store.read(sessionKey)).toBeNull();
+
+    const value = snapshot("Rebuilt conversation");
+    store.write(sessionKey, value);
+    await store.flush();
+    expect(await new SessionSnapshotStore().read(sessionKey)).toEqual(value);
+  });
 
   it("keeps every operation non-fatal when IndexedDB is unavailable or throws", async () => {
     vi.stubGlobal("indexedDB", undefined);
