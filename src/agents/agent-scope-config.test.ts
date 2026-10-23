@@ -86,7 +86,6 @@ describe("agent roster resolution", () => {
   it.each([
     [{}, "main", true],
     [{}, "ops", false],
-    [{ agents: Object.assign([], { list: [{ id: "ops" }] }) }, "main", true],
     [{ agents: { entries: {} } }, "main", false],
     [{ agents: { list: [] } }, "main", false],
     [{ agents: { entries: undefined, list: [{ id: " OPS " }] } }, "ops", true],
@@ -98,6 +97,12 @@ describe("agent roster resolution", () => {
     [{ agents: { entries: { " ": {} } } }, "main", true],
   ] as const)("preserves raw roster membership semantics: %j / %s", (cfg, id, expected) => {
     expect(agentRoster.hasAgentId(cfg, id)).toBe(expected);
+  });
+
+  it("keeps array-shaped raw roster owners on the implicit-agent path", () => {
+    const cfg = { agents: Object.assign([], { list: [{ id: "ops" }] }) };
+    // @ts-expect-error Deliberately malformed raw input has Array.entries, not a roster map.
+    expect(agentRoster.hasAgentId(cfg, "main")).toBe(true);
   });
 
   it("keeps malformed non-string legacy ids on the normalizer's refusal path", () => {
