@@ -3,14 +3,12 @@ import {
   createMemo,
   createSignal,
   createUniqueId,
-  Errored,
   lazy,
-  Loading,
   onSettled,
   Show,
 } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import { LazyViewError } from "../../../components/solid/lazy-view-error.tsx";
+import { LazyMenuContent } from "../../../components/solid/lazy-view-error.tsx";
 import {
   createMenuControls,
   Menu,
@@ -99,41 +97,29 @@ function PlusMenuSurface(props: { menu: ChatComposerPlusMenuContentProps }) {
         return handlers()?.items() ?? [];
       },
       render: (renderItems) => (
-        <Errored
-          fallback={(error, reset) => {
-            onSettled(focusLoadedItems);
-            return (
-              <LazyViewError
-                error={error()}
-                onRetry={() => {
-                  openingFocus = host.ownerDocument.activeElement;
-                  reset();
-                }}
-                retryRef={controls.ref()}
-                inline
-              />
-            );
+        <LazyMenuContent
+          onErrorShown={focusLoadedItems}
+          onRetry={() => {
+            openingFocus = host.ownerDocument.activeElement;
           }}
+          retryRef={controls.ref()}
+          fallback={renderItems(() => [
+            { id: "plus-menu-loading", label: t("common.loading"), disabled: true },
+          ])}
         >
-          <Loading
-            fallback={renderItems(() => [
-              { id: "plus-menu-loading", label: t("common.loading"), disabled: true },
-            ])}
-          >
-            <Content
-              menu={props.menu}
-              view={view()}
-              readMenu={() => handle}
-              onReady={(next) => {
-                setHandlers(next);
-                if (next) {
-                  onSettled(focusLoadedItems);
-                }
-              }}
-              renderItems={renderItems}
-            />
-          </Loading>
-        </Errored>
+          <Content
+            menu={props.menu}
+            view={view()}
+            readMenu={() => handle}
+            onReady={(next) => {
+              setHandlers(next);
+              if (next) {
+                onSettled(focusLoadedItems);
+              }
+            }}
+            renderItems={renderItems}
+          />
+        </LazyMenuContent>
       ),
     },
   ];
