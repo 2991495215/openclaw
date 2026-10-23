@@ -56,13 +56,13 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Deferred menus and closed dialogs: 1,349,135 B Chat and 823,357 B New Session.
-  // Retain the stricter prior caps after the current-main measurement refresh.
-  chatBootJsGzipBytes: 1_400_431,
-  newBootJsGzipBytes: 834_356,
+  // Boot-only Zopfli: 1,296,730 B Chat and 791,199 B New Session.
+  // Preserve the matched base's relative headroom after the encoder change.
+  chatBootJsGzipBytes: 1_346_097,
+  newBootJsGzipBytes: 801_833,
   startupCssRequests: 1,
-  // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
-  startupJsGzipBytes: 325_081,
+  // Boot-only Zopfli: 303,797 B startup, with the base's relative headroom.
+  startupJsGzipBytes: 312_208,
   // Keep 45 KiB advisory: tiny integrated changes must not exhaust the budget.
   // The fixed 50 KiB ceiling bounds accumulation of small changes.
   startupCssGzipBytes: 50 * KIB,

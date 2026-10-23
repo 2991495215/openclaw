@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315881,
-  "reason": "Closed dialog deferrals preserve the stricter 315881 B startup baseline; matched current-main builds measure 316334 to 316356 B startup, 1349135 B Chat and 823357 B New Session.",
+  "startupJsGzipBytes": 303797,
+  "reason": "Optimize gzip for canonical boot assets: matched builds preserve application bytes and requests while reducing startup from 316324 B to 303797 B, Chat from 1349072 B to 1296730 B, and New Session from 823291 B to 791199 B.",
   "updatedAt": "2026-10-23"
 }
