@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import type { FeatureInvocationContext } from "openclaw/plugin-sdk/feature-plugin";
-import { assertCallerCurrent, canChangeAssignments } from "./access.js";
+import {
+  assertCallerCurrent,
+  canChangeAssignments,
+  featurePrincipal,
+  pinPrincipal,
+} from "./access.js";
 import { RegistryUnavailable } from "./registry-client.js";
 import { bindingState, type RegistrySnapshot } from "./store-registry.js";
 import {
@@ -190,21 +195,28 @@ export function createStoreOperations(stores: Stores) {
       entries.map(async (entry) => {
         const vaultId = registry?.bindings[entry.binding],
           runtime = vaultId ? stores.running(vaultId) : undefined,
-          agentId = entry.members[0] ?? entry.owner;
+          client = context.source === "session-action" ? context.action.client : undefined,
+          // Count through a member this operator may browse; a count is private metadata.
+          agentId = [...entry.members, entry.owner].find(
+            (id) => id && (client?.allowsAgent?.(id) ?? true),
+          );
         if (!runtime || entry.state !== "ready" || !agentId) {
           return;
         }
-        const access = {
-          agentId,
-          scope: { visibility: "private" as const },
-          assertCurrent: () => {
-            requireOperator(context);
-            if (runtime.retired) {
-              throw new Error("Store runtime retired.");
-            }
-          },
-        };
         try {
+          // The same live policy as operator browsing: role agents, shared-Gateway admin.
+          const pinned = pinPrincipal(
+            featurePrincipal(context, stores.policy.operatorRead, false, agentId),
+          );
+          const access = {
+            ...pinned.principal,
+            assertCurrent: () => {
+              pinned.assertSame();
+              if (runtime.retired) {
+                throw new Error("Store runtime retired.");
+              }
+            },
+          };
           entry.records = (
             await runtime.enqueue(access.assertCurrent, () =>
               runtime.client.call("catalog", access),

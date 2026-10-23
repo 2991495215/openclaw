@@ -260,6 +260,32 @@ it("switching named stores leaves one assignment and the former store untouched"
   expect(await f.titles("research")).toStrictEqual(["Alpha"]);
 });
 
+it("store counts follow the operator's live agent role and shared-Gateway policy", async () => {
+  const f = await fixture();
+  await f.save("main", "Main note");
+  await f.save("research", "Research note");
+  const counts = async (client: Record<string, unknown>) => {
+    const context = operatorContext(f.api, ["operator.read"]);
+    Object.assign(context.action.client, client);
+    const snap = await f.service.stores_snapshot({}, context);
+    return Object.fromEntries(snap.stores.map((s) => [s.binding, s.records]));
+  };
+  expect(await counts({ scopes: ["operator.admin"] })).toMatchObject({
+    "agent:main": 1,
+    "agent:research": 1,
+  });
+  // A role limited to main never learns how much research has stored.
+  expect(await counts({ allowsAgent: (id: string) => id === "main" })).toMatchObject({
+    "agent:main": 1,
+    "agent:research": null,
+  });
+  // On a shared Gateway, private counts need an administrator.
+  expect(await counts({ isSharedGateway: () => true })).toMatchObject({
+    "agent:main": null,
+    "agent:research": null,
+  });
+});
+
 it("an operator whose access ends before the config write changes nothing", async () => {
   const f = await fixture();
   await f.save("main", "Seed");
