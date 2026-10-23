@@ -578,6 +578,11 @@ export class EmbeddedBlockChunker {
       return { index: -1 };
     }
     const preference = chunking.breakPreference ?? "paragraph";
+    const protectPreferredBreak = (candidate: number): BreakResult => {
+      const index = protectBreakIndex(unbreakableSpans, candidate, offset, force);
+      // Link protection can rewind a safe boundary into an enclosing table.
+      return { index: index > 0 && isSafeFenceBreak(unsafeSpans, offset + index) ? index : -1 };
+    };
 
     if (preference === "paragraph") {
       const paragraphIdx = findSafeParagraphBreakIndex({
@@ -588,7 +593,7 @@ export class EmbeddedBlockChunker {
         offset,
       });
       if (paragraphIdx !== -1) {
-        return { index: protectBreakIndex(unbreakableSpans, paragraphIdx, offset, force) };
+        return protectPreferredBreak(paragraphIdx);
       }
     }
 
@@ -601,7 +606,7 @@ export class EmbeddedBlockChunker {
         offset,
       });
       if (newlineIdx !== -1) {
-        return { index: protectBreakIndex(unbreakableSpans, newlineIdx, offset, force) };
+        return protectPreferredBreak(newlineIdx);
       }
     }
 
@@ -614,7 +619,7 @@ export class EmbeddedBlockChunker {
         openFence,
       );
       if (sentenceIdx !== -1) {
-        return { index: protectBreakIndex(unbreakableSpans, sentenceIdx, offset, force) };
+        return protectPreferredBreak(sentenceIdx);
       }
     }
 
