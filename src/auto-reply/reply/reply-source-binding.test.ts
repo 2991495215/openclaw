@@ -15,6 +15,8 @@ import { createReplyOperation } from "../../sessions/session-controller.operatio
 import { testing } from "../../sessions/session-controller.test-support.js";
 import { withAgentInputRecoveryContext } from "../../state/agent-input-recovery-context.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
+import { runPreparedReply } from "./get-reply-run.js";
+import { baseParams } from "./get-reply-run.test-support.js";
 import { prepareInternalGetReplyOptions } from "./get-reply.types.js";
 import { createQueueTestRun } from "./queue.test-helpers.js";
 import {
@@ -165,6 +167,156 @@ it("waits for only its agent's recovery before reserving fresh input", async () 
   expect(recovered.input?.target?.agentId).toBe("main");
   retireUnadoptedReplySource(other.input);
   retireUnadoptedReplySource(recovered.input);
+});
+
+it.each([
+  { kind: "native", existing: false },
+  { kind: "explicit", existing: false },
+  { kind: "native", existing: true },
+] as const)(
+  "waits for the cross-agent $kind command target with existing source=$existing",
+  async ({ kind, existing }) => {
+    const recovery = createDeferred();
+    const targetKey = "agent:other:command-target";
+    const targetScope = captureSessionTarget({
+      storeScope: target.storeScope,
+      sessionKey: targetKey,
+      agentId: "other",
+    });
+    const ctx = {
+      SessionKey: key,
+      CommandTargetSessionKey: targetKey,
+      ...(kind === "native"
+        ? { CommandSource: "native" as const }
+        : {
+            CommandSource: "text" as const,
+            CommandAuthorized: true,
+            BodyForCommands: "/tell other hello",
+          }),
+    };
+    const reserved = existing ? await prepare() : undefined;
+    const continued = vi.fn();
+    const preparing = withAgentInputRecoveryContext(
+      () => ({
+        isPending: (agentId) => agentId === "other",
+        waitForAgentInputRecovery: (agentId) =>
+          agentId === "other" ? recovery.promise : undefined,
+      }),
+      async () => {
+        const source = await prepareReplySourceInput(
+          ctx,
+          { session: { store: target.storeScope } },
+          reserved?.options,
+        );
+        retargetReplySourceForExecution({
+          ctx,
+          options: source.options,
+          sessionKey: targetKey,
+          storePath: target.storeScope,
+          agentId: "other",
+        });
+        continued();
+        return source;
+      },
+    );
+    try {
+      await Promise.resolve();
+      if (reserved) {
+        expect(reserved.input?.target?.agentId).toBe("main");
+      } else {
+        expect(getExistingSessionControllerMailbox(key, target)).toBeUndefined();
+      }
+      expect(getExistingSessionControllerMailbox(targetKey, targetScope)).toBeUndefined();
+      expect(continued).not.toHaveBeenCalled();
+      recovery.resolve();
+      const source = await preparing;
+      expect(source.input?.target?.agentId).toBe("other");
+      expect(source.input?.mailbox.owner.aliases.has(targetKey)).toBe(true);
+      expect(continued).toHaveBeenCalledOnce();
+    } finally {
+      recovery.resolve();
+      retireUnadoptedReplySource((await preparing).input);
+    }
+  },
+);
+
+it("preserves an exact live recovery source that already owns the command target", async () => {
+  const targetKey = "agent:other:command-target";
+  const source = await prepare(targetKey);
+  const result = await withAgentInputRecoveryContext(
+    () => ({
+      isPending: (agentId) => agentId === "other",
+      waitForAgentInputRecovery: () => {
+        throw new Error("The target's recovery source must not wait on itself");
+      },
+    }),
+    () =>
+      prepareReplySourceInput(
+        { SessionKey: key, CommandSource: "native", CommandTargetSessionKey: targetKey },
+        { session: { store: target.storeScope } },
+        source.options,
+      ),
+  );
+  expect(result.input).toBe(source.input);
+  retireUnadoptedReplySource(result.input);
+});
+
+it("prepares a late command target from the physical source context", async () => {
+  const recovery = createDeferred();
+  const controller = new AbortController();
+  const reason = new Error("cancelled while waiting for command target recovery");
+  const targetKey = "agent:other:late-command-target";
+  const source = await prepareReplySourceInput(
+    { SessionKey: key },
+    { session: { store: target.storeScope } },
+    { abortSignal: controller.signal },
+  );
+  const ctx = {
+    SessionKey: key,
+    CommandSource: "native" as const,
+    CommandTargetSessionKey: targetKey,
+  };
+  const waited = vi.fn();
+  const outcome = withAgentInputRecoveryContext(
+    () => ({
+      isPending: (agentId) => agentId === "other",
+      waitForAgentInputRecovery: (agentId, options) => {
+        if (agentId !== "other") {
+          return undefined;
+        }
+        waited();
+        return racePromiseWithAbortSignal(recovery.promise, options?.signal);
+      },
+    }),
+    () =>
+      runPreparedReply(
+        baseParams({
+          ctx,
+          sessionCtx: { ...ctx, SessionKey: targetKey },
+          cfg: { session: { store: target.storeScope } },
+          opts: source.options,
+          agentId: "other",
+          sessionKey: targetKey,
+          storePath: target.storeScope,
+        }),
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      ),
+  );
+  try {
+    await Promise.resolve();
+    expect(waited).toHaveBeenCalledOnce();
+    expect(source.input?.target?.agentId).toBe("main");
+    controller.abort(reason);
+    expect(await outcome).toMatchObject({ name: "AbortError" });
+    expect(source.input?.target?.agentId).toBe("main");
+  } finally {
+    controller.abort(reason);
+    recovery.resolve();
+    await outcome;
+    retireUnadoptedReplySource(source.input);
+  }
 });
 
 it.each(["live", "retired", "other session", "other store"] as const)(

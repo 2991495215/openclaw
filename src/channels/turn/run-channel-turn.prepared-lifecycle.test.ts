@@ -127,9 +127,14 @@ it("settles prepared resources when observe-only suppresses dispatch", async () 
   expect(onFinalize).toHaveBeenCalledExactlyOnceWith(result);
 });
 
-it.each(["recovered", "failed", "stopped"] as const)(
-  "holds fresh channel recording behind its own agent recovery: %s",
-  async (outcome) => {
+it.each([
+  { outcome: "recovered", crossAgent: false },
+  { outcome: "failed", crossAgent: false },
+  { outcome: "stopped", crossAgent: false },
+  { outcome: "recovered", crossAgent: true },
+] as const)(
+  "holds fresh channel recording behind recovery: $outcome, cross-agent: $crossAgent",
+  async ({ outcome, crossAgent }) => {
     const recovery = createDeferredCore();
     const waiting = createDeferredCore();
     const failure = new Error("Agent input recovery failed");
@@ -137,7 +142,11 @@ it.each(["recovered", "failed", "stopped"] as const)(
     const { scheduler } = createPluginServiceScheduler(gateway);
     const preDispatchFailure = vi.fn();
     const pending = createTurn({
-      ctxPayload: createCtx({ AgentId: "qa", SessionKey: "agent:qa:channel:peer" }),
+      ctxPayload: createCtx({
+        AgentId: crossAgent ? "main" : "qa",
+        SessionKey: crossAgent ? "agent:main:command:peer" : "agent:qa:channel:peer",
+      }),
+      ...(crossAgent ? { record: { sessionKey: "agent:qa:channel:peer" } } : {}),
       onPreDispatchFailure: preDispatchFailure,
     });
     const healthy = createTurn();
@@ -160,7 +169,9 @@ it.each(["recovered", "failed", "stopped"] as const)(
     );
     void turn.catch(() => {});
     try {
-      await waiting.promise;
+      expect(
+        await Promise.race([waiting.promise.then(() => "waiting"), turn.then(() => "dispatched")]),
+      ).toBe("waiting");
       pending.expectIdle();
       expect((await withRecovery(() => healthy.run())).dispatched).toBe(true);
       if (outcome === "recovered") {

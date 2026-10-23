@@ -83,9 +83,22 @@ export async function prepareReplySourceInput(
 ): Promise<{ options: InternalGetReplyOptions; input?: SessionControllerInput; created: boolean }> {
   const prepared = { ...options };
   const sessionKey = ctx.SessionKey?.trim() || ctx.CommandTargetSessionKey?.trim();
+  const commandTarget = resolveCommandTurnTargetSessionKey(ctx);
+  const commandAgentId = commandTarget
+    ? resolveSessionAgentId({
+        sessionKey: commandTarget,
+        config: cfg,
+        fallbackAgentId: ctx.AgentId,
+      })
+    : undefined;
   const existing = readReplySourceInput(prepared);
   if (existing) {
     const identity = getSessionControllerSourceIdentity(existing);
+    const signal = existing.claim?.operation?.abortSignal ?? existing.abortSignal;
+    prepared.abortSignal =
+      prepared.abortSignal && prepared.abortSignal !== signal
+        ? AbortSignal.any([prepared.abortSignal, signal])
+        : signal;
     const requestedAgentId = resolveSessionAgentId({
       sessionKey,
       config: cfg,
@@ -93,9 +106,9 @@ export async function prepareReplySourceInput(
     });
     if (
       isAgentInputRecoveryPending(requestedAgentId) ||
-      (identity.agentId && isAgentInputRecoveryPending(identity.agentId))
+      (identity.agentId && isAgentInputRecoveryPending(identity.agentId)) ||
+      (commandAgentId && isAgentInputRecoveryPending(commandAgentId))
     ) {
-      const commandTarget = resolveCommandTurnTargetSessionKey(ctx);
       const matchesSession = [sessionKey, commandTarget].some(
         (key) => key !== undefined && existing.mailbox.owner.aliases.has(key),
       );
@@ -117,11 +130,21 @@ export async function prepareReplySourceInput(
       }
       existing.sourceAdapter?.authority?.assertCurrent();
     }
-    const signal = existing.claim?.operation?.abortSignal ?? existing.abortSignal;
-    prepared.abortSignal =
-      prepared.abortSignal && prepared.abortSignal !== signal
-        ? AbortSignal.any([prepared.abortSignal, signal])
-        : signal;
+    // A live recovery source cannot lend its exemption to another agent's backlog.
+    if (commandAgentId && commandAgentId !== identity.agentId) {
+      const recovery = waitForAgentInputRecovery(commandAgentId, {
+        signal: prepared.abortSignal,
+      });
+      if (recovery) {
+        await recovery;
+        prepared.abortSignal.throwIfAborted();
+        if (!isLiveSessionControllerSource(existing)) {
+          throw new Error("Reply source no longer owns the requested session");
+        }
+        existing.sourceAdapter?.authority?.assertCurrent();
+        options?.operatorAuthority?.assertCurrent();
+      }
+    }
     return { options: bindReplySourceInput(prepared, existing), input: existing, created: false };
   }
   if (!sessionKey) {
@@ -145,9 +168,13 @@ export async function prepareReplySourceInput(
     // Dispatch owns the skipped outcome for input cancelled before admission.
     return { options: { ...prepared, abortSignal: signal }, created: false };
   }
-  const recovery = waitForAgentInputRecovery(agentId, { signal });
-  if (recovery) {
-    await recovery;
+  const recoveryAgentIds =
+    commandAgentId && commandAgentId !== agentId ? [agentId, commandAgentId] : [agentId];
+  for (const pendingAgentId of recoveryAgentIds) {
+    const recovery = waitForAgentInputRecovery(pendingAgentId, { signal });
+    if (recovery) {
+      await recovery;
+    }
   }
   signal?.throwIfAborted();
   options?.operatorAuthority?.assertCurrent();
