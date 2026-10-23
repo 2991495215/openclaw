@@ -159,15 +159,11 @@ type CapabilityProviderCandidate = CapabilityModelProviderCandidate & {
   isConfiguredAsync?: (ctx: { cfg?: OpenClawConfig; agentDir?: string }) => Promise<boolean>;
 };
 
-type ParsedAspectRatio = {
-  width: number;
-  height: number;
+type ParsedAspectRatio = NonNullable<ReturnType<typeof parsePositiveDimensionPair>> & {
   value: number;
 };
 
-type ParsedSize = {
-  width: number;
-  height: number;
+type ParsedSize = NonNullable<ReturnType<typeof parsePositiveDimensionPair>> & {
   aspectRatio: number;
   area: number;
 };

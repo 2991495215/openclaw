@@ -124,17 +124,15 @@ export type WorkboardExecution = {
   updatedAt: number;
 };
 
-export type WorkboardEvent = {
+export type WorkboardEvent = Pick<WorkboardExecution, "sessionKey" | "runId"> & {
   id: string;
   kind: WorkboardEventKind;
   at: number;
   fromStatus?: WorkboardStatus;
   toStatus?: WorkboardStatus;
-  sessionKey?: string;
-  runId?: string;
 };
 
-export type WorkboardRunAttempt = {
+export type WorkboardRunAttempt = Pick<WorkboardExecution, "sessionKey" | "runId"> & {
   id: string;
   status: WorkboardAttemptStatus;
   startedAt: number;
@@ -142,8 +140,6 @@ export type WorkboardRunAttempt = {
   engine?: WorkboardExecutionEngine;
   mode?: WorkboardExecutionMode;
   model?: string;
-  sessionKey?: string;
-  runId?: string;
   error?: string;
 };
 
@@ -192,13 +188,11 @@ export type WorkboardAttachment = {
   note?: string;
 };
 
-export type WorkboardWorkerLog = {
+export type WorkboardWorkerLog = Pick<WorkboardExecution, "sessionKey" | "runId"> & {
   id: string;
   createdAt: number;
   level: "info" | "warning" | "error";
   message: string;
-  sessionKey?: string;
-  runId?: string;
 };
 
 export const WORKBOARD_WORKER_STATES = [
@@ -253,14 +247,12 @@ export type WorkboardDiagnostic = {
   actions: WorkboardDiagnosticAction[];
 };
 
-export type WorkboardNotification = {
+export type WorkboardNotification = Pick<WorkboardExecution, "sessionKey" | "runId"> & {
   id: string;
   kind: WorkboardNotificationKind;
   createdAt: number;
   sequence?: number;
   message: string;
-  sessionKey?: string;
-  runId?: string;
 };
 
 export const WORKBOARD_CHANGED_EVENT = "plugin.workboard.changed";
@@ -353,12 +345,10 @@ export type WorkboardOrchestrationSettings = {
   orchestratorProfile?: string;
 };
 
-export type WorkboardNotificationSubscription = {
+export type WorkboardNotificationSubscription = Pick<WorkboardExecution, "sessionKey" | "runId"> & {
   id: string;
   boardId: string;
   cardId?: string;
-  sessionKey?: string;
-  runId?: string;
   target?: string;
   eventKinds?: WorkboardNotificationKind[];
   lastEventAt?: number;
@@ -389,7 +379,7 @@ export type WorkboardMetadata = {
   failureCount?: number;
 };
 
-export type WorkboardCard = {
+export type WorkboardCard = Pick<WorkboardExecution, "sessionKey" | "runId"> & {
   id: string;
   title: string;
   notes?: string;
@@ -397,8 +387,6 @@ export type WorkboardCard = {
   priority: WorkboardPriority;
   labels: string[];
   agentId?: string;
-  sessionKey?: string;
-  runId?: string;
   sourceUrl?: string;
   execution?: WorkboardExecution;
   position: number;

@@ -150,10 +150,7 @@ export type WorkboardReassignInput = {
   resetFailures?: unknown;
   reason?: unknown;
 };
-export type WorkboardReclaimInput = {
-  status?: unknown;
-  reason?: unknown;
-};
+export type WorkboardReclaimInput = Pick<WorkboardReassignInput, "status" | "reason">;
 export type WorkboardBoardInput = {
   id?: unknown;
   kind?: unknown;
@@ -175,9 +172,7 @@ export type WorkboardDecomposeInput = {
   children?: unknown;
   completeParent?: unknown;
 };
-export type WorkboardNotificationSubscribeInput = {
-  boardId?: unknown;
-  cardId?: unknown;
+export type WorkboardNotificationSubscribeInput = WorkboardNotificationListOptions & {
   sessionKey?: unknown;
   runId?: unknown;
   target?: unknown;

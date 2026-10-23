@@ -26,9 +26,7 @@ type TreemapLeaf = {
   value: number;
 };
 
-type TreemapGroup = {
-  name: string;
-  value: number;
+type TreemapGroup = TreemapLeaf & {
   color: Rgb;
   leaves: TreemapLeaf[];
 };
