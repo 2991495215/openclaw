@@ -62,7 +62,6 @@ function prepareRestartRecovery(gatewayRuntime: GatewayRecoveryRuntime, signal?:
 }
 
 async function runRecoveryRetries(params: {
-  initialDelayMs: number;
   maxRetries: number;
   retryDelayMs?: number;
   shouldContinue: () => boolean;
@@ -70,7 +69,7 @@ async function runRecoveryRetries(params: {
   attempt: (finalAttempt: boolean) => Promise<boolean>;
   onError: (error: unknown, finalAttempt: boolean) => void | Promise<void>;
 }): Promise<void> {
-  let delayMs = params.initialDelayMs;
+  let delayMs = 0;
   for (let attempt = 1; attempt <= params.maxRetries && params.shouldContinue(); attempt += 1) {
     const finalAttempt = attempt === params.maxRetries;
     try {
@@ -286,7 +285,6 @@ export function scheduleRestartAbortedMainSessionRecoveryAfterOwnerRelease(
       });
     }, "main-session:restart-recovery");
   void runRecoveryRetries({
-    initialDelayMs: 0,
     maxRetries: params.maxRetries ?? MAX_RECOVERY_RETRIES,
     retryDelayMs: params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS,
     shouldContinue: () => true,
@@ -491,7 +489,6 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       await Promise.race([params.waitForStart(), waitForAbortSignal(abortController.signal)]);
     }
     await runRecoveryRetries({
-      initialDelayMs: 0,
       maxRetries: Math.max(1, params.maxRetries ?? MAX_RECOVERY_RETRIES),
       shouldContinue,
       signal: abortController.signal,
@@ -565,7 +562,6 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       );
     };
     await runRecoveryRetries({
-      initialDelayMs: 0,
       maxRetries: Math.max(1, params.maxRetries ?? MAX_RECOVERY_RETRIES),
       shouldContinue,
       signal: abortController.signal,
