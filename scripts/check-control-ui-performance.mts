@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Deferred browser-preview runtime: 1,323,602 B Chat; New remains 813,125 B.
-  // Preserve Chat's relative headroom against the matched 054f11c8 build.
-  chatBootJsGzipBytes: 1_372_366,
-  newBootJsGzipBytes: 822_617,
+  // Defer Browser card runtime: 1,272,541 B Chat; retain Sidebar's New Session cap.
+  // Preserve main's relative headroom against the matched 7845dd3e libdeflate11 build.
+  chatBootJsGzipBytes: 1_364_952,
+  newBootJsGzipBytes: 807_612,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
