@@ -8,15 +8,17 @@ export async function settleWithCleanup<T>(
   operation: Promise<T>,
   cleanup: () => void | Promise<void>,
   message: string,
+  cause: "cleanup" | "operation" = "cleanup",
 ): Promise<T> {
   const [outcome] = await Promise.allSettled([operation]);
-  try {
-    await cleanup();
-  } catch (error) {
+  const [cleanupOutcome] = await Promise.allSettled([(async () => cleanup())()]);
+  if (cleanupOutcome.status === "rejected") {
     if (outcome.status === "rejected") {
-      throw new AggregateError([outcome.reason, error], message, { cause: error });
+      throw new AggregateError([outcome.reason, cleanupOutcome.reason], message, {
+        cause: cause === "operation" ? outcome.reason : cleanupOutcome.reason,
+      });
     }
-    throw error;
+    throw cleanupOutcome.reason;
   }
   if (outcome.status === "rejected") {
     throw outcome.reason;

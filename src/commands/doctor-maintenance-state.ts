@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { settleWithCleanup } from "../infra/error-graph-internal.js";
 import { formatErrorMessage, toErrorObject } from "../infra/errors.js";
 import { createSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker.js";
 import type { AgentDatabaseMigrationTarget } from "../infra/state-migrations.media-persistence-targets.js";
@@ -334,40 +335,28 @@ export async function createDoctorMaintenanceState(options: {
         }
       });
       await closeResources(null);
-      let operationError: Error | undefined;
-      let result: { warnings: string[] } | undefined;
-      try {
-        result = await owner!.run(async () => {
-          await closeOpenClawStateDatabaseByPathAsync(databasePath);
-          await assertDoctorAgentLeaseAdmission(selectedEnv);
-          return enableDoctorSqliteReclamation({
-            env: selectedEnv,
-            agents,
-            signal: options.signal,
-            assertCurrent: () => assertOwnerCurrent(databasePath),
-            log: params.runtime.log,
-          });
-        });
-      } catch (error) {
-        operationError = toErrorObject(error, "SQLite reclamation failed.");
-      }
-      // Keep the original write-capture baseline until final maintenance release.
-      try {
-        await enterResources(owner!);
-      } catch (error) {
-        if (operationError !== undefined) {
-          throw new AggregateError(
-            [operationError, error],
-            "SQLite reclamation and maintenance scope restoration failed.",
-            { cause: error },
-          );
-        }
-        throw error;
-      }
-      if (operationError !== undefined) {
-        throw operationError;
-      }
-      return result!;
+      return settleWithCleanup(
+        (async () => {
+          try {
+            return await owner!.run(async () => {
+              await closeOpenClawStateDatabaseByPathAsync(databasePath);
+              await assertDoctorAgentLeaseAdmission(selectedEnv);
+              return enableDoctorSqliteReclamation({
+                env: selectedEnv,
+                agents,
+                signal: options.signal,
+                assertCurrent: () => assertOwnerCurrent(databasePath),
+                log: params.runtime.log,
+              });
+            });
+          } catch (error) {
+            throw toErrorObject(error, "SQLite reclamation failed.");
+          }
+        })(),
+        // Keep the original write-capture baseline until final maintenance release.
+        () => enterResources(owner!),
+        "SQLite reclamation and maintenance scope restoration failed.",
+      );
     },
     async cleanupRetainedRuntimes(inspectService: boolean) {
       const { captureRetainedNativeWorkerSource } =

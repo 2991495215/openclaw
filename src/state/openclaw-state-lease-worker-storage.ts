@@ -1,4 +1,4 @@
-import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
+import { settleWithCleanup } from "../infra/error-graph-internal.js";
 import type { DatabasePathIdentity } from "../infra/sqlite-worker-identity.js";
 import {
   createSqliteWorkerWriteAdmission,
@@ -262,32 +262,28 @@ export function createOpenClawStateLeaseWorkerStorage(
         if (!store) {
           throw new Error("State lease cleanup lost its original database");
         }
-        const errors: unknown[] = [];
-        try {
-          await runSqliteWorkerStoreOperation(
-            store,
-            (scope) =>
-              scope.execute({
-                type: "stateLease.release",
-                input: {
-                  identity: admission.identity,
-                  operationLabel,
-                  databaseIdentity: expectedIdentity,
-                },
-              }),
-            cleanupContext,
-            admission.assertCurrent,
-            admission.createAdmission,
-          );
-        } catch (error) {
-          errors.push(error);
-        }
-        try {
-          await store.close();
-        } catch (error) {
-          errors.push(error);
-        }
-        throwSqliteLifecycleErrors(errors, "State lease release and worker close failed");
+        await settleWithCleanup(
+          (async () => {
+            await runSqliteWorkerStoreOperation(
+              store,
+              (scope) =>
+                scope.execute({
+                  type: "stateLease.release",
+                  input: {
+                    identity: admission.identity,
+                    operationLabel,
+                    databaseIdentity: expectedIdentity,
+                  },
+                }),
+              cleanupContext,
+              admission.assertCurrent,
+              admission.createAdmission,
+            );
+          })(),
+          () => store.close(),
+          "State lease release and worker close failed",
+          "operation",
+        );
       });
     },
   };

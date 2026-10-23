@@ -144,21 +144,15 @@ async function withRepairResources<T>(run: () => Promise<T>): Promise<T> {
         ) {
           throw sdkCleanup.reason;
         }
-        try {
-          await resources.close();
-        } catch (error) {
-          if (sdkCleanup.status === "rejected") {
-            throw new AggregateError(
-              [sdkCleanup.reason, error],
-              "Repair SDK and database resource cleanup failed.",
-              { cause: error },
-            );
-          }
-          throw error;
-        }
-        if (sdkCleanup.status === "rejected") {
-          throw sdkCleanup.reason;
-        }
+        await settleWithCleanup(
+          (async () => {
+            if (sdkCleanup.status === "rejected") {
+              throw sdkCleanup.reason;
+            }
+          })(),
+          () => resources.close(),
+          "Repair SDK and database resource cleanup failed.",
+        );
       } catch (error) {
         recordAgentCleanupFailure();
         throw error;
