@@ -44,36 +44,6 @@ function removeMatchesUntilStable(
   return text;
 }
 
-function stripHtmlTagUnlessComparison(
-  tag: string,
-  offset: number,
-  source: string,
-  closingTagNames: ReadonlySet<string>,
-): string {
-  const placeholderName = ANGLE_PLACEHOLDER_RE.exec(tag)?.[1];
-  if (
-    placeholderName !== undefined &&
-    !HTML_ELEMENT_NAME_RE.test(placeholderName) &&
-    !closingTagNames.has(placeholderName.toLowerCase())
-  ) {
-    return tag;
-  }
-  const rightOperand = source.charCodeAt(offset + tag.length);
-  if (
-    !(rightOperand >= 48 && rightOperand <= 57) ||
-    !COMPARISON_LEFT_OPERAND_RE.test(source.slice(Math.max(0, offset - 2), offset))
-  ) {
-    return "";
-  }
-  const comparisonName = COMPARISON_PROSE_RE.exec(tag)?.[1];
-  return comparisonName !== undefined &&
-    !HTML_ELEMENT_NAME_RE.test(comparisonName) &&
-    COMPARISON_CLAUSE_RE.test(tag) &&
-    !closingTagNames.has(comparisonName.toLowerCase())
-    ? tag
-    : "";
-}
-
 function convertHtmlOutsideCode(text: string, options: { style?: "markdown" }): string {
   const boldMarker = options.style === "markdown" ? "**" : "*";
   const strikeMarker = options.style === "markdown" ? "~~" : "~";
@@ -102,9 +72,30 @@ function convertHtmlOutsideCode(text: string, options: { style?: "markdown" }): 
   for (const tag of converted.matchAll(/<\/[a-z][a-z0-9_.:-]*\s*>/gi)) {
     closingTagNames.add(tag[0].slice(2, -1).trim().toLowerCase());
   }
-  return removeMatchesUntilStable(converted, HTML_TAG_RE, (tag, offset, source) =>
-    stripHtmlTagUnlessComparison(tag, offset, source, closingTagNames),
-  ).replace(/\n{3,}/g, "\n\n");
+  return removeMatchesUntilStable(converted, HTML_TAG_RE, (tag, offset, source) => {
+    const placeholderName = ANGLE_PLACEHOLDER_RE.exec(tag)?.[1];
+    if (
+      placeholderName !== undefined &&
+      !HTML_ELEMENT_NAME_RE.test(placeholderName) &&
+      !closingTagNames.has(placeholderName.toLowerCase())
+    ) {
+      return tag;
+    }
+    const rightOperand = source.charCodeAt(offset + tag.length);
+    if (
+      !(rightOperand >= 48 && rightOperand <= 57) ||
+      !COMPARISON_LEFT_OPERAND_RE.test(source.slice(Math.max(0, offset - 2), offset))
+    ) {
+      return "";
+    }
+    const comparisonName = COMPARISON_PROSE_RE.exec(tag)?.[1];
+    return comparisonName !== undefined &&
+      !HTML_ELEMENT_NAME_RE.test(comparisonName) &&
+      COMPARISON_CLAUSE_RE.test(tag) &&
+      !closingTagNames.has(comparisonName.toLowerCase())
+      ? tag
+      : "";
+  }).replace(/\n{3,}/g, "\n\n");
 }
 
 /**

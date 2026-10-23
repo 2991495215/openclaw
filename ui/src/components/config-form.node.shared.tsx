@@ -185,33 +185,31 @@ export function CollectionRemoveButton(props: {
         style={{ width: "28px", height: "28px", padding: "0" }}
         aria-label={props.label}
         disabled={props.disabled}
-        onClick={(event) => removeCollectionRow(event, props.remove, props.focus.destinations())}
+        onClick={(event) => {
+          const remove = props.remove;
+          const destinations = props.focus.destinations();
+          // Keep keyboard focus in the collection when its focused Remove button retires.
+          const control = event.currentTarget;
+          if (!(control instanceof HTMLButtonElement) || control !== document.activeElement) {
+            remove();
+            return;
+          }
+          if (!remove()) {
+            return;
+          }
+          queueMicrotask(() => {
+            if (document.activeElement === document.body) {
+              destinations
+                .find((candidate) => candidate?.isConnected && !candidate.disabled)
+                ?.focus();
+            }
+          });
+        }}
       >
         <Icon name="trash" />
       </button>
     </openclaw-tooltip>
   );
-}
-
-/** Keep keyboard focus in the collection when its focused Remove button retires. */
-function removeCollectionRow(
-  event: Event,
-  remove: () => boolean,
-  destinations: Array<HTMLButtonElement | undefined>,
-) {
-  const control = event.currentTarget;
-  if (!(control instanceof HTMLButtonElement) || control !== document.activeElement) {
-    remove();
-    return;
-  }
-  if (!remove()) {
-    return;
-  }
-  queueMicrotask(() => {
-    if (document.activeElement === document.body) {
-      destinations.find((button) => button?.isConnected && !button.disabled)?.focus();
-    }
-  });
 }
 
 export function renderSchemaDefaultDescription(schema: JsonSchema, value: unknown): JSX.Element {

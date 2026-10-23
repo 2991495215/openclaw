@@ -130,26 +130,6 @@ export function prepareClosures(owners: readonly Overlay[]): (() => boolean) | n
   return () => commits.every((commit) => commit());
 }
 
-function collectRoots(elements: Iterable<Element | undefined>): Set<OverlayRoot> {
-  const roots = new Set<OverlayRoot>();
-  for (const element of elements) {
-    if (!element) {
-      continue;
-    }
-    const doc = element.ownerDocument;
-    roots.add(doc);
-    const view = doc.defaultView;
-    let root = element.getRootNode();
-    if (view) {
-      while (root instanceof view.ShadowRoot) {
-        roots.add(root);
-        root = root.host.getRootNode();
-      }
-    }
-  }
-  return roots;
-}
-
 function connectedSurfaceRoot(surface: HTMLElement): OverlayRoot | undefined {
   if (!surface.isConnected) {
     return undefined;
@@ -163,26 +143,28 @@ function connectedSurfaceRoot(surface: HTMLElement): OverlayRoot | undefined {
   return view && root instanceof view.ShadowRoot ? root : undefined;
 }
 
-function refreshSurfaceRoot(overlay: Overlay, entry: RegisteredOverlay) {
-  const next = connectedSurfaceRoot(overlay.surface);
-  if (next === entry.surfaceRoot) {
-    return;
-  }
-  const release = entry.releaseSurfaceRoot;
-  entry.releaseSurfaceRoot = undefined;
-  entry.surfaceRoot = next;
-  release?.();
-  if (next) {
-    entry.releaseSurfaceRoot = entry.options.onRootChange?.(next) ?? undefined;
-  }
-}
-
 export function refreshOverlayRoots(registry: OverlayRegistry, overlay: Overlay) {
   const registration = registry.members.get(overlay);
   if (!registration) {
     return;
   }
-  const next = collectRoots(registration.elements());
+  const elements = registration.elements();
+  const next = new Set<OverlayRoot>();
+  for (const element of elements) {
+    if (!element) {
+      continue;
+    }
+    const doc = element.ownerDocument;
+    next.add(doc);
+    const view = doc.defaultView;
+    let root = element.getRootNode();
+    if (view) {
+      while (root instanceof view.ShadowRoot) {
+        next.add(root);
+        root = root.host.getRootNode();
+      }
+    }
+  }
   for (const root of next) {
     if (!registration.roots.has(root)) {
       registration.roots.set(root, retainRoot(registry, root));
@@ -194,7 +176,17 @@ export function refreshOverlayRoots(registry: OverlayRegistry, overlay: Overlay)
       registration.roots.delete(root);
     }
   }
-  refreshSurfaceRoot(overlay, registration);
+  const surfaceRoot = connectedSurfaceRoot(overlay.surface);
+  if (surfaceRoot === registration.surfaceRoot) {
+    return;
+  }
+  const release = registration.releaseSurfaceRoot;
+  registration.releaseSurfaceRoot = undefined;
+  registration.surfaceRoot = surfaceRoot;
+  release?.();
+  if (surfaceRoot) {
+    registration.releaseSurfaceRoot = registration.options.onRootChange?.(surfaceRoot) ?? undefined;
+  }
 }
 
 export function registerOverlay(
