@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 311358,
-  "reason": "Panel header imports and Labs/Usage copy: matched 721d124 build 311566 to 311358 B startup, 1333529 to 1324362 B Chat and 816308 to 814674 B New Session; seven startup JS requests.",
+  "startupJsGzipBytes": 311234,
+  "reason": "Empty placement recovery: matched d78b148 build, Chat 1324200 to 1319799 B and New Session 814495 to 811891 B; startup 311189 to 311234 B within 64 B build variance, seven requests.",
   "updatedAt": "2026-10-23"
 }

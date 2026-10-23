@@ -72,6 +72,43 @@ describe("application session placement startup", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(["recovery", "start"] as const)(
+    "keeps an empty account's runtime unloaded until %s needs it",
+    async (trigger) => {
+      const fake = createFakeRuntime();
+      const loader = vi.fn(async () => ({ default: fake.factory }));
+      const request = vi.fn();
+      const { startup, input } = createPlacementStartupHarness(request, { loadRuntime: loader });
+      sessionStorage.clear();
+      expect(
+        writeSessionPlacementRecovery({ ...input.recovery, recoveryScope: "another-account" }),
+      ).toBe(true);
+
+      startup.resumeRecovery();
+      await flushStartupMicrotasks();
+      expect(loader).not.toHaveBeenCalled();
+      expect(request).not.toHaveBeenCalled();
+      expect(startup.hasPendingTurn(input.recovery.sessionKey)).toBe(false);
+
+      if (trigger === "recovery") {
+        expect(writeSessionPlacementRecovery(input.recovery)).toBe(true);
+        startup.resumeRecovery();
+      } else {
+        startup.start({ ...input, persistRecovery: false });
+      }
+      await flushStartupMicrotasks();
+      expect(loader).toHaveBeenCalledOnce();
+      expect(fake.factory).toHaveBeenCalledOnce();
+      if (trigger === "recovery") {
+        expect(fake.runtime.resumeRecovery).toHaveBeenCalled();
+      } else {
+        expect(fake.runtime.start).toHaveBeenCalledWith(
+          expect.objectContaining({ persistRecovery: false, recovery: input.recovery }),
+        );
+      }
+    },
+  );
+
   it("does not install a runtime that finishes loading after disposal", async () => {
     const moduleLoad = createDeferred<RuntimeModule>();
     const fake = createFakeRuntime();
