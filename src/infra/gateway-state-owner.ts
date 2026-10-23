@@ -19,6 +19,7 @@ import {
   describeGatewayLockHolder,
   type LockPayload,
   parseGatewayLockPayload,
+  projectGatewayStateOwnerIdentity,
 } from "./gateway-lock-payload.js";
 import {
   ensureOwnerDirectory,
@@ -581,6 +582,23 @@ export function hasActiveGatewayStateOwner(databasePath: string): boolean {
     (owner.payload.role ?? "gateway") === "gateway" &&
     hasPhysicalOwnership(owner)
   );
+}
+
+/** A live self-observation never adopts the holder found in a persisted foreign lock. */
+export function readLiveGatewayStateOwnerIdentity(databasePath: string) {
+  const identity = resolveStateOwnerIdentity(databasePath);
+  const owner = owners.get(identity.key);
+  if (
+    !owner ||
+    owner.kind !== "process" ||
+    !owner.accepting ||
+    owner.payload.pid !== process.pid ||
+    (owner.payload.role ?? "gateway") !== "gateway" ||
+    !hasPhysicalOwnership(owner)
+  ) {
+    return undefined;
+  }
+  return projectGatewayStateOwnerIdentity(identity.canonicalPath, owner.payload) ?? undefined;
 }
 
 /** Capture registered process custody; a PID or copied lock payload grants no authority. */
