@@ -89,7 +89,8 @@ vi.mock("./gateway-presence.js", () => ({
   pickGatewaySelfPresence: mocks.pickGatewaySelfPresence,
 }));
 
-vi.mock("./status.scan.deps.runtime.js", () => ({
+vi.mock("./status.scan.deps.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./status.scan.deps.runtime.js")>()),
   getMemoryProvider: mocks.getMemoryProvider,
   isMemoryProviderNative: mocks.isMemoryProviderNative,
 }));
