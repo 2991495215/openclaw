@@ -213,7 +213,7 @@ async function startReconcileWorkerTask(
     const { runOpenClawStateWorkerOperation } =
       await import("../../state/openclaw-state-worker-store.js");
     await runOpenClawStateWorkerOperation(owner.context, async () => undefined, {
-      existingOnly: false,
+      assertCurrent: () => signal?.throwIfAborted(),
     });
   }
   signal?.throwIfAborted();
