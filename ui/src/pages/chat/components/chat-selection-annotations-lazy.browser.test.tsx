@@ -18,7 +18,7 @@ vi.mock("./chat-selection-annotations-content.tsx", async (original) => {
 });
 
 it("loads on the first annotation without changing chip size or replacing loaded controls", async () => {
-  onTestFinished(loading.resolve);
+  onTestFinished(() => loading.resolve());
   const annotation: ChatAttachment = {
     id: "comment",
     mimeType: "text/plain",
