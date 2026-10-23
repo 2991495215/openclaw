@@ -1,5 +1,5 @@
 import type { FeatureInvocationContext } from "openclaw/plugin-sdk/feature-plugin";
-import { Type, type Static, type TObject } from "typebox";
+import { Type, type Static, type TObject, type TProperties } from "typebox";
 import type { CompactHit, FullHit, LookupOutput, SearchOutput } from "./retrieval-contract.js";
 
 /** Default page size for agent search/lookup calls that omit `limit`. */
@@ -19,11 +19,11 @@ export const SearchDetail = Type.Optional(
 );
 
 /** Extend a storage input schema with the agent-only `detail` selector. */
-export function withSearchDetail<T extends TObject>(schema: T) {
+export function withSearchDetail<P extends TProperties>(schema: TObject<P>) {
   return Type.Object(
     { ...schema.properties, detail: SearchDetail },
     { additionalProperties: false },
-  ) as unknown as TObject<T["properties"] & { detail: typeof SearchDetail }>;
+  );
 }
 
 type Detail = Static<typeof SearchDetail>;
