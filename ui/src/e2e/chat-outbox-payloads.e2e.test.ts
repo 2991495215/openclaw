@@ -111,7 +111,7 @@ suite.define(() => {
           file.buffer.toString("base64"),
         ]);
         await expectRequestCountStable(gateway, "chat.send", 0);
-        await paneFor(page).getByText("Paused", { exact: true }).waitFor();
+        await paneFor(page).getByText("Delivery unconfirmed", { exact: true }).waitFor();
         await paneFor(page)
           .locator(".chat-group.user")
           .getByRole("button", { name: /Retry/i })

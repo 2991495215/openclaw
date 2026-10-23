@@ -58,7 +58,7 @@ suite.define(() => {
         const statuses = page.locator(".chat-send-status");
         await expectBrowser(statuses).toHaveCount(4, { timeout: 30_000 });
         const held = page.locator('.chat-send-status[data-send-state="held"]');
-        await expectBrowser(held).toContainText("Paused");
+        await expectBrowser(held).toContainText("Delivery unconfirmed");
         await expectBrowser(
           held.getByRole("button", { name: "Discard", exact: true }),
         ).toBeVisible();
@@ -289,7 +289,9 @@ suite.define(() => {
         }
 
         const deliveryStatus = page.locator('.chat-send-status[data-send-state="unconfirmed"]');
-        await deliveryStatus.getByText("Paused", { exact: true }).waitFor({ timeout: 10_000 });
+        await deliveryStatus
+          .getByText("Delivery unconfirmed", { exact: true })
+          .waitFor({ timeout: 10_000 });
         expect(await page.locator(".chat-queue").count()).toBe(0);
         await userBubble.waitFor();
         expect(await gateway.getRequests("chat.send")).toHaveLength(1);
@@ -311,7 +313,7 @@ suite.define(() => {
             });
           }
           await expectRequestCountStable(gateway, "chat.history", historyReads);
-          await deliveryStatus.getByText("Paused", { exact: true }).waitFor();
+          await deliveryStatus.getByText("Delivery unconfirmed", { exact: true }).waitFor();
 
           const pane = page.locator("openclaw-chat-pane");
           const waitForHistoryCommit = async (timestamp: number) => {
@@ -353,7 +355,9 @@ suite.define(() => {
             status: "done",
           });
           await waitForHistoryCommit(differentTimestamp);
-          await deliveryStatus.getByText("Paused", { exact: true }).waitFor({ timeout: 10_000 });
+          await deliveryStatus
+            .getByText("Delivery unconfirmed", { exact: true })
+            .waitFor({ timeout: 10_000 });
           expect(await gateway.getRequests("chat.send")).toHaveLength(1);
           await captureProof("02-different-key-still-uncertain");
 
@@ -490,7 +494,9 @@ suite.define(() => {
             hasText: prompt,
           });
           await expectBrowser(blockingInput).toBeVisible();
-          await expectBrowser(blockingInput.locator(".chat-queue__badge")).toHaveText("Paused");
+          await expectBrowser(blockingInput.locator(".chat-queue__badge")).toHaveText(
+            "Delivery unconfirmed",
+          );
           await expectBrowser(blockingInput.locator(".chat-queue__error")).toHaveCount(0);
           await expectBrowser(
             blockingInput.getByRole("button", { name: "Retry queued message" }),

@@ -106,7 +106,7 @@ suite.define(() => {
         await page.locator('.chat-send-status[data-send-state="waiting-reconnect"]').waitFor();
         await gateway.setOnline(true);
         const delivery = page.locator('.chat-send-status[data-send-state="unconfirmed"]');
-        await delivery.getByText("Paused", { exact: true }).waitFor();
+        await delivery.getByText("Delivery unconfirmed", { exact: true }).waitFor();
         await page.screenshot({
           path: path.join(artifacts, "01-chat-review.png"),
           animations: "disabled",
