@@ -391,12 +391,10 @@ async function createOpenClawAgentSqliteWorkerStore<Operations extends SqliteWor
     try {
       await close();
     } catch (cleanupError) {
-      throw new AggregateError(
+      throw createSqliteLifecycleAggregateError(
         [error, cleanupError],
         "Agent publication setup and cleanup failed",
-        {
-          cause: cleanupError,
-        },
+        cleanupError,
       );
     }
     throw error;
