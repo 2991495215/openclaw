@@ -31,6 +31,9 @@ provider reports an error and the turn settles before shutdown discovers it.
 The next visible message preserves an interrupted turn's recovery claim even
 when its saved status is failed, timed out, or killed. Recovery resumes the
 interrupted work before the new message takes foreground ownership.
+Before accepting another message, the Gateway retires leftover recovery records
+whose runs are all recorded terminal and have no remaining execution or delivery
+owner. This lets a stopped conversation continue without resetting its history.
 
 This page describes what survives a restart, how interrupted work is detected,
 and what the automatic resume looks like.

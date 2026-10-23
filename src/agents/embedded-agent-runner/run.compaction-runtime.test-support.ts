@@ -37,10 +37,6 @@ export function recoveryCompaction(
   };
 }
 
-export function unchangedMaintenance() {
-  return { changed: false, rewrittenEntries: 0, bytesFreed: 0 };
-}
-
 // The engine is synthetic; admission, writer claims, safety timeout, recovery,
 // hooks, session state, transcript writes, and reopen reads are composed for real.
 async function createRecoveryFixture(state: OpenClawTestState, options: FixtureOptions) {
