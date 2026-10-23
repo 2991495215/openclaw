@@ -52,14 +52,14 @@ const CONTROL_UI_LOCALE_GZIP_BYTES = 300 * KIB;
 // Small, explicit headroom over the optimized baseline. Budget changes should
 // accompany an intentional loading or chunking decision.
 const controlUiPerformanceBudgets = {
-  // Deferred emoji/Markdown loads use 7/23/17 requests; retain two per path.
+  // Deferred menu and emoji/Markdown loads use 7/23/17 requests; retain two per path.
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Lazy Online sidebar: 1,385,034 B Chat and 858,150 B New Session.
+  // Deferred menu navigation: 1,353,266 B Chat and 826,422 B New Session.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_438_087,
-  newBootJsGzipBytes: 869_887,
+  chatBootJsGzipBytes: 1_405_102,
+  newBootJsGzipBytes: 837_725,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
