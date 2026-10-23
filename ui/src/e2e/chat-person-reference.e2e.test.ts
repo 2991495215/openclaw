@@ -327,6 +327,61 @@ suite.define(() => {
       }),
   );
 
+  it("keeps keyboard entry available while the person card renderer loads", () =>
+    withPage(async (page) => {
+      const release = Promise.withResolvers<void>();
+      await page.route("**/person-activity-card-view-*.js", async (route) => {
+        await release.promise;
+        await route.continue();
+      });
+      try {
+        const { reference, card } = await personPage(page, {
+          methodResponses: { "users.list": directory },
+        });
+        const requested = page.waitForRequest("**/person-activity-card-view-*.js");
+        await reference.focus();
+        await requested;
+        await browserExpect(card.getByRole("status")).toHaveText("Loading…");
+        await reference.press("Tab");
+        await browserExpect(card).toBeFocused();
+        await browserExpect(card).toBeVisible();
+
+        release.resolve();
+        const activity = card.getByRole("link", { name: "View activity" });
+        await activity.waitFor();
+        await card.press("Tab");
+        await browserExpect(activity).toBeFocused();
+        await activity.press("Escape");
+        await browserExpect(reference).toBeFocused();
+        await card.waitFor({ state: "detached" });
+      } finally {
+        release.resolve();
+      }
+    }));
+
+  it("retries a failed person card renderer when reopened", () =>
+    withPage(async (page) => {
+      let requests = 0;
+      await page.route("**/person-activity-card-view-*.js", async (route) => {
+        requests += 1;
+        if (requests === 1) {
+          await route.abort("failed");
+        } else {
+          await route.continue();
+        }
+      });
+      const { reference, card, heading } = await personPage(page, {
+        methodResponses: { "users.list": directory },
+      });
+      await reference.focus();
+      await browserExpect(card.getByRole("status")).toHaveText("Could not load people. Try again.");
+      await reference.press("Escape");
+      await card.waitFor({ state: "detached" });
+      await reference.click();
+      await browserExpect(heading).toHaveText("Ada Lovelace");
+      expect(requests).toBe(2);
+    }));
+
   it.each(["failed", "missing"] as const)(
     "retries a %s initial directory lookup when a person card opens",
     (outcome) =>

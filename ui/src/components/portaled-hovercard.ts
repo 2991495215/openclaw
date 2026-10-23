@@ -113,12 +113,11 @@ export function createPortaledHovercardOwner(
         dismiss();
         return;
       }
-      // A portal is outside its trigger's tab sequence. Enter at the first link,
-      // then let native Tab traversal own the links inside the card.
+      // Enter a pending card itself until its links join the native tab sequence.
       if (event.key !== "Tab" || event.shiftKey || event.composedPath()[0] !== triggerElement) {
         return;
       }
-      const first = portal.focusables()[0];
+      const first = portal.focusables()[0] ?? portal.card;
       if (first) {
         event.preventDefault();
         first.focus();
@@ -427,6 +426,7 @@ export function createPortaledHovercard(id: string, className: string): HTMLDivE
   const card = document.createElement("div");
   card.id = id;
   card.className = className;
+  card.tabIndex = -1;
   card.dataset.open = "true";
   card.setAttribute("role", "dialog");
   return card;
