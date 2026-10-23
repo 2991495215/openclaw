@@ -27,6 +27,15 @@ export type ResolvedGatewayAuth = {
   trustedProxy?: GatewayTrustedProxyConfig;
 };
 
+export const GATEWAY_AUTH_CONFIG_KEYS = [
+  "mode",
+  "token",
+  "password",
+  "allowTailscale",
+  "rateLimit",
+  "trustedProxy",
+] as const;
+
 /** Merge sparse runtime auth overrides without erasing configured values. */
 export function mergeGatewayAuthConfig(
   base: GatewayAuthConfig | null | undefined,
@@ -36,14 +45,7 @@ export function mergeGatewayAuthConfig(
   if (!override) {
     return merged;
   }
-  for (const key of [
-    "mode",
-    "token",
-    "password",
-    "allowTailscale",
-    "rateLimit",
-    "trustedProxy",
-  ] as const) {
+  for (const key of GATEWAY_AUTH_CONFIG_KEYS) {
     if (override[key] !== undefined) {
       Object.assign(merged, { [key]: override[key] });
     }

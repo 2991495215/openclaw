@@ -177,6 +177,19 @@ type SpeechSynthesisParams = {
   accountId?: string;
 };
 
+export function prepareTtsRequestParams(params: SpeechSynthesisParams) {
+  return {
+    text: params.text,
+    cfg: params.cfg,
+    prefsPath: params.prefsPath,
+    providerOverride: params.overrides?.provider,
+    disableFallback: params.disableFallback,
+    agentId: params.agentId,
+    channelId: params.channel,
+    accountId: params.accountId,
+  };
+}
+
 export async function synthesizeSpeech(params: SpeechSynthesisParams): Promise<TtsSynthesisResult> {
   assertSpeechRuntimeAvailable();
   return synthesizeSpeechInternal(params);
@@ -193,44 +206,32 @@ export async function synthesizeTalkSpeech(
 async function synthesizeSpeechInternal(
   params: SpeechSynthesisParams,
 ): Promise<TtsSynthesisResult> {
-  return await withOwnedTtsRequest(
-    {
-      text: params.text,
-      cfg: params.cfg,
-      prefsPath: params.prefsPath,
-      providerOverride: params.overrides?.provider,
-      disableFallback: params.disableFallback,
-      agentId: params.agentId,
-      channelId: params.channel,
-      accountId: params.accountId,
-    },
-    async (setup) => {
-      if ("error" in setup) {
-        return { success: false, error: setup.error };
-      }
+  return await withOwnedTtsRequest(prepareTtsRequestParams(params), async (setup) => {
+    if ("error" in setup) {
+      return { success: false, error: setup.error };
+    }
 
-      const target = resolveTtsSynthesisTarget(params.channel);
-      return await executeTtsProviderAttempts({
-        ...setup,
-        synthesisText: normalizeSpeechText(params.text),
-        providerOverrides: params.overrides?.providerOverrides,
-        timeoutMs: params.timeoutMs,
+    const target = resolveTtsSynthesisTarget(params.channel);
+    return await executeTtsProviderAttempts({
+      ...setup,
+      synthesisText: normalizeSpeechText(params.text),
+      providerOverrides: params.overrides?.providerOverrides,
+      timeoutMs: params.timeoutMs,
+      target,
+      logLabel: "TTS",
+      selectOperation: ({ resolvedProvider }) => ({
+        kind: "ready",
+        synthesize: (request) => resolvedProvider.provider.synthesize(request),
+      }),
+      buildSuccess: ({ synthesis, ...metadata }) => ({
+        success: true,
+        ...metadata,
+        audioBuffer: synthesis.audioBuffer,
+        outputFormat: synthesis.outputFormat,
+        voiceCompatible: synthesis.voiceCompatible,
+        fileExtension: synthesis.fileExtension,
         target,
-        logLabel: "TTS",
-        selectOperation: ({ resolvedProvider }) => ({
-          kind: "ready",
-          synthesize: (request) => resolvedProvider.provider.synthesize(request),
-        }),
-        buildSuccess: ({ synthesis, ...metadata }) => ({
-          success: true,
-          ...metadata,
-          audioBuffer: synthesis.audioBuffer,
-          outputFormat: synthesis.outputFormat,
-          voiceCompatible: synthesis.voiceCompatible,
-          fileExtension: synthesis.fileExtension,
-          target,
-        }),
-      });
-    },
-  );
+      }),
+    });
+  });
 }

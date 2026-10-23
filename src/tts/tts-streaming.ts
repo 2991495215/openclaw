@@ -11,7 +11,11 @@ import {
   acquireTtsRequest,
   throwTtsProjectionError,
 } from "./tts-synthesis-support.js";
-import { resolveTtsSynthesisTarget, type synthesizeSpeech } from "./tts-synthesis.js";
+import {
+  prepareTtsRequestParams,
+  resolveTtsSynthesisTarget,
+  type synthesizeSpeech,
+} from "./tts-synthesis.js";
 
 type SpeechSynthesisParams = Parameters<typeof synthesizeSpeech>[0];
 
@@ -19,16 +23,7 @@ export async function streamSpeech(
   params: SpeechSynthesisParams,
 ): Promise<TtsSynthesisStreamResult> {
   assertSpeechRuntimeAvailable();
-  const acquired = await acquireTtsRequest({
-    text: params.text,
-    cfg: params.cfg,
-    prefsPath: params.prefsPath,
-    providerOverride: params.overrides?.provider,
-    disableFallback: params.disableFallback,
-    agentId: params.agentId,
-    channelId: params.channel,
-    accountId: params.accountId,
-  });
+  const acquired = await acquireTtsRequest(prepareTtsRequestParams(params));
   if ("error" in acquired) {
     return { success: false, error: acquired.error };
   }

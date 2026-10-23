@@ -45,7 +45,7 @@ import { getPluginMetadataSnapshotCache } from "../plugins/plugin-cache.js";
 import { withArtifactPreservingStateReads } from "../state/openclaw-state-db-readonly.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { assertOpenClawStateWriteAllowedAtPath } from "../state/openclaw-state-ownership-preflight.js";
-import { mergeGatewayAuthConfig } from "./auth-resolve.js";
+import { GATEWAY_AUTH_CONFIG_KEYS, mergeGatewayAuthConfig } from "./auth-resolve.js";
 import { ADMIN_SCOPE } from "./method-scopes.js";
 import { listCoreGatewayMethodNames } from "./methods/core-method-policy.js";
 import {
@@ -336,14 +336,7 @@ async function prepareGatewayServerBootstrapSelected(input: {
   if (startupAuthOverride) {
     resolvedStartupAuthOverride = {};
     startupAuthSecretRefOverride = {};
-    for (const key of [
-      "mode",
-      "token",
-      "password",
-      "allowTailscale",
-      "rateLimit",
-      "trustedProxy",
-    ] as const) {
+    for (const key of GATEWAY_AUTH_CONFIG_KEYS) {
       const override = startupAuthOverride[key];
       if (override === undefined) {
         continue;
