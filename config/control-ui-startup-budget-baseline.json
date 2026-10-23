@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315881,
-  "reason": "Creation transfer split preserves the stricter 315881 B startup baseline; matched 35637f41 builds measure 316324 to 316294 B startup, 1347441 B Chat and 822816 B New Session.",
+  "startupJsGzipBytes": 302094,
+  "reason": "Zopfli precompression: matched 0eab startup 314546 to 302094 B; Chat 1345570 to 1293721 B; New Session 822908 to 791148 B; identical JS/CSS and request counts.",
   "updatedAt": "2026-10-23"
 }
