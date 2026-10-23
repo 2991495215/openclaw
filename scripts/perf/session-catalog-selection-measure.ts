@@ -163,6 +163,10 @@ function allocation(profile: HeapProfiler.SamplingHeapProfile) {
     catalogBytesPerOperation: catalogBytes / operations,
   };
 }
+function serializeRoster(value: unknown) {
+  // snapshotAt is the presentation clock, including inside the shared-facts table.
+  return JSON.stringify(value, (key, field: unknown) => (key === "snapshotAt" ? 0 : field));
+}
 
 let providerCalls = 0;
 let providerRows = 0;
@@ -324,7 +328,7 @@ try {
           ? {
               roster: await Promise.all(
                 agents.map(async (agentId) =>
-                  hash("sha256", JSON.stringify(await roster(agentId)), "hex"),
+                  hash("sha256", serializeRoster(await roster(agentId)), "hex"),
                 ),
               ),
             }
@@ -399,7 +403,7 @@ try {
         const rosterStarted = performance.now();
         const rows = await roster(agentId);
         rosterLatency.push(performance.now() - rosterStarted);
-        responseSequence.update(JSON.stringify(rows)).update("\n");
+        responseSequence.update(serializeRoster(rows)).update("\n");
       }
     }
     const tasks = taskMonitor.drain();
@@ -483,6 +487,7 @@ try {
       omittedFields: values["with-roster"]
         ? ["roster.ts", "roster.path", "roster.rowsRevision"]
         : [],
+      normalizedFields: values["with-roster"] ? ["roster snapshotAt fields -> 0"] : [],
     },
     allocation: profile ? allocation(profile) : null,
     handlerLatency: distribution(latency),

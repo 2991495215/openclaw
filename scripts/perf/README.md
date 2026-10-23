@@ -159,7 +159,9 @@ roster latency separately, selection calls and rows by task/kind, and the longes
 instrumented synchronous main-thread task in each operation. Compare the complete
 ordered response-sequence digest across revisions; only the roster's top-level
 request timestamp (`ts`), fixture-specific store `path`, and opaque per-response
-`rowsRevision` token are omitted. Catalog
+`rowsRevision` token are omitted. Serialization replaces the roster's presentation
+`snapshotAt` timestamps with zero, preserving those fields and all row/fact order
+without copying rows or changing the runtime clock. Catalog
 responses and entry digests remain byte-for-byte comparisons. The fixture has no
 transcript enrichment or active model turns, and handler timings exclude transport.
 
