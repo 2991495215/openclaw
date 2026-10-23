@@ -1985,8 +1985,9 @@ select.settings-select:not([multiple]) {
 }
 
 .field.checkbox {
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
+  overflow-wrap: anywhere;
 }
 
 .config-form .field.checkbox {
@@ -3069,6 +3070,7 @@ td.data-table-key-col {
 .exec-approval-modal-content {
   display: flex;
   min-height: 0;
+  min-width: 0;
   flex-direction: column;
   overflow-y: auto;
 }
