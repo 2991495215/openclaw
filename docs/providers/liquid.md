@@ -98,10 +98,11 @@ an image that fits the decoded-image bound.
 
 Evaluations send supplied evidence to
 `https://api.liquid.ai/decisions/v1/systemone` and incur Liquid usage charges.
-Standard `models.providers.liquid` base URL, prepared auth/header overrides,
-proxy, TLS, and private-network controls apply. A custom base URL keeps its
-path prefix and receives `/systemone`; it must implement the declared native
-protocol. There is no fallback to a chat endpoint or another account.
+Standard prepared auth/header overrides, proxy, TLS, and private-network controls
+apply. Decision support is tied to provider-declared compatible routes. Changing
+`models.providers.liquid.baseUrl` to an undeclared endpoint does not grant that
+endpoint native Decision capabilities. A declared route keeps its path prefix
+and receives `/systemone`. There is no fallback to a chat endpoint or another account.
 
 See [Liquid's hosted API contract](https://docs.liquid.ai/lfm/models/d1) and
 [d1 Ultra announcement](https://www.liquid.ai/blog/d1-ultra) for current model
