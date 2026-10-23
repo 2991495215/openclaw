@@ -240,12 +240,18 @@ if (
 }
 const toolScenario = scenario === "chat.send" || reasoningScenario;
 const chatActiveHoldMs = integer(values["chat-active-hold-ms"], "--chat-active-hold-ms", 0);
-if (chatActiveHoldMs && (scenario !== "chat.send" || values["session-event-wake"])) {
+if (
+  chatActiveHoldMs &&
+  (scenario !== "chat.send" || values["session-event-wake"] || values["cron-operator-turn"])
+) {
   throw new Error("--chat-active-hold-ms requires direct --scenario chat.send");
 }
 const chatAttachmentBytes =
   integer(values["chat-attachment-kib"], "--chat-attachment-kib", 0) * 1024;
-if (chatAttachmentBytes && (scenario !== "chat.send" || values["session-event-wake"])) {
+if (
+  chatAttachmentBytes &&
+  (scenario !== "chat.send" || values["session-event-wake"] || values["cron-operator-turn"])
+) {
   throw new Error("--chat-attachment-kib requires direct --scenario chat.send");
 }
 const chatAttachmentContent = chatAttachmentBytes
