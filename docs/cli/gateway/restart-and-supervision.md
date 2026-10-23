@@ -249,6 +249,10 @@ namespace inode (`pidNsInode`). It does not adopt an old owner record from disk.
 Older runtimes omit this field; an unavailable `startTime` or `processNamespace`
 is `null`.
 
+The Gateway captures the canonical path and identity during acquisition.
+`system.info` reads these in-process facts; release or detected ownership loss
+omits the field. Admission and heartbeat checks continue to verify physical custody.
+
 ```bash
 openclaw gateway call system.info --json
 openclaw gateway recover-lock --json
