@@ -173,6 +173,10 @@ export function createContext(
         return () => channelListeners.delete(listener);
       },
     },
+    overlays: {
+      snapshot: { approvalQueue: [] },
+      subscribe: () => () => undefined,
+    },
     basePath: "",
     navigate: vi.fn(),
     replace: vi.fn(),
