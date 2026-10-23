@@ -56,9 +56,9 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Deferred menus and closed dialogs: 1,349,135 B Chat and 823,357 B New Session.
-  // Retain the stricter prior caps after the current-main measurement refresh.
-  chatBootJsGzipBytes: 1_400_431,
+  // Deferred person-card details: 1,346,928 B Chat; preserve relative headroom.
+  // New Session remains effectively unchanged; retain its stricter prior cap.
+  chatBootJsGzipBytes: 1_398_206,
   newBootJsGzipBytes: 834_356,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
