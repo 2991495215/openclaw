@@ -11,6 +11,7 @@ import type { GatewayBootLifecycleCompletion } from "../../infra/gateway-boot-li
 import { acquireGatewayLock } from "../../infra/gateway-lock.js";
 import { consumeGatewaySuspendHandoff } from "../../infra/gateway-suspend-coordinator.js";
 import type { GatewayRestartIntent } from "../../infra/restart-intent.js";
+import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import { findStartupMaintenanceRequiredError } from "../../infra/startup-maintenance-required.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { GatewayDrainReason } from "../../process/gateway-work-admission.js";
@@ -1317,14 +1318,7 @@ export async function runGatewayLoop(params: {
   if (loopFailure) {
     failures.unshift(loopFailure.error);
   }
-  if (failures.length === 1) {
-    throw failures[0];
-  }
-  if (failures.length > 1) {
-    throw new AggregateError(failures, "Gateway loop and final resource cleanup failed", {
-      cause: failures[0],
-    });
-  }
+  throwSqliteLifecycleErrors(failures, "Gateway loop and final resource cleanup failed");
   const code = hostExitRequested && terminalExitCode === 0 ? hostExitCode : (terminalExitCode ?? 0);
   // Cleanup failure promotes success, but cannot replace a supervisor-owned
   // failure status that already selects its terminal recovery behavior.

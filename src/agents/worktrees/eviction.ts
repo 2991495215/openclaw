@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setImmediate as yieldTurn } from "node:timers/promises";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { runGitWorkerOperation } from "../../infra/git-worker.js";
+import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contract.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { runOutsideCommandProcessScope } from "../../process/exec-spawn.js";
@@ -276,16 +277,9 @@ export async function evictManagedWorktree(params: {
         await yieldTurn();
       }
     }
-    if (errors.length > 1) {
-      throw new AggregateError(errors, "Worktree eviction or claim release failed", {
-        cause: errors[0],
-      });
-    }
+    throwSqliteLifecycleErrors(errors, "Worktree eviction or claim release failed");
     if (!outcome.ok) {
       throw outcome.error;
-    }
-    if (errors.length > 0) {
-      throw errors[0];
     }
     return outcome.value;
   });

@@ -1,3 +1,4 @@
+import { rethrowAfterCleanup } from "../../../infra/error-graph-internal.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../../infra/sqlite-worker-contract.js";
 import {
@@ -173,18 +174,12 @@ export function createSubagentKillAcceptance(params: {
         }
         return result;
       },
-      async (error: unknown) => {
-        try {
-          await params.commands?.settle();
-        } catch (cleanupError) {
-          throw new AggregateError(
-            [error, cleanupError],
-            "Subagent cancellation and command cleanup failed",
-            { cause: cleanupError },
-          );
-        }
-        throw error;
-      },
+      (error: unknown) =>
+        rethrowAfterCleanup(
+          error,
+          () => params.commands?.settle(),
+          "Subagent cancellation and command cleanup failed",
+        ),
     );
   };
   return {

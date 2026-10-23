@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { rethrowAfterCleanup } from "../../../infra/error-graph-internal.js";
 import { formatErrorMessage as formatError } from "../../../infra/errors.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { buildRealtimeVoiceAgentCancelProviderResult } from "../../../talk/agent-run-control-shared.js";
@@ -131,14 +132,11 @@ export function closeRelaySession(
       closing.runTranscript = () => false;
       session.voiceTranscriptQueue.seal();
       const accepted = (session.voiceSessionClose ??= session.voiceTranscriptQueue.flush());
-      try {
-        await finishRelaySessionClose(session, "error", closing, () => accepted, options);
-      } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], "Realtime relay close failed", {
-          cause: cleanupError,
-        });
-      }
-      throw error;
+      await rethrowAfterCleanup(
+        error,
+        () => finishRelaySessionClose(session, "error", closing, () => accepted, options),
+        "Realtime relay close failed",
+      );
     }
     closing.runTranscript = AsyncLocalStorage.bind((run: () => boolean) => run());
     await finishRelaySessionClose(

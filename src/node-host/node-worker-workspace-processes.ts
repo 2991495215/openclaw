@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
-import { throwCollectedErrors } from "../infra/error-graph-internal.js";
+import { rethrowAfterCleanup, throwCollectedErrors } from "../infra/error-graph-internal.js";
 import { resolveExecutablePath } from "../infra/executable-path.js";
 import {
   decodeWindowsOutputBuffer,
@@ -283,18 +283,15 @@ export class NodeWorkerWorkspaceProcesses {
           } catch (error) {
             // A rejected spawn can still own a native child or private input pipe.
             // Keep the workspace pinned until the supervisor settles that scope.
-            try {
-              await created.cleanup();
-              boundOwner.processes.delete(operation.processId);
-              created.releaseWorkspace();
-            } catch (cleanupError) {
-              throw new AggregateError(
-                [error, cleanupError],
-                "Workspace process startup cleanup failed",
-                { cause: cleanupError },
-              );
-            }
-            throw error;
+            await rethrowAfterCleanup(
+              error,
+              async () => {
+                await created.cleanup();
+                boundOwner.processes.delete(operation.processId);
+                created.releaseWorkspace();
+              },
+              "Workspace process startup cleanup failed",
+            );
           } finally {
             signal?.removeEventListener("abort", abortStartup);
           }
