@@ -17,7 +17,7 @@ import {
   startOpenAiResponsesModelServer,
 } from "../../test/helpers/openai-responses-model-fixture.js";
 import { writeOpenAiResponsesText } from "../../test/helpers/openai-responses-sse.js";
-import { createDeferred, withinTest, withTestTimeout } from "../../test/helpers/promise.js";
+import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import { withFullRuntimeReplyConfig } from "../auto-reply/reply/get-reply-fast-path.js";
 import { getReplyFromConfig } from "../auto-reply/reply/get-reply.js";
 import {
@@ -201,10 +201,7 @@ describe("exec completion WebChat publication", () => {
         expect(peekSystemEventEntries(sessionKey)).toEqual([]);
         if (!disconnected) {
           const event = requireRecord(
-            await withinTest(
-              withTestTimeout(live.promise, 10_000, "Missing exec completion session.message"),
-              signal,
-            ),
+            await withinTest(live.promise, signal),
             "exec completion event",
           );
           expect(event.message).toMatchObject({
