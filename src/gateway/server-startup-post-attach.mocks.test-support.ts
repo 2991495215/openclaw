@@ -101,24 +101,28 @@ const postAttachMocks = vi.hoisted(() => {
 
 export { postAttachMocks };
 
+// mock-isolation: Keep persisted subagent restoration and registry timers outside startup ordering.
 vi.mock("../agents/subagents/registry/subagent-registry.js", () => ({
   activateSubagentRegistry: postAttachMocks.activateSubagentRegistry,
 }));
 
-// mock-isolation: Startup orders recovery owners; their scanners have dedicated tests.
+// mock-isolation: Keep persisted exec-exit scans outside startup ordering; the owner has dedicated tests.
 vi.mock("../agents/bash-tools.exec-notify.js", () => ({
   recoverExecExitNotifications: postAttachMocks.recoverExecExitNotifications,
 }));
 
+// mock-isolation: Keep persisted delivery scans outside this startup fixture's partial Gateway context.
 vi.mock("./session-send-recovery.js", () => ({
   recoverSessionSendDeliveries: postAttachMocks.recoverSessionSendDeliveries,
 }));
 
+// mock-isolation: Observe recovery scheduling without replaying saved inputs or starting sweep timers.
 vi.mock("../agents/main-session-recovery/main-session-restart-recovery.js", () => ({
   scheduleRestartAbortedMainSessionRecovery:
     postAttachMocks.scheduleRestartAbortedMainSessionRecovery,
 }));
 
+// mock-isolation: Control the orphan-marking barrier without mutating persisted session journals.
 vi.mock("../agents/main-session-recovery/main-session-restart-recovery-marking.js", () => ({
   markStartupOrphanedMainSessionsForRecovery:
     postAttachMocks.markStartupOrphanedMainSessionsForRecovery,
@@ -138,42 +142,51 @@ vi.mock("../config/paths.js", async () => {
   };
 });
 
+// mock-isolation: Exercise watcher scheduling without loading Gmail credentials or opening a watcher.
 vi.mock("../hooks/gmail-watcher-lifecycle.js", () => ({
   startGmailWatcherWithLogs: postAttachMocks.startGmailWatcherWithLogs,
 }));
 
+// mock-isolation: Capture startup hook dispatch without invoking process-wide registered handlers.
 vi.mock("../hooks/internal-hooks.js", () => ({
   createInternalHookEvent: postAttachMocks.createInternalHookEvent,
   hasInternalHookListeners: postAttachMocks.hasInternalHookListeners,
   triggerInternalHook: postAttachMocks.triggerInternalHook,
 }));
 
+// mock-isolation: Control hook preparation and commit without loading user hook modules.
 vi.mock("../hooks/loader.js", () => ({
   prepareInternalHooks: postAttachMocks.prepareInternalHooks,
 }));
 
+// mock-isolation: Supply owned service handles without starting registered plugin services.
 vi.mock("../plugins/services.js", () => ({
   startPluginServices: postAttachMocks.startPluginServices,
 }));
 
+// mock-isolation: Observe identity reconciliation without acquiring the process-wide ACP manager.
 vi.mock("../acp/control-plane/manager.js", () => ({
   getAcpSessionManager: vi.fn(() => ({
     reconcilePendingSessionIdentities: postAttachMocks.reconcilePendingSessionIdentities,
   })),
 }));
 
+// mock-isolation: Fixture cleanup must not dispose the real process-wide ACP manager.
 vi.mock("../acp/control-plane/manager.lifecycle.js", () => ({
   disposeAcpSessionManagerInstance: vi.fn(async () => undefined),
 }));
 
+// mock-isolation: Control ACP backend readiness without accessing registered live runtimes.
 vi.mock("../acp/runtime/registry.js", () => ({
   getAcpRuntimeBackend: postAttachMocks.getAcpRuntimeBackend,
 }));
 
+// mock-isolation: Capture startup logging without selecting a native SQLite library or reading worker state.
 vi.mock("./server-startup-log.js", () => ({
   logGatewayStartup: postAttachMocks.logGatewayStartup,
 }));
 
+// mock-isolation: Control update-check lifetime without network refreshes or persistent update campaigns.
 vi.mock("../infra/update-startup.js", () => ({
   createGatewayUpdateCheck: postAttachMocks.createGatewayUpdateCheck,
 }));
@@ -195,6 +208,7 @@ vi.mock("../agents/prepared-model-catalog.js", () => ({
   }),
 }));
 
+// mock-isolation: Supply configured model facts without consulting provider and catalog state.
 vi.mock("../agents/model-selection.js", () => ({
   getModelRefStatus: postAttachMocks.getModelRefStatus,
   isCliProvider: postAttachMocks.isCliProvider,
@@ -202,11 +216,13 @@ vi.mock("../agents/model-selection.js", () => ({
   resolveHooksGmailModel: postAttachMocks.resolveHooksGmailModel,
 }));
 
+// mock-isolation: Observe publication ordering without preparing credentials or changing runtime snapshots.
 vi.mock("../agents/prepared-model-runtime.js", () => ({
   publishPreparedModelRuntimeSnapshot: postAttachMocks.prepareModelRuntimeSnapshot,
   refreshPreparedModelRuntimeSnapshots: postAttachMocks.refreshPreparedModelRuntimeSnapshots,
 }));
 
+// mock-isolation: Observe reply prewarming without dispatching turns or loading a native agent runtime.
 vi.mock("../auto-reply/reply/get-reply-from-config.runtime.js", () => ({
   getReplyFromConfig: vi.fn(),
   prewarmConfigDrivenReplyRuntime: postAttachMocks.prewarmConfigDrivenReplyRuntime,
