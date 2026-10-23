@@ -158,7 +158,8 @@ the same row-owner revision while metadata changes between operations. It report
 roster latency separately, selection calls and rows by task/kind, and the longest
 instrumented synchronous main-thread task in each operation. Compare the complete
 ordered response-sequence digest across revisions; only the roster's top-level
-request timestamp (`ts`) and fixture-specific store `path` are omitted. Catalog
+request timestamp (`ts`), fixture-specific store `path`, and opaque per-response
+`rowsRevision` token are omitted. Catalog
 responses and entry digests remain byte-for-byte comparisons. The fixture has no
 transcript enrichment or active model turns, and handler timings exclude transport.
 

@@ -305,8 +305,13 @@ try {
     );
     assert.ok(result && typeof result === "object" && "sessions" in result);
     assert.equal((result.sessions as unknown[]).length, 200);
-    // Only the request clock and task-owned fixture path vary between processes.
-    const { ts: _ts, path: _path, ...stable } = result as Record<string, unknown>;
+    // The clock, fixture path and opaque per-response revision vary between identical reads.
+    const {
+      ts: _ts,
+      path: _path,
+      rowsRevision: _revision,
+      ...stable
+    } = result as Record<string, unknown>;
     return stable;
   }
   async function golden() {
@@ -475,7 +480,9 @@ try {
       initial: initialGolden,
       final: finalGolden,
       responseSequence: responseSequence.digest("hex"),
-      omittedFields: values["with-roster"] ? ["roster.ts", "roster.path"] : [],
+      omittedFields: values["with-roster"]
+        ? ["roster.ts", "roster.path", "roster.rowsRevision"]
+        : [],
     },
     allocation: profile ? allocation(profile) : null,
     handlerLatency: distribution(latency),
