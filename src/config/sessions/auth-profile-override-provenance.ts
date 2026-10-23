@@ -46,7 +46,7 @@ export function resolveCollapsedSessionAuthPinSource(
   return source === "user-link" ? "user" : source;
 }
 
-function matchesLoginSnapshot(
+export function matchesSessionAuthProfileOverrideSnapshot(
   current: ProviderLoginSessionEntry,
   snapshot: ProviderLoginSessionEntry,
 ): boolean {
@@ -94,7 +94,7 @@ export function decideProviderLoginSessionAdoption(params: {
     return { status: "unchanged" };
   }
   if (params.snapshot) {
-    if (!matchesLoginSnapshot(params.current, params.snapshot)) {
+    if (!matchesSessionAuthProfileOverrideSnapshot(params.current, params.snapshot)) {
       return { status: "rejected" };
     }
   } else {
