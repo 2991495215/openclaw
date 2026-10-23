@@ -98,3 +98,42 @@ it("loads optional English copy at each view boundary while keeping shared label
     expect(en.dashboardsPage).toBe(dashboards);
   }
 });
+
+it.each([
+  { view: "Diff", load: () => import("../pages/chat/components/session-diff-copy.tsx") },
+  {
+    view: "Files",
+    load: () => import("../pages/chat/components/chat-session-workspace-breadcrumb.tsx"),
+  },
+  { view: "Side chat", load: () => import("../pages/chat/components/chat-session-rail.tsx") },
+])("loads panel copy with $view and preserves it after shared registration", async ({ load }) => {
+  const { en, manager } = await loadI18n({
+    chat: { sessionDiff: { modeUnified: "Vereinheitlicht" } },
+  });
+  const { registerChatSessionEnglish } = await import("./locales/en-chat-session.ts");
+  registerChatSessionEnglish();
+  const diff = en.chat.sessionDiff;
+  const files = en.chat.workspaceFiles;
+  const desktop = files.desktop;
+  const rail = en.chat.rail;
+  expect(manager.t("chat.sessionDiff.title")).toBe("Changes");
+  expect(manager.t("chat.workspaceFiles.desktop.sessionFiles")).toBe("Session files");
+  expect(manager.t("chat.rail.show")).toBe("Show side chat");
+  expect(manager.t("chat.workspaceFiles.desktop.project")).toBe(
+    "chat.workspaceFiles.desktop.project",
+  );
+  await manager.setLocale("de");
+
+  await load();
+  registerChatSessionEnglish();
+
+  expect(manager.t("chat.sessionDiff.modeUnified")).toBe("Vereinheitlicht");
+  expect(manager.t("chat.sessionDiff.modeSplit")).toBe("Split");
+  expect(manager.t("chat.workspaceFiles.desktop.project")).toBe("Project");
+  expect(manager.t("chat.rail.askPlaceholder")).toBe("Ask a question");
+  expect(manager.getLocale()).toBe("de");
+  expect(en.chat.sessionDiff).toBe(diff);
+  expect(en.chat.workspaceFiles).toBe(files);
+  expect(en.chat.workspaceFiles.desktop).toBe(desktop);
+  expect(en.chat.rail).toBe(rail);
+});

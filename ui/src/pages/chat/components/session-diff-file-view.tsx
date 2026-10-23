@@ -4,6 +4,7 @@ import type { SessionsDiffResult } from "../../../../../packages/gateway-protoco
 import { localEditorFilePath } from "../../../app/native-editor-locality.runtime.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { pairSessionDiffLines } from "../../../lib/chat/session-diff-split.ts";
 import type { DiffLine } from "../../../lib/chat/tool-call-diff.ts";
@@ -20,6 +21,7 @@ import { ReviewFilename } from "./session-diff-tree.tsx";
 import type { FileView } from "./session-diff-types.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 export function createSessionDiffFileView(bindings: SessionDiffViewBindings) {
   const {

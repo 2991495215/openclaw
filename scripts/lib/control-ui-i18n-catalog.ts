@@ -20,10 +20,12 @@ import { registerChatCiEnglish } from "../../ui/src/i18n/locales/en-chat-ci.ts";
 import { registerChatCommandResultsEnglish } from "../../ui/src/i18n/locales/en-chat-command-results.ts";
 import { registerChatComposerEnglish } from "../../ui/src/i18n/locales/en-chat-composer.ts";
 import { registerChatDetailsEnglish } from "../../ui/src/i18n/locales/en-chat-details.ts";
+import { registerChatDiscoveryEnglish } from "../../ui/src/i18n/locales/en-chat-discovery.ts";
 import { registerChatGoalsEnglish } from "../../ui/src/i18n/locales/en-chat-goals.ts";
 import { registerChatMediaEnglish } from "../../ui/src/i18n/locales/en-chat-media.ts";
 import { registerChatMessageMetadataEnglish } from "../../ui/src/i18n/locales/en-chat-message-metadata.ts";
 import { registerChatOutputsEnglish } from "../../ui/src/i18n/locales/en-chat-outputs.ts";
+import { registerChatPanelsEnglish } from "../../ui/src/i18n/locales/en-chat-panels.ts";
 import { registerChatProviderReviewEnglish } from "../../ui/src/i18n/locales/en-chat-provider-review.ts";
 import { registerChatQuestionsEnglish } from "../../ui/src/i18n/locales/en-chat-questions.ts";
 import { registerChatSessionEnglish } from "../../ui/src/i18n/locales/en-chat-session.ts";
@@ -124,9 +126,11 @@ const sourceFiles = [
   "en-chat-command-results.ts",
   "en-chat-composer.ts",
   "en-chat-details.ts",
+  "en-chat-discovery.ts",
   "en-chat-goals.ts",
   "en-chat-message-metadata.ts",
   "en-chat-media.ts",
+  "en-chat-panels.ts",
   "en-chat-provider-review.ts",
   "en-chat-questions.ts",
   "en-chat-session.ts",
@@ -226,6 +230,29 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       Object.assign(sessionDetails, registerChatDetailsEnglish.catalog.chat.sessionDetails);
     }
   }
+  const sessionChat = registerChatSessionEnglish.catalog.chat;
+  const panelChat = registerChatPanelsEnglish.catalog.chat;
+  const rail = insertFragmentCopy(panelChat.rail, {
+    expand: { collapse: sessionChat.rail.collapse },
+    close: { show: sessionChat.rail.show, clear: sessionChat.rail.clear },
+    askImageQuestion: { selectionTooLong: sessionChat.rail.selectionTooLong },
+  });
+  const sessionDiff = insertFragmentCopy(panelChat.sessionDiff, {
+    collapseContext: { title: sessionChat.sessionDiff.title, show: sessionChat.sessionDiff.show },
+  });
+  const workspaceFiles = insertFragmentCopy(panelChat.workspaceFiles, {
+    label: {
+      collapse: sessionChat.workspaceFiles.collapse,
+      showFiles: sessionChat.workspaceFiles.showFiles,
+    },
+    read: { artifacts: sessionChat.workspaceFiles.artifacts },
+    browser: { root: sessionChat.workspaceFiles.root },
+    preview: { copyPath: sessionChat.workspaceFiles.copyPath },
+  });
+  workspaceFiles.desktop = {
+    ...sessionChat.workspaceFiles.desktop,
+    ...panelChat.workspaceFiles.desktop,
+  };
   const toolCards: TranslationMap = {};
   const toolContent = registerChatToolContentEnglish.catalog.chat.toolCards;
   for (const [key, value] of Object.entries(registerChatToolLabelsEnglish.catalog.chat.toolCards)) {
@@ -343,13 +370,16 @@ export function loadControlUiSourceCatalog(): TranslationMap {
         clawhub: registerPluginManagementEnglish.catalog.chat.clawhub,
         ...registerChatSessionEnglish.catalog.chat,
         ...registerSessionNavigationEnglish.catalog.chat,
+        rail,
+        sessionDiff,
+        workspaceFiles,
         sessionDetails,
         sessionSuggestions: {
           ...registerSessionNavigationEnglish.catalog.chat.sessionSuggestions,
           ...registerChatSessionEnglish.catalog.chat.sessionSuggestions,
         },
-        commands: registerCommandPaletteEnglish.catalog.chat.commands,
-        welcome: registerCommandPaletteEnglish.catalog.chat.welcome,
+        commands: registerChatDiscoveryEnglish.catalog.chat.commands,
+        welcome: registerChatDiscoveryEnglish.catalog.chat.welcome,
         messages: registerChatMessageMetadataEnglish.catalog.chat.messages,
         toolCards,
         systemNotice: registerChatMessageMetadataEnglish.catalog.chat.systemNotice,
@@ -463,4 +493,17 @@ function loadControlUiCoreHintCatalog(): TranslationMap {
     }
   }
   return catalog;
+}
+
+// Reconstruct canonical source order without registering runtime fragments.
+function insertFragmentCopy(
+  source: TranslationMap,
+  after: Record<string, TranslationMap>,
+): TranslationMap {
+  const result: TranslationMap = {};
+  for (const [key, value] of Object.entries(source)) {
+    result[key] = value;
+    Object.assign(result, after[key]);
+  }
+  return result;
 }

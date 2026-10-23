@@ -1,5 +1,6 @@
 import { createSignal, createMemo, Errored, isPending, Loading, Show } from "solid-js";
 import type { SessionWorkspaceListResult } from "../../../api/types.ts";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatUiError } from "../../../lib/format-error.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -18,6 +19,7 @@ import type { SessionWorkspaceProps } from "./chat-sidebar-view-types.ts";
 import { hasTranscriptAttachments } from "./chat-transcript-attachments.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 type File = SessionWorkspaceListResult["files"][number];
 

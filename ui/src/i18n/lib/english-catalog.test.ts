@@ -25,7 +25,7 @@ it("keeps shared session labels eager while lazy renderers extend their retained
 
     registerEnglishCatalog(registerChatSessionEnglish);
     expect(t("chat.activityPills.label")).toBe("Session activity");
-    expect(t("chat.sessionDiff.modeUnified")).toBe("Unified");
+    expect(t("chat.sessionDiff.modeUnified")).toBe("chat.sessionDiff.modeUnified");
     expect(en.chat.sessionDetails).toBe(details);
     expect(en.chat.sessionDiff).toBe(diff);
   } finally {

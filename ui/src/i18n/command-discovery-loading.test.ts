@@ -12,7 +12,6 @@ describe("command discovery English loading", () => {
       load: () => import("../components/command-palette-catalog-search.ts"),
     },
     { surface: "session transcript search", load: () => import("../pages/sessions/view.tsx") },
-    { surface: "slash commands", load: () => import("../lib/chat/commands.ts") },
     { surface: "shortcut help", load: () => import("../components/keyboard-shortcuts-dialog.tsx") },
   ])("registers fallback copy before $surface reads it", async ({ load }) => {
     const { manager } = await loadI18n();
@@ -30,6 +29,43 @@ describe("command discovery English loading", () => {
     }
     expect(manager.t("common.health")).toBe("Gesundheit");
     expect(manager.t("commandPalette.newSessionSettings")).toBe("New session settings");
-    expect(manager.t("chat.commands.menu")).toBe("Slash commands");
+  });
+
+  it.each([
+    { surface: "slash commands", load: () => import("../lib/chat/commands.ts") },
+    { surface: "chat welcome", load: () => import("../pages/chat/components/chat-welcome.tsx") },
+  ])("loads $surface copy without the palette catalog", async ({ load }) => {
+    const { en, manager } = await loadI18n({
+      chat: {
+        commands: { menu: "Befehle" },
+        welcome: { recentSessions: "Letzte Chats" },
+      },
+    });
+    const commands = en.chat.commands;
+    const welcome = en.chat.welcome;
+    await manager.setLocale("de");
+
+    await load();
+
+    expect(manager.t("chat.commands.menu")).toBe("Befehle");
+    expect(manager.t("chat.commands.steerDescription")).toBe(
+      "Inject a message into the active run",
+    );
+    expect(manager.t("chat.commands.exportDescription")).toBe(
+      "Download this conversation as Markdown",
+    );
+    expect(manager.t("chat.welcome.recentSessions")).toBe("Letzte Chats");
+    expect(manager.t("chat.welcome.suggestions.whatCanYouDo")).toBe("What can you do?");
+    expect(manager.t("chat.welcome.hintAfterShortcut")).toBe("for commands");
+    expect(en.chat.commands).toBe(commands);
+    expect(en.chat.welcome).toBe(welcome);
+    for (const key of [
+      "palette.noResults",
+      "commandPalette.newSessionSettings",
+      "shortcutsOverlay.labels.commandPalette",
+      "sessionsView.transcriptSearchTitle",
+    ]) {
+      expect(manager.t(key)).toBe(key);
+    }
   });
 });

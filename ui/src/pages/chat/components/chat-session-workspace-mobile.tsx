@@ -6,6 +6,7 @@ import { Icon, type IconName } from "../../../components/solid/icon.tsx";
 import { PanelEmptyState } from "../../../components/solid/panel-empty-state.tsx";
 import { PanelLoadingSkeleton } from "../../../components/solid/panel-loading-skeleton.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
+import { registerChatPanelsEnglish } from "../../../i18n/locales/en-chat-panels.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { formatByteSize } from "../../../lib/format.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
@@ -16,6 +17,7 @@ import "./chat-session-workspace-mobile.css";
 import type { SessionWorkspaceProps } from "./chat-sidebar-view-types.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
+registerEnglishCatalog(registerChatPanelsEnglish);
 
 type SessionFile = SessionWorkspaceListResult["files"][number];
 type Artifact = NonNullable<SessionWorkspaceListResult["artifacts"]>[number];
