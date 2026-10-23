@@ -191,11 +191,11 @@ describe("session-delivery queue recovery", () => {
   );
 
   it.each([
-    { budget: undefined, count: 2, spacing: RECOVERY_REPLAY_SPACING_MS, recovered: 2 },
-    { budget: 1, count: 3, spacing: 1, recovered: 1 },
+    { elapsed: 0, count: 2, spacing: RECOVERY_REPLAY_SPACING_MS, recovered: 2 },
+    { elapsed: 60_000, count: 3, spacing: RECOVERY_REPLAY_SPACING_MS, recovered: 1 },
   ])(
-    "paces startup replay within a $budget ms budget",
-    async ({ budget, count, spacing, recovered }) => {
+    "paces startup replay after $elapsed ms of the recovery budget",
+    async ({ elapsed, count, spacing, recovered }) => {
       vi.useFakeTimers();
       const startedAt = Date.UTC(2026, 3, 23);
       vi.setSystemTime(startedAt);
@@ -209,9 +209,10 @@ describe("session-delivery queue recovery", () => {
           const deliver = vi.fn(async () => {
             deliveryTimes.push(Date.now());
           });
-          const recovery = q.recover({ deliver, maxRecoveryMs: budget });
+          const recovery = q.recover({ deliver });
           await expect(controlledSleep.started).resolves.toBe(spacing);
           expect(deliver).toHaveBeenCalledTimes(1);
+          vi.setSystemTime(startedAt + elapsed);
           controlledSleep.release();
           expect(await recovery).toMatchObject({ recovered });
           expect(deliver).toHaveBeenCalledTimes(recovered);
@@ -237,7 +238,6 @@ describe("session-delivery queue recovery", () => {
       const warn = vi.fn();
       const summary = await q.recover({
         deliver,
-        maxRecoveryMs: 1,
         log: { info: vi.fn(), warn, error: vi.fn() },
       });
 

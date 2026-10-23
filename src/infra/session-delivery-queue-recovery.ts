@@ -249,7 +249,6 @@ export async function recoverPendingSessionDeliveries(opts: {
   log: SessionDeliveryRecoveryLogger;
   onSettled?: SettleSessionDeliveryFn;
   queueContext: OpenClawStateWorkerContext;
-  maxRecoveryMs?: number;
   maxEnqueuedAt?: number;
 }): Promise<DeliveryRecoverySummary> {
   const pending = (await loadPendingSessionDeliveries(opts.queueContext)).filter(
@@ -260,7 +259,7 @@ export async function recoverPendingSessionDeliveries(opts: {
   }
 
   const summary = createEmptyDeliveryRecoverySummary();
-  const deadline = resolveDeliveryRecoveryDeadlineMs(opts.maxRecoveryMs);
+  const deadline = resolveDeliveryRecoveryDeadlineMs(undefined);
   const onDeadlineExceeded = () => {
     opts.log.warn("Session delivery recovery time budget exceeded — remaining entries deferred");
   };
