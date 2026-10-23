@@ -1444,12 +1444,6 @@ function dispatchFullReleaseUsingHelper(
   return String(observed!.id);
 }
 
-async function wait(ms: number) {
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 function dispatchWorkflow(
   repo: string,
   workflowFile: string,
