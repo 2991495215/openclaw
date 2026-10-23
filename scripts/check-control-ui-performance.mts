@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Deferred person-card details: 1,346,928 B Chat; preserve relative headroom.
-  // New Session remains effectively unchanged; retain its stricter prior cap.
-  chatBootJsGzipBytes: 1_398_206,
-  newBootJsGzipBytes: 834_356,
+  // Person-card detail split: 1,348,049 B -> 1,345,987 B Chat.
+  // Preserve the incoming Chat cap's relative headroom against the matched main build.
+  chatBootJsGzipBytes: 1_396_599,
+  newBootJsGzipBytes: 833_875,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
