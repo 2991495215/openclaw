@@ -79,6 +79,7 @@ function hitTestOnDivider(menu: HTMLElement, divider: HTMLElement): Element | nu
 
 async function browserCardMenu(card: HTMLElement) {
   flush();
+  await expect.poll(() => card.querySelector<HTMLButtonElement>(".more")?.disabled).toBe(false);
   const menu = card.querySelector<HTMLElement>(".oc-menu");
   if (!menu) {
     throw new Error("expected browser card menu");

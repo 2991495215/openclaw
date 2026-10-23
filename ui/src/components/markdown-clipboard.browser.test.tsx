@@ -131,6 +131,9 @@ async function mountBrowserCard() {
   flush();
   const card = view.container.querySelector<HTMLElement>("openclaw-browser-tab-card")!;
   owners.push(card);
+  await waitForSolid(() =>
+    expect(card.querySelector<HTMLButtonElement>(".more")?.disabled).toBe(false),
+  );
   return {
     unmount: view.unmount,
     setUrl,
