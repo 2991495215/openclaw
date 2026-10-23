@@ -138,6 +138,28 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
         </Show>
       </Show>
     );
+    const Notice = (noticeProps: { mobile?: boolean }) => (
+      <>
+        {data().stopError && (
+          <div class="chat-subagents__error" role="alert">
+            <span>{data().stopError}</span>
+            <button
+              ref={(button) => {
+                if (noticeProps.mobile) {
+                  mobileRetry = button;
+                }
+              }}
+              class="btn btn--sm"
+              type="button"
+              onClick={() => void data().refresh()}
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
+        <ChatSubagentsNative snapshot={data().nativeSnapshot} error={data().nativeError} />
+      </>
+    );
     // An applied request must not reopen detail after the user returns to the list.
     let appliedRequest: Props["showRequest"];
     // Keep a local choice until the authoritative roster removes it or denies access.
@@ -321,29 +343,7 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
                   };
                   setSelected({ key, agentId: subagentAgentId(key) });
                 }}
-                notice={
-                  <>
-                    {data().stopError && (
-                      <div class="chat-subagents__error" role="alert">
-                        <span>{data().stopError}</span>
-                        <button
-                          ref={(button) => {
-                            mobileRetry = button;
-                          }}
-                          class="btn btn--sm"
-                          type="button"
-                          onClick={() => void data().refresh()}
-                        >
-                          {t("common.retry")}
-                        </button>
-                      </div>
-                    )}
-                    <ChatSubagentsNative
-                      snapshot={data().nativeSnapshot}
-                      error={data().nativeError}
-                    />
-                  </>
-                }
+                notice={<Notice mobile />}
                 empty={<Empty />}
               />
             </ReadBoundary>
@@ -382,22 +382,7 @@ export const ChatSubagentsPanel = defineSolidBridge<Props>(
                   class="chat-subagents__list"
                   aria-busy={isPending(readiness.read) ? "true" : "false"}
                 >
-                  {data().stopError && (
-                    <div class="chat-subagents__error" role="alert">
-                      <span>{data().stopError}</span>
-                      <button
-                        class="btn btn--sm"
-                        type="button"
-                        onClick={() => void data().refresh()}
-                      >
-                        {t("common.retry")}
-                      </button>
-                    </div>
-                  )}
-                  <ChatSubagentsNative
-                    snapshot={data().nativeSnapshot}
-                    error={data().nativeError}
-                  />
+                  <Notice />
                   <Show when={data().rows.length} fallback={<Empty />}>
                     <SessionPanelGroups
                       kind="subagents"
