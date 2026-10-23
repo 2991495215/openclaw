@@ -27,6 +27,17 @@ export function getReefRecoveryOperationState(
   return recoveryStates.get(recovery);
 }
 
+function readReefTrustSnapshot(operation: Operation, key: string) {
+  return operation.execute(
+    { type: "snapshot", input: { key } },
+    {
+      writeStores: [],
+      watchStores: [0],
+      missingValue: { revision: 0 },
+    },
+  );
+}
+
 export async function readReefOutboundDelivery(
   operation: Operation,
   input: ReefDeliveryOperationInput,
@@ -80,14 +91,7 @@ export async function readReefOutboundDelivery(
       () => peerAssertion(),
     ),
     async currentPeer() {
-      const current = await operation.execute(
-        { type: "snapshot", input: { key: captured.peerKey } },
-        {
-          writeStores: [],
-          watchStores: [0],
-          missingValue: { revision: 0 },
-        },
-      );
+      const current = await readReefTrustSnapshot(operation, captured.peerKey);
       current.assertCurrent();
       peerAssertion = createReefPeerAssertion(
         current,
@@ -120,14 +124,7 @@ export function createReefRejectionRecovery(
   const recovery: ReefRejectionRecovery = {
     assertCurrent: () => assertCurrent(),
     async loadState() {
-      const receipt = await operation.execute(
-        { type: "snapshot", input: { key: captured.peerKey } },
-        {
-          writeStores: [],
-          watchStores: [0],
-          missingValue: { revision: 0 },
-        },
-      );
+      const receipt = await readReefTrustSnapshot(operation, captured.peerKey);
       receipt.assertCurrent();
       return receipt.value.rejectionNotice;
     },
