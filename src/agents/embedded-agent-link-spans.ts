@@ -18,6 +18,20 @@ function isEscaped(text: string, index: number): boolean {
   return slashes % 2 === 1;
 }
 
+function endsBlankLine(text: string, index: number): boolean {
+  if (text[index] !== "\n") {
+    return false;
+  }
+  let cursor = index - 1;
+  if (text[cursor] === "\r") {
+    cursor--;
+  }
+  while (text[cursor] === " " || text[cursor] === "\t") {
+    cursor--;
+  }
+  return text[cursor] === "\n";
+}
+
 function findMarkdownLabelStart(
   text: string,
   labelEnd: number,
@@ -28,17 +42,8 @@ function findMarkdownLabelStart(
     if (isEscaped(text, index)) {
       continue;
     }
-    if (text[index] === "\n") {
-      let cursor = index - 1;
-      if (text[cursor] === "\r") {
-        cursor--;
-      }
-      while (text[cursor] === " " || text[cursor] === "\t") {
-        cursor--;
-      }
-      if (text[cursor] === "\n") {
-        return -1;
-      }
+    if (endsBlankLine(text, index)) {
+      return -1;
     }
     if (isInsideCode(index)) {
       continue;
@@ -64,7 +69,7 @@ function findOpenMarkdownLabelStart(
     if (isEscaped(text, index)) {
       continue;
     }
-    if (text[index] === "\n" || text[index] === "\r") {
+    if (endsBlankLine(text, index)) {
       openers.length = 0;
     } else if (isInsideCode(index)) {
       continue;
@@ -292,7 +297,7 @@ export function scanUnbreakableSpans(
   if (labelStart >= 0 && !isEscaped(text, labelStart)) {
     const suffix = text.slice(labelStart);
     const close = suffix.indexOf("]");
-    const isPartialLabel = !suffix.includes("\n") && (close === -1 || close === suffix.length - 1);
+    const isPartialLabel = close === -1 || close === suffix.length - 1;
     const start = labelStart > 0 && text[labelStart - 1] === "!" ? labelStart - 1 : labelStart;
     const alreadyCovered = spans.some((span) => span.start <= start && span.end >= text.length);
     if (

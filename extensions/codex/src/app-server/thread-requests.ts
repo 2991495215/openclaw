@@ -175,6 +175,7 @@ export function buildCodexThreadConfiguration(
       options.developerInstructions ??
         buildDeveloperInstructions(params, {
           dynamicTools: options.dynamicTools,
+          nativeCodeModeEnabled: options.nativeCodeModeEnabled !== false,
           nativeCodeModeOnlyEnabled: config["features.code_mode_only"] === true,
         }),
       options.refreshableInstructions,
@@ -277,11 +278,20 @@ export function buildCodexRuntimeThreadConfig(
         : undefined,
       buildCodexProjectDocThreadConfig(config),
       {
+        // OpenClaw owns plugin discovery and installation. Keep Codex's recommendation
+        // catalog and install-suggestion tools out of managed prompts without disabling plugins.
+        "features.tool_suggest": false,
+        "features.recommended_plugins": false,
         // Native goals start autonomous turns; OpenClaw owns both continuation and progress cards.
         "features.goals": false,
         "tools.update_plan.enabled": false,
         ...(!enabled
-          ? { "features.code_mode": false, "features.code_mode_only": false }
+          ? {
+              "features.code_mode": false,
+              "features.code_mode_only": false,
+              "features.shell_tool": false,
+              "features.unified_exec": false,
+            }
           : codeModeOnly
             ? { "features.code_mode_only": true }
             : {}),
@@ -345,6 +355,7 @@ export function isCodexNativeDelegationDisabledForRun(
   return (
     isCodexResponsesOAuthRun(params) ||
     params.delegationCapability === "report_only" ||
+    params.delegationCapability === "host_only" ||
     params.requireWorkspaceOnly === true ||
     params.pluginHarnessToolPolicyRestricted === true ||
     isMessageOnlyCodexSourceReply(params) ||

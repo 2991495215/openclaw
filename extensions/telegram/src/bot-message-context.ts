@@ -11,14 +11,14 @@ import type {
   TelegramGroupConfig,
 } from "openclaw/plugin-sdk/config-contracts";
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
-import { deriveLastRoutePolicy, normalizeAccountId } from "openclaw/plugin-sdk/routing";
+import { normalizeAccountId } from "openclaw/plugin-sdk/routing";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import {
   expandTelegramAllowFromWithAccessGroups,
   resolveTelegramDmAllow,
 } from "./access-groups.js";
 import { resolveTelegramAccountOwnerAgentId } from "./account-owner.js";
-import { resolveDefaultTelegramAccountId } from "./accounts.js";
+import { resolveDefaultTelegramAccountId, resolveTelegramAccountConfig } from "./accounts.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { normalizeAllowFrom, resolveTelegramEffectiveDmPolicy } from "./bot-access.js";
 import { resolveTelegramInboundBody } from "./bot-message-context.body.js";
@@ -36,8 +36,8 @@ import {
   resolveTelegramThreadSpec,
 } from "./bot/helpers.js";
 import {
+  applyTelegramTargetSession,
   resolveTelegramConversationRoute,
-  resolveTelegramTargetSession,
 } from "./conversation-route.js";
 import { enforceTelegramDmAccess } from "./dm-access.js";
 import { resolveTelegramForumTopicMetadata } from "./forum-topic-metadata.js";
@@ -89,7 +89,6 @@ export type TelegramMessageContext = {
   sendTyping: () => Promise<void>;
   sendRecordVoice: () => Promise<void>;
   sendChatActionHandler: BuildTelegramMessageContextParams["sendChatActionHandler"];
-  initialTypingCueSent?: boolean;
   ackReactionPromise: Promise<boolean> | null;
   statusReactionController: TelegramStatusReactionController | null;
   accountId: string;
@@ -297,7 +296,7 @@ export const buildTelegramMessageContext = async ({
     return null;
   }
 
-  const sessionKey = resolveTelegramTargetSession({
+  route = applyTelegramTargetSession({
     cfg,
     route,
     chatId,
@@ -308,14 +307,7 @@ export const buildTelegramMessageContext = async ({
       (threadSpec.scope === "dm" && msg.is_topic_message === true) ||
       resolveTelegramBotHasTopicsEnabled(primaryCtx.me),
   });
-  route = {
-    ...route,
-    sessionKey,
-    lastRoutePolicy: deriveLastRoutePolicy({
-      sessionKey,
-      mainSessionKey: route.mainSessionKey,
-    }),
-  };
+  const { sessionKey } = route;
   const activationOverride = await resolveGroupActivation({
     sessionKey,
     agentId: route.agentId,
@@ -375,7 +367,7 @@ export const buildTelegramMessageContext = async ({
     sessionKey,
     acpBinding: bindingMode.kind === "configured",
     effectiveDmAllow: dmAllow.effectiveAllow,
-    providerMentionPatterns: cfg.channels?.telegram?.accounts?.[account.accountId]?.mentionPatterns,
+    providerMentionPatterns: resolveTelegramAccountConfig(cfg, account.accountId)?.mentionPatterns,
     requireMention,
     isBotOwnedThread,
     requireMentionInBotThreads,
@@ -405,18 +397,6 @@ export const buildTelegramMessageContext = async ({
       });
       return null;
     }
-    logVerbose(
-      `telegram: using configured ACP binding for ${bindingMode.binding.record.conversation.conversationId} -> ${bindingMode.sessionKey}`,
-    );
-  }
-
-  // Send the first typing cue before expensive context/session construction,
-  // but only after intake has accepted the message as a non-room-event turn.
-  const initialTypingCueSent = bodyResult.inboundEventKind !== "room_event";
-  if (initialTypingCueSent) {
-    void sendTyping().catch((err: unknown) => {
-      logVerbose(`telegram early typing cue failed for chat ${chatId}: ${String(err)}`);
-    });
   }
 
   const { ctxPayload, skillFilter, turn } = await buildTelegramInboundContextPayload({
@@ -460,10 +440,7 @@ export const buildTelegramMessageContext = async ({
     statusReactionsConfig?.enabled === true &&
     shouldSendAckReaction;
   const resolvedStatusReactionEmojis = statusReactionsEnabled
-    ? resolveTelegramStatusReactionEmojis({
-        initialEmoji: ackReaction,
-        overrides: undefined,
-      })
+    ? resolveTelegramStatusReactionEmojis(ackReaction)
     : null;
   const statusReactionVariantsByEmoji = resolvedStatusReactionEmojis
     ? buildTelegramStatusReactionVariants(resolvedStatusReactionEmojis)
@@ -564,7 +541,6 @@ export const buildTelegramMessageContext = async ({
     sendTyping,
     sendRecordVoice,
     sendChatActionHandler,
-    initialTypingCueSent,
     ackReactionPromise,
     statusReactionController,
     accountId: account.accountId,

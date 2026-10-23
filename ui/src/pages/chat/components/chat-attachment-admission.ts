@@ -5,10 +5,13 @@
 import { resolveChatAttachmentFrameBudgetBytes } from "../../../../../src/shared/chat-attachment-frame-budget.ts";
 import type { GatewayHelloOk } from "../../../api/gateway.ts";
 import { t } from "../../../i18n/index.ts";
+import { registerChatComposerEnglish } from "../../../i18n/locales/en-chat-composer.ts";
 import type { ChatAttachment } from "../../../lib/chat/chat-types.ts";
 import { showToast } from "../../../lib/toast.ts";
 import { getChatAttachmentDataUrl } from "../attachment-payload-store.ts";
 import { canResizeChatAttachment } from "./chat-attachment-image.ts";
+
+registerChatComposerEnglish();
 
 export type ChatAttachmentLimits = {
   maxBytes: number;
@@ -51,11 +54,11 @@ function skippedFilesToast(messageKey: string, skipped: readonly File[]): void {
   if (skipped.length === 0) {
     return;
   }
+  const tooLarge = messageKey === "chat.attachments.tooLarge";
   showToast({
-    message: skippedFilesMessage(
-      messageKey,
-      skipped.map((file) => file.name),
-    ),
+    message: tooLarge ? t("chat.attachments.tooLargeToast") : t(messageKey),
+    placement: "top-center",
+    severity: "error",
   });
 }
 
@@ -63,19 +66,32 @@ export function admitAttachmentFiles(
   candidates: readonly File[],
   limits: ChatAttachmentLimits | undefined,
   stagedBytes: number,
-  options: { resizeImages?: boolean } = {},
+  options: {
+    resizeImages?: boolean;
+    compressVideos?: boolean;
+    notify?: boolean;
+  } = {},
 ): File[] {
   const admitted: File[] = [];
   const empty: File[] = [];
   const oversized: File[] = [];
   let total = stagedBytes;
   for (const file of candidates) {
-    const reservation = attachmentReservationBytes(file.size, file.type, limits);
+    const compressible = options.compressVideos && file.type.startsWith("video/");
+    const reservation = attachmentReservationBytes(
+      file.size,
+      file.type,
+      limits,
+      compressible ? (limits?.maxBatchBytes ?? Infinity) - total : Infinity,
+    );
     if (file.size === 0) {
       empty.push(file);
     } else if (
       limits &&
-      ((file.size > reservation && !(options.resizeImages && canResizeChatAttachment(file))) ||
+      (reservation <= 0 ||
+        (file.size > reservation &&
+          !compressible &&
+          !(options.resizeImages && canResizeChatAttachment(file))) ||
         total + reservation > limits.maxBatchBytes)
     ) {
       oversized.push(file);
@@ -84,8 +100,12 @@ export function admitAttachmentFiles(
       total += reservation;
     }
   }
-  skippedFilesToast("chat.attachments.readFailed", empty);
-  skippedFilesToast("chat.attachments.tooLarge", oversized);
+  if (options.notify !== false) {
+    skippedFilesToast(
+      oversized.length ? "chat.attachments.tooLarge" : "chat.attachments.readFailed",
+      oversized.length ? oversized : empty,
+    );
+  }
   return admitted;
 }
 
@@ -93,9 +113,10 @@ export function attachmentReservationBytes(
   sizeBytes: number,
   mimeType: string,
   limits: ChatAttachmentLimits | undefined,
+  availableBytes = Infinity,
 ): number {
   const ceiling = mimeType.startsWith("image/") ? limits?.maxImageBytes : limits?.maxBytes;
-  return Math.min(sizeBytes, ceiling ?? Infinity);
+  return Math.max(0, Math.min(sizeBytes, ceiling ?? Infinity, availableBytes));
 }
 
 function attachmentBytes(attachment: ChatAttachment): number {

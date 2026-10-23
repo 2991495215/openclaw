@@ -41,11 +41,6 @@ export type EnvelopeFormatOptions = {
   userTimezone?: string;
 };
 
-type ResolvedEnvelopeTimezone =
-  | { mode: "utc" }
-  | { mode: "local" }
-  | { mode: "iana"; timeZone: string };
-
 function sanitizeEnvelopeHeaderPart(value: string): string {
   // Header parts are metadata and must not be able to break the bracketed prefix.
   // Keep ASCII; collapse newlines/whitespace; neutralize brackets.
@@ -64,7 +59,9 @@ export function resolveEnvelopeFormatOptions(cfg?: OpenClawConfig): EnvelopeForm
   };
 }
 
-function resolveEnvelopeTimezone(options?: EnvelopeFormatOptions): ResolvedEnvelopeTimezone {
+function resolveEnvelopeTimezone(
+  options?: EnvelopeFormatOptions,
+): { mode: "utc" } | { mode: "local" } | { mode: "iana"; timeZone: string } {
   const trimmed = normalizeOptionalString(options?.timezone);
   if (!trimmed) {
     return { mode: "local" };
@@ -83,12 +80,8 @@ function resolveEnvelopeTimezone(options?: EnvelopeFormatOptions): ResolvedEnvel
   return explicit ? { mode: "iana", timeZone: explicit } : { mode: "utc" };
 }
 
-let utcWeekdayFormatter:
-  | {
-      dateTimeFormatConstructor: typeof Intl.DateTimeFormat;
-      formatter: Intl.DateTimeFormat;
-    }
-  | undefined;
+// Intl is process-stable; a filled cache ignores constructor replacement.
+let utcWeekdayFormatter: Intl.DateTimeFormat | undefined;
 
 /** Formats an envelope timestamp using local, UTC, user, or explicit IANA timezone rules. */
 export function formatAgentEnvelopeTimestamp(
@@ -113,17 +106,8 @@ export function formatAgentEnvelopeTimestamp(
   }
   const formatted = formatUtcTimestamp(date, { displaySeconds: true });
   try {
-    const DateTimeFormat = Intl.DateTimeFormat;
-    const cached = utcWeekdayFormatter;
-    const formatter =
-      cached?.dateTimeFormatConstructor === DateTimeFormat
-        ? cached.formatter
-        : new DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short" });
-    const weekday = formatter.format(date);
-    if (formatter !== cached?.formatter) {
-      utcWeekdayFormatter = { dateTimeFormatConstructor: DateTimeFormat, formatter };
-    }
-    return `${weekday} ${formatted}`;
+    utcWeekdayFormatter ??= new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short" });
+    return `${utcWeekdayFormatter.format(date)} ${formatted}`;
   } catch {
     return formatted;
   }

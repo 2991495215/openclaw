@@ -26,18 +26,13 @@ function shouldPreserveForMaintenance(entry: SubagentRunMaintenanceRecord): bool
   );
 }
 
-function protectedSubagentSessionKeys(runs: Iterable<SubagentRunMaintenanceRecord>): string[] {
-  const keys = new Set<string>();
+function* protectedSubagentSessionKeys(runs: Iterable<SubagentRunMaintenanceRecord>) {
   for (const entry of runs) {
     if (!shouldPreserveForMaintenance(entry)) {
       continue;
     }
-    const childSessionKey = entry.childSessionKey.trim();
-    if (childSessionKey) {
-      keys.add(childSessionKey);
-    }
+    yield entry.childSessionKey;
   }
-  return [...keys];
 }
 
 registerSessionMaintenancePreserveKeysProvider(async ({ native }) => {
@@ -46,7 +41,7 @@ registerSessionMaintenancePreserveKeysProvider(async ({ native }) => {
     native ? { live: true } : undefined,
   );
   return {
-    capture: () => protectedSubagentSessionKeys(prepared.capture().values()),
+    capture: () => protectedSubagentSessionKeys(prepared.capture()),
     dispose() {},
   };
 });
