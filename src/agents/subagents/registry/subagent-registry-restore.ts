@@ -16,6 +16,7 @@ import {
   GatewayDrainingError,
 } from "../../../process/gateway-work-admission.js";
 import { emitSessionLifecycleEvent } from "../../../sessions/session-lifecycle-events.js";
+import { getAsyncWorkSignal } from "../../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { createLazyRuntimeModule } from "../../../shared/lazy-runtime.js";
 import type { AgentRecoveryProgress } from "../../../state/agent-database-preparation-recovery.js";
@@ -370,6 +371,20 @@ export function createSubagentRegistryRestorer(config: {
                     throw new Error("Restored collector launch lost its queued owner");
                   }
                 };
+                assertLaunchCurrent();
+                const signal = getAsyncWorkSignal();
+                try {
+                  await gatewayContext.inputRecovery?.waitForAgentInputRecovery(
+                    authority.childAgentId,
+                    { signal },
+                  );
+                } catch (error) {
+                  // Scheduler closure retires this attempt, not its durable queued work.
+                  if (signal?.aborted) {
+                    return;
+                  }
+                  throw error;
+                }
                 assertLaunchCurrent();
                 const request = bindInProcessSessionRun(
                   {

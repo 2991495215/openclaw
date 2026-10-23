@@ -9,12 +9,12 @@ import {
 } from "../../../../test/helpers/promise.js";
 import { getRuntimeConfig } from "../../../config/config.js";
 import { applySessionEntryExactReplacements } from "../../../config/sessions/session-accessor.sqlite-replacement-projection.js";
+import { GatewayInputRecovery } from "../../../gateway/agent-input-recovery.js";
 import { callGateway } from "../../../gateway/call.js";
 import type { GatewayInstanceAgentDispatchOptions } from "../../../gateway/server-instance-runtime.types.js";
 import { sessionSharingTestContext } from "../../../gateway/server-methods/sessions-sharing.test-support.js";
 import { createMockGatewayRecoveryRuntime } from "../../../gateway/server-recovery-runtime.test-support.js";
 import { getAgentEventLifecycleGeneration } from "../../../infra/agent-events.js";
-import { sqliteWorkerOwnerProbe as probe } from "../../../infra/sqlite-worker-owner-probe.test-support.js";
 import { withAgentDatabasePreparationContext } from "../../../state/agent-database-preparation-context.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import * as stateWorker from "../../../state/openclaw-state-worker-store.js";
@@ -24,20 +24,22 @@ import {
   type OpenClawTestState,
 } from "../../../test-utils/openclaw-test-state.js";
 import { isSubagentRegistryWriteCommand } from "../../subagent-test-fixtures.test-helpers.js";
-import { isSwarmRunActive, releaseSwarmRun } from "../swarm/swarm-scheduler.js";
+import {
+  closeSwarmScheduler,
+  isSwarmRunActive,
+  releaseSwarmRun,
+} from "../swarm/swarm-scheduler.js";
 import { subagentRegistryLog } from "./subagent-registry-lifecycle-log.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import {
   mutateSubagentRuns,
   SubagentRegistryMutationRejectedError,
 } from "./subagent-registry-persistence.js";
+import { createRegistrationFixture } from "./subagent-registry-queued-recovery.test-support.js";
 import type { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
 import { createTestSubagentRegistryRestorer as createRestorer } from "./subagent-registry-restore.test-support.js";
-import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
-import type { SubagentManagerOptions } from "./subagent-registry-run-wait.js";
 import { retireSupersededSubagentRun } from "./subagent-registry-sweeper-retire.js";
 import { observeRootWork } from "./subagent-registry.browser-cleanup.test-support.js";
-import { rowToSubagentRunRecord } from "./subagent-registry.store.codec.js";
 import { readAllSubagentRunsInWorker } from "./subagent-registry.store.read.js";
 import type { SubagentRegistrationScope, SubagentRunRecord } from "./subagent-registry.types.js";
 import { loadSubagentSessionEntry } from "./subagent-session-reconciliation.js";
@@ -108,50 +110,6 @@ afterEach(async () => {
 
 async function readStored() {
   return readAllSubagentRunsInWorker(captureOpenClawStateWorkerContext({ env: state.env }));
-}
-
-function createRegistrationFixture() {
-  const refusal = { descriptor: true, terminal: false };
-  probe.command(stateWorker, async (command, executeOptions, scope) => {
-    if (isSubagentRegistryWriteCommand(command)) {
-      const rows = command.input.values.map(rowToSubagentRunRecord);
-      if (refusal.descriptor && rows.some((row) => row?.queuedLaunch)) {
-        throw new Error("descriptor refused");
-      }
-      if (refusal.terminal && rows.some((row) => row?.execution.status === "terminal")) {
-        throw new Error("terminal settlement refused");
-      }
-    }
-    return scope.execute(command, executeOptions);
-  });
-  const options: SubagentManagerOptions = {
-    acquireTerminalCompletionLock: async () => () => {},
-    runs: subagentRuns,
-    getChildSessionCandidates: (key) =>
-      [...subagentRuns.values()].filter((row) => row.childSessionKey === key),
-    getRunsForChildSession: (key) =>
-      [...subagentRuns.values()].filter((run) => run.childSessionKey === key),
-    resumedRuns: new Set(),
-    callGateway: async () => {
-      throw new Error("Unexpected registration Gateway call");
-    },
-    getRuntimeConfig: () => ({}),
-    ensureListener: () => {},
-    startSweeper: () => {},
-    stopSweeper: () => {},
-    resumeSubagentRun: () => {},
-    clearPendingLifecycleError: () => {},
-    clearPendingLifecycleTimeout: () => {},
-    resolveSubagentWaitTimeoutMs: () => 100,
-    scheduleSweep: () => {},
-    resolveSubagentSessionCompletion: async () => null,
-    resolveSubagentSessionStartedAt: async () => undefined,
-    notifyContextEngineSubagentEnded: async () => {},
-    completeCleanupBookkeeping: async () => {},
-    completeSubagentRun: async () => {},
-  };
-  const manager = createSubagentRunManager(options);
-  return { refusal, manager };
 }
 
 it.for([
@@ -479,7 +437,8 @@ it.each(["restart", "restart with newer sibling", "confirmed Stop"] as const)(
 );
 
 it.each([
-  "accepted",
+  "accepted after input recovery",
+  "shutdown during input recovery",
   "accepted after limit reload",
   "captured system",
   "requester unavailable",
@@ -570,6 +529,19 @@ it.each([
   }
   subagentRuns.clear();
   const gateway = sessionSharingTestContext(vi.fn());
+  const inputRecovery =
+    outcome === "accepted after input recovery" || outcome === "shutdown during input recovery"
+      ? new GatewayInputRecovery()
+      : undefined;
+  const recoveryWaitStarted = createDeferred();
+  if (inputRecovery) {
+    gateway.inputRecovery = inputRecovery;
+    const wait = inputRecovery.waitForAgentInputRecovery.bind(inputRecovery);
+    vi.spyOn(inputRecovery, "waitForAgentInputRecovery").mockImplementation((...args) => {
+      recoveryWaitStarted.resolve();
+      return wait(...args);
+    });
+  }
   const resolver = () => gateway;
   let acceptedOptions: GatewayInstanceAgentDispatchOptions | undefined;
   const settled = createDeferred<string>();
@@ -629,8 +601,28 @@ it.each([
     } else {
       await restorer.activate().settled;
     }
+    if (inputRecovery) {
+      await awaitGateBeforeSettlement(
+        recoveryWaitStarted.promise,
+        settled.promise,
+        "Restored collector dispatched before input recovery completed",
+      );
+      expect(recovery.dispatchAgent).not.toHaveBeenCalled();
+      expect((await readStored()).get(runId)?.execution.status).toBe("queued");
+      if (outcome === "shutdown during input recovery") {
+        await closeSwarmScheduler();
+        expect(recovery.dispatchAgent).not.toHaveBeenCalled();
+        expect((await readStored()).get(runId)).toMatchObject({
+          execution: { status: "queued" },
+          queuedLaunch: { request: { idempotencyKey: runId } },
+        });
+        await settleRootWork(true);
+        return;
+      }
+      inputRecovery.releaseInitial();
+    }
     const result = await settled.promise;
-    if (outcome === "accepted" || reloadLimit || outcome === "captured system") {
+    if (inputRecovery || reloadLimit || outcome === "captured system") {
       expect(result).toBe("accepted");
       await settleRootWork(true);
       expect(started).toHaveBeenCalledOnce();
@@ -667,6 +659,7 @@ it.each([
     }
     expect((await readStored()).get(runId)?.queuedLaunch).toBeUndefined();
   } finally {
+    inputRecovery?.releaseInitial();
     restorer.reset();
     if (releaseSwarmRun(runningSiblingId)) {
       await settleRootWork(true);
