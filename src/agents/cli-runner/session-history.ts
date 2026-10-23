@@ -25,6 +25,7 @@ import {
   resolveAdmittedRunActiveAssertion,
   type AdmittedRunContext,
 } from "../admitted-run-context.js";
+import { findLastFittingValue } from "../budget-fit.js";
 import { estimateToolResultTextChars } from "../embedded-agent-runner/tool-result-text-budget.js";
 import { MAX_AGENT_HOOK_HISTORY_MESSAGES } from "../harness/hook-history.js";
 import { isOpenClawRuntimeContextCustomMessage } from "../internal-runtime-context.js";
@@ -437,20 +438,12 @@ function renderCliDurableContext(messages: ReturnType<typeof buildSessionContext
       return render(selected, true);
     }
     // Escaping changes costs; search Unicode-safe prefixes under the rendered cap.
-    let low = 0;
-    let high = note.length;
-    let rendered = render([], true);
-    while (low <= high) {
-      const midpoint = Math.floor((low + high) / 2);
-      const prefix = render([sliceUtf16Safe(note, 0, midpoint)], true);
-      if (estimateToolResultTextChars(prefix) <= MAX_CLI_DURABLE_CONTEXT_CHARS) {
-        rendered = prefix;
-        low = midpoint + 1;
-      } else {
-        high = midpoint - 1;
-      }
-    }
-    return rendered;
+    return findLastFittingValue(
+      note.length,
+      (limit) => render([sliceUtf16Safe(note, 0, limit)], true),
+      (prefix) => estimateToolResultTextChars(prefix) <= MAX_CLI_DURABLE_CONTEXT_CHARS,
+      render([], true),
+    );
   }
   return selected.length > 0 ? render(selected, false) : undefined;
 }

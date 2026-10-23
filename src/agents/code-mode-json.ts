@@ -1,5 +1,6 @@
 import { jsonUtf8Bytes } from "../infra/json-utf8-bytes.js";
 import { truncateUtf8Prefix } from "../utils/utf8-truncate.js";
+import { findLastFittingValue } from "./budget-fit.js";
 import { createJsonPrefixFitter } from "./code-mode-json-fit.js";
 import {
   fitCodeModeResultReference,
@@ -215,20 +216,7 @@ export class CodeModeOutputState {
       };
       const projection = project(this.maxBytes);
       if ((this.modelBudget || networkContent) && !fits(projection)) {
-        let low = 0;
-        let high = this.maxBytes - 1;
-        let best: typeof projection | undefined;
-        while (low <= high) {
-          const middle = Math.floor((low + high) / 2);
-          const candidate = project(middle);
-          if (fits(candidate)) {
-            best = candidate;
-            low = middle + 1;
-          } else {
-            high = middle - 1;
-          }
-        }
-        return best;
+        return findLastFittingValue(this.maxBytes - 1, project, fits, undefined);
       }
       return projection;
     };

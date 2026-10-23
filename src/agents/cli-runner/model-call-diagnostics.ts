@@ -19,6 +19,7 @@ import {
   createDiagnosticTraceContextFromActiveScope,
   freezeDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
+import { findLastFittingValue } from "../budget-fit.js";
 import type { CliOutput, CliUsage } from "../cli-output-contracts.js";
 import { isClaudeToolUseBlockType } from "../cli-output-records.js";
 import { isFailoverError } from "../failover-error.js";
@@ -78,20 +79,12 @@ function truncateSerializedStringSafe(value: string, maxBytes: number): string {
   if (serializedStringContentBytes(value) <= maxBytes) {
     return value;
   }
-  let low = 0;
-  let high = Math.min(value.length, maxBytes);
-  let captured = "";
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const candidate = truncateUtf16Safe(value, middle);
-    if (serializedStringContentBytes(candidate) <= maxBytes) {
-      captured = candidate;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-  return captured;
+  return findLastFittingValue(
+    Math.min(value.length, maxBytes),
+    (limit) => truncateUtf16Safe(value, limit),
+    (candidate) => serializedStringContentBytes(candidate) <= maxBytes,
+    "",
+  );
 }
 
 function releaseFallbackReserve(budget: DiagnosticContentBudget): void {

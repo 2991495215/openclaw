@@ -3,6 +3,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { findLastFittingValue } from "../../agents/budget-fit.js";
 import { formatDateStamp, resolveUserTimezone } from "../../agents/date-time.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { openRootFile, readFileDescriptorBounded } from "../../infra/boundary-file-read.js";
@@ -90,23 +91,13 @@ function fitStartupMemoryBlock(
     return fullBlock;
   }
 
-  let low = 0;
-  let high = entry.content.length;
-  let best: string | null = null;
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    const candidate = formatStartupMemoryBlock(
-      entry.relativePath,
-      trimStartupMemoryContent(entry.content, mid),
-    );
-    if (candidate.length <= maxChars) {
-      best = candidate;
-      low = mid + 1;
-    } else {
-      high = mid - 1;
-    }
-  }
-  return best;
+  return findLastFittingValue(
+    entry.content.length,
+    (limit) =>
+      formatStartupMemoryBlock(entry.relativePath, trimStartupMemoryContent(entry.content, limit)),
+    (candidate) => candidate.length <= maxChars,
+    null,
+  );
 }
 
 async function listStartupMemoryPaths(params: {
