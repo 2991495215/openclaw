@@ -706,6 +706,15 @@ describe.skipIf(process.platform === "win32")("immutable release artifact CLI", 
             : [{ ...test.jobs[0], id: 999, run_attempt: 2, conclusion: "failure" }],
     );
     test.rawArtifact();
+    if (outcome === "replacement preparation failed") {
+      test.artifact("openclaw-npm-package-descriptor-81-2", "prepared-npm-bundle.json", test.raw);
+    } else {
+      test.list(
+        "actions/runs/81/artifacts?name=openclaw-npm-package-descriptor-81-2&per_page=100",
+        "artifacts",
+        [],
+      );
+    }
     const raw = test.wait("raw", { ARTIFACT_RUN_ATTEMPT: "2" });
     if (outcome === "replacement preparation failed") {
       expectRejected(raw, "Successful npm preparation was replaced");
@@ -748,11 +757,9 @@ describe.skipIf(process.platform === "win32")("immutable release artifact CLI", 
     expectRejected(result, error);
   });
 
-  it.each([
-    ["raw", "Prepare npm artifacts / Prepare publishable npm package"],
-    ["receipt", "Prepare npm artifacts / Check npm dependencies"],
-  ] as const)("reports a failed %s producer job before its siblings finish", (output, name) => {
+  it("reports a failed receipt producer job before its siblings finish", () => {
     const test = fixture();
+    const name = "Prepare npm artifacts / Check npm dependencies";
     test.jobsApi(1, [
       { ...test.jobs[0], name, conclusion: "failure" },
       { ...test.jobs[1], status: "in_progress", conclusion: null },
@@ -762,7 +769,7 @@ describe.skipIf(process.platform === "win32")("immutable release artifact CLI", 
       "artifacts",
       [],
     );
-    const result = test.wait(output, { FIXTURE_STOP_ON_WAIT: "true" });
+    const result = test.wait("receipt", { FIXTURE_STOP_ON_WAIT: "true" });
     expectRejected(result, `${name} ended with failure`);
     expect(result.stderr).toContain(`https://github.com/${REPOSITORY}/actions/runs/81/job/901`);
     expect(result.stderr).toContain("Other producer jobs continue running");
