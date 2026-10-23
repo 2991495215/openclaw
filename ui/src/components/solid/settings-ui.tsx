@@ -21,6 +21,7 @@ type SettingsSegmentedOption<T extends string, Label> = {
   disabled?: boolean;
   compactLabel?: string;
   ariaLabel?: string;
+  className?: JSX.HTMLAttributes<HTMLLabelElement>["class"];
 };
 
 export type SettingsSegmentedProps<T extends string, Label> = {
@@ -442,6 +443,7 @@ export function SettingsSegmented<T extends string>(props: SettingsSegmentedProp
                 <label
                   class={[
                     "settings-segmented__btn",
+                    option().className,
                     { "settings-segmented__btn--active": option().value === props.value },
                   ]}
                   title={option().title}

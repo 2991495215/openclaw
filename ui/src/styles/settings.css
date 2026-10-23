@@ -1373,3 +1373,65 @@ textarea.settings-input {
 .quiet-hours-window .settings-row {
   padding-top: 0;
 }
+
+/* Theme inspection uses the shared anchored surface; the grid never changes size. */
+.settings-theme-miniature {
+  display: grid;
+  gap: var(--space-2);
+  width: min(240px, calc(100vw - var(--space-8)));
+  padding: var(--space-3);
+  pointer-events: none;
+  transition: none;
+  animation: none;
+}
+.settings-theme-miniature__frame {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border: 0;
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+.settings-theme-preview__copy p {
+  margin: 0;
+}
+
+.settings-theme-picker {
+  width: 100%;
+}
+
+.settings-theme-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-height: 76px;
+  margin-top: var(--space-4);
+}
+
+.settings-theme-preview__copy {
+  display: grid;
+  flex: 1 1 200px;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-theme-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.settings-theme-keyboard-hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-theme-miniature strong {
+  overflow-wrap: anywhere;
+}
