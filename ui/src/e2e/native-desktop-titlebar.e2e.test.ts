@@ -317,9 +317,12 @@ async function alignsNativeHeaders(
   }
   for (const panel of ["pages", "online"] as const) {
     await page.locator(`[data-navigation-view="${panel}"]`).click();
-    const header = page.locator(".sidebar-panel-header");
+    const header = page.locator(".sidebar-panel-header:visible");
     const toggle = header.getByRole("button", { name: "Collapse sidebar" });
     await toggle.waitFor();
+    if (panel === "online") {
+      await header.locator(".sidebar-online__filter-toggle").waitFor();
+    }
     const panelGeometry = await header.evaluate((element) => {
       const title = element.firstElementChild!.getBoundingClientRect();
       const collapseBounds = element
