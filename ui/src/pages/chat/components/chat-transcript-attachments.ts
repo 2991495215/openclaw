@@ -6,8 +6,7 @@ import {
   createMessageMediaOptions,
   type MessageMediaOptions,
 } from "./chat-message-bubble-presentation.ts";
-import { imageTitle } from "./chat-message-image-open.ts";
-import { projectMessageMedia } from "./chat-message-media.ts";
+import { imageTitle, projectMessageMedia } from "./chat-message-media.ts";
 import type {
   TranscriptAttachmentEntry,
   TranscriptAttachments,

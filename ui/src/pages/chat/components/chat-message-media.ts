@@ -16,6 +16,7 @@ import {
   isVideoTranscriptMediaPath,
   labelForMediaPath,
 } from "../../../lib/media-file-extension.ts";
+import { t as reactiveT } from "../../../lib/reactive/i18n.ts";
 import { isCrossOriginHttpSource } from "./chat-attachment-href.ts";
 
 registerChatComposerEnglish();
@@ -32,6 +33,10 @@ export type ImageBlock = {
   width?: number;
   height?: number;
 } & ({ url: string; artifactId?: string } | { url?: undefined; artifactId: string });
+
+export function imageTitle(image: ImageBlock): string {
+  return image.alt?.trim() || image.fileName?.trim() || reactiveT("chat.imageLightbox.untitled");
+}
 
 /** Native admission and open actions shared with non-preview catalog rows. */
 export type MessageMediaAction = {
