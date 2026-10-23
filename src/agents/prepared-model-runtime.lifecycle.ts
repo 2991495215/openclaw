@@ -78,13 +78,23 @@ export function closePreparedModelRuntimeSnapshots(): Promise<void> {
   lifetimes.epoch += 1;
   const error = new PreparedModelRuntimeClosedError();
   void Promise.allSettled(
-    [...lifetimes.closeCallbacks].map(async (close) => await close(error)),
+    [...lifetimes.closeCallbacks].map(async (close, index) => {
+      process.stderr.write(`[pgprep-close 100] ${index} begin\n`);
+      try {
+        return await close(error);
+      } finally {
+        process.stderr.write(`[pgprep-close 100] ${index} end\n`);
+      }
+    }),
   ).then(async (results) => {
+    process.stderr.write("[pgprep-close 110] begin\n");
     try {
       await lifetimes.retirePlugins?.();
       lifetimes.retirePlugins = undefined;
     } catch (reason) {
       results.push({ status: "rejected", reason });
+    } finally {
+      process.stderr.write("[pgprep-close 110] end\n");
     }
     const failures = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],

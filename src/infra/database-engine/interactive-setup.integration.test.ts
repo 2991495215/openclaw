@@ -57,14 +57,17 @@ for (const engine of ["sqlite", "postgres"] as const) {
         ? ([
             { entry: "onboard", recoverConfig: true },
             { entry: "bare-root", recoverConfig: true },
+            ...Array.from({ length: 5 }, () => ({ entry: "setup", recoverConfig: false }) as const),
           ] as const)
         : []),
     ] as const;
-    for (const { entry, recoverConfig } of scenarios) {
-      const label =
+    for (const [scenarioIndex, { entry, recoverConfig }] of scenarios.entries()) {
+      const baseLabel =
         entry === "bare-root"
           ? "bare root preserves malformed-config Doctor guidance without opening storage"
           : `${entry}${recoverConfig ? " recovers malformed config, then" : ""} saves interactive setup and releases ownership for a Gateway`;
+      const label =
+        scenarioIndex < 5 ? baseLabel : `${baseLabel} [diagnostic ${scenarioIndex - 3}]`;
       it(
         label,
         async () => {
@@ -277,7 +280,22 @@ for (const engine of ["sqlite", "postgres"] as const) {
             );
             await gateway.waitForOutput("Onboarding child authenticated and ready");
             await gateway.write("\x03");
-            expect((await gateway.waitForExit()).exitCode, gateway.output()).toBe(130);
+            let gatewayExit: Awaited<ReturnType<PtyRun["waitForExit"]>>;
+            try {
+              gatewayExit = await gateway.waitForExit();
+            } finally {
+              console.error(
+                gateway
+                  .output()
+                  .split("\n")
+                  .filter(
+                    (line) =>
+                      line.includes("[pgprep-close ") || line.includes("completed cleanly in"),
+                  )
+                  .join("\n"),
+              );
+            }
+            expect(gatewayExit.exitCode, gateway.output()).toBe(130);
             expect(gateway.output()).toContain(
               "Onboarding parent retained its CLI role after child shutdown",
             );

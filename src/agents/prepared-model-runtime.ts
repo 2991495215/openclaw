@@ -185,11 +185,22 @@ async function closeModelRuntime(error: Error): Promise<void> {
   gatewayLifecycleActive = false;
   replyDispatchPublication.clear();
   refreshCancellation.abort(error);
-  const results = await Promise.allSettled([
+  process.stderr.write(
+    `[pgprep-close 200] ${agentBuildCompletions.size} ${standaloneActivationTails.size}\n`,
+  );
+  const waits = [
     publicationQueue.settle(),
     ...agentBuildCompletions.values(),
     ...standaloneActivationTails.values(),
-  ]);
+  ];
+  waits.forEach((wait, index) => {
+    process.stderr.write(`[pgprep-close 210] ${index} begin\n`);
+    void wait.then(
+      () => process.stderr.write(`[pgprep-close 210] ${index} fulfilled\n`),
+      () => process.stderr.write(`[pgprep-close 210] ${index} rejected\n`),
+    );
+  });
+  const results = await Promise.allSettled(waits);
   closingOwners.forEach(releasePreparedPluginPublication);
   releaseProcessLifetime?.();
   releaseProcessLifetime = undefined;

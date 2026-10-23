@@ -76,6 +76,9 @@ class PreparedRegistryResources {
   }
 
   close(): Promise<void> {
+    process.stderr.write(
+      `[pgprep-close 400] ${this.claims} ${this.releases.size} ${Number(this.closed)} ${Number(this.finishing)}\n`,
+    );
     if (!this.closed) {
       this.closed = true;
       // This revokes the original view now; physical claims still protect admitted work.
@@ -85,7 +88,9 @@ class PreparedRegistryResources {
       this.finishing = true;
       void (async () => {
         while (this.releases.size > 0) {
+          process.stderr.write(`[pgprep-close 410] ${this.releases.size} begin\n`);
           await Promise.all(this.releases);
+          process.stderr.write("[pgprep-close 410] end\n");
         }
         if (this.failures.length > 0) {
           this.completion.reject(

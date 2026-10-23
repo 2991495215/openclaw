@@ -333,7 +333,17 @@ export async function discardPreparedPluginGeneration(
 /** Process shutdown owns every outstanding generation and any earlier cleanup failure. */
 async function closePreparedPluginGenerations(): Promise<void> {
   const resourcesClosed = Promise.allSettled([closeEphemeralPreparedModelRuntimeResources()]);
-  const pending = new Set([...active].map((lifetime) => lifetime.close()));
+  const pending = new Set(
+    [...active].map((lifetime, index) => {
+      process.stderr.write(`[pgprep-close 310] ${index} ${Number(lifetime.referenced)} begin\n`);
+      const wait = lifetime.close();
+      void wait.then(
+        () => process.stderr.write(`[pgprep-close 310] ${index} fulfilled\n`),
+        () => process.stderr.write(`[pgprep-close 310] ${index} rejected\n`),
+      );
+      return wait;
+    }),
+  );
   for (const completion of retirements) {
     pending.add(completion);
   }
@@ -341,17 +351,23 @@ async function closePreparedPluginGenerations(): Promise<void> {
   for (const completion of pending) {
     retirements.delete(completion);
   }
+  process.stderr.write(`[pgprep-close 300] ${pending.size} begin\n`);
   const results = await Promise.allSettled(pending);
+  process.stderr.write("[pgprep-close 300] end\n[pgprep-close 320] begin\n");
   results.push(...(await resourcesClosed));
+  process.stderr.write("[pgprep-close 320] end\n");
   const failures = results.flatMap((result) =>
     result.status === "rejected" ? [result.reason] : [],
   );
   let retained = failures.some(hasRetainedPluginRuntimeCloseError);
+  process.stderr.write("[pgprep-close 330] begin\n");
   try {
     await waitForPluginCacheRetirement(true);
   } catch (reason) {
     retained = true;
     failures.push(reason);
+  } finally {
+    process.stderr.write("[pgprep-close 330] end\n");
   }
   if (retained) {
     throw new AggregateError(failures, "Prepared plugin generations failed to close");
