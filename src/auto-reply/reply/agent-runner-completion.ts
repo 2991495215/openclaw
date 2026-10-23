@@ -13,6 +13,7 @@ import { buildRestartRecoveryExpectedState } from "../../config/sessions/session
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions/types.js";
 import type { SessionActivitySummaryCompletion } from "../../gateway/session-activity-summary-completion.js";
 import { logVerbose } from "../../globals.js";
+import { settleWithCleanup } from "../../infra/error-graph-internal.js";
 import { wrapSqliteWorkerError } from "../../infra/sqlite-worker-contract.js";
 import { isCurrentSessionControllerOperation } from "../../sessions/session-controller.identity.js";
 import type { ReplyOperation } from "../../sessions/session-controller.js";
@@ -184,22 +185,13 @@ export async function withAgentTurnCompletion<T>(
           return snapshot.entry!;
         },
       };
-      let value: T;
-      try {
-        value = await consume(completion);
-      } catch (error) {
-        try {
+      const value = await settleWithCleanup(
+        (async () => consume(completion))(),
+        async () => {
           await completion.complete();
-        } catch (settlementError) {
-          throw new AggregateError(
-            [error, settlementError],
-            "Terminal accounting failed to settle",
-            { cause: settlementError },
-          );
-        }
-        throw error;
-      }
-      await completion.complete();
+        },
+        "Terminal accounting failed to settle",
+      );
       return { value };
     },
   );

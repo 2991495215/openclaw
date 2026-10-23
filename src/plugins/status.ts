@@ -2,6 +2,7 @@ import { getRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeOpenClawVersionBase } from "../config/version.js";
 import { inspectDecisionProviders } from "../decisions/runtime.js";
+import { settleWithCleanup } from "../infra/error-graph-internal.js";
 import { listImportedBundledPluginFacadeIds } from "../plugin-sdk/facade-runtime.js";
 import { resolveCompatibilityHostVersion } from "../version.js";
 import { inspectBundleLspRuntimeSupport } from "./bundle-lsp.js";
@@ -394,23 +395,11 @@ export async function withPluginDiagnosticsReportForInspection<Result extends st
     () => acquirePluginRegistryForInspection(prepared.runtimeLoadOptions),
     { surface: "status", onlyPluginCount: prepared.onlyPluginIds?.length },
   );
-  let output: Result;
-  try {
-    output = formatReport(projectPluginReport(inspection.registry, prepared, params, true));
-  } catch (error) {
-    try {
-      await inspection.release();
-    } catch (disposalError) {
-      throw new AggregateError(
-        [error, disposalError],
-        "Plugin inspection report and disposal failed",
-        { cause: disposalError },
-      );
-    }
-    throw error;
-  }
-  await inspection.release();
-  return output;
+  return settleWithCleanup(
+    (async () => formatReport(projectPluginReport(inspection.registry, prepared, params, true)))(),
+    () => inspection.release(),
+    "Plugin inspection report and disposal failed",
+  );
 }
 
 type PluginInspectParams = Pick<
