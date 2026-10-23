@@ -72,7 +72,6 @@ export type CanaryOutcome =
 export type CanaryResult = {
   phase: CanaryPhase;
   durationMs: number;
-  logTail: string[];
   steps: UpdateStepResult[];
   candidateSchemaVersions?: OpenClawSchemaVersions;
   gatewayRestartCompletion?: boolean;

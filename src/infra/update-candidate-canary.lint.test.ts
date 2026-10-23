@@ -340,7 +340,7 @@ it("preserves bounded Doctor findings before the diagnostic log tail", async () 
   expect(findings?.every((finding) => finding.message.length <= 500)).toBe(true);
   expect(JSON.stringify(result)).not.toContain("synthetic-canary-secret");
   expect(JSON.stringify(result)).not.toContain("/Users/synthetic");
-  expect(result.logTail.join("\n")).not.toContain("config.invalid.0");
+  expect(failed?.stderrTail ?? "").not.toContain("config.invalid.0");
 });
 
 it.each([false, true])(

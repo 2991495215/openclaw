@@ -22,7 +22,7 @@ it.each([undefined, 2_000])(
       signal = params.signal;
       // Independent phase work has settled, but the whole validation budget has elapsed.
       now += budget + 1;
-      return { status: "ok", phase: "snapshot", durationMs: budget, steps: [], logTail: [] };
+      return { status: "ok", phase: "snapshot", durationMs: budget, steps: [] };
     });
     await expect(
       validateUpdateCandidateWithProgress(

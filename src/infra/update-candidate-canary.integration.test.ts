@@ -25,6 +25,13 @@ it(
     spawned.mockClear();
     const occupied = createServer();
     const spawn = spawned.getMockImplementation()!;
+    const probes: string[] = [];
+    const nativeFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      probes.push(new URL(input instanceof Request ? input.url : input).pathname);
+      return nativeFetch(input, init);
+    });
+    let gatewayStderr = "";
     try {
       occupied.listen(0, "127.0.0.1");
       await once(occupied, "listening");
@@ -46,7 +53,13 @@ it(
           const copied: OpenClawConfig = JSON.parse(readFileSync(configPath, "utf8"));
           writeFileSync(configPath, JSON.stringify({ ...copied, mcp: config.mcp }));
         }
-        return spawn(...args);
+        const child = spawn(...args);
+        if (Array.isArray(args[1]) && args[1].includes("--update-canary")) {
+          child.stderr?.on("data", (chunk: Buffer | string) => {
+            gatewayStderr += String(chunk);
+          });
+        }
+        return child;
       });
       const result = await validateUpdateCandidateCanary({
         root: process.cwd(),
@@ -55,14 +68,11 @@ it(
         env: { PATH: process.env.PATH },
         timeoutMs: 300_000,
       });
-      expect(result, result.logTail.join("\n")).toMatchObject({ status: "ok", phase: "readiness" });
-      const phases = result.logTail.filter((line) => /^(startupz|readyz):/u.test(line));
-      expect(phases).toHaveLength(2);
-      expect(phases[0]).toContain("startupz: started");
-      expect(phases[1]).toContain("readyz: ready");
-      expect(
-        result.logTail.some((line) => line.startsWith("openclaw-update-canary-progress: ")),
-      ).toBe(true);
+      expect(result).toMatchObject({ status: "ok", phase: "readiness" });
+      expect(probes).toContain("/startupz");
+      expect(probes).toContain("/readyz");
+      expect(probes.indexOf("/startupz")).toBeLessThan(probes.indexOf("/readyz"));
+      expect(gatewayStderr).toContain("openclaw-update-canary-progress: ");
       expect(occupied.listening).toBe(true);
       expect(await fs.readdir(stateDir)).toEqual([]);
       const callIndex = spawned.mock.calls.findIndex(
@@ -78,6 +88,7 @@ it(
         code: "ENOENT",
       });
     } finally {
+      fetchSpy.mockRestore();
       if (occupied.listening) {
         await new Promise<void>((resolve, reject) => {
           occupied.close((error) => (error ? reject(error) : resolve()));

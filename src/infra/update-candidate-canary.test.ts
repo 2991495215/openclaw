@@ -238,7 +238,7 @@ describe("update candidate canary", () => {
       try {
         const result = await validateUpdateCandidateCanary(canaryStateOptions(timeoutMs));
         expect(result.steps[0]?.snapshotCapacity?.sqliteBytes).toBe(sqliteBytes);
-        expect(result, result.logTail.join("\n")).toMatchObject({
+        expect(result).toMatchObject({
           status: expectedStatus,
           phase: expectedStatus === "ok" ? "readiness" : "doctor",
         });
@@ -254,7 +254,7 @@ describe("update candidate canary", () => {
           expect(report).not.toContain("Checks may time out early");
         }
         if (expectedStatus === "error") {
-          expect(result.logTail.join("\n")).toContain("deadline exceeded");
+          expect(report).toContain("deadline exceeded");
         } else {
           expect(result.steps).toContainEqual(
             expect.objectContaining({
@@ -262,7 +262,6 @@ describe("update candidate canary", () => {
               exitCode: 0,
             }),
           );
-          expect(result.logTail.join("\n")).toContain("readyz: ready");
         }
         if (stage === "snapshot") {
           expect(result.durationMs).toBeGreaterThanOrEqual(elapsedMs);
@@ -583,7 +582,6 @@ describe("update candidate canary", () => {
     expect(
       mocks.signal.mock.calls.filter(([pid]) => pid === gatewayPid).map(([, signal]) => signal),
     ).toEqual(["SIGTERM", "SIGKILL"]);
-    expect(result.logTail.join("\n")).toContain("startupz: started");
     await expectRemoved(childEnv.OPENCLAW_STATE_DIR!);
   });
 
@@ -693,7 +691,6 @@ describe("update candidate canary", () => {
             expect(text.match(/Unable to resolve health API/gu)).toHaveLength(1);
           }
         }
-        expect(result.logTail.join("\n")).toContain("Unable to resolve health API");
       }
     }
     if (phase === "config") {
@@ -740,7 +737,6 @@ describe("update candidate canary", () => {
         expect(canaryOutcomeStep(result.steps)?.stderrTail).toContain("stalled");
       }
       expect(result.steps.some((step) => step.exitCode !== 0)).toBe(true);
-      expect(result.logTail.length).toBeLessThanOrEqual(40);
       expect(result.durationMs).toBeLessThan(1_000);
       if (failure === "snapshot") {
         expect(mocks.spawn).not.toHaveBeenCalled();
@@ -888,12 +884,11 @@ describe("update candidate canary", () => {
     });
     const result = await validateUpdateCandidateCanary(canaryStateOptions(3_000));
     expect(result).toMatchObject({ status: "error", phase: "doctor" });
-    expect(result.logTail.length).toBeLessThanOrEqual(40);
+    const tail = canaryOutcomeStep(result.steps)?.stderrTail ?? "";
+    expect(tail.split("\n").length).toBeLessThanOrEqual(40);
     expect(mocks.signal).toHaveBeenCalled();
     await expectRemoved(childEnv.OPENCLAW_STATE_DIR!);
     for (const line of expected) {
-      expect(result.logTail).toContain(line);
-      expect(result.logTail).toContain(`${line} final`);
       expect(canaryOutcomeStep(result.steps)?.stderrTail).toContain(`${line}\n`);
       expect(canaryOutcomeStep(result.steps)?.stderrTail).toContain(`${line} final`);
     }
@@ -909,8 +904,7 @@ describe("update candidate canary", () => {
     });
     const result = await validateUpdateCandidateCanary(canaryStateOptions(3_000));
     expect(result.status).toBe("error");
-    expect(result.logTail.join("\n")).not.toContain("synthetic-sensitive-suffix");
-    expect(result.logTail).toContain("following-safe-line");
+    expect(JSON.stringify(result)).not.toContain("synthetic-sensitive-suffix");
     expect(canaryOutcomeStep(result.steps)?.stderrTail).toContain("following-safe-line");
   });
 
@@ -937,7 +931,7 @@ describe("update candidate canary", () => {
     expect(result.steps.find((step) => step.name === "candidate-doctor")?.diagnostics).toEqual([
       "Doctor sections: database-preflight 1.2 s, contributions 3.4 s",
     ]);
-    expect(result.logTail.join("\n")).not.toContain("startup trace");
+    expect(JSON.stringify(result)).not.toContain("startup trace");
     expect(traceEnv.doctor).toBe("1");
     expect(traceEnv.gateway).toBeUndefined();
   });

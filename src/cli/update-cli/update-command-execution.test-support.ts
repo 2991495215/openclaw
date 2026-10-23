@@ -37,8 +37,8 @@ const mocks = vi.hoisted(() => ({
 
 export { mocks };
 
-export function readyCanary(steps: UpdateStepResult[], durationMs = 1, logTail: string[] = []) {
-  return { status: "ok" as const, phase: "readiness" as const, steps, durationMs, logTail };
+export function readyCanary(steps: UpdateStepResult[], durationMs = 1) {
+  return { status: "ok" as const, phase: "readiness" as const, steps, durationMs };
 }
 
 export function packageCandidate(root: string) {

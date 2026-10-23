@@ -211,7 +211,6 @@ describe("canary teardown evidence", () => {
         phase: "doctor",
         reason: "candidate-checks-timeout",
       });
-      expect(result.logTail.join("\n")).toContain(`${cause} ([state/sqlite] ${progress})`);
       const failed = canaryOutcomeStep(result.steps)!;
       expect(failed).toMatchObject({ exitCode: null, termination: "timeout" });
       expect(failed.failureFacts).toEqual([

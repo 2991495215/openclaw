@@ -145,7 +145,6 @@ it.each([
         phase: "readiness",
         steps: [],
         durationMs: 1,
-        logTail: [],
         doctorConfigWrites: true,
       });
       const runUpdate = async (

@@ -128,7 +128,6 @@ it("settles a failed candidate without inference repair and preserves its proces
       },
     ],
     durationMs: 1,
-    logTail: ["ENOSPC: no space left on device"],
   });
   mocks.validateCanary.mockImplementation(async ({ root: candidateRoot }) => {
     events.push("fresh snapshot fails");

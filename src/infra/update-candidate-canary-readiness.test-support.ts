@@ -430,10 +430,7 @@ export function registerCanaryReadinessBudgetTests(
         });
         const result = await validate();
         if (loopbackMode === "gateway-only") {
-          expect(
-            result,
-            JSON.stringify({ log: result.logTail, requests, proxyRequests }),
-          ).toMatchObject({
+          expect(result, JSON.stringify({ requests, proxyRequests })).toMatchObject({
             status: "ok",
             phase: "readiness",
           });
@@ -468,7 +465,7 @@ export function registerCanaryReadinessBudgetTests(
           expect(proxyRequests.length).toBeGreaterThan(0);
         } else {
           expect(result.status).toBe("error");
-          expect(result.logTail.join("\n")).toContain("blocked by proxy.loopbackMode");
+          expect(JSON.stringify(result.steps)).toContain("blocked by proxy.loopbackMode");
           expect(requests).toEqual([]);
           expect(proxyRequests).toEqual([]);
         }
@@ -493,7 +490,6 @@ export function registerCanaryReadinessBudgetTests(
     const params = { timeoutMs: 250 };
     const unavailable = await validate(params);
     expect(unavailable.status).toBe("ok");
-    expect(unavailable.logTail.join("\n")).toContain("Update checks reached their time limit");
     expect(canaryOutcomeStep(unavailable.steps)?.advisory?.message).toContain("ECONNREFUSED");
     expect(canaryOutcomeStep(unavailable.steps)?.advisory?.message).not.toContain("via proxy");
     expect(canaryOutcomeStep(unavailable.steps)?.failureFacts).toEqual([
@@ -510,7 +506,7 @@ export function registerCanaryReadinessBudgetTests(
     const cancelled = await validate({ ...params, signal: controller.signal });
     expect(cancelled.status).toBe("error");
     expect(canaryOutcomeStep(cancelled.steps)?.advisory).toBeUndefined();
-    expect(cancelled.logTail.join("\n")).toContain("operator cancelled");
+    expect(JSON.stringify(cancelled.steps)).toContain("operator cancelled");
   });
 
   it.each([
@@ -554,9 +550,7 @@ export function registerCanaryReadinessBudgetTests(
       } else {
         expect(result).toMatchObject({ status: "ok", phase: "readiness", durationMs: 1_000 });
         expect(result.steps).toContainEqual(expect.objectContaining({ name, exitCode: 0 }));
-        expect(result.logTail.join("\n")).toContain("readyz: ready");
       }
-      expect(result.logTail.join("\n")).toContain("Earlier check completed successfully");
     },
   );
 
@@ -614,9 +608,7 @@ export function registerCanaryReadinessBudgetTests(
         fetchHttp(`http://127.0.0.1:${port}${new URL(url).pathname}`, options),
       );
       const result = await validate({ timeoutMs: 6_000 });
-      expect(result, result.logTail.join("\n")).toMatchObject({ status: "ok", phase: "readiness" });
-      expect(result.logTail.join("\n")).toContain("startupz: started");
-      expect(result.logTail.join("\n")).toContain("readyz: ready");
+      expect(result).toMatchObject({ status: "ok", phase: "readiness" });
     } finally {
       vi.unstubAllGlobals();
       for (const timer of timers) {

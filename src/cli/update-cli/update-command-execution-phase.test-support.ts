@@ -95,7 +95,7 @@ export function registerExecutionPhaseReceiptTests(inputs: FixtureInputs) {
           if (phase === "validating") {
             events.push("canary");
           }
-          return { status: "ok", phase: "readiness", steps: [], durationMs: 1, logTail: [] };
+          return { status: "ok", phase: "readiness", steps: [], durationMs: 1 };
         });
         mocks.runPackageUpdate.mockImplementation(async (options: PackageInstallUpdateParams) => {
           if (phase === "validating") {

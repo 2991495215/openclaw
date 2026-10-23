@@ -202,7 +202,7 @@ it("continues the update with the recorded readiness warning instead of inferenc
   ];
   mocks.validateCanary.mockImplementation(async ({ onStep }) => {
     await onStep(step);
-    return readyCanary(canarySteps, 312_623, [message]);
+    return readyCanary(canarySteps, 312_623);
   });
   const repair = await import("../../infra/update-repair-agent.js");
   const runRepair = vi.spyOn(repair, "runUpdateRepairLoop");
@@ -474,7 +474,6 @@ it("retains rejected Git canary findings in the terminal result", async () => {
     reason: "doctor-failed",
     phase: "doctor",
     durationMs: 1,
-    logTail: [fact.message],
     steps: [
       updateStep("candidate-doctor", {
         command: "openclaw doctor",

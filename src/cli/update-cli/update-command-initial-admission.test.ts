@@ -45,7 +45,6 @@ beforeEach(() => {
     phase: "readiness",
     steps: [],
     durationMs: 1,
-    logTail: [],
     doctorConfigWrites: true,
   });
 });

@@ -415,7 +415,6 @@ it.each<{
       gatewayRestartCompletion: capable,
       steps: [],
       durationMs: 1,
-      logTail: [],
     });
     const events: string[] = [];
     handoff.park.mockImplementation(async ({ run }) => {

@@ -70,7 +70,6 @@ export async function validateUpdateCandidateCanary(params: {
   let cleanupUncertain = false;
   const sourceEnv = params.env ?? process.env;
   let env: NodeJS.ProcessEnv = { ...sourceEnv };
-  const logTail: string[] = [];
   const stepLogTail: string[] = [];
   const startupWarnings: string[] = [];
   let activeStep = { name: "candidate-runtime", command: "Checking update runtime" };
@@ -125,7 +124,6 @@ export async function validateUpdateCandidateCanary(params: {
     ...outcome,
     phase,
     durationMs: Date.now() - started,
-    logTail,
     candidateSchemaVersions,
     gatewayRestartCompletion,
     ...(outcome.status === "ok" && doctorConfigWrites ? { doctorConfigWrites } : {}),
@@ -142,10 +140,8 @@ export async function validateUpdateCandidateCanary(params: {
       .split(/\r?\n/u)
       .filter(Boolean)
       .map((line) => sliceUtf16Safe(line, -512));
-    for (const tail of [logTail, stepLogTail]) {
-      tail.push(...lines);
-      tail.splice(0, Math.max(0, tail.length - 40));
-    }
+    stepLogTail.push(...lines);
+    stepLogTail.splice(0, Math.max(0, stepLogTail.length - 40));
     return safe;
   };
   const launch = (
@@ -197,7 +193,7 @@ export async function validateUpdateCandidateCanary(params: {
         advisory: { kind: "candidate-runtime-unavailable", message },
       });
       // Older targets also lack the isolated canary CLI; retain their shipped finalization path.
-      return { status: "ok", phase: "runtime", durationMs: Date.now() - started, logTail, steps };
+      return { status: "ok", phase: "runtime", durationMs: Date.now() - started, steps };
     }
     if (params.migrationPolicy !== "startup-only") {
       const policy = resolveUpdateDoctorExecutionPolicy({
@@ -672,7 +668,7 @@ export async function validateUpdateCandidateCanary(params: {
         env,
       ),
     ];
-    // Keep the aggregate log, but do not replay a complete fact as generated timing metadata.
+    // Do not replay a complete fact as generated timing metadata in the per-check tail.
     const repeatsFact =
       failed.termination !== "timeout" &&
       failed.failureFacts.some(

@@ -501,7 +501,6 @@ it.each([
       phase: "readiness",
       steps: [],
       durationMs: 0,
-      logTail: [],
       candidateSchemaVersions: candidateSchemas,
       doctorConfigWrites: true,
     });

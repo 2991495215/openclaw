@@ -59,7 +59,7 @@ export function registerCanaryMigrationPolicyTests({
       });
       const result = await validate({ config: original, migrationPolicy });
 
-      expect(result, result.logTail.join("\n")).toMatchObject({ status: expected });
+      expect(result).toMatchObject({ status: expected });
       expect(result.steps).toContainEqual(
         step("candidate-gateway-startup", expected === "ok" ? 0 : 1),
       );
