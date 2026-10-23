@@ -297,6 +297,10 @@ export class SessionEntryNavigation<T extends SessionNavigationEntry> {
       this.leafId = entry.id;
       this.appendMode = undefined;
     }
+    this.applyLabelNavigationEntry(entry);
+  }
+
+  protected applyLabelNavigationEntry(entry: T): void {
     if (entry.type === "label") {
       if (entry.label) {
         this.labelsById.set(entry.targetId, entry.label);

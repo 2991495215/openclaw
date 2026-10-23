@@ -514,15 +514,7 @@ export class SessionManagerAppend extends SessionManagerSuffixPersistence {
             : [{ ...prefix, anchorIds: [canonicalEntry.id] }];
         });
       }
-      if (canonicalEntry.type === "label") {
-        if (canonicalEntry.label) {
-          this.labelsById.set(canonicalEntry.targetId, canonicalEntry.label);
-          this.labelTimestampsById.set(canonicalEntry.targetId, canonicalEntry.timestamp);
-        } else {
-          this.labelsById.delete(canonicalEntry.targetId);
-          this.labelTimestampsById.delete(canonicalEntry.targetId);
-        }
-      }
+      this.applyLabelNavigationEntry(canonicalEntry);
     }
     this.pendingDeliberateAppend = false;
     if (canonicalEntry.type === "message") {

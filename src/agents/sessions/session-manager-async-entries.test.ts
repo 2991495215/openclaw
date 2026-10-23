@@ -111,6 +111,9 @@ it("commits every awaited entry family in call order with stable ids, ancestry, 
     expect(reopened.getEntries()).toEqual(manager.getEntries());
     expect(reopened.getLeafId()).toBe(manager.getLeafId());
     expect(reopened.getLabel(seed)).toBe("bookmark");
+    await reopened.appendLabelChangeAsync(seed, undefined);
+    expect(reopened.getLabel(seed)).toBeUndefined();
+    expect((await reopen()).getLabel(seed)).toBeUndefined();
   });
 });
 
