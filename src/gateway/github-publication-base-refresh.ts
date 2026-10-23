@@ -73,6 +73,11 @@ export async function integrateManagedWorkspaceSource(
   },
 ): Promise<SessionGitHubBaseRefreshResult> {
   const { owner, identity, sandbox } = params;
+  const isolatedGitEnv = () => ({
+    ...identity.env,
+    GIT_CONFIG_GLOBAL: gitNullConfigPath(),
+    GIT_CONFIG_SYSTEM: gitNullConfigPath(),
+  });
   const action = params.source ? "prepare_pr" : "refresh_base";
   const reviewPreparationError = `Source integration is saved, but sandbox review-base preparation failed. Resolve any pending sandbox Git merge or index lock, then retry ${action} before tests and Auto Review.`;
   const attribution = await prepareGitCoauthorAttribution({
@@ -255,11 +260,7 @@ export async function integrateManagedWorkspaceSource(
               commit,
               target.githubHost,
               cwd,
-              {
-                ...identity.env,
-                GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-                GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-              },
+              isolatedGitEnv(),
               `The selected repository base contents could not be fetched; retry ${action}.`,
               { contents: true, commitPresent },
             );
@@ -297,11 +298,7 @@ export async function integrateManagedWorkspaceSource(
                 source.review.commit,
                 target.githubHost,
                 cwd,
-                {
-                  ...identity.env,
-                  GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-                  GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-                },
+                isolatedGitEnv(),
                 `The selected PR base ancestry could not be fetched; retry ${action}.`,
               );
               const fromBase = await probe([
@@ -626,11 +623,7 @@ export async function integrateManagedWorkspaceSource(
       params.source.review.commit,
       target.githubHost,
       owner.worktree.path,
-      {
-        ...identity.env,
-        GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-        GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-      },
+      isolatedGitEnv(),
       reviewPreparationError,
       { contents: true },
     );
@@ -651,11 +644,7 @@ export async function integrateManagedWorkspaceSource(
       reviewCommit,
       target.githubHost,
       owner.worktree.path,
-      {
-        ...identity.env,
-        GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-        GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-      },
+      isolatedGitEnv(),
       reviewPreparationError,
       { contents: true, commitPresent: true },
     );
