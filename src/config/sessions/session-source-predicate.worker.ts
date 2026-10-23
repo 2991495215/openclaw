@@ -1,7 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { readOpenClawAgentDatabaseIdentity } from "../../state/openclaw-agent-db-identity.js";
 import type { OpenClawAgentReadOnlyDatabase } from "../../state/openclaw-agent-db-readonly.js";
-import { SessionMetadataUnavailableError } from "../../state/session-metadata-unavailable-error.js";
 import { selectConversationRowsFromDatabase } from "./session-accessor.sqlite-conversation-read.js";
 import { readExactSessionEntryRowValidated } from "./session-accessor.sqlite-entry-read.js";
 import { readTranscriptContextVersionInTransaction } from "./session-accessor.sqlite-transcript-state.js";
@@ -33,9 +32,6 @@ export function readSessionSourceChecks(
   );
   if (result.found) {
     return result.value;
-  }
-  if (result.reason !== "database-missing") {
-    throw new SessionMetadataUnavailableError(result.reason);
   }
   return {
     kind: "session-exact-entries",

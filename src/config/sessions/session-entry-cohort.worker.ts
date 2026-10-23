@@ -16,6 +16,7 @@ import {
   type OpenClawAgentReadOnlyDatabase,
 } from "../../state/openclaw-agent-db-readonly.js";
 import type { DB } from "../../state/openclaw-agent-db.generated.js";
+import { SessionMetadataUnavailableError } from "../../state/session-metadata-unavailable-error.js";
 import { resolveSessionLifecycleTimestampsWithHeader } from "./lifecycle-timestamps.js";
 import { readExactSessionEntryFactsInDatabase } from "./session-accessor.sqlite-entry-facts.worker.js";
 import { readSessionKeyBySessionIdInDatabase } from "./session-accessor.sqlite-entry-read.js";
@@ -69,10 +70,15 @@ export function createSessionEntryReadScope(capturedDatabase?: OpenClawAgentRead
     readDatabase: <T>(
       read: (database: OpenClawAgentReadOnlyDatabase) => T,
       options: Parameters<typeof withOpenClawAgentDatabaseReadOnly>[1],
-    ) =>
-      capturedDatabase
+    ) => {
+      const result = capturedDatabase
         ? { found: true as const, value: read(capturedDatabase) }
-        : withOpenClawAgentDatabaseReadOnly(read, options),
+        : withOpenClawAgentDatabaseReadOnly(read, options);
+      if (!result.found && result.reason !== "database-missing") {
+        throw new SessionMetadataUnavailableError(result.reason);
+      }
+      return result;
+    },
     snapshot: <T>(database: OpenClawAgentReadOnlyDatabase, read: () => T) =>
       capturedDatabase?.db === database.db && database.db.isTransaction
         ? read()

@@ -224,9 +224,6 @@ export function readExactSessionEntriesWithLifecycle(
       },
       { ...request.database, env: request.env },
     );
-    if (!result.found && result.reason !== "database-missing") {
-      throw new SessionMetadataUnavailableError(result.reason);
-    }
     return result.found
       ? result.value
       : { kind: "session-exact-entries", entries: [], lifecycleTimestamps: {} };
@@ -274,9 +271,6 @@ export function readExactSessionEntriesWithLifecycle(
     );
     if (result.found) {
       return result.value;
-    }
-    if (result.reason !== "database-missing") {
-      throw new SessionMetadataUnavailableError(result.reason);
     }
     if (request.expectedIdentity?.key.startsWith("file:")) {
       throw new Error("Session entry read lost its captured physical owner");
@@ -340,9 +334,6 @@ export function readExactSessionEntriesWithLifecycle(
       },
       { ...request.database, env: request.env },
     );
-    if (!read.found && read.reason !== "database-missing") {
-      throw new SessionMetadataUnavailableError(read.reason);
-    }
     if (!read.found && request.expectedIdentity?.key.startsWith("file:")) {
       throw new Error("Session entry read lost its captured physical owner");
     }
@@ -587,9 +578,6 @@ export function readExactSessionEntriesWithLifecycle(
   );
   if (result.found) {
     return result.value;
-  }
-  if (result.reason !== "database-missing") {
-    throw new SessionMetadataUnavailableError(result.reason);
   }
   if (request.expectedIdentity?.key.startsWith("file:")) {
     throw new Error("Session entry read lost its captured physical owner");
