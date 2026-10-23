@@ -110,6 +110,10 @@ suite.define(() => {
         },
       });
       await reconnectMockGateway(page, gateway);
+      // Connection readiness precedes profile adoption, which retires Alice's palette.
+      await page
+        .getByRole("button", { name: /^Identity and app menu for Bob/ })
+        .waitFor({ state: "visible" });
       await page.keyboard.press("ControlOrMeta+K");
       await input.waitFor({ state: "visible" });
       await expect.poll(() => input.inputValue()).toBe("");
