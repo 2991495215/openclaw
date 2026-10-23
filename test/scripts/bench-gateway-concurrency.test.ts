@@ -799,6 +799,48 @@ describe("gateway concurrency benchmark script", () => {
     ).toThrow("changed during measurement");
   });
 
+  it("retains exact embedding work and marks clipped inputs unknown", () => {
+    const records = [
+      JSON.stringify({ input: ["alpha", "β"] }),
+      JSON.stringify({ input: ["β", "alpha"] }),
+      JSON.stringify({ input: "alpha" }),
+      { truncated: true, byteLength: 300_000 },
+      "[unparseable request body redacted: 42 bytes]",
+    ].map((body, index) =>
+      JSON.stringify({ seq: index + 1, method: "POST", path: "/v1/embeddings", body }),
+    );
+    const result = testing.summarizeProviderRequests(records, 2, 4);
+    expect(result.embeddingInputs).toEqual([
+      {
+        ordinal: 1,
+        inputCount: 2,
+        inputCharacters: 6,
+        inputSha256: "6eeaefa071efe0742a6d3470857dd17e8d15b30df7f473fbed73c7ff0edeffe9",
+      },
+      {
+        ordinal: 2,
+        inputCount: 2,
+        inputCharacters: 6,
+        inputSha256: "f42515504f9fd883221c7e2f0bfb3795d2752d64804ca03711bbee30aea00d0f",
+      },
+      {
+        ordinal: 3,
+        inputCount: 1,
+        inputCharacters: 5,
+        inputSha256: "15070794f9a7cc24f7e107fc5a4b92426f82cc61ad1cb74d37a80a11437d03b3",
+      },
+      ...[4, 5].map((ordinal) => ({
+        ordinal,
+        inputCount: null,
+        inputCharacters: null,
+        inputSha256: null,
+      })),
+    ]);
+    expect(result.setup).toMatchObject({ total: 2, inference: 0 });
+    expect(result.load).toMatchObject({ total: 2, inference: 0 });
+    expect(result.afterLoad).toMatchObject({ total: 1, inference: 0 });
+  });
+
   it("classifies clipped utility requests before quoted turn markers and retains unbound continuations", () => {
     const recap = summarizeMockInferenceRequest({
       instructions: "Write an Activity recap for someone scanning their tasks: what was done here",

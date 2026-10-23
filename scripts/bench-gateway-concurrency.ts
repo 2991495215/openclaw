@@ -1418,6 +1418,12 @@ function summarizeProviderRequests(
     load: createPhase(),
     afterLoad: createPhase(),
   };
+  const embeddingInputs: Array<{
+    ordinal: number;
+    inputCount: number | null;
+    inputCharacters: number | null;
+    inputSha256: string | null;
+  }> = [];
   const turns = new Map<number, { withoutToolOutput: number; withToolOutput: number }>();
   let unboundInference = 0;
   const loadContinuations = { withPreviousResponse: 0, withToolOutput: 0, unboundToolOutput: 0 };
@@ -1450,13 +1456,6 @@ function summarizeProviderRequests(
       (phase.bytesByEndpoint[endpoint] ?? 0) + (knownBytes ? bytes : 0);
     phase.total += 1;
     phase.byEndpoint[endpoint] = (phase.byEndpoint[endpoint] ?? 0) + 1;
-    if (
-      record.method !== "POST" ||
-      !["/v1/responses", "/v1/chat/completions"].includes(record.path)
-    ) {
-      continue;
-    }
-    phase.inference += 1;
     let body: unknown;
     // The mock intentionally replaces oversized or unparseable bodies with bounded evidence.
     // Keep those arrivals in the denominator even when a turn marker cannot be recovered.
@@ -1467,6 +1466,27 @@ function summarizeProviderRequests(
         body = undefined;
       }
     }
+    if (record.method === "POST" && record.path === "/v1/embeddings") {
+      const input = isRecord(body) ? body.input : undefined;
+      const texts = typeof input === "string" ? [input] : input;
+      const known = Array.isArray(texts) && texts.every((text) => typeof text === "string");
+      // Preserve exact ordered inputs before fixture cleanup; clipped bodies cannot prove equal work.
+      embeddingInputs.push({
+        ordinal: record.seq,
+        inputCount: known ? texts.length : null,
+        inputCharacters: known ? texts.reduce((sum, text) => sum + text.length, 0) : null,
+        inputSha256: known
+          ? createHash("sha256").update(JSON.stringify(texts)).digest("hex")
+          : null,
+      });
+    }
+    if (
+      record.method !== "POST" ||
+      !["/v1/responses", "/v1/chat/completions"].includes(record.path)
+    ) {
+      continue;
+    }
+    phase.inference += 1;
     const facts = record.inferenceFacts ?? summarizeMockInferenceRequest(body);
     phase.byPurpose[facts.purpose] += 1;
     phase.bytesByPurpose[facts.purpose] += knownBytes ? bytes : 0;
@@ -1491,6 +1511,7 @@ function summarizeProviderRequests(
     beforeLoadOrdinal: beforeLoad,
     afterLoadOrdinal: afterLoad,
     ...phases,
+    embeddingInputs,
     loadTurns: [...turns]
       .toSorted(([left], [right]) => left - right)
       .map(([turnIndex, counts]) => ({
