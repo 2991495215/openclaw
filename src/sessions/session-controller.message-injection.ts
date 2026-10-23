@@ -298,6 +298,14 @@ async function beginPreparedReplyMessageInjectionTarget(
     }
     throw error;
   };
+  const rejectedAttempt = (error: unknown): ReplyMessageInjectionAttempt => {
+    const failure = resolvePreAcceptanceFailure(error);
+    return {
+      targetRunId: target.runId,
+      acceptance: Promise.resolve(false),
+      outcome: Promise.resolve(failure),
+    };
+  };
   let preparedText: string;
   try {
     assertSourceCurrent?.();
@@ -306,12 +314,7 @@ async function beginPreparedReplyMessageInjectionTarget(
     await options?.toolAuthorityPreparation?.prepareCurrent();
     assertSourceCurrent?.();
   } catch (error) {
-    const failure = resolvePreAcceptanceFailure(error);
-    return {
-      targetRunId: target.runId,
-      acceptance: Promise.resolve(false),
-      outcome: Promise.resolve(failure),
-    };
+    return rejectedAttempt(error);
   }
   // Deferred preparation may install both caller policy and a transcript recorder.
   const {
@@ -396,12 +399,7 @@ async function beginPreparedReplyMessageInjectionTarget(
       }
     }
   } catch (error) {
-    const failure = resolvePreAcceptanceFailure(error);
-    return {
-      targetRunId: target.runId,
-      acceptance: Promise.resolve(false),
-      outcome: Promise.resolve(failure),
-    };
+    return rejectedAttempt(error);
   }
   const toolAuthorityOverlay = selectedOverlay;
   const currentToolAuthorityOverlay = () => {

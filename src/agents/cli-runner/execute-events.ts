@@ -381,15 +381,16 @@ export function createCliEventHandlers(params: {
       });
     }
   };
+  const prepareVisibleTerminalText = (text: string) =>
+    applyPluginTextReplacements(
+      prepareAgentRunTerminalReply({ rawText: text }).text,
+      context.backendResolved.textTransforms?.output,
+    );
   const emitCliCommentaryText = (text: string) => {
     if (!emitLiveEvents || params.toolTracking.shouldSuppressAssistantOutput()) {
       return;
     }
-    const prepared = prepareAgentRunTerminalReply({ rawText: text });
-    const visibleText = applyPluginTextReplacements(
-      prepared.text,
-      context.backendResolved.textTransforms?.output,
-    );
+    const visibleText = prepareVisibleTerminalText(text);
     if (!visibleText) {
       return;
     }
@@ -449,11 +450,7 @@ export function createCliEventHandlers(params: {
       observedCliActivity = true;
     }
     assistantVisibleText = "";
-    const prepared = prepareAgentRunTerminalReply({ rawText: text });
-    const visibleText = applyPluginTextReplacements(
-      prepared.text,
-      context.backendResolved.textTransforms?.output,
-    );
+    const visibleText = prepareVisibleTerminalText(text);
     if (!visibleText) {
       return;
     }
