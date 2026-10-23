@@ -56,13 +56,13 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Boot-only Zopfli: 1,296,730 B Chat and 791,199 B New Session.
+  // Boot-only Zopfli: 1,295,297 B Chat and 792,323 B New Session.
   // Preserve the matched base's relative headroom after the encoder change.
-  chatBootJsGzipBytes: 1_346_097,
-  newBootJsGzipBytes: 801_833,
+  chatBootJsGzipBytes: 1_344_591,
+  newBootJsGzipBytes: 801_554,
   startupCssRequests: 1,
-  // Boot-only Zopfli: 303,797 B startup, with the base's relative headroom.
-  startupJsGzipBytes: 312_208,
+  // Boot-only Zopfli: 303,170 B startup, with the base's relative headroom.
+  startupJsGzipBytes: 312_109,
   // Keep 45 KiB advisory: tiny integrated changes must not exhaust the budget.
   // The fixed 50 KiB ceiling bounds accumulation of small changes.
   startupCssGzipBytes: 50 * KIB,

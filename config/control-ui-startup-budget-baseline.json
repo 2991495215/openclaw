@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 303797,
-  "reason": "Optimize gzip for canonical boot assets: matched builds preserve application bytes and requests while reducing startup from 316324 B to 303797 B, Chat from 1349072 B to 1296730 B, and New Session from 823291 B to 791199 B.",
+  "startupJsGzipBytes": 303170,
+  "reason": "Optimize gzip for canonical boot assets: matched current-main builds preserve application bytes and requests while reducing startup from 315771 B to 303170 B, Chat from 1347459 B to 1295297 B, and New Session from 824272 B to 792323 B.",
   "updatedAt": "2026-10-23"
 }
