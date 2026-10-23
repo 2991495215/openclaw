@@ -9,6 +9,7 @@ import { setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-sna
 import { awaitGateBeforeSettlement } from "openclaw/plugin-sdk/test-fixtures";
 import { describe, expect, it, vi } from "vitest";
 import { readAttemptTerminal } from "./attempt-terminal.test-helper.js";
+import { resolveCodexAppServerLocalHomeDir } from "./auth-start-options.js";
 import { CodexAppServerClient } from "./client.js";
 import { createCodexTestHostCapabilities } from "./host-capability.test-support.js";
 import {
@@ -18,7 +19,7 @@ import {
 } from "./inference-routing.js";
 import { nativeHookRelayUnregisterQueue } from "./native-hook-relay-state.js";
 import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js";
-import * as nativeToolCatalog from "./native-tool-catalog.js";
+import { buildCodexAppServerConnectionFingerprint } from "./plugin-app-cache-key.js";
 import type { CodexDynamicToolSpec } from "./protocol.js";
 import { prepareCodexAttemptConnection } from "./run-attempt-connection.js";
 import { prepareCodexAttemptContext } from "./run-attempt-context.js";
@@ -49,7 +50,10 @@ import { createClientHarness } from "./test-support.js";
 import { codexDynamicToolsFingerprint } from "./thread-fingerprints.js";
 import * as threadLifecyclePreflight from "./thread-lifecycle-preflight.js";
 import { startOrResumeThread } from "./thread-lifecycle-run.js";
-import { createLeasedCodexLifecycleHarness } from "./thread-lifecycle.test-fixtures.js";
+import {
+  createLeasedCodexLifecycleHarness,
+  writeNativeCatalogFixture,
+} from "./thread-lifecycle.test-fixtures.js";
 import { CODEX_APP_SERVER_VERSION } from "./version.js";
 
 function participantHostCapabilities(
@@ -118,13 +122,51 @@ function nativeHarness(
 describe("Codex participant native admission", () => {
   setupRunAttemptTestHooks({ sessionOwner: null });
   it.each([
-    { hooks: "optional", lifecycle: "fresh", participants: "solo", policy: "normal" },
-    { hooks: "managed-only", lifecycle: "resumed", participants: "solo", policy: "normal" },
-    { hooks: "disabled", lifecycle: "fresh", participants: "multiple", policy: "normal" },
-    { hooks: "disabled", lifecycle: "fresh", participants: "multiple", policy: "token-sharing" },
+    {
+      hooks: "optional",
+      lifecycle: "fresh",
+      participants: "solo",
+      policy: "normal",
+      source: "operator",
+    },
+    {
+      hooks: "managed-only",
+      lifecycle: "resumed",
+      participants: "solo",
+      policy: "normal",
+      source: "operator",
+    },
+    {
+      hooks: "disabled",
+      lifecycle: "fresh",
+      participants: "multiple",
+      policy: "normal",
+      source: "operator",
+    },
+    {
+      hooks: "disabled",
+      lifecycle: "fresh",
+      participants: "multiple",
+      policy: "token-sharing",
+      source: "operator",
+    },
+    {
+      hooks: "optional",
+      lifecycle: "fresh",
+      participants: "solo",
+      policy: "normal",
+      source: "no-operator",
+    },
+    {
+      hooks: "managed-only",
+      lifecycle: "resumed",
+      participants: "solo",
+      policy: "normal",
+      source: "no-operator",
+    },
   ] as const)(
-    "handles $participants participants with $hooks native admission on a $lifecycle $policy thread",
-    async ({ hooks, lifecycle, participants, policy }) => {
+    "handles $participants participants with $hooks native admission on a $lifecycle $policy thread ($source)",
+    async ({ hooks, lifecycle, participants, policy, source }) => {
       const params = participantParams("participant-model-hooks");
       params.sessionKey = undefined;
       if (policy === "token-sharing") {
@@ -159,6 +201,12 @@ describe("Codex participant native admission", () => {
           throw spawnFailure;
         }
       });
+      if (source === "no-operator") {
+        params.hostCapabilities = createCodexTestHostCapabilities({
+          ...params.hostCapabilities,
+          retainSourceAuthority: () => undefined,
+        });
+      }
       const harness = await createLeasedCodexLifecycleHarness({
         agentDir: path.join(tempDir, "participant-wire-agent"),
         persistedThreads: lifecycle === "resumed" ? ["thread-existing"] : [],
@@ -236,6 +284,19 @@ describe("Codex participant native admission", () => {
               ([method]) => method === (lifecycle === "resumed" ? "thread/resume" : "thread/start"),
             )?.[1];
             expect(request).toBeDefined();
+            if (hooks === "optional") {
+              expect(request).toHaveProperty(["config", "hooks.PreToolUse", 0]);
+            }
+            expect(preflight).toHaveBeenCalledWith(
+              expect.objectContaining({
+                nativeModelAdmission:
+                  policy === "token-sharing"
+                    ? undefined
+                    : hooks === "disabled"
+                      ? "disabled"
+                      : "optional",
+              }),
+            );
             expect(binding.lifecycle.action).toBe(lifecycle === "resumed" ? "resumed" : "started");
             const route = getCodexInferenceThread(harness.client, binding.threadId);
             expect(route).toBeDefined();
@@ -619,12 +680,16 @@ describe("Codex native tool catalog probe cleanup", () => {
           nativeHookRelay: { enabled: false },
         },
       });
+      const codexHome = resolveCodexAppServerLocalHomeDir(
+        connection.appServer.start,
+        connection.agentDir,
+      );
       const probe = createClientHarness({
         autoEmitExit: false,
         onWrite: (line, send) => {
           const { id, method } = JSON.parse(line);
           if (method === "initialize") {
-            send({ id, result: { userAgent: `codex-cli/${CODEX_APP_SERVER_VERSION}` } });
+            send({ id, result: { userAgent: `codex-cli/${CODEX_APP_SERVER_VERSION}`, codexHome } });
           }
         },
       });
@@ -632,11 +697,6 @@ describe("Codex native tool catalog probe cleanup", () => {
       try {
         const runtime = await prepareCodexAttemptRuntime(connection);
         using _ = { [Symbol.dispose]: runtime.nativeExecutionPolicy.release };
-        connection.mutable.startupBinding = {
-          threadId: "catalog-thread",
-          cwd: params.workspaceDir,
-          connectionScope: "supervision",
-        };
         vi.spyOn(CodexAppServerClient, "start").mockResolvedValue(probe.client);
         connection.attemptClientFactory = createIsolatedCodexAppServerClient;
         connection.appServer.start = {
@@ -646,13 +706,19 @@ describe("Codex native tool catalog probe cleanup", () => {
           headers: {},
         };
         connection.startupClientAuthProfileId = null;
-        const failure = new Error("native catalog unavailable");
-        const read = vi.spyOn(nativeToolCatalog, "loadCodexNativeToolCatalog");
-        if (fails) {
-          read.mockRejectedValue(failure);
-        } else {
-          read.mockResolvedValue([]);
-        }
+        const rolloutPath = path.join(codexHome, "sessions", "rollout-catalog-thread.jsonl");
+        await writeNativeCatalogFixture(rolloutPath, "catalog-thread", fails ? {} : []);
+        connection.mutable.startupBinding = {
+          threadId: "catalog-thread",
+          cwd: params.workspaceDir,
+          connectionScope: "supervision",
+          rolloutPath,
+          dynamicToolsFingerprint: codexDynamicToolsFingerprint([]),
+          appServerRuntimeFingerprint: buildCodexAppServerConnectionFingerprint(
+            connection.appServer,
+            connection.agentDir,
+          ),
+        };
         const stdinClosed = once(probe.process.stdin, "close");
         let settled = false;
         pending = prepareCodexAttemptTools(runtime);
@@ -669,7 +735,9 @@ describe("Codex native tool catalog probe cleanup", () => {
         expect(probe.process.exitCode).toBeNull();
         probe.emitExit();
         if (fails) {
-          await expect(pending).rejects.toBe(failure);
+          await expect(pending).rejects.toThrow(
+            "native tool catalog is missing, corrupt, or changed",
+          );
         } else {
           await pending;
         }

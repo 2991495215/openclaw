@@ -149,6 +149,8 @@ export function createCodexDynamicToolBridge(params: {
   tools: AnyAgentTool[];
   registeredTools?: readonly CodexToolDescriptor[];
   registeredSpecs?: readonly CodexDynamicToolSpec[];
+  /** Protected managed parents keep accepted declarations, but only exact current executors run. */
+  requireExactRegisteredDefinitions?: boolean;
   signal: AbortSignal;
   assertCurrent?: () => void;
   assertCurrentAsync?: () => Promise<void>;
@@ -179,8 +181,12 @@ export function createCodexDynamicToolBridge(params: {
     : undefined;
   const registrationNames =
     inheritedNames ?? new Set(registeredProjection.tools.map((entry) => entry.name));
+  const currentEntries = availableProjection.tools.filter((entry) =>
+    registrationNames.has(entry.name),
+  );
   const finalized = finalizeCodexToolAvailability(
-    availableProjection.tools.filter((entry) => registrationNames.has(entry.name)),
+    currentEntries,
+    params.requireExactRegisteredDefinitions ? inheritedSpecs : undefined,
   );
   const availableTools = finalized.tools;
   const pluginLocalMediaTrustByToolName = new Map<string, ReadonlySet<string>>();

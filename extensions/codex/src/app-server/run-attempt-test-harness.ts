@@ -451,6 +451,7 @@ export function createAppServerHarness(
   ) => Promise<unknown>,
   options: {
     persistedThreads?: Parameters<typeof createCodexLifecycleTurnHarness>[0]["persistedThreads"];
+    codexHome?: string;
     onStart?: (
       authProfileId: string | undefined,
       agentDir: string | undefined,
@@ -462,6 +463,7 @@ export function createAppServerHarness(
     const harness = createCodexLifecycleTurnHarness({
       respond: requestImpl,
       persistedThreads: options.persistedThreads,
+      codexHome: options.codexHome,
       agentDir: path.join(tempDir, "wire-agent"),
     });
     setCodexAppServerClientFactoryForTest(
