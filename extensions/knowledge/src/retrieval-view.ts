@@ -1,6 +1,6 @@
 import type { FeatureClient } from "openclaw/plugin-sdk/feature-contract";
 import type { contract } from "./contract.js";
-import type { LookupOutput, SearchOutput } from "./retrieval-contract.js";
+import type { ToolLookupOutput, ToolSearchOutput } from "./retrieval-contract.js";
 
 type Mode = "all" | "any" | "phrase" | "exact";
 export type SearchState = {
@@ -16,7 +16,7 @@ export type SearchState = {
 export async function loadSearch(
   feature: FeatureClient<typeof contract>,
   state: SearchState,
-): Promise<SearchOutput | LookupOutput> {
+): Promise<ToolSearchOutput | ToolLookupOutput> {
   const input = {
     query: state.query,
     lifecycle: state.lifecycle,

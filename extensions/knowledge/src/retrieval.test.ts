@@ -6,6 +6,7 @@ import { expect, it } from "vitest";
 import { stringify } from "yaml";
 import { contract } from "./contract.js";
 import { SqliteIdentityStore } from "./identity-store.js";
+import { isFullHit } from "./retrieval-contract.js";
 import { loadSearch } from "./retrieval-view.js";
 import { keywordExpression } from "./retrieval.js";
 import { createKnowledgeService } from "./service.js";
@@ -117,17 +118,20 @@ it("UI and tool share FTS title/alias/body retrieval, literal modes and stable c
     ["purple flower", "aliases"],
     ["distinctive", "body"],
   ] as any[]) {
-    const result = await f.service.grep({ query }, f.owner),
-      ui = await f.service.grep({ query }, f.operator);
+    const result = await f.service.grep({ query, detail: "full" }, f.owner),
+      ui = await f.service.grep({ query }, f.operator),
+      compact = await f.service.grep({ query }, f.owner);
     expect(Check(contract.operations.grep.output, result)).toBeTruthy();
+    expect(Check(contract.operations.grep.output, compact)).toBeTruthy();
     expect(stable(result)).toStrictEqual(stable(ui));
+    expect(compact.hits.map((h) => h.record.id)).toStrictEqual(ui.hits.map((h) => h.record.id));
     expect(result.index.state).toBe("ready");
     expect(result.index.lag).toBe(false);
     expect(result.total).toBe(1);
     expect(result.hits[0]!.matches).toStrictEqual([field]);
     const current = (await f.service.record({ id: "record_alpha" }, f.owner)).record;
-    expect(result.hits[0]!.citation.hash).toBe(current!.hash);
-    expect(result.hits[0]!.citation.revision).toBe(current!.revision);
+    expect(result.hits.find(isFullHit)!.citation.hash).toBe(current!.hash);
+    expect(result.hits.find(isFullHit)!.citation.revision).toBe(current!.revision);
   }
   expect((await f.service.grep({ query: "orchid nonexistent", mode: "all" }, f.owner)).total).toBe(
     0,
@@ -270,10 +274,10 @@ it("external edits, rename, deletion, malformed replacement and ontology changes
   await rename(target, target + "-renamed.md");
   target += "-renamed.md";
   expect((await f.service.grep({ query: "oldword" }, f.owner)).total).toBe(0);
-  const changed = await f.service.grep({ query: "newword" }, f.owner);
+  const changed = await f.service.grep({ query: "newword", detail: "full" }, f.owner);
   expect(changed.index.snapshot).not.toBe(before.index.snapshot);
-  expect(changed.hits[0]!.citation.path).toMatch(/renamed/);
-  expect(changed.hits[0]!.citation.revision).toBe(2);
+  expect(changed.hits.find(isFullHit)!.citation.path).toMatch(/renamed/);
+  expect(changed.hits.find(isFullHit)!.citation.revision).toBe(2);
   await writeFile(target, "malformed newword");
   expect((await f.service.grep({ query: "newword" }, f.owner)).total).toBe(0);
   await f.put("editable_two", "Newname", "newword");
@@ -354,8 +358,8 @@ it("bounded contextual snippets have truthful original Markdown lines", async ()
     body = `${"Introduction\n".repeat(100)}rareword <script>alert('unsafe')</script>\n${"tail 😀\n".repeat(200)}`;
   const target = await f.put("snippet_record", "Long record", body),
     raw = await readFile(target, "utf8");
-  const result = await f.service.grep({ query: "rareword" }, f.owner),
-    hit = result.hits[0],
+  const result = await f.service.grep({ query: "rareword", detail: "full" }, f.owner),
+    hit = result.hits.find(isFullHit),
     snippet = hit!.snippet;
   expect(snippet.field).toBe("body");
   expect(snippet.text).toMatch(/rareword/);
@@ -460,13 +464,13 @@ it("published pages are immediately searchable without approval; restored genera
   expect(receipt.state).toBe("published");
   expect(receipt.indexed).toBe(false);
   expect(receipt.message).toMatch(/pending/);
-  const indexed = await service.grep({ query: "newlypublishedword" }, f.owner);
+  const indexed = await service.grep({ query: "newlypublishedword", detail: "full" }, f.owner);
   expect(indexed.index.state).toBe("ready");
   expect(indexed.total).toBe(1);
-  expect(indexed.hits[0]!.citation.hash).toBe(receipt.hash);
-  expect(indexed.hits[0]!.evidence.length).toBe(1);
-  expect(indexed.hits[0]!.evidence[0]!.start_line).toBe(1);
-  expect(indexed.hits[0]!.attribution).toBe("User note");
+  expect(indexed.hits.find(isFullHit)!.citation.hash).toBe(receipt.hash);
+  expect(indexed.hits.find(isFullHit)!.evidence.length).toBe(1);
+  expect(indexed.hits.find(isFullHit)!.evidence[0]!.start_line).toBe(1);
+  expect(indexed.hits.find(isFullHit)!.attribution).toBe("User note");
   expect((await service.lookup({ query: receipt.id }, f.owner)).outcome).toBe("found");
   const raw = (await service.record({ id: receipt.id, view: "raw" }, f.owner)).record!.raw;
   expect(raw).not.toMatch(/acceptance:/);

@@ -59,7 +59,13 @@ import { QueryFreshness } from "./query-freshness.js";
 import { RecentInput, RecentOutput } from "./recent.js";
 import { RelinkInput, RelinkOutput } from "./relink-contract.js";
 import { RememberInput, RememberOutput } from "./remember-contract.js";
-import { SearchInput, SearchOutput, LookupInput, LookupOutput } from "./retrieval-contract.js";
+import {
+  SearchInput,
+  ToolSearchOutput,
+  LookupInput,
+  ToolLookupOutput,
+} from "./retrieval-contract.js";
+import { withSearchDetail } from "./search-detail.js";
 import { SessionActivityInput, SessionActivityOutput } from "./session-activity.js";
 import {
   AgentProxyInput,
@@ -434,17 +440,17 @@ export const contract = defineFeatureContract({
     grep: {
       kind: "query",
       description:
-        "Find records by words in titles, aliases and bodies. Use for discovery when the exact identity is unknown. Rank authorized valid knowledge by title/alias/body keywords with SQLite FTS5. Default: all word tokens, active records. Saved pages need no approval. mode=any ORs literal words; mode=phrase matches their order. No raw FTS/regex operators. lifecycle=superseded/all includes history, never withdrawn records. Filters apply before ranking. Snippets have revision/hash citations and body line locators. index.state=unavailable and total=null mean failed retrieval, not no matches. Compare index.snapshot across pages; restart on changes. Not exhaustive inventory: use knowledge_records. No embeddings.",
-      input: SearchInput,
-      output: SearchOutput,
+        "Find records by words in titles, aliases and bodies. Use for discovery when the exact identity is unknown. Rank authorized valid knowledge by title/alias/body keywords with SQLite FTS5. Default: all word tokens, active records. Saved pages need no approval. mode=any ORs literal words; mode=phrase matches their order. No raw FTS/regex operators. lifecycle=superseded/all includes history, never withdrawn records. Filters apply before ranking. Agents get compact hits (id, title, type, path, revision, short snippet, matched fields; default limit 10); detail=full adds revision/hash citations, body line locators, score, attribution and evidence. index.state=unavailable and total=null mean failed retrieval, not no matches. Compare index.snapshot across pages; restart on changes. Not exhaustive inventory: use knowledge_records. No embeddings.",
+      input: withSearchDetail(SearchInput),
+      output: ToolSearchOutput,
       tool: { name: "knowledge_grep", label: "Search knowledge" },
     },
     lookup: {
       kind: "query",
       description:
         "Resolve a known exact ID, full title or alias. This is not keyword search; use knowledge_grep for discovery and after a missing result. No keyword-search fallback. Resolve that exact identity in the trusted scope; returns found, ambiguous or missing without choosing an ambiguous identity. Names/aliases normalize Unicode, case and whitespace; IDs are case-sensitive. Active records by default, with no approval step; historical filters are explicit. Invalid, withdrawn and unavailable dependencies are excluded. Independent of keyword indexing. Use knowledge_record for full inspection and knowledge_records for exhaustive listing.",
-      input: LookupInput,
-      output: LookupOutput,
+      input: withSearchDetail(LookupInput),
+      output: ToolLookupOutput,
       tool: { name: "knowledge_lookup", label: "Resolve knowledge identity" },
     },
     records: {

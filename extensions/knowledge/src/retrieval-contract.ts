@@ -67,6 +67,30 @@ const hit = Type.Object({
   evidence: Type.Array(locator, { maxItems: 3 }),
   evidenceTruncated: Type.Boolean(),
 });
+/** Full ranked hit with citation, locators and evidence. */
+export type FullHit = Static<typeof hit>;
+/** Agent-default hit: identity, a short snippet and matched fields; no citation or evidence. */
+export const CompactHit = Type.Object(
+  {
+    record: Type.Pick(Summary, [
+      "id",
+      "title",
+      "kind",
+      "type",
+      "path",
+      "revision",
+      "lifecycle",
+      "valid",
+    ]),
+    snippet: Type.Object({
+      field: Type.Union([Type.Literal("title"), Type.Literal("aliases"), Type.Literal("body")]),
+      text: text(200),
+    }),
+    matches: Type.Array(text(20), { maxItems: 4 }),
+  },
+  { additionalProperties: false },
+);
+export type CompactHit = Static<typeof CompactHit>;
 const common = {
   // Page-local evidence count understood by Active Memory's custom-tool result gate.
   hits: Type.Array(hit, { maxItems: 50 }),
@@ -111,3 +135,19 @@ export const LookupOutput = Type.Object(
   { additionalProperties: false },
 );
 export type LookupOutput = Static<typeof LookupOutput>;
+// Agent tool hits: full on `detail: "full"`, otherwise compact.
+const toolHits = Type.Array(Type.Union([hit, CompactHit]), { maxItems: 50 });
+/** knowledge_grep tool output: SearchOutput with full or compact hits. */
+export const ToolSearchOutput = Type.Object(
+  { ...SearchOutput.properties, hits: toolHits },
+  { additionalProperties: false },
+);
+export type ToolSearchOutput = Static<typeof ToolSearchOutput>;
+/** knowledge_lookup tool output: LookupOutput with full or compact hits. */
+export const ToolLookupOutput = Type.Object(
+  { ...LookupOutput.properties, hits: toolHits },
+  { additionalProperties: false },
+);
+export type ToolLookupOutput = Static<typeof ToolLookupOutput>;
+/** Narrow a tool hit; operator (non-agent) calls always receive full hits. */
+export const isFullHit = (h: FullHit | CompactHit): h is FullHit => "citation" in h;

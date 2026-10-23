@@ -24,6 +24,7 @@ import { buildKnowledgeMemoryPrompt } from "./memory-prompt.js";
 import { createKnowledgeMemoryRuntime } from "./memory-provider.js";
 import { locatePluginFiles } from "./plugin-files.js";
 import { queryFreshness } from "./query-freshness.js";
+import { searchDetail } from "./search-detail.js";
 import type { StorageOperations } from "./storage-host.js";
 import { createStoreOperations } from "./store-assignments.js";
 import type { StoreRuntime } from "./store-runtime.js";
@@ -472,8 +473,8 @@ export function createKnowledgeService(
           issues: catalog.issues,
         };
       },
-      grep: call("search"),
-      lookup: call("lookup"),
+      grep: searchDetail(call("search")),
+      lookup: searchDetail(call("lookup")),
       records: call("records", false, () => ({
         facets: { kinds: {}, origins: {} },
         records: [],
