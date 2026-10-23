@@ -48,6 +48,7 @@ import { listManifestInstalledChannelIds } from "./trusted-catalog.js";
 
 describe("listManifestInstalledChannelIds", () => {
   beforeEach(() => {
+    vi.stubEnv("OPENCLAW_HOME", "/tmp/home");
     listPluginContributionIds.mockReset().mockReturnValue([]);
     listChannelPluginCatalogEntries.mockReset().mockReturnValue([]);
     listChatChannels.mockReset().mockReturnValue([]);
@@ -132,7 +133,6 @@ describe("listManifestInstalledChannelIds", () => {
         } as never,
       ],
       workspaceDir: "/tmp/workspace",
-      env: { OPENCLAW_HOME: "/tmp/home" } as NodeJS.ProcessEnv,
     });
 
     expect(resolved.entries.map((entry) => entry.id)).toEqual(["telegram"]);
@@ -172,7 +172,6 @@ describe("listManifestInstalledChannelIds", () => {
         } as never,
       ],
       workspaceDir: "/tmp/workspace",
-      env: { OPENCLAW_HOME: "/tmp/home" },
     });
 
     expect(resolved).toStrictEqual({

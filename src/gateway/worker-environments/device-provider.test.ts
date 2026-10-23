@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GATEWAY_CLIENT_IDS,
   GATEWAY_CLIENT_MODES,
@@ -22,6 +22,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const PROFILE = { device: DEVICE_ID };
 const LEASE = { leaseId: "device-lease", profile: PROFILE };
 const AUTHORITY = { assertCurrent: () => {} };
+
+afterEach(() => vi.restoreAllMocks());
+
 function pairedDevice(
   deviceId = DEVICE_ID,
   nodeSurface?: PairedDevice["nodeSurface"],
@@ -56,11 +59,9 @@ function deviceRuntime(params: {
   getPairedDevice?: (deviceId: string) => Promise<PairedDevice | null>;
   listCurrentNodes: () => Promise<readonly NodeWorkerSupervisorNodeProof[]>;
   getIssue?: () => NodeRunnerInventoryIssue | undefined;
-  now?: () => number;
 }) {
   const runtime = createDeviceWorkerRuntime({
     getPairedDevice: params.getPairedDevice ?? (async (deviceId) => pairedDevice(deviceId)),
-    ...(params.now ? { now: params.now } : {}),
   });
   runtime.bindNodeTransport({
     async getCurrentNode(nodeId) {
@@ -204,6 +205,7 @@ describe("device worker provider", () => {
     ["without exact legacy disconnect history", undefined, "dormant"],
   ] as const)("reports an offline paired node as %s", async (_, disconnectedAtMs, status) => {
     const nowMs = 20 * DAY_MS;
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
     const device = pairedDevice(DEVICE_ID, {
       createdAtMs: 1,
       approvedAtMs: 1,
@@ -215,7 +217,6 @@ describe("device worker provider", () => {
     const provider = deviceRuntime({
       getPairedDevice: async () => device,
       listCurrentNodes: async () => [],
-      now: () => nowMs,
     }).provider;
 
     await expect(provider.inspect(LEASE)).resolves.toEqual({ status });

@@ -134,7 +134,6 @@ describe("resolveChannelSetupEntries workspace shadow exclusion (GHSA-2qrv-rc5x-
 
     resolveChannelSetupEntries({
       cfg: {} as never,
-      env: process.env,
       installedPlugins: [],
     });
 
@@ -160,7 +159,6 @@ describe("resolveChannelSetupEntries workspace shadow exclusion (GHSA-2qrv-rc5x-
 
     const result = resolveChannelSetupEntries({
       cfg: {} as never,
-      env: process.env,
       installedPlugins: [],
     });
 
@@ -187,7 +185,6 @@ describe("resolveChannelSetupEntries workspace shadow exclusion (GHSA-2qrv-rc5x-
           allow: ["trusted-telegram-shadow"],
         },
       } as never,
-      env: process.env,
       installedPlugins: [],
     });
 
@@ -224,7 +221,6 @@ describe("resolveChannelSetupEntries workspace shadow exclusion (GHSA-2qrv-rc5x-
           telegram: { token: "existing-token" },
         },
       } as never,
-      env: process.env,
       installedPlugins: [],
     });
 
@@ -238,7 +234,6 @@ describe("resolveChannelSetupEntries workspace shadow exclusion (GHSA-2qrv-rc5x-
 
     const result = resolveChannelSetupEntries({
       cfg: {} as never,
-      env: process.env,
       installedPlugins: [],
     });
 
@@ -269,7 +264,6 @@ describe("resolveChannelSetupEntries workspace shadow exclusion (GHSA-2qrv-rc5x-
           "my-cool-plugin": { token: "existing-token" },
         },
       } as never,
-      env: process.env,
       installedPlugins: [],
     });
 

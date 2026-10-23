@@ -24,7 +24,6 @@ const DEVICE_WORKER_DORMANCY_MS = 14 * 24 * 60 * 60 * 1_000;
 
 type DeviceWorkerRuntimeOptions = {
   getPairedDevice: (deviceId: string) => Promise<PairedDevice | null>;
-  now?: () => number;
 };
 
 export type DeviceWorkerAvailability = {
@@ -117,7 +116,7 @@ function deviceLeaseId(deviceId: string, operationId: string): string {
 
 /** Core runtime for already-paired node hosts; pairing remains the durable trust owner. */
 export function createDeviceWorkerRuntime(options: DeviceWorkerRuntimeOptions) {
-  const now = options.now ?? Date.now;
+  const now = Date.now;
   let nodeTransport: NodeWorkerSupervisorTransport | undefined;
   const launchAdapter = createNodeWorkerLaunchAdapter({ getTransport: () => nodeTransport });
   const resolveAvailability = async (deviceId: string): Promise<DeviceWorkerAvailability> => {

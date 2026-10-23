@@ -36,13 +36,11 @@ export function resolveChannelSetupEntries(params: {
   cfg: OpenClawConfig;
   installedPlugins: ChannelPlugin[];
   workspaceDir?: string;
-  env?: NodeJS.ProcessEnv;
 }) {
   const workspaceDir = resolveWorkspaceDir(params.cfg, params.workspaceDir);
   const manifestInstalledIds = listManifestInstalledChannelIds({
     cfg: params.cfg,
     workspaceDir,
-    env: params.env,
   });
   const installedPluginIds = new Set(params.installedPlugins.map((plugin) => plugin.id));
   // Discovery keeps workspace-only install candidates visible, while the
@@ -50,12 +48,10 @@ export function resolveChannelSetupEntries(params: {
   const installedCatalogEntriesSource = listTrustedChannelPluginCatalogEntries({
     cfg: params.cfg,
     workspaceDir,
-    env: params.env,
   });
   const installableCatalogEntriesSource = listSetupDiscoveryChannelPluginCatalogEntries({
     cfg: params.cfg,
     workspaceDir,
-    env: params.env,
   });
   const catalogEntries = (entries: ChannelPluginCatalogEntry[], installed: boolean) =>
     entries
@@ -63,8 +59,7 @@ export function resolveChannelSetupEntries(params: {
         (entry) =>
           !installedPluginIds.has(entry.id) &&
           manifestInstalledIds.has(entry.id as ChannelChoice) === installed &&
-          (installed ||
-            !isStaticallyChannelConfigured(params.cfg, entry.id, params.env ?? process.env)) &&
+          (installed || !isStaticallyChannelConfigured(params.cfg, entry.id, process.env)) &&
           shouldShowChannelInSetup(entry.meta),
       )
       .map((entry) =>
