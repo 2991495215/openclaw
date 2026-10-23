@@ -12,6 +12,7 @@
 // --transcript-code named|auto adds TS/JSON code to the last assistant message.
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { loadavg } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { chromium, type Browser, type Page } from "playwright";
@@ -485,15 +486,12 @@ if (
 if (
   values["compare-bundle-dir"].length &&
   (!values["bundle-dir"] ||
-    (!values["warm-reload"] && !values["streaming-reply"]) ||
     traced ||
     cpuProfile ||
     values["compare-bundle-dir"].length > 2 ||
     runs % (values["compare-bundle-dir"].length + 1))
 ) {
-  throw new Error(
-    "Bundle comparison requires complete cycles of two or three unprofiled warm or streaming bundles",
-  );
+  throw new Error("Bundle comparison requires complete cycles of two or three unprofiled bundles");
 }
 if (sidebarRowTransfer === "interleaved" && (runs < 14 || runs % 2 !== 0)) {
   throw new Error("Interleaved sidebar transfer requires an even run count of at least 14");
@@ -650,14 +648,11 @@ try {
   const page = await context.newPage();
   await page.addInitScript("globalThis.__name = (fn) => fn");
   await page.addInitScript(
-    ({ measurePresentation, bootRoute: measuredRoute }) => {
+    ({ bootRoute: measuredRoute }) => {
       if (window !== window.top) {
         return;
       }
       performance.setResourceTimingBufferSize(4096);
-      if (!measurePresentation) {
-        return;
-      }
       const milestones = {
         firstEnabledComposerMs: null as number | null,
         firstComposerFocusMs: null as number | null,
@@ -712,7 +707,7 @@ try {
       };
       requestAnimationFrame(sample);
     },
-    { measurePresentation: firstLoad || Boolean(gatewayUrl), bootRoute },
+    { bootRoute },
   );
   const rigProbeScript = values["probe-dir"]
     ? (
@@ -933,8 +928,9 @@ try {
           .waitFor({ state: "visible" });
       }
       await page
-        .locator('.sidebar-rail [data-sidebar-entry^="session:"]')
-        .nth(fixture.counts.pinned - 1)
+        .locator(
+          `[data-session-section="pinned"] [data-session-key="${fixture.pinnedKeys.at(-1)}"]`,
+        )
         .waitFor({ state: "attached" });
       await page.locator('[data-sidebar-entry="plugin:team-scale-7/overview"]').waitFor();
       if (sidebarView === "online") {
@@ -1167,6 +1163,7 @@ try {
   }
   await selectComparisonBundle(0, page);
   for (let run = 0; run < runs; run++) {
+    const hostLoadAverage = loadavg();
     const cpuPhases: Record<string, ColdLoadCpuTables> = {};
     async function recordCpu(phase: string, profile: Parameters<typeof mapColdLoadCpuProfile>[0]) {
       const mapped = await mapColdLoadCpuProfile(profile, {
@@ -1976,6 +1973,7 @@ try {
     await cdp.detach();
     const result = {
       run: run + 1,
+      hostLoadAverage,
       ...(comparisonBundleDirs.length
         ? {
             variant: ["base", "candidate", "candidate-2"][bundleIndex],
@@ -2000,7 +1998,16 @@ try {
       overlays,
     };
     results.push(result);
-    console.log(JSON.stringify(result));
+    // The preview server shares this process; keep full result serialization
+    // after the measured runs, in summary.json.
+    console.log(
+      JSON.stringify({
+        run: result.run,
+        variant: result.variant,
+        hostLoadAverage,
+        presentation: result.presentation,
+      }),
+    );
   }
   if (errors.length) {
     throw new Error(`Browser errors: ${errors.join("\n")}`);
