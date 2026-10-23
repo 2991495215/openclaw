@@ -12,8 +12,6 @@ export const MASCOT_MOODS = [
 
 export type MascotMood = (typeof MASCOT_MOODS)[number];
 
-type MascotEffect = "none" | "sparkles" | "zzz" | "sparks" | "sweat";
-
 export type MascotPose = {
   floatOffset: number;
   antennaDegrees: number;
@@ -32,7 +30,7 @@ export type MascotPose = {
   hardHat: number;
   bodyTilt: number;
   bodyStretch: number;
-  effect: MascotEffect;
+  effect: "none" | "sparkles" | "zzz" | "sparks" | "sweat";
   effectPhase: number;
 };
 

@@ -32,16 +32,14 @@ registerEnglishCatalog(registerPluginConsentEnglish);
 
 export type PluginConsentIntent = { kind: "enable"; pluginId: string; rowKey: string };
 
-type PluginConsentFallback = {
-  name: string;
-  version?: string;
-  official?: boolean;
-};
-
 export type PluginConsentState = {
   intent: PluginConsentIntent;
   pluginId: string;
-  fallback: PluginConsentFallback;
+  fallback: {
+    name: string;
+    version?: string;
+    official?: boolean;
+  };
   details?: CapabilityConsentErrorDetails;
 };
 

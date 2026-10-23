@@ -11,9 +11,6 @@ import { linkReaderAuthorHref } from "./link-reader-response.ts";
 import type { LinkReaderTarget } from "./link-reader-target.ts";
 import { Icon, type IconName } from "./solid/icon.tsx";
 
-type ControlUiLinkReaderComment = NonNullable<ControlUiLinkReaderDocument["comments"]>[number];
-type ControlUiLinkReaderFile = NonNullable<ControlUiLinkReaderDocument["files"]>[number];
-
 registerEnglishCatalog(registerLinkReaderEnglish);
 
 function ReaderLink(props: JSX.IntrinsicElements["a"]) {
@@ -77,7 +74,7 @@ function TruncationNote(props: { truncated: boolean | undefined; label: string }
 }
 
 function FileContent(props: {
-  file: ControlUiLinkReaderFile;
+  file: NonNullable<ControlUiLinkReaderDocument["files"]>[number];
   expanded: boolean;
   onScrollPortRef?: (element: HTMLElement) => void | (() => void);
 }) {
@@ -113,7 +110,7 @@ function FileContent(props: {
 }
 
 function CommentContent(props: {
-  comment: ControlUiLinkReaderComment;
+  comment: NonNullable<ControlUiLinkReaderDocument["comments"]>[number];
   onScrollPortRef?: (element: HTMLElement) => void | (() => void);
   base: string;
   loadImage?: LoadImage;

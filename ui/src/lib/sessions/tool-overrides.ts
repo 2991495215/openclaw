@@ -1,7 +1,5 @@
 import type { SessionToolOverrides } from "./patch.ts";
 
-type BooleanOverrideGroup = "mcpServers" | "skills";
-
 export function readOwnEntry<T>(
   values: Readonly<Record<string, T>> | null | undefined,
   name: string,
@@ -27,7 +25,7 @@ export function resolveWebSearchToolOverrideState(
 
 export function nextBooleanToolOverrides(
   current: SessionToolOverrides | null | undefined,
-  group: BooleanOverrideGroup,
+  group: "mcpServers" | "skills",
   name: string,
   nextEnabled: boolean,
   baseEnabled: boolean,

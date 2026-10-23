@@ -48,11 +48,6 @@ export type TuiImageData = {
 
 export type TuiApprovalDecision = ApprovalDecision;
 
-type TuiTaskSuggestionActionCapabilities = {
-  canAccept: boolean;
-  canDismiss: boolean;
-};
-
 export type TuiPluginApproval = {
   id: string;
   request: {
@@ -67,12 +62,6 @@ export type TuiPluginApproval = {
   };
   createdAtMs: number;
   expiresAtMs: number;
-};
-
-type TuiGoalCommandOptions = {
-  sessionKey: string;
-  agentId?: string;
-  command: string;
 };
 
 /** Event envelope delivered from Gateway or the embedded backend into the TUI. */
@@ -196,13 +185,18 @@ export type TuiBackend = {
   listQuestions?: () => Promise<QuestionListResult>;
   getQuestion?: (id: string) => Promise<QuestionGetResult>;
   resolveQuestion?: (params: QuestionResolveParams) => Promise<QuestionResolveResult>;
-  getTaskSuggestionActionCapabilities?: () => TuiTaskSuggestionActionCapabilities;
+  getTaskSuggestionActionCapabilities?: () => {
+    canAccept: boolean;
+    canDismiss: boolean;
+  };
   listTaskSuggestions?: () => Promise<TaskSuggestion[]>;
   acceptTaskSuggestion?: (taskId: string) => Promise<TaskSuggestionsAcceptResult>;
   dismissTaskSuggestion?: (taskId: string) => Promise<{ taskId: string; dismissed: boolean }>;
-  runGoalCommand?: (
-    opts: TuiGoalCommandOptions,
-  ) => Promise<{ text: string; continuationPrompt?: string }>;
+  runGoalCommand?: (opts: {
+    sessionKey: string;
+    agentId?: string;
+    command: string;
+  }) => Promise<{ text: string; continuationPrompt?: string }>;
   runUsageCostCommand?: (opts: {
     sessionKey: string;
     agentId?: string;

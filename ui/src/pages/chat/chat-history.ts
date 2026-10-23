@@ -29,8 +29,6 @@ type LoadChatHistoryOptions = {
   startup?: boolean;
 };
 
-type ChatErrorDetail = Extract<ChatEvent, { state: "error" }>["errorDetail"];
-
 export async function loadChatHistory(
   state: ChatHistoryHost,
   opts: LoadChatHistoryOptions = {},
@@ -232,7 +230,7 @@ export type ChatEventPayload = {
   errorMessage?: string;
   suppressErrorNotice?: boolean;
   errorKind?: Extract<ChatEvent, { state: "error" }>["errorKind"];
-  errorDetail?: ChatErrorDetail;
+  errorDetail?: Extract<ChatEvent, { state: "error" }>["errorDetail"];
   stopReason?: string;
   localModelMayStillBeFinishing?: boolean;
   yielded?: true;

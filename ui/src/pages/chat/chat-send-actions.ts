@@ -103,13 +103,11 @@ export const flushChatQueueForEvent = (host: ChatHost) =>
  * storage failure mid-permutation leaves the prior order intact instead of a
  * partially reshuffled queue.
  */
-type ChatQueueMoveResult = "moved" | "rejected" | "noop";
-
 export function moveQueuedChatMessage(
   host: ChatHost,
   id: string,
   targetId: string,
-): ChatQueueMoveResult {
+): "moved" | "rejected" | "noop" {
   const owner = chatOutboxOwner(host);
   const located = owner.locate(host, id);
   if (!located || !isMovableChatQueueItem(located.item)) {

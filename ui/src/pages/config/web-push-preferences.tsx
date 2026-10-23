@@ -31,7 +31,6 @@ function detailLevel(value: string): DetailLevel {
   return value === "identified" || value === "detailed" ? value : "private";
 }
 
-type InheritChoice = "inherit" | "on" | "off";
 type QuietHoursWindow = WebPushNotificationPreferences["quietHours"];
 function detailLevelOptions(): Array<{ value: DetailLevel; label: string }> {
   return [
@@ -42,7 +41,7 @@ function detailLevelOptions(): Array<{ value: DetailLevel; label: string }> {
 }
 function inheritChoiceOptions(
   inheritLabel: string,
-): Array<{ value: InheritChoice; label: string }> {
+): Array<{ value: "inherit" | "on" | "off"; label: string }> {
   return [
     { value: "inherit", label: inheritLabel },
     { value: "on", label: t("configForm.enumOn") },

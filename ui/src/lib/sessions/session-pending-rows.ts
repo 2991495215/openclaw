@@ -32,7 +32,6 @@ type PendingRowPatch<T> = {
   canonical: T;
 };
 export type SessionPinFields = { pinned: boolean; pinnedAt: number | undefined };
-type SessionFastModeFields = Pick<GatewaySessionRow, "fastMode" | "effectiveFastMode">;
 export const optimisticSessionRowFields = [
   "pinned",
   "pinnedAt",
@@ -367,7 +366,7 @@ type SessionSettingsPatch = Pick<SessionPatch, "thinkingLevel" | "fastMode" | "c
 export function createOptimisticSettingsPatches(host: PendingRowCopyHost) {
   const thinking = createOptimisticRowField(host, "thinkingLevel");
   const fastMode = createOptimisticRowPatches(host, {
-    read: (row): SessionFastModeFields => ({
+    read: (row): Pick<GatewaySessionRow, "fastMode" | "effectiveFastMode"> => ({
       fastMode: row?.fastMode,
       effectiveFastMode: row?.effectiveFastMode,
     }),

@@ -55,13 +55,6 @@ export type LoginFailureStep = {
   commands: string[];
 };
 
-type LoginFailureStepDefinition =
-  | string
-  | {
-      key: string;
-      commands: string[];
-    };
-
 export type LoginFailureFeedback = {
   kind: LoginFailureKind;
   placement: LoginFailurePlacement;
@@ -96,7 +89,7 @@ function buildFeedback(
     titleKey?: string;
     summaryKey?: string;
     primaryCommand?: string;
-    stepKeys: LoginFailureStepDefinition[];
+    stepKeys: (string | { key: string; commands: string[] })[];
     stepParams?: Record<string, string>;
     refreshAction?: { label: string };
   },

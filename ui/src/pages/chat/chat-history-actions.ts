@@ -66,8 +66,6 @@ type ClearChatHistoryState = ChatHistoryHost &
     sessions: Pick<SessionCapability, "reset">;
   };
 
-type ClearChatHistoryResult = "completed" | "failed" | "uncertain";
-
 type RewindChatHistoryState = ChatHistoryHost &
   Parameters<typeof persistChatComposerState>[0] &
   Parameters<typeof scheduleChatScroll>[0] & {
@@ -124,7 +122,7 @@ function clearPostResetBranchPrecondition(
 
 export async function clearChatHistory(
   state: ClearChatHistoryState,
-): Promise<ClearChatHistoryResult> {
+): Promise<"completed" | "failed" | "uncertain"> {
   if (!state.client || !state.connected) {
     return "failed";
   }
