@@ -1,7 +1,6 @@
 {
  "shared": [
   "__vite-browser-external",
-  "apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json",
   "node_modules/@noble/ed25519/index.js",
   "node_modules/@noble/hashes/_md.js",
   "node_modules/@noble/hashes/_u64.js",
@@ -140,7 +139,6 @@
   "packages/gateway-protocol/src/schema/ui-appearance-preferences.ts",
   "packages/gateway-protocol/src/schema/ui-appearance-typefaces.ts",
   "packages/gateway-protocol/src/schema/user-profile-constants.ts",
-  "packages/gateway-protocol/src/server-capabilities.ts",
   "packages/gateway-protocol/src/session-agent-status.ts",
   "packages/gateway-protocol/src/session-limits.ts",
   "packages/gateway-protocol/src/session-row-deltas.ts",
@@ -733,6 +731,7 @@
   "ui/src/lib/chat/slash-command-catalog.ts",
   "ui/src/lib/chat/thinking.ts",
   "ui/src/lib/chat/tool-display-icon.ts",
+  "ui/src/lib/chat/tool-display-presentation.generated.json",
   "ui/src/lib/clipboard.ts",
   "ui/src/lib/config-form-utils.ts",
   "ui/src/lib/config/applied-refresh.ts",
@@ -1333,6 +1332,7 @@
   "ui/src/components/skill-file-hovercard.tsx",
   "ui/src/components/solid/markdown-html.tsx",
   "ui/src/components/solid/mcp-app-context-strip.tsx",
+  "ui/src/components/solid/mcp-app-operation-error.tsx",
   "ui/src/components/solid/panel-loading-skeleton.tsx",
   "ui/src/components/solid/person-reference.tsx",
   "ui/src/components/solid/sanitized-html.tsx",
