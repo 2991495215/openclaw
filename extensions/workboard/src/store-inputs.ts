@@ -92,9 +92,7 @@ export type WorkboardProtocolViolationInput = {
   sessionKey?: unknown;
   runId?: unknown;
 };
-export type WorkboardClaimInput = {
-  ownerId?: unknown;
-  token?: unknown;
+export type WorkboardClaimInput = WorkboardMutationScope & {
   ttlSeconds?: unknown;
 };
 export type WorkboardClaimOptions = {
@@ -110,9 +108,7 @@ export type WorkboardClaimOptions = {
   /** Trusted legacy-card adoption; applied only while expectedAuthority still matches. */
   adoptWorkspaceAccess?: WorkboardWorkspaceAccess;
 };
-export type WorkboardHeartbeatInput = {
-  token?: unknown;
-  ownerId?: unknown;
+export type WorkboardHeartbeatInput = WorkboardMutationScope & {
   note?: unknown;
 };
 export type WorkboardBulkInput = {
@@ -120,18 +116,14 @@ export type WorkboardBulkInput = {
   patch?: unknown;
   archived?: unknown;
 };
-export type WorkboardCompleteInput = {
-  ownerId?: unknown;
-  token?: unknown;
+export type WorkboardCompleteInput = WorkboardMutationScope & {
   summary?: unknown;
   proof?: unknown;
   proofId?: unknown;
   artifacts?: unknown;
   createdCardIds?: unknown;
 };
-export type WorkboardBlockInput = {
-  ownerId?: unknown;
-  token?: unknown;
+export type WorkboardBlockInput = WorkboardMutationScope & {
   reason?: unknown;
 };
 export type WorkboardDispatchResult = {
