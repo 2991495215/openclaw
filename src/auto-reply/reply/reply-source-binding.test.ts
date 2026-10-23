@@ -17,7 +17,7 @@ import {
 } from "../../sessions/session-controller.mailbox.js";
 import { createReplyOperation } from "../../sessions/session-controller.operation.js";
 import { testing } from "../../sessions/session-controller.test-support.js";
-import type { AgentInputRecoveryAdmission } from "../../state/agent-input-recovery-context.js";
+import type { AgentInputRecoveryAdmission } from "../../state/agent-input-recovery.types.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import { runPreparedReply } from "./get-reply-run.js";
 import { baseParams } from "./get-reply-run.test-support.js";

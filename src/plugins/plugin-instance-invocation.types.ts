@@ -1,4 +1,4 @@
-import type { AgentInputRecoveryContext } from "../state/agent-input-recovery-context.js";
+import type { AgentInputRecoveryContext } from "../state/agent-input-recovery.types.js";
 import type { ScopedPluginMetadataSnapshot } from "./current-plugin-metadata-snapshot.types.js";
 import type { PluginCacheScope } from "./plugin-cache.types.js";
 import type { PluginInvocationInstance, PluginRetentionOwner } from "./plugin-instance.types.js";

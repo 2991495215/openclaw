@@ -1,18 +1,6 @@
 import { getPluginExecutionFrame } from "../plugins/plugin-instance-invocation.js";
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
-
-export type AgentInputRecoveryAdmission = {
-  isPending: (agentId: string) => boolean;
-  waitForAgentInputRecovery: (
-    agentId: string,
-    options?: { signal?: AbortSignal },
-  ) => Promise<void> | undefined;
-};
-
-export type AgentInputRecoveryContext = {
-  context?: { inputRecovery?: AgentInputRecoveryAdmission };
-  resolveGatewayContext?: () => { inputRecovery?: AgentInputRecoveryAdmission } | undefined;
-};
+import type { AgentInputRecoveryAdmission } from "./agent-input-recovery.types.js";
 
 function resolveOwner(): AgentInputRecoveryAdmission | undefined {
   const scope = getPluginExecutionFrame()?.inputRecoveryContext;
