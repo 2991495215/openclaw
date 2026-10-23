@@ -739,10 +739,7 @@ export class NodeRegistry {
     ) {
       return false;
     }
-    const resolution = await this.resolvePairingLease(this.capturePairingLease(initial), {
-      invalidateStale: true,
-    });
-    return this.projectNodePairingLeaseResolutions([resolution]).length > 0;
+    return (await this.resolveCurrentConnectedSessions([initial])).length > 0;
   }
 
   private clearDesktopAvailability(node: NodeSession): void {
@@ -1275,10 +1272,7 @@ export class NodeRegistry {
     ) {
       return false;
     }
-    const resolution = await this.resolvePairingLease(this.capturePairingLease(initial), {
-      invalidateStale: true,
-    });
-    const [node] = this.projectNodePairingLeaseResolutions([resolution]);
+    const [node] = await this.resolveCurrentConnectedSessions([initial]);
     return node ? this.sendEventToSession(node, params.event, params.payload) : false;
   }
 
