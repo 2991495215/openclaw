@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
-  captureI18nStateForTesting,
-  createI18nManagerForTesting,
-} from "./lib/translate.test-support.ts";
-import { registerCatalogMenuEnglish } from "./locales/en-catalog-menu.ts";
-import { en } from "./locales/en.ts";
+  dropRepoOwnedCustomElements,
+  trackCustomElementRegistry,
+} from "../../../test/jsdom-custom-elements.ts";
 
-vi.hoisted(() => vi.resetModules());
+const elements = trackCustomElementRegistry(customElements);
+let en: (typeof import("./locales/en.ts"))["en"];
+let registerCatalogMenuEnglish: (typeof import("./locales/en-catalog-menu.ts"))["registerCatalogMenuEnglish"];
+let createI18nManagerForTesting: (typeof import("./lib/translate.test-support.ts"))["createI18nManagerForTesting"];
 let restoreI18n: () => Promise<void>;
 const menuKeys = [
   "sessionMenu",
@@ -22,10 +23,15 @@ const menuKeys = [
   "terminalUnavailable",
 ] as const;
 
-beforeEach(() => {
-  restoreI18n = captureI18nStateForTesting();
-  // Each consumer evaluates once; clear only its copy to prove the second consumer
-  // registers independently of its already-loaded standalone renderer.
+beforeEach(async () => {
+  // Each consumer needs its own registrar lifetime: production registers once,
+  // so deleting keys cannot replay a registrar already admitted by its WeakSet.
+  vi.resetModules();
+  const support = await import("./lib/translate.test-support.ts");
+  ({ en } = await import("./locales/en.ts"));
+  ({ registerCatalogMenuEnglish } = await import("./locales/en-catalog-menu.ts"));
+  createI18nManagerForTesting = support.createI18nManagerForTesting;
+  restoreI18n = support.captureI18nStateForTesting();
   for (const key of menuKeys) {
     Reflect.deleteProperty(en.chat.catalog, key);
   }
@@ -33,6 +39,9 @@ beforeEach(() => {
 afterEach(async () => {
   registerCatalogMenuEnglish();
   await restoreI18n();
+  if (elements) {
+    dropRepoOwnedCustomElements(elements);
+  }
 });
 
 it.each([
@@ -72,7 +81,7 @@ it.each([
     }
     expect(manager.t("chat.catalog.sessionMenu")).toBe("Sitzungsaktionen");
     expect(manager.t("chat.catalog.openInOpenClaw")).toBe("Open in OpenClaw");
-    expect(manager.t("chat.catalog.importComplete", { count: 3 })).toBe(
+    expect(manager.t("chat.catalog.importComplete", { count: "3" })).toBe(
       "Imported 3 transcript items.",
     );
     expect(manager.t("chat.catalog.openOriginal")).toBe("Open original");

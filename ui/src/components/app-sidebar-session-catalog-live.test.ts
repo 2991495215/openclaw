@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionCatalog } from "../../../packages/gateway-protocol/src/index.ts";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import { SessionCatalogLiveState } from "./app-sidebar-session-catalog-live.ts";
@@ -22,19 +22,19 @@ function catalog(id: string, hostCount: number): SessionCatalog {
   };
 }
 
-let live: SessionCatalogLiveState;
-let progressId: string;
+let currentLive: SessionCatalogLiveState;
+let currentProgressId: string;
 beforeEach(() => {
-  live = new SessionCatalogLiveState();
-  progressId = live.beginRequest(1).progressId;
+  currentLive = new SessionCatalogLiveState();
+  currentProgressId = currentLive.beginRequest(1).progressId;
 });
 function apply(
   incoming: SessionCatalog,
   catalogs: SessionCatalog[],
   pages = new Map<string, number>(),
 ) {
-  return live.applyHost({
-    payload: { progressId, agentId: "main", catalog: incoming },
+  return currentLive.applyHost({
+    payload: { progressId: currentProgressId, agentId: "main", catalog: incoming },
     agentId: "main",
     catalogs,
     pageDepths: pages,
@@ -50,7 +50,7 @@ it.each(["final", "incremental"] as const)(
     const incoming = { ...current, hosts: [pending] };
     const catalogs =
       publication === "final"
-        ? live.mergeFinal([incoming], [current])
+        ? currentLive.mergeFinal([incoming], [current])
         : apply(incoming, [current])!.catalogs;
     expect(catalogs[0]?.hosts[0]).toMatchObject({
       pending: true,
@@ -79,7 +79,7 @@ it("does not replace a settled progressive host with its pending final response"
   const current = catalog("codex", 1);
   const pending = { ...current.hosts[0]!, pending: true, sessions: [] };
   const published = apply(current, [{ ...current, hosts: [pending] }])!;
-  expect(live.mergeFinal([{ ...current, hosts: [pending] }], published.catalogs)).toEqual([
+  expect(currentLive.mergeFinal([{ ...current, hosts: [pending] }], published.catalogs)).toEqual([
     current,
   ]);
 });
