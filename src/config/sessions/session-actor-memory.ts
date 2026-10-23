@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { parseAgentSessionKey, toAgentStoreSessionKey } from "../../routing/session-key.js";
-import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import type { ConversationReadQuery } from "./conversation-registry.types.js";
 import type {
   SessionActor,
@@ -25,6 +24,7 @@ import {
 import { createSessionActorMemoryPending } from "./session-actor-memory-pending.js";
 import { publishSessionActorMemoryChanges } from "./session-actor-memory-publication.js";
 import { validateSessionActorMemoryRecoveryInput } from "./session-actor-memory-recovery.js";
+import { registerMemorySessionActorHandle } from "./session-actor-memory-registry.js";
 import { validateSessionActorMemorySources } from "./session-actor-memory-sources.js";
 import {
   advanceSessionActorMemoryState,
@@ -51,16 +51,6 @@ function errorFacts(error: unknown) {
   return error instanceof Error
     ? { name: error.name, message: error.message }
     : { name: "Error", message: "Session actor command failed" };
-}
-
-const actorOwners = resolveGlobalSingleton(
-  Symbol.for("openclaw.memorySessionActorHandles"),
-  () => new WeakMap<SessionActor, ReturnType<typeof createMemorySessionActorOwner>>(),
-);
-
-/** A selected handle retains its actual owner, including directly constructed owners. */
-export function readMemorySessionActorOwner(actor: SessionActor) {
-  return actorOwners.get(actor);
 }
 
 /** Memory is authoritative until session close; it is never evicted into a database. */
@@ -288,7 +278,7 @@ export function createMemorySessionActorOwner(options: { agentId: string; path: 
           };
         },
       });
-      actorOwners.set(actor, owner);
+      registerMemorySessionActorHandle(actor, owner);
       return actor;
     },
   };
