@@ -222,7 +222,6 @@ it.each(stopCases)(
       ? runWithImageModelFallback({
           cfg: { agents: { defaults: { imageModel } } },
           run,
-          onError,
         })
       : runWithModelFallback({ ...fallbackOptions, run, onError, onFallbackStep, abortSignal });
     await expect(result).rejects.toBe(error);
