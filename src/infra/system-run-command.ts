@@ -7,10 +7,10 @@ import {
   unwrapKnownShellMultiplexerInvocation,
 } from "./exec-wrapper-resolution.js";
 import {
-  NUSHELL_INLINE_COMMAND_FLAGS,
   POSIX_INLINE_COMMAND_FLAGS,
   isPowerShellInlineRestCommandFlag,
   resolveInlineCommandMatch,
+  resolveNushellInlineCommandMatch,
   resolvePowerShellInlineCommandMatch,
 } from "./shell-inline-command.js";
 import { formatExecCommand, POSIX_SHELL_WRAPPERS } from "./shell-wrapper-resolution.js";
@@ -64,7 +64,7 @@ function hasTrailingPositionalArgvAfterInlineCommand(argv: string[]): boolean {
     wrapper === "powershell" || wrapper === "pwsh"
       ? resolvePowerShellInlineCommandMatch(wrapperArgv).valueTokenIndex
       : wrapper === "nu"
-        ? resolveNushellInlineCommandValueTokenIndex(wrapperArgv)
+        ? resolveNushellInlineCommandMatch(wrapperArgv, "position").valueTokenIndex
         : resolveInlineCommandMatch(wrapperArgv, POSIX_INLINE_COMMAND_FLAGS, {
             allowCombinedC: true,
           }).valueTokenIndex;
@@ -78,26 +78,6 @@ function hasTrailingPositionalArgvAfterInlineCommand(argv: string[]): boolean {
     return false;
   }
   return wrapperArgv.slice(inlineCommandIndex + 1).some((entry) => entry.trim().length > 0);
-}
-
-function resolveNushellInlineCommandValueTokenIndex(argv: string[]): number | null {
-  for (let i = 1; i < argv.length; i += 1) {
-    const arg = argv[i]?.trim() ?? "";
-    if (!arg || arg === "--") {
-      return null;
-    }
-    const equalsIndex = arg.indexOf("=");
-    if (equalsIndex === -1) {
-      continue;
-    }
-    const flag = arg.slice(0, equalsIndex).toLowerCase();
-    if (flag.startsWith("--") && NUSHELL_INLINE_COMMAND_FLAGS.has(flag)) {
-      return i;
-    }
-  }
-  return resolveInlineCommandMatch(argv, NUSHELL_INLINE_COMMAND_FLAGS, {
-    allowCombinedC: true,
-  }).valueTokenIndex;
 }
 
 /** Resolve request command fields while accepting the legacy shell-preview text. */

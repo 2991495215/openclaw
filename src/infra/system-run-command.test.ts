@@ -21,6 +21,36 @@ test("keeps rawless sh -lc fail-closed", () => {
   expect(extractShellCommandFromArgv(["/bin/sh", "-lc", "echo hi"])).toBeNull();
 });
 
+test.each([
+  { command: ["nu", "--EXECUTE=echo"], shellPayload: "echo", previewText: "echo" },
+  { command: ["nu", "--EXECUTE", "echo"], shellPayload: null, previewText: null },
+  { command: ["nu", "--execute =echo", "tail"], shellPayload: "echo", previewText: "echo" },
+  { command: ["nu", "", "--execute", "echo", "tail"], shellPayload: "echo", previewText: "echo" },
+  { command: ["nu", "-c", "first", "--", "tail"], shellPayload: "first", previewText: "first" },
+  { command: ["nu", "--", "--execute=echo"], shellPayload: null, previewText: null },
+  { command: ["nu", "--execute=   ", "-c", "later"], shellPayload: null, previewText: null },
+  {
+    command: ["nu", "-c", "first", "--execute=second", "tail"],
+    shellPayload: "second",
+    previewText: null,
+  },
+])(
+  "preserves Nushell payload and preview binding for $command",
+  ({ command, shellPayload, previewText }) => {
+    expect(resolveSystemRunCommandRequest({ command })).toMatchObject({
+      ok: true,
+      shellPayload,
+      previewText,
+    });
+    const bound = resolveSystemRunCommandRequest({ command, rawCommand: shellPayload ?? "echo" });
+    expect(bound).toMatchObject(
+      previewText === null
+        ? { ok: false, details: { code: "RAW_COMMAND_MISMATCH" } }
+        : { ok: true, shellPayload, previewText },
+    );
+  },
+);
+
 test("normalizes non-string argv and empty requests", () => {
   expect(resolveSystemRunCommandRequest({})).toMatchObject({
     ok: true,

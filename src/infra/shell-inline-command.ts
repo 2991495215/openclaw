@@ -219,6 +219,34 @@ export function resolveInlineCommandMatch(
   return { command: null, valueTokenIndex: null };
 }
 
+export function resolveNushellInlineCommandMatch(
+  argv: string[],
+  projection: "payload" | "position",
+): { command: string | null; valueTokenIndex: number | null } {
+  // Payload binding preserves legacy trimming/fallback; positional scans stop at empty tokens.
+  for (let i = 1; i < argv.length; i += 1) {
+    const arg = argv[i]?.trim() ?? "";
+    if (!arg || arg === "--") {
+      if (projection === "position") {
+        return { command: null, valueTokenIndex: null };
+      }
+      break;
+    }
+    const equalsIndex = arg.indexOf("=");
+    if (equalsIndex === -1) {
+      continue;
+    }
+    const lower = arg.slice(0, equalsIndex).toLowerCase();
+    const flag = projection === "payload" ? lower.trim() : lower;
+    if (flag.startsWith("--") && NUSHELL_INLINE_COMMAND_FLAGS.has(flag)) {
+      return { command: arg.slice(equalsIndex + 1).trim() || null, valueTokenIndex: i };
+    }
+  }
+  return resolveInlineCommandMatch(argv, NUSHELL_INLINE_COMMAND_FLAGS, {
+    allowCombinedC: true,
+  });
+}
+
 /** Return true when an inline shell payload directly dispatches positional args. */
 export function isDirectShellPositionalCarrierCommand(command: string): boolean {
   const trimmed = command.trim();

@@ -16,6 +16,7 @@ import {
   NUSHELL_INLINE_COMMAND_FLAGS,
   POSIX_INLINE_COMMAND_FLAGS,
   resolveInlineCommandMatch,
+  resolveNushellInlineCommandMatch,
   resolvePowerShellInlineCommandMatch,
 } from "./shell-inline-command.js";
 
@@ -216,13 +217,7 @@ function extractPosixShellInlineCommand(argv: string[], baseExecutable: string):
     if (hasNushellStartupOptionBeforeInlineCommand(argv)) {
       return null;
     }
-    const attached = extractNushellAttachedInlineCommand(argv);
-    if (attached !== null) {
-      return attached.trim() || null;
-    }
-    return resolveInlineCommandMatch(argv, NUSHELL_INLINE_COMMAND_FLAGS, {
-      allowCombinedC: true,
-    }).command;
+    return resolveNushellInlineCommandMatch(argv, "payload").command;
   }
   return resolveInlineCommandMatch(argv, POSIX_INLINE_COMMAND_FLAGS, { allowCombinedC: true })
     .command;
@@ -244,24 +239,6 @@ function hasNushellStartupOptionBeforeInlineCommand(argv: string[]): boolean {
     }
   }
   return false;
-}
-
-function extractNushellAttachedInlineCommand(argv: string[]): string | null {
-  for (let i = 1; i < argv.length; i += 1) {
-    const arg = argv[i]?.trim() ?? "";
-    if (!arg || arg === "--") {
-      return null;
-    }
-    const equalsIndex = arg.indexOf("=");
-    if (equalsIndex === -1) {
-      continue;
-    }
-    const flag = normalizeLowercaseStringOrEmpty(arg.slice(0, equalsIndex));
-    if (flag.startsWith("--") && NUSHELL_INLINE_COMMAND_FLAGS.has(flag)) {
-      return arg.slice(equalsIndex + 1);
-    }
-  }
-  return null;
 }
 
 function isNushellInlineCommandBoundary(arg: string): boolean {
