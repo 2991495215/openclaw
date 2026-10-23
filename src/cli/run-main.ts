@@ -1220,23 +1220,13 @@ async function runCliWithPreparedOutputMode(
     try {
       const [
         { buildProgram },
-        { formatUncaughtError },
-        { formatCliFailureLines, formatCliJsonFailure },
-        { runFatalErrorHooks },
-        {
-          installUnhandledRejectionHandler,
-          isBenignUncaughtExceptionError,
-          isUncaughtExceptionHandled,
-        },
-        { defaultRuntime, restoreRuntimeTerminalState },
+        { installUnhandledRejectionHandler },
+        { installCliUncaughtExceptionHandler },
       ] = await startupTrace.measure("core-imports", () =>
         Promise.all([
           import("./program/build-program.js"),
-          import("../infra/errors.js"),
-          import("./failure-output.js"),
-          import("../infra/fatal-error-hooks.js"),
           import("../infra/unhandled-rejections.js"),
-          import("../runtime.js"),
+          import("./uncaught-exception.js"),
         ]),
       );
       const program = await startupTrace.measure("build-program", () =>
@@ -1248,33 +1238,7 @@ async function runCliWithPreparedOutputMode(
         installUnhandledRejectionHandler();
       }
 
-      process.on("uncaughtException", (error) => {
-        if (isUncaughtExceptionHandled(error)) {
-          return;
-        }
-        if (isBenignUncaughtExceptionError(error)) {
-          console.warn(
-            "[openclaw] Non-fatal uncaught exception (continuing):",
-            formatUncaughtError(error),
-          );
-          return;
-        }
-        if (isJsonOutputModeActive(normalizedArgv)) {
-          defaultRuntime.writeJson(formatCliJsonFailure(error));
-        }
-        for (const line of formatCliFailureLines({
-          title: "OpenClaw hit an unexpected runtime error.",
-          error,
-          argv: normalizedArgv,
-        })) {
-          console.error(line);
-        }
-        for (const message of runFatalErrorHooks({ reason: "uncaught_exception", error })) {
-          console.error("[openclaw]", message);
-        }
-        restoreRuntimeTerminalState("uncaught exception");
-        exitAfterSignalExitBarriers(1, "uncaught exception");
-      });
+      installCliUncaughtExceptionHandler(() => normalizedArgv);
 
       const invocation = resolveCliArgvInvocation(parseArgv);
       // Register the primary command (builtin or subcli) so help and command parsing

@@ -173,10 +173,17 @@ describe("legacy package executable entrypoint", () => {
     );
   });
 
-  it("passes uncaught exception cause to the process exit owner", async () => {
+  it("uses live output arguments and passes uncaught exceptions to the process exit owner", async () => {
+    vi.doMock("./cli/failure-output.js", (importOriginal) =>
+      importOriginal<typeof import("./cli/failure-output.js")>(),
+    );
     const listeners = new Set(process.listeners("uncaughtException"));
     const runtime = await import("./runtime.js");
     vi.spyOn(runtime, "restoreRuntimeTerminalState").mockImplementation(() => {});
+    const json = vi.spyOn(runtime.defaultRuntime, "writeJson").mockImplementation(() => {
+      process.argv = ["node", "dist/index.js", "status", "--debug"];
+    });
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
     const { registerSignalExitOwner } = await import("./cli/signal-exit-barrier.js");
     const owner = vi.fn();
     const releaseOwner = registerSignalExitOwner(owner);
@@ -186,7 +193,13 @@ describe("legacy package executable entrypoint", () => {
       if (!handler) {
         throw new Error("uncaughtException handler was not registered");
       }
+      process.argv = ["node", "dist/index.js", "status", "--json"];
       handler(new Error("owned failure"), "uncaughtException");
+      expect(json).toHaveBeenCalledExactlyOnceWith({
+        ok: false,
+        error: { type: "cli_error", message: "owned failure" },
+      });
+      expect(stderr).toHaveBeenCalledWith("[openclaw] Stack:");
       expect(owner).toHaveBeenCalledExactlyOnceWith(1, "uncaught exception");
       expect(runtime.restoreRuntimeTerminalState).toHaveBeenCalledWith("uncaught exception");
     } finally {
