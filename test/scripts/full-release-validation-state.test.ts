@@ -2701,7 +2701,6 @@ console.log(JSON.stringify({
     const gh = join(root, "gh");
     const validator = join(root, "validator.mjs");
     const sourceManifest = { ...evidenceManifest(), validationInputs: {} };
-    const revalidatedManifest = structuredClone(sourceManifest);
     const sourceArtifact = {
       digest: `sha256:${"f".repeat(64)}`,
       id: "900",
