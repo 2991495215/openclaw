@@ -46,6 +46,8 @@ const mocks = vi.hoisted(() => ({
   callGateway: vi.fn<typeof import("../gateway/call.js").callGateway>(),
   resolveGatewayProbeAuthResolution: vi.fn(),
   pickGatewaySelfPresence: vi.fn(),
+  getMemoryProvider: vi.fn(),
+  isMemoryProviderNative: vi.fn(() => false),
 }));
 
 function readGatewayCall() {
@@ -85,6 +87,11 @@ vi.mock("./status.gateway-probe.js", () => ({
 
 vi.mock("./gateway-presence.js", () => ({
   pickGatewaySelfPresence: mocks.pickGatewaySelfPresence,
+}));
+
+vi.mock("./status.scan.deps.runtime.js", () => ({
+  getMemoryProvider: mocks.getMemoryProvider,
+  isMemoryProviderNative: mocks.isMemoryProviderNative,
 }));
 
 describe("resolveGatewayProbeSnapshot", () => {
@@ -491,14 +498,20 @@ function memoryManager<
 }
 
 describe("resolveSharedMemoryStatusSnapshot", () => {
+  beforeEach(() => {
+    mocks.getMemoryProvider.mockReset();
+    mocks.isMemoryProviderNative.mockReset().mockReturnValue(false);
+  });
+
   it("reports native provider health instead of returning a silent null", async () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const health = vi.fn().mockResolvedValue({ status: "ready", message: "connected" });
-    const getMemoryProvider = vi.fn().mockResolvedValue({
+    const getMemoryProvider = mocks.getMemoryProvider.mockResolvedValue({
       providerId: "records",
       provider: { health, close },
     });
     const getMemorySearchManager = vi.fn();
+    mocks.isMemoryProviderNative.mockReturnValue(true);
 
     const result = await resolveSharedMemoryStatusSnapshot({
       cfg: { plugins: { slots: { memory: "records" } } },
@@ -506,8 +519,6 @@ describe("resolveSharedMemoryStatusSnapshot", () => {
       memoryPlugin: { enabled: true, slot: "records" },
       resolveMemoryConfig: vi.fn(() => null),
       getMemorySearchManager,
-      isMemoryProviderNative: () => true,
-      getMemoryProvider,
     });
 
     expect(getMemoryProvider).toHaveBeenCalledWith(
@@ -527,7 +538,7 @@ describe("resolveSharedMemoryStatusSnapshot", () => {
   });
 
   it("does not resolve the slot owner for Memory Core without a built-in store", async () => {
-    const isMemoryProviderNative = vi.fn(() => false);
+    const isMemoryProviderNative = mocks.isMemoryProviderNative;
     const getMemorySearchManager = vi.fn();
 
     await expect(
@@ -537,7 +548,6 @@ describe("resolveSharedMemoryStatusSnapshot", () => {
         memoryPlugin: { enabled: true, slot: "memory-core" },
         resolveMemoryConfig: vi.fn(() => null),
         getMemorySearchManager,
-        isMemoryProviderNative,
         requireDefaultDatabasePath: () => null,
       }),
     ).resolves.toBeNull();

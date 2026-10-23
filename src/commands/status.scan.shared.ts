@@ -294,17 +294,6 @@ export async function resolveSharedMemoryStatusSnapshot(params: {
     agentId: string,
   ) => { store: { databasePath: string } } | null;
   getMemorySearchManager: StatusMemorySearchManagerResolver;
-  /** Whether the selected slot owner registers the provider-neutral runtime. */
-  isMemoryProviderNative?: (params: { cfg: OpenClawConfig; agentId: string }) => boolean;
-  getMemoryProvider?: (params: {
-    cfg: OpenClawConfig;
-    agentId: string;
-    purpose: "status";
-    context: {
-      authority: { kind: "host"; operation: "status" };
-      assertCurrent(): void;
-    };
-  }) => Promise<ActiveMemoryProviderResult>;
   requireDefaultDatabasePath?: (agentId: string) => string | null;
 }): Promise<MemoryStatusSnapshot | null> {
   const { cfg, agentStatus, memoryPlugin } = params;
@@ -321,8 +310,9 @@ export async function resolveSharedMemoryStatusSnapshot(params: {
   if (memoryPlugin.slot !== defaultSlotIdForKey("memory")) {
     // Non-default memory slots are plugin-owned; a native provider reports its health,
     // and a legacy runtime's manager reports status instead of checking built-in files.
-    if (params.isMemoryProviderNative?.({ cfg, agentId })) {
-      return await resolveProviderStatusSnapshot(params, agentId, memoryPlugin.slot);
+    const { isMemoryProviderNative } = await import("./status.scan.deps.runtime.js");
+    if (isMemoryProviderNative({ cfg, agentId })) {
+      return await resolveProviderStatusSnapshot(cfg, agentId, memoryPlugin.slot);
     }
     return await resolveMemoryManagerStatusSnapshot(params, agentId);
   }
@@ -350,19 +340,15 @@ export async function resolveSharedMemoryStatusSnapshot(params: {
 }
 
 async function resolveProviderStatusSnapshot(
-  params: {
-    cfg: OpenClawConfig;
-    getMemoryProvider?: Parameters<
-      typeof resolveSharedMemoryStatusSnapshot
-    >[0]["getMemoryProvider"];
-  },
+  cfg: OpenClawConfig,
   agentId: string,
   slot: string,
 ): Promise<MemoryStatusSnapshot> {
   let provider: ActiveMemoryProviderResult["provider"] = null;
   try {
-    const acquired = await params.getMemoryProvider?.({
-      cfg: params.cfg,
+    const { getMemoryProvider } = await import("./status.scan.deps.runtime.js");
+    const acquired = await getMemoryProvider({
+      cfg,
       agentId,
       purpose: "status",
       context: {
