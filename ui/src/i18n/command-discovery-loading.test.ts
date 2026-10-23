@@ -12,7 +12,6 @@ describe("command discovery English loading", () => {
       load: () => import("../components/command-palette-catalog-search.ts"),
     },
     { surface: "session transcript search", load: () => import("../pages/sessions/view.tsx") },
-    { surface: "slash commands", load: () => import("../lib/chat/commands.ts") },
     { surface: "shortcut help", load: () => import("../components/keyboard-shortcuts-dialog.tsx") },
   ])("registers fallback copy before $surface reads it", async ({ load }) => {
     const { manager } = await loadI18n();
@@ -31,5 +30,36 @@ describe("command discovery English loading", () => {
     expect(manager.t("common.health")).toBe("Gesundheit");
     expect(manager.t("commandPalette.newSessionSettings")).toBe("New session settings");
     expect(manager.t("chat.commands.menu")).toBe("Slash commands");
+  });
+
+  it.each([
+    { surface: "slash commands", load: () => import("../lib/chat/commands.ts") },
+    { surface: "chat welcome", load: () => import("../pages/chat/components/chat-welcome.tsx") },
+  ])("loads $surface copy without opening discovery catalogs", async ({ load }) => {
+    const { en, manager } = await loadI18n({
+      common: { health: "Gesundheit" },
+      chat: { commands: { menu: "Befehle" } },
+    });
+    const commands = en.chat.commands;
+    const welcome = en.chat.welcome;
+    await manager.setLocale("de");
+
+    await load();
+
+    expect(manager.t("chat.commands.menu")).toBe("Befehle");
+    expect(manager.t("chat.commands.arguments")).toBe("Command arguments");
+    expect(manager.t("chat.welcome.hintBeforeShortcut")).toBe("Type a message below ·");
+    expect(manager.t("chat.welcome.recentSessions")).toBe("Recent chats");
+    expect(manager.t("common.health")).toBe("Gesundheit");
+    expect(en.chat.commands).toBe(commands);
+    expect(en.chat.welcome).toBe(welcome);
+    for (const key of [
+      "commandPalette.newSessionSettings",
+      "palette.noResults",
+      "sessionsView.transcriptSearchTitle",
+      "shortcutsOverlay.labels.newSession",
+    ]) {
+      expect(manager.t(key)).toBe(key);
+    }
   });
 });

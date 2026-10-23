@@ -4,6 +4,13 @@ import { en } from "./en.ts";
 // Session owners need these labels before optional organization menus load.
 const enSessionActions = {
   sessionsView: {
+    deletePreservedReasons: {
+      "owner-mismatch": "owned elsewhere",
+      busy: "live run or cleanup active",
+      "foreign-lock": "foreign Git lock",
+      "snapshot-failed": "OpenClaw could not create a safety snapshot",
+      "cleanup-failed": "cleanup failed",
+    },
     archiveReasonManual: "Archived manually",
     archiveReasonAgeRetention: "Automatically archived by age retention",
     archiveReasonActiveSessionCap:
@@ -30,9 +37,15 @@ const enSessionActions = {
     newGroupFailed: "Could not create the group.",
     newGroupStale: "Gateway connection replaced before the group was saved. Try again.",
   },
+  worktrees: {
+    title: "Managed Worktrees",
+  },
 } satisfies TranslationMap;
 
 export const registerSessionActionsEnglish = Object.assign(
-  () => Object.assign(en.sessionsView, enSessionActions.sessionsView),
+  () => {
+    Object.assign(en.sessionsView, enSessionActions.sessionsView);
+    Object.assign(en.worktrees, enSessionActions.worktrees);
+  },
   { catalog: enSessionActions },
 );

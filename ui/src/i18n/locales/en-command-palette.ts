@@ -1,4 +1,5 @@
 import type { TranslationMap } from "../lib/types.ts";
+import { registerChatDiscoveryEnglish } from "./en-chat-discovery.ts";
 import { en } from "./en.ts";
 
 // Discovery copy loads with the palette or transcript search, not the shell.
@@ -127,41 +128,13 @@ const enCommandPalette = {
       denyApproval: "Deny approval",
     },
   },
-  chat: {
-    welcome: {
-      hintBeforeShortcut: "Type a message below ·",
-      hintAfterShortcut: "for commands",
-      recentSessions: "Recent chats",
-      suggestions: {
-        whatCanYouDo: en.chat.welcome.suggestions.whatCanYouDo,
-        summarizeRecentSessions: "Summarize my recent sessions",
-        configureChannel: "Help me configure a channel",
-        checkSystemHealth: "Check system health",
-      },
-    },
-    commands: {
-      arguments: "Command arguments",
-      menu: "Slash commands",
-      optionCount: "{count} options",
-      clearDescription: "Clear chat history",
-      redirectDescription: "Abort and restart with a new message",
-      steerDescription: "Inject a message into the active run",
-      exportDescription: "Download this conversation as Markdown",
-      categories: {
-        session: "Session",
-        model: "Model",
-        agents: "Agents",
-        tools: "Tools",
-      },
-    },
-  },
+  chat: registerChatDiscoveryEnglish.catalog.chat,
 } satisfies TranslationMap;
 
 export const registerCommandPaletteEnglish = Object.assign(
   () => {
     Object.assign(en.shortcutsOverlay, enCommandPalette.shortcutsOverlay);
-    Object.assign(en.chat.welcome, enCommandPalette.chat.welcome);
-    Object.assign(en.chat.commands, enCommandPalette.chat.commands);
+    registerChatDiscoveryEnglish();
     Object.assign(en.commandPalette, enCommandPalette.commandPalette);
     Object.assign(en.palette, enCommandPalette.palette);
     Object.assign(en.sessionsView, enCommandPalette.sessionsView);

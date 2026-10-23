@@ -1,8 +1,8 @@
 import type { PreservedSessionWorktree } from "../../../../packages/gateway-protocol/src/index.js";
 import { t } from "../../i18n/index.ts";
-import { registerSessionOrganizationEnglish } from "../../i18n/locales/en-session-organization.ts";
+import { registerSessionActionsEnglish } from "../../i18n/locales/en-session-actions.ts";
 
-registerSessionOrganizationEnglish();
+registerSessionActionsEnglish();
 
 export function formatPreservedWorktreesNotice(
   worktrees: readonly PreservedSessionWorktree[],
