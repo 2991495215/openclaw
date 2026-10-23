@@ -94,12 +94,10 @@ function isOperationAuthorized(authorize: (() => void) | undefined): boolean {
 
 export function createNodeWorkspaceTransferService(options: {
   getOwner: (environmentId: string) => NodeWorkspaceTransferOwner | undefined;
-  now?: () => number;
   temporaryRoot?: string;
 }) {
   const contexts = new Map<string, TransferContext>();
   const contextOperations = new KeyedAsyncQueue();
-  const now = options.now ?? Date.now;
   const temporaryBaseRoot =
     options.temporaryRoot ?? path.join(resolveStateDir(), "tmp", "node-workspace-transfer");
   let temporaryRootReady: Promise<void> | undefined;
@@ -190,7 +188,7 @@ export function createNodeWorkspaceTransferService(options: {
       direction: "download",
       token,
       manifestRef,
-      expiresAtMs: now() + TRANSFER_TIMEOUT_MS,
+      expiresAtMs: Date.now() + TRANSFER_TIMEOUT_MS,
       isAuthorized,
       ...(signal ? { signal } : {}),
     });
@@ -211,7 +209,7 @@ export function createNodeWorkspaceTransferService(options: {
 
   const authorizationCurrent = (authorization: TransferAuthorization): boolean => {
     const { capability, context } = authorization;
-    if (!isCurrentContext(context) || capability.expiresAtMs <= now()) {
+    if (!isCurrentContext(context) || capability.expiresAtMs <= Date.now()) {
       return false;
     }
     // Exact object membership binds the capability to this live context's owner.
@@ -380,7 +378,7 @@ export function createNodeWorkspaceTransferService(options: {
         direction: "upload",
         token,
         baseManifestRef,
-        expiresAtMs: now() + TRANSFER_TIMEOUT_MS,
+        expiresAtMs: Date.now() + TRANSFER_TIMEOUT_MS,
         state: "ready",
         isAuthorized: () => isOperationAuthorized(authorize),
         abortController: new AbortController(),
@@ -477,7 +475,7 @@ export function createNodeWorkspaceTransferService(options: {
         upload.token !== params.token ||
         upload.state !== "ready" ||
         !upload.isAuthorized() ||
-        upload.expiresAtMs <= now() ||
+        upload.expiresAtMs <= Date.now() ||
         params.route.kind !== "reconcile" ||
         params.route.environmentId !== context.environmentId ||
         params.route.baseManifestRef !== upload.baseManifestRef

@@ -17,7 +17,6 @@ export class CodexApiError extends Error {
       code?: string;
       status?: number;
       payload?: Record<string, unknown>;
-      cause?: unknown;
     },
   ) {
     super(message);
@@ -25,7 +24,6 @@ export class CodexApiError extends Error {
     this.code = options?.code;
     this.status = options?.status;
     this.payload = options?.payload;
-    this.cause = options?.cause;
   }
 }
 

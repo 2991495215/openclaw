@@ -64,7 +64,6 @@ async function transferFixture(name: string, filename: string, payload: string |
     ownerEpoch: record.ownerEpoch,
     sessionId,
     getOwner: (id) => store.getTransferOwner(id),
-    now: () => support.testState.nowMs,
     temporaryRoot: path.join(root, "transfer-tmp"),
   });
   await files.write(filename, payload);

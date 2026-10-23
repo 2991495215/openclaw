@@ -131,7 +131,7 @@ export function isOpenClawStateSchemaFastPathEligible(
   );
   publishIntegrity?.();
   if (eligible) {
-    publishStateRuntimeSchemaAdmission(database, true);
+    publishStateRuntimeSchemaAdmission(database);
   }
   return eligible;
 }

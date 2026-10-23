@@ -7,27 +7,14 @@ import type {
   ComponentData,
 } from "../internal/discord.js";
 import { parseDiscordComponentData, resolveInteractionCustomId } from "./agent-components-data.js";
+import {
+  handleDiscordComponentEvent,
+  handleDiscordModalTrigger,
+} from "./agent-components.handlers.js";
 import type {
   AgentComponentContext,
   AgentComponentMessageInteraction,
 } from "./agent-components.types.js";
-
-export type DiscordComponentControlHandlers = {
-  handleComponentEvent: (params: {
-    ctx: AgentComponentContext;
-    interaction: AgentComponentMessageInteraction;
-    data: ComponentData;
-    componentLabel: string;
-    values?: string[];
-    label: string;
-  }) => Promise<void>;
-  handleModalTrigger: (params: {
-    ctx: AgentComponentContext;
-    interaction: BaseComponentInteraction;
-    data: ComponentData;
-    label: string;
-  }) => Promise<void>;
-};
 
 type SelectControlSpec = {
   type: ComponentType;
@@ -45,7 +32,6 @@ const SELECT_CONTROLS = [
 function createDiscordComponentSelectControl(
   spec: SelectControlSpec,
   ctx: AgentComponentContext,
-  handlers: DiscordComponentControlHandlers,
 ): BaseMessageInteractiveComponent {
   return {
     customIdParser: parseDiscordComponentCustomIdForInteraction,
@@ -53,7 +39,7 @@ function createDiscordComponentSelectControl(
     customId: `__openclaw_discord_component_${spec.kind}_select_wildcard__`,
 
     async run(interaction: AgentComponentMessageInteraction, data: ComponentData): Promise<void> {
-      await handlers.handleComponentEvent({
+      await handleDiscordComponentEvent({
         ctx,
         interaction,
         data,
@@ -68,10 +54,7 @@ function createDiscordComponentSelectControl(
   };
 }
 
-function createDiscordComponentButton(
-  ctx: AgentComponentContext,
-  handlers: DiscordComponentControlHandlers,
-): BaseMessageInteractiveComponent {
+function createDiscordComponentButton(ctx: AgentComponentContext): BaseMessageInteractiveComponent {
   return {
     type: ComponentType.Button,
     customId: "__openclaw_discord_component_button_wildcard__",
@@ -80,7 +63,7 @@ function createDiscordComponentButton(
     async run(interaction: BaseComponentInteraction, data: ComponentData): Promise<void> {
       const parsed = parseDiscordComponentData(data, resolveInteractionCustomId(interaction));
       if (parsed?.modalId) {
-        await handlers.handleModalTrigger({
+        await handleDiscordModalTrigger({
           ctx,
           interaction,
           data,
@@ -88,7 +71,7 @@ function createDiscordComponentButton(
         });
         return;
       }
-      await handlers.handleComponentEvent({
+      await handleDiscordComponentEvent({
         ctx,
         interaction,
         data,
@@ -99,10 +82,9 @@ function createDiscordComponentButton(
   };
 }
 
-export const discordComponentControlFactories = [
+export const createDiscordComponentControls = [
   createDiscordComponentButton,
   ...SELECT_CONTROLS.map(
-    (spec) => (ctx: AgentComponentContext, handlers: DiscordComponentControlHandlers) =>
-      createDiscordComponentSelectControl(spec, ctx, handlers),
+    (spec) => (ctx: AgentComponentContext) => createDiscordComponentSelectControl(spec, ctx),
   ),
 ];

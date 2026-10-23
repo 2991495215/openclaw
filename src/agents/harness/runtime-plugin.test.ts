@@ -44,7 +44,6 @@ function ensureHarness(overrides: Partial<Parameters<typeof ensurePlugin>[0]>) {
 function availability(overrides: Partial<Parameters<typeof resolveAvailability>[0]> = {}) {
   return resolveAvailability({
     workspaceDir: "/tmp/workspace",
-    runtime: "codex",
     provider: "openai",
     payloadFailures: [],
     payloadCheckedPluginIds: [],

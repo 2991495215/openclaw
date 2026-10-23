@@ -131,7 +131,7 @@ export function admitStatePostgres(db: PostgresSqlConnection, fresh: boolean): v
     userVersion: facts.version,
     contentVersion: facts.version,
   });
-  publishStateRuntimeSchemaAdmission(db, true);
+  publishStateRuntimeSchemaAdmission(db);
 }
 
 const statePostgresSchema = {

@@ -19,12 +19,11 @@ export async function pruneManagedNpmPeerDependenciesAfterUninstall(params: {
   npmRoot: string;
   packageName: string;
   managedOverrides: Record<string, unknown>;
-  runCommand?: typeof runCommandWithTimeout;
   beforePersistentApply?: () => void;
 }): Promise<string | undefined> {
   const command: typeof runCommandWithTimeout = (...args) => {
     params.beforePersistentApply?.();
-    return (params.runCommand ?? runCommandWithTimeout)(...args);
+    return runCommandWithTimeout(...args);
   };
   const commandOptions = {
     cwd: params.npmRoot,

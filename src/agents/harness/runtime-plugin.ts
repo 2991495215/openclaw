@@ -124,7 +124,6 @@ function describeMissingHarnessRegistration(
  * Callers must pass the result of a payload check performed for this invocation.
  */
 export function resolveAgentHarnessRuntimeAvailability(params: {
-  runtime: string;
   provider: string;
   config?: OpenClawConfig;
   workspaceDir: string;
@@ -132,7 +131,7 @@ export function resolveAgentHarnessRuntimeAvailability(params: {
   payloadCheckedPluginIds: readonly string[];
   selectedPluginRootDirs: ReadonlyMap<string, string>;
 }): AgentHarnessRuntimeAvailability {
-  const runtime = params.runtime.trim();
+  const runtime = "codex";
   const ownerPluginIds = resolveAgentHarnessOwnerPluginIds({
     ...params,
     runtime,

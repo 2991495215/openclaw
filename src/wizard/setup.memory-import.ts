@@ -71,8 +71,7 @@ export async function runSetupMemoryImportStep(params: {
       const offers: MemoryImportOffer[] = [];
       for (const provider of providers) {
         try {
-          // Omit the runtime: provider plan/apply writers would print raw JSON
-          // between the wizard prompts; this page renders its own notes.
+          // The memory-only importer stays silent; this page renders its own notes.
           const { detection, plan } = await planProviderMemoryImport({
             provider,
             config: params.config,

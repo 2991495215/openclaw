@@ -264,13 +264,8 @@ function createSessionWorkerPlacementMutationCheck(
 
 export function prepareSessionWorkerPlacementMutationCheck(
   params: Pick<SessionWorkerPlacementMutationParams, "context" | "sessionId">,
-  operation: "mutation" | "retirement" = "mutation",
 ) {
-  return createSessionWorkerPlacementMutationCheck(
-    params,
-    readSessionWorkerPlacement(params),
-    operation,
-  );
+  return createSessionWorkerPlacementMutationCheck(params, readSessionWorkerPlacement(params));
 }
 
 export async function prepareSessionWorkerPlacementMutationCheckAsync(

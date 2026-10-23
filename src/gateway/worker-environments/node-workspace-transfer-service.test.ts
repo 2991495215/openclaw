@@ -243,6 +243,7 @@ describe("node workspace transfer service", () => {
       state: "attached",
     };
     let nowMs = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => nowMs);
     const credential = {
       credentialHash: "a".repeat(43),
       ownerEpoch: 3,
@@ -251,7 +252,6 @@ describe("node workspace transfer service", () => {
     };
     const service = createNodeWorkspaceTransferService({
       getOwner: () => ({ credential, environment }),
-      now: () => nowMs,
       temporaryRoot: path.join(root, "gateway-transfer-tmp"),
     });
     const server = await startNodeWorkspaceTransferTestServer(service);

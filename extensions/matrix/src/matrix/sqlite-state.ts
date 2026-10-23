@@ -40,21 +40,18 @@ export async function updateMatrixKeyedState<T>(
   store: PluginStateKeyedStore<T, 2>,
   key: string,
   update: (current: T | undefined) => T | undefined,
-  onUndefined: "keep" | "skip" = "keep",
 ): Promise<boolean> {
   let observation = await store.observe(key);
   for (;;) {
     const value = update(observation.value);
-    if (value === undefined && onUndefined === "skip") {
+    if (value === undefined) {
       return false;
     }
-    const result = await store.compareAndApply(
-      key,
-      observation.comparison,
-      value === undefined
-        ? { operation: "update", action: "keep" }
-        : { operation: "update", action: "set", value },
-    );
+    const result = await store.compareAndApply(key, observation.comparison, {
+      operation: "update",
+      action: "set",
+      value,
+    });
     if (result.status !== "conflict") {
       return true;
     }

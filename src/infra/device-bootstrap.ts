@@ -259,14 +259,9 @@ onDevicePairSetupChange((path) => {
 });
 
 /** Remove retained setup outcomes independently of status requests or later pairings. */
-async function pruneExpiredDevicePairSetupCompletions(
-  params: { nowMs?: number; baseDir?: string } = {},
-): Promise<number> {
+async function pruneExpiredDevicePairSetupCompletions(nowMs: number): Promise<number> {
   return await withLock(async () => {
-    const nowMs = params.nowMs ?? Date.now();
-    const context = captureOpenClawStateWorkerContext(
-      params.baseDir ? { env: { ...process.env, OPENCLAW_STATE_DIR: params.baseDir } } : {},
-    );
+    const context = captureOpenClawStateWorkerContext();
     const path = context.admission.databasePath;
     const retained = setupExpiryObservation?.path === path ? setupExpiryObservation : undefined;
     if (
@@ -319,7 +314,7 @@ export function startDevicePairSetupMaintenance(params: {
     }
     running = true;
     try {
-      await pruneExpiredDevicePairSetupCompletions({ nowMs: scheduler.now() });
+      await pruneExpiredDevicePairSetupCompletions(scheduler.now());
       const observation = setupExpiryObservation;
       if (!observation || observation.dirty) {
         schedule(scheduler.now());

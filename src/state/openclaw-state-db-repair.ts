@@ -454,7 +454,7 @@ function repairOpenedStateSchema(
     const quarantineCleared = clearOpenClawDatabaseQuarantine(pathname, { env });
     clearOpenClawStateDatabaseOpenFailure(pathname);
     if (readStateSchemaContentVersion(db) === OPENCLAW_STATE_SCHEMA_VERSION) {
-      publishStateRuntimeSchemaAdmission(db, true);
+      publishStateRuntimeSchemaAdmission(db);
     }
     return {
       changes,

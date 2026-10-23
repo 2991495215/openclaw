@@ -256,11 +256,10 @@ export class Theme {
     fgColors: Record<ThemeColor, string | number>,
     bgColors: Record<ThemeBg, string | number>,
     mode: ColorMode,
-    options: { name?: string; sourcePath?: string; sourceInfo?: SourceInfo } = {},
+    options: { name?: string; sourcePath?: string } = {},
   ) {
     this.name = options.name;
     this.sourcePath = options.sourcePath;
-    this.sourceInfo = options.sourceInfo;
     this.mode = mode;
     this.fgColors = new Map();
     for (const [key, value] of Object.entries(fgColors) as [ThemeColor, string | number][]) {
@@ -377,8 +376,10 @@ function parseThemeJsonContent(label: string, content: string): ThemeJson {
   return parseThemeJson(label, json);
 }
 
-function createTheme(themeJson: ThemeJson, mode?: ColorMode, sourcePath?: string): Theme {
-  const colorMode = mode ?? (getCapabilities().trueColor ? "truecolor" : "256color");
+export function loadThemeFromPath(themePath: string): Theme {
+  const content = fs.readFileSync(themePath, "utf-8");
+  const themeJson = parseThemeJsonContent(themePath, content);
+  const colorMode = getCapabilities().trueColor ? "truecolor" : "256color";
   const resolvedColors = resolveThemeColors(themeJson.colors, themeJson.vars);
   const fgColors: Record<ThemeColor, string | number> = {} as Record<ThemeColor, string | number>;
   const bgColors: Record<ThemeBg, string | number> = {} as Record<ThemeBg, string | number>;
@@ -392,14 +393,8 @@ function createTheme(themeJson: ThemeJson, mode?: ColorMode, sourcePath?: string
   }
   return new Theme(fgColors, bgColors, colorMode, {
     name: themeJson.name,
-    sourcePath,
+    sourcePath: themePath,
   });
-}
-
-export function loadThemeFromPath(themePath: string, mode?: ColorMode): Theme {
-  const content = fs.readFileSync(themePath, "utf-8");
-  const themeJson = parseThemeJsonContent(themePath, content);
-  return createTheme(themeJson, mode, themePath);
 }
 
 // Use globalThis to share theme across module loaders (tsx + jiti in dev mode)

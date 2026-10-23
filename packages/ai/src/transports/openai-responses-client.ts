@@ -179,7 +179,6 @@ function createResponsesTransportExecutor(config: ResponsesTransportExecutorOpti
         const turnState = resolveProviderTransportTurnState(model, {
           sessionId: options?.sessionId,
           turnId: randomUUID(),
-          attempt: 1,
           transport: websocketMode ? "websocket" : "stream",
         });
         const websocketSessionPolicy = websocketMode ? turnState?.websocket : undefined;

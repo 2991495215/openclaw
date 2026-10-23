@@ -68,10 +68,9 @@ export async function planProviderMemoryImport(params: {
   config: OpenClawConfig;
   agentId: string;
   overwrite?: boolean;
-  runtime?: RuntimeEnv;
 }): Promise<{ detection: MigrationDetection | undefined; plan: MigrationPlan }> {
   const ctx = buildMigrationContext({
-    runtime: params.runtime ?? silentRuntime,
+    runtime: silentRuntime,
     configOverride: params.config,
     targetAgentId: params.agentId,
     itemKinds: [MEMORY_ITEM_KIND],
@@ -106,13 +105,12 @@ export async function applyProviderMemoryImport(params: {
   itemIds: string[];
   overwrite?: boolean;
   preflightPlan: MigrationPlan;
-  runtime?: RuntimeEnv;
   onApplyCompleted?: () => void;
 }): Promise<MigrationApplyResult> {
   return await runMigrationApply({
-    // Default silent: embedded surfaces (wizard, gateway) render their own
+    // Embedded surfaces (wizard, gateway) render their own
     // summaries; the apply writer would dump raw JSON into their output.
-    runtime: params.runtime ?? silentRuntime,
+    runtime: silentRuntime,
     providerId: params.provider.id,
     provider: params.provider,
     onApplyCompleted: params.onApplyCompleted,

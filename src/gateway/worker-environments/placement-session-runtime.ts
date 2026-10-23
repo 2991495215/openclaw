@@ -39,12 +39,10 @@ export function resolveWorkerPlacementSessionRuntime(params: {
   entry: SessionEntry;
   agentId: string;
   sessionKey: string;
-  preparedRuntimeOwnership?: AgentHarnessSessionRuntimeOwnership | null;
   readSourceEntry: (key: string) => SessionEntry | undefined;
 }): string {
   const { provider, model } = resolveSessionSelectedModelRef({
     ...params,
-    preparedRuntimeOwnership: params.preparedRuntimeOwnership,
     source: {
       entry: params.entry,
       readSourceEntry: params.readSourceEntry,
@@ -54,10 +52,7 @@ export function resolveWorkerPlacementSessionRuntime(params: {
 }
 
 export async function resolveWorkerPlacementSessionRuntimeAsync(
-  params: Omit<
-    Parameters<typeof resolveWorkerPlacementSessionRuntime>[0],
-    "preparedRuntimeOwnership" | "readSourceEntry"
-  > & {
+  params: Omit<Parameters<typeof resolveWorkerPlacementSessionRuntime>[0], "readSourceEntry"> & {
     assertCurrent?: () => void;
     readSourceEntry?: (key: string) => Promise<SessionEntry | undefined>;
   },
@@ -198,6 +193,7 @@ export async function readWorkerPlacementModelSource(
 
 export function resolveWorkerPlacementModelRuntime(
   params: Omit<Parameters<typeof resolveWorkerPlacementSessionRuntime>[0], "readSourceEntry"> & {
+    preparedRuntimeOwnership?: AgentHarnessSessionRuntimeOwnership | null;
     provider: string;
     model: string;
     preparedEnvironment?: NodeJS.ProcessEnv;

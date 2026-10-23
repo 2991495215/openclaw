@@ -376,7 +376,6 @@ async function mutateStorageMeta(rootDir: string, mutation: StorageMetaMutation)
       store,
       STORAGE_META_STATE_KEY,
       (current) => prepareStorageMetaMutation(decode(current), mutation) ?? undefined,
-      "skip",
     );
   } catch {
     return false;

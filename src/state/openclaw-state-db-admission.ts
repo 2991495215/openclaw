@@ -220,9 +220,6 @@ export function getStateRuntimeSchemaAdmission(database: EngineConnection) {
   return runtimeAdmission.get(database);
 }
 
-export function publishStateRuntimeSchemaAdmission(
-  database: EngineConnection,
-  startupReady: boolean,
-): void {
-  runtimeAdmission.publish(database, { startupReady });
+export function publishStateRuntimeSchemaAdmission(database: EngineConnection): void {
+  runtimeAdmission.publish(database, { startupReady: true });
 }

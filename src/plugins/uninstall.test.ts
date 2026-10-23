@@ -1892,6 +1892,7 @@ describe("uninstallPlugin", () => {
         };
       });
 
+      runCommandWithTimeoutMock.mockImplementation(runCommand);
       await expect(
         pruneManagedNpmPeerDependenciesAfterUninstall({
           npmRoot,
@@ -1901,7 +1902,6 @@ describe("uninstallPlugin", () => {
             hono: "4.12.32",
             "node-domexception": "npm:@nolyfill/domexception@1.0.28",
           },
-          runCommand,
         }),
       ).resolves.toBeUndefined();
       expect(cleanupAttempts).toBe(rejectAliases ? 2 : 1);
@@ -1976,12 +1976,12 @@ describe("uninstallPlugin", () => {
       };
     });
 
+    runCommandWithTimeoutMock.mockImplementation(runCommand);
     await expect(
       pruneManagedNpmPeerDependenciesAfterUninstall({
         npmRoot,
         packageName: "@openclaw/kitchen-sink",
         managedOverrides: { axios: "1.18.1" },
-        runCommand,
       }),
     ).resolves.toContain(
       "Failed to prune managed peer dependencies after uninstalling @openclaw/kitchen-sink: npm error code EINVALIDTAGNAME",

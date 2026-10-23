@@ -40,7 +40,6 @@ type SystemAgentRescueMessageInput = {
   commandBody: string;
   agentId?: string;
   isGroup: boolean;
-  env?: NodeJS.ProcessEnv;
   deps?: SystemAgentCommandDeps;
   assertCurrent?: () => void;
 };
@@ -255,13 +254,11 @@ export async function runSystemAgentRescueMessage(
     assertOwnerCurrent?.();
     assertInvocationCurrent?.();
   };
-  const env = input.env;
   const options = {
     ownerId: "core:system-agent" as const,
     namespace: RESCUE_PENDING_NAMESPACE,
     maxEntries: RESCUE_PENDING_MAX_ENTRIES,
     overflowPolicy: "reject-new" as const,
-    ...(env ? { env } : {}),
   };
   const pendingStore = createCorePluginStateKeyedStore<unknown>(options).withCurrent({
     assertCurrent,

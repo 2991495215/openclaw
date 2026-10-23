@@ -251,7 +251,7 @@ export function ensureOpenClawStateRuntimeSchema(
       { busyTimeoutMs, databaseLabel: pathname, operationLabel: "state.schema.ensure" },
     );
     if (runtimeReady) {
-      publishStateRuntimeSchemaAdmission(db, true);
+      publishStateRuntimeSchemaAdmission(db);
     }
     retiredTableChanges.forEach(retirements.logRetiredStateTableMigration);
     return applied;

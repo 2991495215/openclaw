@@ -117,5 +117,5 @@ export function assertExistingOpenClawStateRuntimeSchema(
     { operationLabel: "state.admission.existing-schema" },
   );
   publishIntegrity?.();
-  publishStateRuntimeSchemaAdmission(database, true);
+  publishStateRuntimeSchemaAdmission(database);
 }

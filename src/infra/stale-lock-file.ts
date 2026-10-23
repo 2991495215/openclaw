@@ -1,8 +1,5 @@
 // Determines whether persisted lock-file owners are stale.
-import {
-  getFileLockProcessStartTime as defaultGetProcessStartTime,
-  isPidDefinitelyDead as defaultIsPidDefinitelyDead,
-} from "../shared/pid-alive.js";
+import { getFileLockProcessStartTime, isPidDefinitelyDead } from "../shared/pid-alive.js";
 
 function readLockFileOwnerPayload(
   payload: Record<string, unknown> | null,
@@ -27,8 +24,6 @@ function readLockFileOwnerPayload(
 
 type LockOwnerInspection = {
   payload: Record<string, unknown> | null;
-  isPidDefinitelyDead?: (pid: number) => boolean;
-  getProcessStartTime?: (pid: number) => number | null;
 };
 
 /** Capture only the bounded facts used by this exact stale decision. Never
@@ -45,9 +40,7 @@ export function inspectStaleLockOwner(params: LockOwnerInspection): {
     return null;
   }
   const observedStarttime =
-    payload.starttime === undefined
-      ? null
-      : (params.getProcessStartTime ?? defaultGetProcessStartTime)(payload.pid);
+    payload.starttime === undefined ? null : getFileLockProcessStartTime(payload.pid);
   const identity = {
     pid: payload.pid,
     recordedStarttime: payload.starttime ?? null,
@@ -64,9 +57,7 @@ export function inspectStaleLockOwner(params: LockOwnerInspection): {
   if (observedStarttime !== null && observedStarttime !== normalizedStored) {
     return { reason: "owner-starttime-changed", ...identity };
   }
-  return (params.isPidDefinitelyDead ?? defaultIsPidDefinitelyDead)(payload.pid)
-    ? { reason: "owner-process-exited", ...identity }
-    : null;
+  return isPidDefinitelyDead(payload.pid) ? { reason: "owner-process-exited", ...identity } : null;
 }
 
 export function isLockOwnerDefinitelyStale(params: LockOwnerInspection): boolean {

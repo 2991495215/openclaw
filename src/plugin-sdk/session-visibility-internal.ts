@@ -360,13 +360,8 @@ export function logSessionOwnershipLookupFailure(params: {
 /** List sessions spawned by the requester through the gateway session list method. */
 export async function listSpawnedSessionKeysWithResult(params: {
   requesterSessionKey: string;
-  limit?: number;
   callGateway?: GatewayCaller;
 }): Promise<Result<Set<string>, SessionOwnershipLookupFailure>> {
-  const limit =
-    typeof params.limit === "number" && Number.isFinite(params.limit)
-      ? Math.max(1, Math.floor(params.limit))
-      : undefined;
   try {
     const callGateway =
       params.callGateway ??
@@ -380,7 +375,6 @@ export async function listSpawnedSessionKeysWithResult(params: {
       params: {
         includeGlobal: false,
         includeUnknown: false,
-        ...(limit !== undefined ? { limit } : {}),
         spawnedBy: params.requesterSessionKey,
       },
     });

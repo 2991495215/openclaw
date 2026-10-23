@@ -5,7 +5,12 @@ import {
   resolveDiscordComponentEntryWithPersistence,
   resolveDiscordModalEntryWithPersistence,
 } from "../components-registry.js";
-import { Modal, type ComponentData, type ModalInteraction } from "../internal/discord.js";
+import {
+  Modal,
+  type BaseComponentInteraction,
+  type ComponentData,
+  type ModalInteraction,
+} from "../internal/discord.js";
 import {
   ackComponentInteraction,
   replyUnavailableComponentInteraction,
@@ -21,8 +26,10 @@ import {
 import { resolveAuthorizedComponentInteraction } from "./agent-components-guild-auth.js";
 import { dispatchDiscordComponentEvent } from "./agent-components.dispatch.js";
 import { dispatchPluginDiscordInteractiveEvent } from "./agent-components.plugin-interactive.js";
-import type { AgentComponentContext } from "./agent-components.types.js";
-import type { DiscordComponentControlHandlers } from "./agent-components.wildcard-controls.js";
+import type {
+  AgentComponentContext,
+  AgentComponentMessageInteraction,
+} from "./agent-components.types.js";
 
 const loadComponentsRuntime = createLazyRuntimeModule(() => import("../components.js"));
 
@@ -55,9 +62,14 @@ async function resolveAuthorizedComponentEntry<
   return { ...authorized, consumed };
 }
 
-async function handleDiscordComponentEvent(
-  params: Parameters<DiscordComponentControlHandlers["handleComponentEvent"]>[0],
-): Promise<void> {
+export async function handleDiscordComponentEvent(params: {
+  ctx: AgentComponentContext;
+  interaction: AgentComponentMessageInteraction;
+  data: ComponentData;
+  componentLabel: string;
+  values?: string[];
+  label: string;
+}): Promise<void> {
   const parsed = parseDiscordComponentData(
     params.data,
     resolveInteractionCustomId(params.interaction),
@@ -147,9 +159,12 @@ async function handleDiscordComponentEvent(
   });
 }
 
-async function handleDiscordModalTrigger(
-  params: Parameters<DiscordComponentControlHandlers["handleModalTrigger"]>[0],
-): Promise<void> {
+export async function handleDiscordModalTrigger(params: {
+  ctx: AgentComponentContext;
+  interaction: BaseComponentInteraction;
+  data: ComponentData;
+  label: string;
+}): Promise<void> {
   const parsed = parseDiscordComponentData(
     params.data,
     resolveInteractionCustomId(params.interaction),
@@ -219,11 +234,6 @@ async function handleDiscordModalTrigger(
     );
   }
 }
-
-export const discordComponentControlHandlers: DiscordComponentControlHandlers = {
-  handleComponentEvent: handleDiscordComponentEvent,
-  handleModalTrigger: handleDiscordModalTrigger,
-};
 
 export function createDiscordComponentModal(ctx: AgentComponentContext): Modal {
   return new (class extends Modal {

@@ -259,12 +259,11 @@ function emitDevicePairingDeniedSecurityEvent(params: {
   targetDeviceId?: string;
   controlId: string;
   reason: string;
-  severity?: DiagnosticSecurityEventInput["severity"];
 }) {
   emitDeviceManagementSecurityEvent({
     action: "device.pairing.denied",
     outcome: "denied",
-    severity: params.severity ?? "medium",
+    severity: "medium",
     authz: params.authz,
     targetDeviceId: params.targetDeviceId,
     policyId: "gateway.device-pairing",
