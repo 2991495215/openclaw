@@ -208,13 +208,14 @@ export async function resizeMarginViewport(page: Page, width: number): Promise<v
 export async function measureMargin(page: Page, testCase: MarginCase) {
   const target = page.locator(`.chat-thread ${testCase.selector}`).first();
   await target.waitFor();
-  await page
-    .locator(".chat-thread img.chat-message-image")
-    .evaluateAll((images: HTMLImageElement[]) =>
-      Promise.all(images.map((element) => element.decode())),
-    );
-  await page.evaluate(() => document.fonts.ready);
   return target.evaluate(async (element, side) => {
+    await Promise.all(
+      Array.from(
+        document.querySelectorAll<HTMLImageElement>(".chat-thread img.chat-message-image"),
+        (imageElement) => imageElement.decode(),
+      ),
+    );
+    await document.fonts.ready;
     const finiteAnimations = element
       .getAnimations()
       .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime));

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect as expectBrowser } from "playwright/test";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createPlaybackMediaFixture } from "../../../test/fixtures/media-playback.js";
 import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import {
@@ -140,14 +140,16 @@ suite.define(() => {
                 await expectBrowser(activity, label).toHaveJSProperty("open", false);
                 await expectBrowser(activity.locator(".chat-bubble"), label).toHaveCount(0);
               } else if (!("excluded" in testCase)) {
-                await pollMargin((box) => box.open - box.columnWidth * 0.1).toBeGreaterThanOrEqual(
-                  -1,
+                // Keep the E2E polling budget and reuse the accepted browser layout.
+                const mobile = await vi.waitFor(
+                  async () => {
+                    const box = await measure();
+                    expect(box.open - box.columnWidth * 0.1, label).toBeGreaterThanOrEqual(-1);
+                    expect(box.closed, label).toBeCloseTo(testCase.id === "user-audio" ? 17 : 0, 0);
+                    return box;
+                  },
+                  { interval: 100, timeout: 15_000 },
                 );
-                await pollMargin((box) => box.closed).toBeCloseTo(
-                  testCase.id === "user-audio" ? 17 : 0,
-                  0,
-                );
-                const mobile = await measure();
                 if (imageSize) {
                   const expectedWidth = Math.min(imageSize.width, mobile.columnWidth * 0.9);
                   expect(mobile, label).toMatchObject({
