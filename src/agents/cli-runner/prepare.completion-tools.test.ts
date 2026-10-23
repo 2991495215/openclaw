@@ -677,7 +677,11 @@ describe("restricted CLI tool preparation", () => {
     };
     let binding: CliSessionBinding | undefined;
     const surfaces = [];
-    for (const completion of [false, true, false]) {
+    for (const turn of ["client", "completion", "client", "reconfigured"]) {
+      const completion = turn === "completion";
+      const names =
+        turn === "reconfigured" ? toolNames.filter((name) => name !== "screen") : toolNames;
+      const turnConfig = { ...config, tools: { allow: names } };
       const context = await fixture.prepare({
         sessionKey: sessionTarget.sessionKey,
         sessionId: sessionTarget.sessionId,
@@ -687,7 +691,7 @@ describe("restricted CLI tool preparation", () => {
         sourceReplyDeliveryMode: "automatic",
         senderIsOwner: !completion,
         cliSessionBinding: binding,
-        config,
+        config: turnConfig,
         ...(completion
           ? {
               trustedInternalHandoff: {
@@ -712,18 +716,20 @@ describe("restricted CLI tool preparation", () => {
       });
       try {
         if (binding) {
-          expect(context.reusableCliSession).toEqual({
-            mode: "reuse",
-            sessionId: binding.sessionId,
-          });
+          // Configuration changes still invalidate reuse, including client-gated tools.
+          expect(context.reusableCliSession).toEqual(
+            turn === "reconfigured"
+              ? { mode: "invalidate", invalidatedReason: "prompt-tools" }
+              : { mode: "reuse", sessionId: binding.sessionId },
+          );
         }
         const grant = mintGrant.mock.lastCall![0].context;
         const scoped = await resolveMcpLoopbackScopedTools({
-          cfg: config,
+          cfg: turnConfig,
           context: grant,
           admittedRunContext: context.params.admittedRunContext,
         });
-        expect(scoped.tools.map((tool) => tool.name).toSorted()).toEqual(toolNames.toSorted());
+        expect(scoped.tools.map((tool) => tool.name).toSorted()).toEqual(names.toSorted());
         surfaces.push({
           schema: buildMcpToolSchema(scoped.tools),
           systemPrompt: context.systemPrompt,

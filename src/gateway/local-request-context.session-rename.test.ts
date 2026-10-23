@@ -63,7 +63,7 @@ describe("guest session rename through the agent catalog", () => {
         profileId,
         scopes: ["operator.sessions.write"],
         signal: controller.signal,
-        readCurrentRoleAssignment: () => "view",
+        readCurrentRoleFacts: () => ({ assignedRole: "view" }),
         assertCurrent: () => {},
       });
       await withPersonalToolTurn(
@@ -190,7 +190,7 @@ describe("guest session rename through the agent catalog", () => {
           profileId,
           scopes,
           signal: new AbortController().signal,
-          readCurrentRoleAssignment: () => "view",
+          readCurrentRoleFacts: () => ({ assignedRole: "view" }),
           assertCurrent: () => {},
         });
         await withPersonalToolTurn(
