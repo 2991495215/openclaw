@@ -211,7 +211,7 @@ it("emits Brotli and gzip variants only for bundled compressible assets", async 
   expect(brotliDecompressSync(variants[0]?.source ?? Buffer.alloc(0)).toString()).toBe(source);
   expect(gunzipSync(variants[1]?.source ?? Buffer.alloc(0)).toString()).toBe(source);
   expect(createHash("sha256").update(variants[1]!.source).digest("hex")).toBe(
-    "c3e8967b8afd887e78d4c35ed0770418f16d40406c5118523589961cab153629",
+    "32dab2f3598992a8a8b595f5da60f10907fc181c2abfa27380d562d9b539b85d",
   );
   expect(await createControlUiPrecompressedAssetVariants("index.html", source)).toEqual([]);
   expect(await createControlUiPrecompressedAssetVariants("assets/logo.png", source)).toEqual([]);

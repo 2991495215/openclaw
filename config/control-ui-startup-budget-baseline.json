@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 302094,
-  "reason": "Zopfli precompression: matched 0eab startup 314546 to 302094 B; Chat 1345570 to 1293721 B; New Session 822908 to 791148 B; identical JS/CSS and request counts.",
+  "startupJsGzipBytes": 299798,
+  "reason": "Use byte-stable optimal gzip only for the canonical boot graph: matched 721d build 311566 to 299798 B startup; Chat 1333529 to 1284861 B and New Session 816308 to 786386 B; unchanged 7/22/16 JS requests.",
   "updatedAt": "2026-10-23"
 }

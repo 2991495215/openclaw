@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Zopfli gzip: 1,293,721 B Chat and 791,148 B New Session.
-  // Preserve main's relative headroom against the matched 0eab build.
-  chatBootJsGzipBytes: 1_342_417,
-  newBootJsGzipBytes: 799_294,
+  // Optimal gzip for boot assets: 1,284,861 B Chat / 786,386 B New.
+  // Preserve main's relative headroom against the matched 721d build.
+  chatBootJsGzipBytes: 1_332_818,
+  newBootJsGzipBytes: 794_053,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,

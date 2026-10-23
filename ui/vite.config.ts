@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants } from "node:zlib";
 import { gzipAsync } from "@gfx/zopfli";
+import { gzip } from "pako";
 import {
   runnerImport,
   type Plugin,
@@ -88,6 +89,7 @@ function isControlUiPrecompressedAsset(fileName: string) {
 export async function createControlUiPrecompressedAssetVariants(
   fileName: string,
   source: string | Uint8Array,
+  bootAsset = false,
 ): Promise<Array<{ fileName: string; source: Buffer }>> {
   if (!isControlUiPrecompressedAsset(fileName)) {
     return [];
@@ -102,9 +104,13 @@ export async function createControlUiPrecompressedAssetVariants(
     },
     {
       fileName: `${fileName}.gz`,
-      // WASM keeps shipped gzip bytes independent of the host zlib version.
-      // Spend compression CPU once at build time to reduce every cold transfer.
-      source: Buffer.from(await gzipAsync(body, { numiterations: 15 })),
+      // Spend the slower encoder only on boot; optional assets keep the cheap,
+      // byte-stable encoder so production test builds stay within their deadlines.
+      source: Buffer.from(
+        bootAsset
+          ? await gzipAsync(body, { numiterations: 1 })
+          : gzip(body, { level: 9, legacyHash: true, memLevel: 6 }),
+      ),
     },
   ];
 }
@@ -559,6 +565,8 @@ function controlUiBuildOutputPlugin(
         this.error("Control UI build requires an output directory");
       }
       const logger = this.environment.logger;
+      const bootAssets = collectControlUiBootAssets(bundle);
+      const bootFiles = new Set([...bootAssets.chat, ...bootAssets.new, ...bootAssets.login]);
       let completed = 0;
       let sidecars = 0;
       let lastProgressAt = performance.now();
@@ -568,7 +576,11 @@ function controlUiBuildOutputPlugin(
         // later generateBundle hook. Read from disk here so sidecars always
         // encode the exact final bytes that the identity response serves.
         const source = fs.readFileSync(path.join(buildOutDir, output.fileName));
-        const variants = await createControlUiPrecompressedAssetVariants(output.fileName, source);
+        const variants = await createControlUiPrecompressedAssetVariants(
+          output.fileName,
+          source,
+          bootFiles.has(output.fileName),
+        );
         if (variants.length === 0) {
           return;
         }
@@ -614,7 +626,6 @@ function controlUiBuildOutputPlugin(
         )
         .toSorted();
       fs.writeFileSync(path.join(buildOutDir, ".build-inputs.json"), JSON.stringify(inputs));
-      const bootAssets = collectControlUiBootAssets(bundle);
       await refreshControlUiBuildOutput(
         buildOutDir,
         buildInfo,
