@@ -80,6 +80,7 @@ it("shows admitted read readiness and retains the loaded card through refresh", 
   expect(container.getAttribute("aria-label")).toBe("Activity for Alice");
 
   first.resolve(input({ sessionData: data([session("one", 1)]) }));
+  await vi.dynamicImportSettled();
   await waitForSolid(() => expect(links()).toHaveLength(1));
   const loaded = container.querySelector(".person-activity-card");
   const link = links()[0]!;
@@ -116,6 +117,7 @@ it("replaces a failed read without retaining its error or accepting an obsolete 
   updatePersonActivityCard(container, { name: "Bob", read: current.promise });
   flush();
   current.resolve(input({ user: { ...alice, id: "bob", name: "Bob" } }));
+  await vi.dynamicImportSettled();
   await waitForSolid(() => expect(container.getAttribute("aria-label")).toBe("Activity for Bob"));
   obsolete.resolve(input());
   await obsolete.promise;
@@ -125,7 +127,7 @@ it("replaces a failed read without retaining its error or accepting an obsolete 
   expect(getQueriesForElement(container).queryByRole("status")).toBeNull();
 });
 
-it("retains recent selection and focused nodes while fresh roster facts update", () => {
+it("retains recent selection and focused nodes while fresh roster facts update", async () => {
   const initial = ["one", "two", "three", "four"].map((key, index) => session(key, 3 - index));
   const openSession = vi.fn();
   const refresh = (sessionData?: PersonActivityData) => show({ sessionData, openSession });
@@ -137,6 +139,7 @@ it("retains recent selection and focused nodes while fresh roster facts update",
     refresh(data(initial));
     return dispose;
   });
+  await vi.dynamicImportSettled();
   flush();
   expect(links().map((link) => link.textContent)).toEqual(
     ["one", "two", "three"].map((name) => expect.stringContaining(name)),
@@ -163,13 +166,15 @@ it("retains recent selection and focused nodes while fresh roster facts update",
   expect(links().some((link) => link.textContent?.includes("four"))).toBe(false);
 });
 
-it("exposes activity navigation while presence is offline", () => {
+it("exposes activity navigation while presence is offline", async () => {
   const navigate = vi.fn();
   show({
     user: { ...alice, entries: [] },
     sessionData: data([session("one", 1)]),
     routing: { basePath: "/ui", navigate },
   });
+  await vi.dynamicImportSettled();
+  flush();
   expect(card("status")?.textContent).toContain("Offline");
   expect(card("facts")).toBeNull();
   const link = getQueriesForElement(container).getByRole("link", { name: "View activity" });
@@ -193,6 +198,7 @@ it("localizes connection and session labels without replacing the focused link",
       user: { ...alice, entries: [{ mode: "webchat", ts: 1 }] },
       sessionData: data([{ ...session("cron:daily-check", 1), label: "Daily check" }]),
     });
+    await vi.dynamicImportSettled();
     flush();
     const link = links()[0]!;
     const labels = () => [card("facts dd > span")?.textContent, card("session-name")?.textContent];
