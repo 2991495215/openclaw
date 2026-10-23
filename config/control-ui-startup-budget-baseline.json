@@ -1,5 +1,5 @@
 {
   "startupJsGzipBytes": 315967,
-  "reason": "Claw review body deferral: preserve the 315967 B startup baseline; measured 315975 B versus base 315961 B with identical raw bytes, within 64 B build variance. Chat cap ratchets to 1470175 B with the existing relative headroom.",
-  "updatedAt": "2026-10-22"
+  "reason": "Retain the stricter startup baseline after Claw review integration with c64eaf54: matched builds measure 316245 B base and 316273 B candidate across 7 requests, a 28 B delta within64 B build variance. Chat cap ratcheted for1414530 B with current relative headroom; New Session remains within43 B variance.",
+  "updatedAt": "2026-10-23"
 }
