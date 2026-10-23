@@ -80,10 +80,14 @@ it("dispatches registered Liquid requests only while the caller remains authoriz
         }
       }
       const manifest = loadPluginManifest(sourceRoot);
-      if (!manifest.ok) throw new Error(manifest.error);
+      if (!manifest.ok) {
+        throw new Error(manifest.error);
+      }
       const declared = structuredClone(manifest.manifest);
       const catalog = declared.modelCatalog?.providers?.liquid;
-      if (!catalog) throw new Error("Missing Liquid model catalog");
+      if (!catalog) {
+        throw new Error("Missing Liquid model catalog");
+      }
       // Native Decision capabilities are route-bound. Declare only the fixture
       // endpoint; the registered plugin code and guarded transport stay unchanged.
       catalog.baseUrl = baseUrl;
@@ -152,8 +156,9 @@ it("dispatches registered Liquid requests only while the caller remains authoriz
           const provider = registry.decisionProviders.find(
             (entry) => entry.host.provider.id === "liquid",
           )?.host.provider;
-          if (!runtime || provider?.contractVersion !== 2)
+          if (!runtime || provider?.contractVersion !== 2) {
             throw new Error("Missing registered Liquid Decision provider");
+          }
           // Compile source-only preparation before the caller's operation deadline starts.
           await import("./decision-inference.js");
           const batch = {
