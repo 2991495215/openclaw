@@ -146,7 +146,6 @@ async function inspectConfiguredHostDesktop(
   const port = params.config?.port ?? DEFAULT_HOST_DESKTOP_PORT;
   const platform = params.platform ?? process.platform;
   const probe = await probeRfbServer({
-    host: "127.0.0.1",
     port,
     timeoutMs: HOST_DESKTOP_PROBE_TIMEOUT_MS,
   });
@@ -259,7 +258,6 @@ export function createHostDesktopSource(params: {
     assertCurrent?.();
     selectedManagedDesktop = false;
     const probe = await probeRfbServer({
-      host: "127.0.0.1",
       port,
       timeoutMs: HOST_DESKTOP_PROBE_TIMEOUT_MS,
     });

@@ -311,7 +311,6 @@ export function createManagedLinuxDesktop(
         break;
       }
       const probe = await probeRfbServer({
-        host: "127.0.0.1",
         port: active.port,
         timeoutMs: 1_000,
       });

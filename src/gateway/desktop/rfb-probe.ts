@@ -171,7 +171,6 @@ type ConnectedRfbResult =
 
 /** Inspects an RFB offer and retains that connection for its authenticated stream. */
 export async function connectRfbServer(params: {
-  host: "127.0.0.1";
   port: number;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -181,7 +180,7 @@ export async function connectRfbServer(params: {
   // would race the wrapper's queued writes when FIN arrives with unread output.
   const socket = net.createConnection({
     port: params.port,
-    host: params.host,
+    host: "127.0.0.1",
     allowHalfOpen: true,
   });
   const deadline = setTimeout(() => {
@@ -257,7 +256,6 @@ export async function connectRfbServer(params: {
 
 /** Status-only inspection; streaming callers retain the connected result instead. */
 export async function probeRfbServer(params: {
-  host: "127.0.0.1";
   port: number;
   timeoutMs: number;
 }): Promise<RfbProbeResult> {
