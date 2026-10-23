@@ -136,15 +136,18 @@ describe("EmbeddedBlockChunker", () => {
   it.each(["\n\n", "\n \t\n", "\r\n\r\n"])(
     "releases a streamed partial label at a blank line %j",
     (blankLine) => {
-      const source = `[${"a".repeat(28)}${blankLine}`;
+      const prefix = `[${"a".repeat(28)}${blankLine}`;
+      const tail = "Next paragraph.";
+      const source = prefix + tail;
       const chunker = paragraphChunker(10, 30, { hardMaxChars: 160 });
       const { chunks, metadata, emit } = captureChunks();
 
-      for (const character of source) {
+      for (const character of prefix) {
         chunker.append(character);
         chunker.drain({ force: false, emit });
       }
       expect(chunks.length).toBeGreaterThan(0);
+      chunker.append(tail);
       chunker.drain({ force: true, emit });
       expectSourceCoverage(metadata, source);
       expectDrained(chunker, source.length);
