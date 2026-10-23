@@ -30,7 +30,7 @@ import {
   ChatMetadataSnapshotUnavailableError,
   generationFactsMatch,
   type PreparedGenerationFacts,
-} from "./chat-metadata-facts.latency-baseline.js";
+} from "./chat-metadata-facts.latency-baseline.test-support.js";
 import { createChatMetadataModelList } from "./chat-metadata-model-list.js";
 import {
   hasSessionCatalogContext,

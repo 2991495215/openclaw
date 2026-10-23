@@ -15,9 +15,9 @@ import * as preparedCatalog from "../../agents/prepared-model-catalog.js";
 import * as preparedRuntime from "../../agents/prepared-model-runtime.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import * as catalogGateway from "../server-model-catalog.js";
-import * as baselineCatalog from "../server-model-catalog.latency-baseline.js";
+import * as baselineCatalog from "../server-model-catalog.latency-baseline.test-support.js";
 import * as metadataRuntime from "./chat-metadata-runtime.js";
-import * as baselineMetadata from "./chat-metadata-runtime.latency-baseline.js";
+import * as baselineMetadata from "./chat-metadata-runtime.latency-baseline.test-support.js";
 import {
   catalogModelDefaults,
   catalogModelIds,
@@ -30,15 +30,15 @@ import { serveModelsEndpoint, startModelsGateway } from "./models-integration.te
 // Only the baseline runtime's relative facts import changes to preserve that owner pair.
 const baselineSources = [
   [
-    "./chat-metadata-runtime.latency-baseline.ts",
-    "1530c6f96d1c6ee18766d0e1c630e4bfd341822890bd123ea8bdf0917c70326c",
+    "./chat-metadata-runtime.latency-baseline.test-support.ts",
+    "9e61ec10307715c3002aa1888944a97f5bc925409771695d7f6962702e104123",
   ],
   [
-    "./chat-metadata-facts.latency-baseline.ts",
+    "./chat-metadata-facts.latency-baseline.test-support.ts",
     "bed518a64c26482a48dbe4e7538f6fa705dea20a3bf4ce86675701c31c025f8c",
   ],
   [
-    "../server-model-catalog.latency-baseline.ts",
+    "../server-model-catalog.latency-baseline.test-support.ts",
     "b1e3579bd0431212e80b27cf19c2a8acd99ac1ed89418d9991aeb59919c4567d",
   ],
 ] as const;
@@ -343,9 +343,6 @@ it.for(comparisonCases)(
       if (variant === "baseline") {
         expect(settled.has("a-unseen")).toBe(false);
         record("a-pending-after-retained-response");
-      } else {
-        expect((await withinTest(unseenA, signal)).models).toEqual([]);
-        record("a-settled-before-sibling-release");
       }
 
       observeB = true;
@@ -359,6 +356,11 @@ it.for(comparisonCases)(
         signal,
       );
       await withinTest(request("a-retained-checkpoint", "main", "configured"), signal);
+      // Keep the cached-request schedule identical before observing the variant's outcome.
+      if (variant === "candidate") {
+        expect((await withinTest(unseenA, signal)).models).toEqual([]);
+        record("a-settled-before-sibling-release");
+      }
       expect(settled.has("a-unseen")).toBe(variant === "candidate");
       expect(settled.has("b-affected")).toBe(false);
       expect(heldResponses.size).toBeGreaterThan(0);

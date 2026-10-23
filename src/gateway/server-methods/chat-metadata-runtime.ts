@@ -2,7 +2,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import type { ModelsListResult } from "../../../packages/gateway-protocol/src/schema/model-catalog.js";
 import { readSessionRuntimeOwnershipAsync } from "../../agents/harness/session-runtime-ownership.js";
-import { getPendingPreparedModelRuntimeReplacement } from "../../agents/prepared-model-catalog.js";
+import {
+  getPendingPreparedModelRuntimeReplacement,
+  getPublishedPreparedModelCatalogOwnerSnapshot,
+} from "../../agents/prepared-model-catalog.js";
 import { PreparedModelRuntimePublicationSupersededError } from "../../agents/prepared-model-runtime.errors.js";
 import { resolveSwarmConfig } from "../../agents/subagents/swarm/swarm-config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -397,7 +400,10 @@ export function createGatewayChatMetadataRuntime(params: {
       return retained;
     }
     // The Gateway fallback can use this agent's surviving owner during another agent's reload.
-    if (modelRuntimeReplacement) {
+    if (
+      modelRuntimeReplacement &&
+      getPublishedPreparedModelCatalogOwnerSnapshot({ agentId, config: params.getConfig() })
+    ) {
       return undefined;
     }
     let result: ModelsListResult | undefined;
