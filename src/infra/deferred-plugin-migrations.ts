@@ -29,6 +29,7 @@ import {
   type DeferredPluginMigration,
 } from "./deferred-plugin-migrations.contract.js";
 import { isTruthyEnvValue } from "./env.js";
+import { collectSynchronousErrors } from "./error-graph-internal.js";
 import { clearNodeSqliteKyselyCacheForDatabase } from "./kysely-sync-cache-state.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "./kysely-sync.js";
 import type { EngineConnection } from "./sql-connection.js";
@@ -363,17 +364,10 @@ export function withDeferredPluginMigrationsCurrent<T>(
     runWithSqliteCleanup(
       {
         release() {
-          const errors: unknown[] = [];
-          try {
-            clearNodeSqliteKyselyCacheForDatabase(db);
-          } catch (error) {
-            errors.push(error);
-          }
-          try {
-            closeTrackedStateDatabase(db);
-          } catch (error) {
-            errors.push(error);
-          }
+          const errors = collectSynchronousErrors(
+            [() => clearNodeSqliteKyselyCacheForDatabase(db), () => closeTrackedStateDatabase(db)],
+            (cleanup) => cleanup(),
+          );
           throwSqliteLifecycleErrors(errors, "Plugin migration publication cleanup failed.");
         },
       },

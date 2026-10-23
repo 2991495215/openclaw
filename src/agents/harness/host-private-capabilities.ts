@@ -3,6 +3,7 @@ import type {
   SessionEntryWorkerRead,
 } from "../../config/sessions/session-entry-read-runtime.types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { collectSynchronousErrors } from "../../infra/error-graph-internal.js";
 import { throwSqliteLifecycleErrors } from "../../infra/sqlite-lifecycle-errors.js";
 import { warnPluginSdkDeprecation } from "../../plugins/sdk-deprecation.js";
 import type {
@@ -344,14 +345,9 @@ export async function prepareQuestionInputAuthority(authority: QuestionInputAuth
         retainCurrent: () => {
           const retained: ReturnType<PreparedQuestionCallerRead["retainCurrent"]>[] = [];
           const release = () => {
-            const errors: unknown[] = [];
-            for (const read of retained.toReversed()) {
-              try {
-                read.release();
-              } catch (error) {
-                errors.push(error);
-              }
-            }
+            const errors = collectSynchronousErrors(retained.toReversed(), (read) =>
+              read.release(),
+            );
             throwSqliteLifecycleErrors(errors, "Question authority reader release failed");
           };
           try {
