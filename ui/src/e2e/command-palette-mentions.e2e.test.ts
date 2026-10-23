@@ -144,11 +144,13 @@ suite.define(() => {
             }
           }
           await palette.locator(".composer-context-strip__more").waitFor({ state: "visible" });
-          expect(
-            await palette
-              .locator(".composer-context-strip__people")
-              .evaluate((element) => element.scrollWidth <= element.clientWidth),
-          ).toBe(true);
+          await expect
+            .poll(() =>
+              palette
+                .locator(".composer-context-strip__people")
+                .evaluate((element) => element.scrollWidth <= element.clientWidth),
+            )
+            .toBe(true);
           await input.press("@");
           const menu = palette.getByRole("listbox", { name: "Mention a person" });
           await menu.getByText(/10 people/u).waitFor();
