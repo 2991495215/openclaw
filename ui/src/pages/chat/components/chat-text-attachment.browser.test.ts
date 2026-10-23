@@ -4,8 +4,7 @@ import { createDeferred } from "../../../../../test/helpers/promise.js";
 import "../../../styles.css";
 import "../../../styles/chat.ts";
 import "../../../styles/chat/side-panel.css";
-import type { SidebarContent } from "./chat-sidebar-content-types.ts";
-import "./chat-sidebar.ts";
+import "./chat-detail-panel.tsx";
 
 const browserMode = "__vitest_browser__" in globalThis;
 let userEvent: (typeof import("vitest/browser"))["userEvent"];
@@ -37,11 +36,7 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
     const container = document.createElement("div");
     container.className = "side-panel__panel";
     container.style.cssText = "display:flex;width:480px;height:600px;";
-    const panel = document.createElement("openclaw-chat-detail-panel") as HTMLElement & {
-      content: SidebarContent;
-      updateComplete: Promise<unknown>;
-      requestUpdate: () => void;
-    };
+    const panel = document.createElement("openclaw-chat-detail-panel");
     panel.className = "chat-sidebar";
     panel.content = {
       kind: "attachment",
@@ -61,6 +56,12 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
     };
     document.addEventListener("keydown", onKey);
     try {
+      await panel.updateComplete;
+      const attachment = expectDefined(
+        panel.querySelector("openclaw-chat-text-attachment"),
+        "Text attachment",
+      );
+      await attachment.updateComplete;
       await expect.poll(() => panel.querySelector("article")).not.toBeNull();
       const raw = expectDefined(
         [...panel.querySelectorAll("button")].find(
@@ -85,7 +86,7 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
       await initialScrollEnd;
       expect(scroller.scrollTop).toBeGreaterThan(0);
       expect(keys.at(-1)).toEqual({ key: "PageDown", target: reader, trusted: true });
-      panel.requestUpdate();
+      expectDefined(requestSourceUpdate, "Source resolution callback")();
       await panel.updateComplete;
       expect(document.activeElement).toBe(reader);
       expect(fetchMock).toHaveBeenCalledOnce();
@@ -104,10 +105,6 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
       expect(keys.at(-1)).toEqual({ key: "PageDown", target: reader, trusted: true });
       const refreshResponse = new Response(text);
       refreshed.resolve(refreshResponse);
-      const attachment = expectDefined(
-        panel.querySelector("openclaw-chat-text-attachment"),
-        "Text attachment",
-      );
       await expect.poll(() => refreshResponse.bodyUsed && !refreshResponse.body?.locked).toBe(true);
       await attachment.updateComplete;
       expect(panel.querySelector("pre")).toBe(reader);
@@ -164,18 +161,15 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
       const container = document.createElement("div");
       container.className = "side-panel__panel";
       container.style.cssText = "display:flex;width:480px;height:600px;";
-      const panel = document.createElement("openclaw-chat-detail-panel") as HTMLElement & {
-        content: SidebarContent;
-        updateComplete: Promise<unknown>;
-      };
+      const panel = document.createElement("openclaw-chat-detail-panel");
       panel.className = "chat-sidebar";
       panel.content = {
         kind: "attachment",
         title: "notes.md",
         mimeType: "text/markdown",
         sourceIdentity: "attachment:notes",
-        resolveSource: (requestUpdate) => {
-          requestSourceUpdate = requestUpdate;
+        resolveSource: (onSourceChange) => {
+          requestSourceUpdate = onSourceChange;
           return { status: "ready", src: source };
         },
       };
@@ -238,7 +232,9 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
         const retainsPendingReader = change !== "identity" && change !== "oversized metadata";
         await expect.poll(() => reader.checkVisibility()).toBe(retainsPendingReader);
         expect(isObserved(viewport)).toBe(retainsPendingReader);
-        expect(panel.querySelector('[role="status"]') === null).toBe(retainsPendingReader);
+        expect(panel.querySelector('[role="status"]:not([hidden])') === null).toBe(
+          retainsPendingReader,
+        );
 
         const nextResponse = new Response(nextText);
         if (change === "failed refresh") {
@@ -249,6 +245,15 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
           source = "/retried-notes.md";
           expectDefined(requestSourceUpdate, "Source update callback")();
           await expect.poll(() => fetchMock.mock.calls.length).toBe(3);
+          expect(reader.checkVisibility()).toBe(false);
+          expect(isObserved(viewport)).toBe(false);
+          await expect
+            .poll(() =>
+              panel
+                .querySelector<HTMLElement>(".sidebar-attachment-preview__loading")
+                ?.checkVisibility(),
+            )
+            .toBe(true);
           recovered.resolve(nextResponse);
         } else {
           refreshed.resolve(nextResponse);
@@ -295,7 +300,7 @@ describe.runIf(browserMode)("Markdown attachment controls", () => {
         refreshed.resolve(new Response(nextText));
         recovered.resolve(new Response(nextText));
         container.remove();
-        expect(isObserved(observedViewport)).toBe(false);
+        await expect.poll(() => isObserved(observedViewport)).toBe(false);
       }
     },
   );

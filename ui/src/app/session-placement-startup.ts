@@ -1,10 +1,11 @@
+import { registerListener } from "../../../src/shared/listeners.js";
 import { t } from "../i18n/index.ts";
 import type { ChatAttachment, ChatQueueItem } from "../lib/chat/chat-types.ts";
 import { formatUiError } from "../lib/format-error.ts";
 import type { SessionCapability } from "../lib/sessions/index.ts";
 import {
   listSessionPlacementRecoveryStorageKeys,
-  sessionPlacementRecoveryExactStorageKey,
+  sessionPlacementRecoveryExactStorageKeys,
 } from "../lib/sessions/session-placement-recovery-storage-key.ts";
 import type {
   SessionPlacementRecovery,
@@ -14,7 +15,11 @@ import type {
 import { showToast } from "../lib/toast.ts";
 import { restoreChatApiAttachments } from "../pages/chat/attachment-restoration.ts";
 import type { ApplicationChatSubmissions } from "./chat-submissions.ts";
-import { registerControlUiReloadGuard } from "./document-reload-guard.ts";
+import {
+  canReloadControlUiDocument,
+  registerControlUiReloadGuard,
+} from "./document-reload-guard.ts";
+import { gatewayPresentationScope } from "./gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "./gateway.ts";
 import { buildPlacementStartupInitialTurn } from "./session-placement-initial-turn.ts";
 import {
@@ -24,6 +29,7 @@ import {
 } from "./stale-chunk-reload.ts";
 
 export type ApplicationPlacementStartupStatus = {
+  readonly startStatus?: import("../../../packages/gateway-protocol/src/schema/environments.js").WorkerEnvironmentStartStatus;
   readonly sessionKey: string;
   // A restored key holds admission before the lazy runtime validates its target and payload.
   readonly targetKind?: SessionPlacementTarget["kind"];
@@ -35,6 +41,8 @@ export type ApplicationPlacementStartupStatus = {
     | "starting"
     | "active"
     | "sending"
+    | "reconnecting"
+    | "cancelled"
     | "failed";
   readonly startedAt: number;
   readonly error?: string;
@@ -63,7 +71,7 @@ type PlacementStartupRecoveryAccess = Pick<
   "readSessionPlacementRecovery" | "pauseSessionPlacementRecovery"
 >;
 
-export type ApplicationPlacementStartupRuntime = {
+export type ApplicationPlacementStartup = {
   get: (sessionKey: string) => ApplicationPlacementStartupStatus | null;
   hasPendingTurn: (sessionKey: string) => boolean;
   resumeRecovery: () => void;
@@ -74,20 +82,25 @@ export type ApplicationPlacementStartupRuntime = {
   dispose: () => void;
 };
 
-export type ApplicationPlacementStartup = ApplicationPlacementStartupRuntime;
+export type ApplicationPlacementStartupRuntime = Omit<ApplicationPlacementStartup, "subscribe">;
 
-// A transport loss retains ownership, not permission to display content or execute.
+// Submitted display survives transport loss; a changed connection owner revokes it.
 export function capturePlacementStartupConnection(
   gateway: ApplicationGateway,
-  { gatewayUrl, recoveryScope }: Pick<SessionPlacementRecovery, "gatewayUrl" | "recoveryScope">,
+  { gatewayUrl, recoveryScope }: { gatewayUrl: string; recoveryScope?: string },
 ): () => boolean {
   const revision = gateway.connectionRevision;
+  const presentationScope = gatewayPresentationScope(gateway);
   return () => {
     const client = gateway.snapshot.client;
+    const currentScope =
+      gateway.snapshot.hello?.auth?.recoveryScope ??
+      (client?.recoveryScopeReady ? client.recoveryScope : undefined);
     return (
       gateway.connectionRevision === revision &&
+      gatewayPresentationScope(gateway) === presentationScope &&
       gateway.connection.gatewayUrl === gatewayUrl &&
-      (!client?.recoveryScopeReady || client.recoveryScope === recoveryScope)
+      (recoveryScope === undefined || !currentScope || currentScope === recoveryScope)
     );
   };
 }
@@ -136,20 +149,27 @@ export function createApplicationPlacementStartup(
       return undefined;
     }
     const loading = runtimeLoad;
-    const current = capturePlacementStartupConnection(gateway, first.input.recovery);
+    const sameConnection = capturePlacementStartupConnection(gateway, first.input.recovery);
+    const current = () => !disposed && runtimeLoad === loading && sameConnection();
     return () => {
       const remaining = pendingInputs();
       // A retained button cannot authorize discarding a newer start or another credential owner's input.
       if (
-        disposed ||
-        runtimeLoad !== loading ||
         !current() ||
         pending.length !== remaining.length ||
         pending.some((entry, index) => entry !== remaining[index])
       ) {
         return;
       }
-      reloadControlUiDocument();
+      for (const { input, persisted } of pending) {
+        if (!persisted) {
+          preRuntimeEntries.delete(input.recovery.sessionKey);
+        }
+      }
+      publish();
+      if (current() && canReloadControlUiDocument(true)) {
+        reloadControlUiDocument();
+      }
     };
   };
   const stopReloadGuard = registerControlUiReloadGuard(canReload, () =>
@@ -164,6 +184,7 @@ export function createApplicationPlacementStartup(
     if (disposed) {
       return;
     }
+    // Resume retained starts from connection receipts even while no page is mounted.
     stopGateway ??= gateway.subscribe(() => resumeRecovery());
     if ((pending || retry) && runtimeLoad?.error) {
       runtimeLoad = undefined;
@@ -232,9 +253,11 @@ export function createApplicationPlacementStartup(
           },
           read: (key) =>
             current() &&
-            keys.includes(
-              sessionPlacementRecoveryExactStorageKey(owner.gatewayUrl, owner.recoveryScope, key),
-            )
+            sessionPlacementRecoveryExactStorageKeys(
+              owner.gatewayUrl,
+              owner.recoveryScope,
+              key,
+            ).some((storageKey) => keys.includes(storageKey))
               ? restored
               : undefined,
         };
@@ -254,8 +277,7 @@ export function createApplicationPlacementStartup(
         if (disposed) {
           return;
         }
-        runtime = createApplicationPlacementStartupRuntime(dependencies);
-        runtime.subscribe(publish);
+        runtime = createApplicationPlacementStartupRuntime(dependencies, publish);
         resumeRecovery();
       },
       (error: unknown) => {
@@ -277,13 +299,14 @@ export function createApplicationPlacementStartup(
       const error = runtimeLoad?.error;
       const reloadBlocked = isStaleChunkImportError(error) && !canReload();
       const displayError = reloadBlocked ? t("newSession.placementReloadBlocked") : error?.message;
-      return readyClient()
+      const reconnecting = !readyClient();
+      return !reconnecting || input
         ? {
             sessionKey,
             ...pending,
-            phase: error ? "failed" : "pending",
+            phase: reconnecting ? "reconnecting" : error ? "failed" : "pending",
             error: displayError,
-            retryable: Boolean(error) && !reloadBlocked,
+            retryable: !reconnecting && Boolean(error) && !reloadBlocked,
             ...(input
               ? {
                   initialTurn: buildPlacementStartupInitialTurn({
@@ -291,10 +314,13 @@ export function createApplicationPlacementStartup(
                     attachments: input.displayAttachments,
                     createdAt: input.createdAt,
                     error: displayError,
+                    reconnecting,
                   }),
                 }
               : {}),
-            ...(reloadBlocked ? { discardAndReload: captureDiscardAndReload() } : {}),
+            ...(reloadBlocked && !reconnecting
+              ? { discardAndReload: captureDiscardAndReload() }
+              : {}),
           }
         : null;
     },
@@ -345,6 +371,9 @@ export function createApplicationPlacementStartup(
       });
     },
     retry(sessionKey) {
+      if (!readyClient()) {
+        return;
+      }
       const pending = preRuntimeEntries.get(sessionKey)?.();
       if (pending || pendingStoredRecovery?.read(sessionKey)) {
         const loading = runtimeLoad;
@@ -377,10 +406,7 @@ export function createApplicationPlacementStartup(
       runtime?.retry(sessionKey);
     },
     resumeRecovery,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    subscribe: (listener) => registerListener(listeners, listener),
     dispose() {
       stopGateway?.();
       stopReloadGuard();

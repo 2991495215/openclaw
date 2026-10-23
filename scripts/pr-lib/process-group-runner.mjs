@@ -1,8 +1,24 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { constants, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspectManagedProcessGroup } from "../lib/managed-child-process.mts";
+import {
+  claimMaterializedAnchor,
+  retireMaterializedAnchor,
+  sweepMaterializedAnchors,
+} from "./materialized-anchor.mjs";
 
 const SIGNAL_GRACE_MS = 5000;
 const KILL_DRAIN_MS = 5000;
@@ -21,6 +37,46 @@ if (process.platform === "win32") {
 }
 
 const repoRoot = resolve(repoRootArg);
+const ownedAnchor = claimMaterializedAnchor(script);
+delete process.env.OPENCLAW_PR_ANCHOR_CREATOR_PID;
+delete process.env.OPENCLAW_PR_ANCHOR_FD;
+// Startup failures have no operation child whose code could still be in use.
+let operationStarted = false;
+process.once("exit", () => {
+  if (!operationStarted) {
+    retireMaterializedAnchor(ownedAnchor);
+  }
+});
+sweepMaterializedAnchors(ownedAnchor);
+const workflowContext = process.env.OPENCLAW_PR_WORKFLOW_CONTEXT;
+if (workflowContext) {
+  // Exec preserves the verified producer PID; only its child receives this FD.
+  // The child validates the repository/PR/source again before loading helpers.
+  try {
+    const held = fstatSync(8);
+    if (
+      !held.isFile() ||
+      held.uid !== process.getuid() ||
+      (held.mode & 0o777) !== 0o400 ||
+      held.nlink !== 0 ||
+      held.size < 1 ||
+      held.size > 4096 ||
+      `${held.dev}:${held.ino}` !== workflowContext
+    ) {
+      throw new Error("Invalid workflow selection descriptor");
+    }
+    const bytes = Buffer.alloc(held.size);
+    if (
+      readSync(8, bytes, 0, bytes.length, 0) !== bytes.length ||
+      JSON.parse(bytes.toString("utf8")).creator !== String(process.pid)
+    ) {
+      throw new Error("Workflow selection does not belong to this supervisor");
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+}
 // The supervisor must not retain a cwd inside a worktree the operation may
 // delete. Start the child in this same owner so early Git/gh reads use the
 // repository selected by the wrapper, before any PR worktree is entered.
@@ -77,6 +133,7 @@ writeFileSync(
 for (const relative of [
   "pr-lib/github.sh",
   "pr-lib/github.mjs",
+  "pr-lib/gh-api-preflight.mjs",
   "lib/plain-gh.mjs",
   "lib/direct-run.mjs",
 ]) {
@@ -137,25 +194,21 @@ function exitCodeForSignal(signal) {
   return typeof signalNumber === "number" ? 128 + signalNumber : 1;
 }
 
-function processGroupStatus(pgid) {
+function processGroupStatus() {
   if (operationGroupGone) {
     return "dead";
   }
-  if (!Number.isSafeInteger(pgid) || pgid <= 1 || pgid > 0x7fffffff) {
-    return "indeterminate";
+  // The shared owner distinguishes exited Linux threads awaiting reaping from
+  // live descendants. Only this supervisor's observed child exit permits that check.
+  const state = inspectManagedProcessGroup(child, {
+    deadlineAt: killDeadline,
+    errorPolicy: "indeterminate",
+  });
+  if (state === "dead") {
+    // Never let later PGID reuse redirect a delayed signal or liveness probe.
+    operationGroupGone = true;
   }
-  try {
-    process.kill(-pgid, 0);
-    return "live";
-  } catch (error) {
-    if (error?.code === "ESRCH") {
-      // Once absent, this operation group is gone forever. Never let later
-      // PGID reuse redirect a delayed signal or liveness probe.
-      operationGroupGone = true;
-      return "dead";
-    }
-    return "indeterminate";
-  }
+  return state;
 }
 
 function processGroupRows(pgid) {
@@ -289,8 +342,14 @@ const child = spawn(script, args, {
     OPENCLAW_PR_LOCK_SUPERVISOR_PID: String(process.pid),
     OPENCLAW_PR_GITHUB_SNAPSHOT_ROOT: lockSnapshotDir,
   },
-  stdio: ["inherit", "inherit", "inherit", "pipe"],
+  stdio: workflowContext
+    ? ["inherit", "inherit", "inherit", "pipe", "ignore", "ignore", "ignore", "ignore", 8]
+    : ["inherit", "inherit", "inherit", "pipe"],
 });
+operationStarted = true;
+if (workflowContext) {
+  closeSync(8);
+}
 operationGroup.pid = child.pid;
 if (killDeadline) {
   signalProcessGroup("SIGKILL");
@@ -479,7 +538,26 @@ function childResultAllowsLockRelease() {
   return completedCleanly || failedDuringValidation;
 }
 
-const postExitGroupStatus = child.pid ? processGroupStatus(child.pid) : "dead";
+// A side-effecting failure that ended on its own leaves the same evidence as a
+// clean exit once the full drain observes the group dead and every inherited
+// notification-pipe holder gone: only an escaped, fd-closing daemonizer stays
+// invisible, the residual a clean exit already accepts (#124583). Signals,
+// lingering group work, open pipes, and controller loss keep the lock sticky.
+function failedOperationDrainAllowsLockRelease() {
+  return (
+    drainResult === "drained" &&
+    operationCompleteReceived &&
+    childResult.code !== null &&
+    childResult.code > 0 &&
+    childResult.code < 128 &&
+    !receivedSignal &&
+    !childResult.signal &&
+    !notificationFailure &&
+    !hadLingeringGroup
+  );
+}
+
+const postExitGroupStatus = child.pid ? processGroupStatus() : "dead";
 if (postExitGroupStatus === "indeterminate") {
   notificationFailure ??= new Error("scripts/pr process-group state became indeterminate");
 } else if (postExitGroupStatus === "live") {
@@ -498,7 +576,7 @@ if (postExitGroupStatus === "indeterminate") {
 
 async function waitForOperationDrain() {
   while (true) {
-    const groupStatus = child.pid ? processGroupStatus(child.pid) : "dead";
+    const groupStatus = child.pid ? processGroupStatus() : "dead";
     if (groupStatus === "indeterminate") {
       throw new Error("scripts/pr process-group state became indeterminate");
     }
@@ -681,7 +759,9 @@ for (const [signal, handler] of signalHandlers) {
 
 const retainedLocks = [];
 const releaseFailures = new Set();
-if (drained && childResultAllowsLockRelease()) {
+const releaseAfterDrainedFailure =
+  drained && !childResultAllowsLockRelease() && failedOperationDrainAllowsLockRelease();
+if (drained && (childResultAllowsLockRelease() || releaseAfterDrainedFailure)) {
   for (const lock of locks.values()) {
     try {
       releaseLock(lock);
@@ -697,6 +777,22 @@ if (drained && childResultAllowsLockRelease()) {
 }
 for (const { lock, releaseError } of retainedLocks) {
   reportRetainedLock(lock, releaseError, releaseFailures);
+}
+if (releaseAfterDrainedFailure) {
+  for (const { lockRef } of locks.values()) {
+    if (!retainedLocks.some(({ lock }) => lock.lockRef === lockRef)) {
+      console.error(
+        `Released the operation lock for PR #${lockRef.split("/").at(-1)} after exit code ${childResult.code}; its process group and every notification-pipe holder exited.`,
+      );
+    }
+  }
+}
+
+if (drainResult === "drained") {
+  // Anchors hold code bytes, not PR state. A dead group and closed pipe leave
+  // only the fd-closing escapee residual already accepted on clean exits.
+  // Lock/merge recovery runs from trusted checkouts, never these anchor paths.
+  retireMaterializedAnchor(ownedAnchor);
 }
 
 if (notificationFailure) {

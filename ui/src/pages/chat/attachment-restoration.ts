@@ -4,10 +4,7 @@ import { generateUUID } from "../../lib/uuid.ts";
 
 /** Restores durable first-turn payloads into visible, locked composer chips. */
 export function restoreChatApiAttachments(attachments?: readonly unknown[]): ChatAttachment[] {
-  if (!attachments?.length) {
-    return [];
-  }
-  return attachments.flatMap((value) => {
+  return (attachments ?? []).flatMap((value) => {
     const attachment = asOptionalObjectRecord(value);
     if (!attachment) {
       return [];
@@ -25,6 +22,9 @@ export function restoreChatApiAttachments(attachments?: readonly unknown[]): Cha
         id: generateUUID(),
         dataUrl: `data:${mimeType};base64,${content}`,
         mimeType,
+        ...(attachment.origin === "paste" || attachment.origin === "file"
+          ? { origin: attachment.origin }
+          : {}),
         fileName: typeof attachment.fileName === "string" ? attachment.fileName : undefined,
       },
     ];
