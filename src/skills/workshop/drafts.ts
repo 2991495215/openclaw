@@ -156,6 +156,7 @@ export async function discardWorkshopDraft(
   config: OpenClawConfig,
   agentId: string,
   id: string,
+  assertLive?: () => void,
 ): Promise<void> {
   const draftDir = resolveDraftDir(config, agentId, id);
   if (!(await pathExists(draftDir))) {
@@ -166,5 +167,6 @@ export async function discardWorkshopDraft(
     relativePath: id,
     recursive: true,
     force: false,
+    ...(assertLive ? { assertBeforeMutation: assertLive } : {}),
   });
 }

@@ -169,7 +169,9 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
       if (options.reviewOf) {
         throw new ToolInputError("Background reviews may not discard drafts.");
       }
-      await runMutation(() => discardWorkshopDraft(options.config, options.agentId, draftId));
+      await runMutation(() =>
+        discardWorkshopDraft(options.config, options.agentId, draftId, ctx.assertLive),
+      );
       return textResult(`Discarded draft ${draftId}.`, { draft: draftId });
     }
 

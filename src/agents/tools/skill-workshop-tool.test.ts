@@ -149,6 +149,16 @@ describe("skill_workshop", () => {
     expect(await foreground("list")).not.toContain("Drafts waiting");
   });
 
+  it("keeps a draft when the discarding run was aborted", async () => {
+    const drafted = await workshop()("draft", {
+      content: "---\nname: deploy\ndescription: Deploy staging\n---\n\n1. Run make ship.\n",
+    });
+    const id = /Saved draft (\S+) for/.exec(drafted)?.[1];
+    const aborted = AbortSignal.abort(new Error("run aborted"));
+    await expect(workshop()("discard", { draft: id }, aborted)).rejects.toThrow("run aborted");
+    expect(await workshop()("list")).toContain(`- ${id} (deploy)`);
+  });
+
   it("shows the other learned skills on create so the agent can merge duplicates", async () => {
     const result = await workshop()("create", {
       name: "staging-deploy",
