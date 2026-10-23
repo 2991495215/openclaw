@@ -691,33 +691,6 @@ openclaw-terminal-panel {
       transform: none;
     }
   }
-
-  * {
-    scrollbar-width: thin;
-  }
-
-  ::-webkit-scrollbar {
-    width: var(--scrollbar-size);
-    height: var(--scrollbar-size);
-  }
-
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    background-clip: content-box;
-    border: var(--scrollbar-thumb-inset) solid transparent;
-    border-radius: var(--radius-full);
-  }
-
-  ::-webkit-scrollbar-thumb:hover,
-  :hover::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb-hover);
-    background-clip: content-box;
-  }
 }
 @keyframes tp-upload-progress {
   from {
