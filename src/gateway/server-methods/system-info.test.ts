@@ -139,7 +139,7 @@ describe("system.info native state owner", () => {
 describe("system.info", () => {
   let sampleTime = Date.now();
   beforeEach(() => {
-    sampleTime += 30_001;
+    sampleTime = Math.max(sampleTime, Date.now()) + 30_001;
     vi.spyOn(Date, "now").mockReturnValue(sampleTime);
     vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
     vi.spyOn(os, "platform").mockReturnValue("darwin");
