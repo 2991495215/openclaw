@@ -651,7 +651,6 @@ describe("modelsStatusCommand auth overview", () => {
     );
     expect(mocks.resolveAgentHarnessRuntimeAvailability).toHaveBeenCalledWith(
       expect.objectContaining({
-        runtime: "codex",
         provider: "openai",
         payloadFailures: [payloadFailure],
         payloadCheckedPluginIds: ["codex"],

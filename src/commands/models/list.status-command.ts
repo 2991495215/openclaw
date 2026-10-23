@@ -279,7 +279,6 @@ export async function modelsStatusCommand(
         env: process.env,
       });
       return resolveAgentHarnessRuntimeAvailability({
-        runtime: "codex",
         provider,
         config: cfg,
         workspaceDir,
