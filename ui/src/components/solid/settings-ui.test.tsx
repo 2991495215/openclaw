@@ -131,7 +131,7 @@ it("supports Home and End in the existing radio navigation without consuming mod
     <SettingsSegmented
       value={selected()}
       options={options}
-      onChange={(value) => setSelected(value)}
+      onChange={(value) => void setSelected(value)}
     />
   ));
   const first = view.getByRole("radio", { name: "First" });
