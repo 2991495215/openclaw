@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { AgentHarnessPreflightError } from "../agents/harness/errors.js";
@@ -7,7 +9,11 @@ import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/run
 import { replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { beginPluginStatePublication } from "../plugin-state/plugin-state-publication.js";
+import {
+  beginPluginStatePublication,
+  pluginStatePublication,
+  pluginStatePublicationKey,
+} from "../plugin-state/plugin-state-publication.js";
 import { createPluginStateKeyedStoreV2 } from "../plugin-state/plugin-state-store.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
@@ -408,3 +414,168 @@ it("prepares native model ownership in workers and invalidates only its committe
     expect(syncOwnership).not.toHaveBeenCalled();
   });
 });
+
+it.for([100, 1_000, 8_000])(
+  "measures unrelated plugin publication with %i native session rows",
+  async (rowCount) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const preparationStarted = performance.now();
+      const bindings = createPluginStateKeyedStoreV2<string>(
+        "row-native",
+        { namespace: "publication-latency", maxEntries: 10 },
+        { assertCurrent() {} },
+      );
+      await bindings.register("shared-model", "synthetic-model");
+      const keys = Array.from(
+        { length: rowCount },
+        (_, index) => `agent:main:harness:row-native:publication-${index}`,
+      );
+      for (const [index, key] of keys.entries()) {
+        seedNative(key, `publication-${index}`, { visibility: "shared" });
+      }
+      let ownershipReads = 0;
+      using _native = nativeHarness(async () => {
+        ownershipReads++;
+        const model = await bindings.lookup("shared-model");
+        return model
+          ? { model: "native", auth: "native", modelRef: { provider: "example", model } }
+          : undefined;
+      });
+      using _foreground = holdForeground();
+      const unrelatedKey = pluginStatePublicationKey({
+        plugin_id: "row-native",
+        namespace: "publication-latency",
+        entry_key: "unrelated",
+      });
+      const subscriptions: Array<{ active: boolean }> = [];
+      const callbackSamples: Array<{ wallMs: number; cpuMs: number }> = [];
+      const subscribe = pluginStatePublication.subscribeFacts;
+      let measuring = false;
+      using _subscriptions = vi
+        .spyOn(pluginStatePublication, "subscribeFacts")
+        .mockImplementation((listener) => {
+          const subscription = { active: true };
+          subscriptions.push(subscription);
+          const stop = subscribe((change) => {
+            if (
+              !measuring ||
+              change.kind !== "committed" ||
+              !change.receipt.facts.has(unrelatedKey)
+            ) {
+              listener(change);
+              return;
+            }
+            const cpu = process.threadCpuUsage();
+            const started = performance.now();
+            try {
+              listener(change);
+            } finally {
+              const wallMs = performance.now() - started;
+              const used = process.threadCpuUsage(cpu);
+              callbackSamples.push({ wallMs, cpuMs: (used.user + used.system) / 1_000 });
+            }
+          });
+          return () => {
+            subscription.active = false;
+            stop();
+          };
+        });
+      using projection = await createTestProjection({ cfg: defaultConfig, modelCatalog: [] });
+      await projection.ensureMaterialized();
+      expect(subscriptions.filter((subscription) => subscription.active)).toHaveLength(1);
+      _subscriptions.mockRestore();
+      expect(ownershipReads).toBe(rowCount);
+      expect(
+        keys.every((key) =>
+          projection
+            .capture({ agentId: "main", key })
+            ?.runtimeOwnershipDependencies?.some(
+              (dependency) =>
+                dependency.pluginId === "row-native" &&
+                dependency.namespace === "publication-latency" &&
+                dependency.keys.includes("shared-model"),
+            ),
+        ),
+      ).toBe(true);
+      const preparationMs = performance.now() - preparationStarted;
+      const context = bindSessionRowProjection(requestContext(defaultConfig), () => projection);
+      const list = async () => {
+        const respond = vi.fn();
+        const started = performance.now();
+        await sessionReadHandlers["sessions.list"]!({
+          req: { type: "req", id: "publication-latency", method: "sessions.list" },
+          params: { agentId: "main", limit: 100, includeLastMessage: false },
+          client: null,
+          context,
+          isWebchatConnect: () => false,
+          respond,
+        });
+        const elapsed = performance.now() - started;
+        expect(respond).toHaveBeenCalledWith(
+          true,
+          expect.objectContaining({ totalCount: rowCount }),
+        );
+        const result: unknown = respond.mock.calls[0]?.[1];
+        if (!isRecord(result) || !Array.isArray(result.sessions)) {
+          throw new Error("Synthetic list response is missing its session rows");
+        }
+        expect(result.sessions).toHaveLength(Math.min(100, rowCount));
+        const rows = result.sessions.map((row: unknown) => {
+          if (!isRecord(row)) {
+            throw new Error("Synthetic list response contains an invalid row");
+          }
+          expect(row).toMatchObject({
+            model: "synthetic-model",
+            sessionModelRevision: expect.any(String),
+          });
+          return { key: row.key, model: row.model, sessionModelRevision: row.sessionModelRevision };
+        });
+        return { elapsed, rows };
+      };
+      const initial = await list();
+      for (let warmup = 0; warmup < 5; warmup++) {
+        await bindings.register("unrelated", `warm-${warmup}`);
+      }
+      const materializedCount = projection.materializedCount;
+      const revision = projection.snapshot({ agentId: "main", key: keys[0]! }).row
+        ?.sessionModelRevision;
+      expect(revision).toEqual(expect.any(String));
+      const postPublicationRequestMs: number[] = [];
+      measuring = true;
+      for (let sample = 0; sample < 32; sample++) {
+        await bindings.register("unrelated", `sample-${sample}`);
+        const response = await list();
+        expect(response.rows).toEqual(initial.rows);
+        postPublicationRequestMs.push(response.elapsed);
+      }
+      measuring = false;
+      expect(callbackSamples).toHaveLength(32);
+      expect(ownershipReads).toBe(rowCount);
+      expect(projection.materializedCount).toBe(materializedCount);
+      expect(
+        projection.snapshot({ agentId: "main", key: keys[0]! }).row?.sessionModelRevision,
+      ).toBe(revision);
+      const summarize = (values: number[]) => {
+        const sorted = values.toSorted((a, b) => a - b);
+        return {
+          median: sorted[Math.ceil(sorted.length / 2) - 1],
+          p95: sorted[Math.ceil(sorted.length * 0.95) - 1],
+          min: sorted[0],
+          max: sorted.at(-1),
+        };
+      };
+      console.log(
+        JSON.stringify({
+          diagnostic: "session-unrelated-plugin-publication",
+          rows: rowCount,
+          samples: callbackSamples.length,
+          preparationMs,
+          ownershipReads,
+          callbackWallMs: summarize(callbackSamples.map((sample) => sample.wallMs)),
+          callbackCpuMs: summarize(callbackSamples.map((sample) => sample.cpuMs)),
+          postPublicationRequestMs: summarize(postPublicationRequestMs),
+        }),
+      );
+    });
+  },
+);
