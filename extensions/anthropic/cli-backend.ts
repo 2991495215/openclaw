@@ -10,6 +10,7 @@ import {
   CLAUDE_CLI_CLEAR_ENV,
   CLAUDE_CLI_MODEL_ALIASES,
   CLAUDE_CLI_SESSION_ID_FIELDS,
+  OPENCLAW_MCP_TOOL_PREFIX,
 } from "./cli-constants.js";
 import {
   classifyClaudeCliErrorCode,
@@ -22,7 +23,13 @@ import {
   resolveClaudeCliExecutionArgs,
   resolveClaudeCliThinkingEnv,
 } from "./cli-shared.js";
-import { appendClaudeCliToolNamingGuidance } from "./cli-tool-naming.js";
+
+const CLAUDE_CLI_TOOL_NAMING_HEADING = "## OpenClaw tool names in Claude Code";
+const CLAUDE_CLI_TOOL_NAMING_SECTION = [
+  CLAUDE_CLI_TOOL_NAMING_HEADING,
+  `OpenClaw MCP: \`${OPENCLAW_MCP_TOOL_PREFIX}<name>\`. Deferred: ToolSearch \`select:${OPENCLAW_MCP_TOOL_PREFIX}<name>\` first.`,
+].join("\n");
+const CLAUDE_CLI_MESSAGE_TOOL_GUIDANCE = `Tool-only replies: \`${OPENCLAW_MCP_TOOL_PREFIX}message(action=send)\`. Native \`SendMessage\`/\`PushNotification\` cannot deliver OpenClaw replies.`;
 
 type ClaudeCliAuthCredential =
   | { type: "oauth"; access: string; expires: number }
@@ -183,8 +190,20 @@ export function buildAnthropicCliBackend(
     nativeToolMode: "selectable",
     hostOwnedTools: ["exec", "process"],
     toolAvailabilityEnforcement: "execution-args",
-    transformSystemPrompt: ({ systemPrompt, openClawMcpToolNames }) =>
-      appendClaudeCliToolNamingGuidance(systemPrompt, openClawMcpToolNames),
+    // Keep Claude's registration names in its backend and preserve the shared prompt prefix.
+    transformSystemPrompt: ({ systemPrompt, openClawMcpToolNames: toolNames = [] }) => {
+      if (
+        toolNames.length === 0 ||
+        !systemPrompt.trim() ||
+        systemPrompt.includes(CLAUDE_CLI_TOOL_NAMING_HEADING)
+      ) {
+        return systemPrompt;
+      }
+      const messageGuidance = toolNames.includes("message")
+        ? `\n${CLAUDE_CLI_MESSAGE_TOOL_GUIDANCE}`
+        : "";
+      return `${systemPrompt}\n\n${CLAUDE_CLI_TOOL_NAMING_SECTION}${messageGuidance}\n`;
+    },
     projectNativeToolAuthority: projectClaudeNativeToolAuthority,
     sideQuestionToolMode: "disabled",
     ownsNativeCompaction: true,
