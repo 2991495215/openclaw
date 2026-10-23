@@ -1,5 +1,6 @@
 import type { Locator } from "playwright";
 import { expect, it } from "vitest";
+import { controlUiE2eWaitTimeoutMs } from "../test-helpers/control-ui-e2e-readiness.ts";
 import {
   expectForegroundUnchanged,
   openFromForeground,
@@ -144,11 +145,14 @@ suite.define(() => {
             }
           }
           await palette.locator(".composer-context-strip__more").waitFor({ state: "visible" });
+          // The existing +more chip can stay visible until ResizeObserver sizes the new person.
           await expect
-            .poll(() =>
-              palette
-                .locator(".composer-context-strip__people")
-                .evaluate((element) => element.scrollWidth <= element.clientWidth),
+            .poll(
+              () =>
+                palette
+                  .locator(".composer-context-strip__people")
+                  .evaluate((element) => element.scrollWidth <= element.clientWidth),
+              { timeout: controlUiE2eWaitTimeoutMs },
             )
             .toBe(true);
           await input.press("@");
