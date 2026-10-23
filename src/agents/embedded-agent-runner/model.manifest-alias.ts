@@ -28,30 +28,25 @@ export function resolveManifestModelCatalogProviderAliasMetadata(params: {
   modelId?: string;
   cfg?: OpenClawConfig;
   workspaceDir?: string;
-  env?: NodeJS.ProcessEnv;
 }): ManifestModelCatalogProviderAliasMetadata {
   const provider = normalizeProviderId(params.provider);
   if (!provider) {
     return { provider: params.provider };
   }
-  const env = params.env ?? process.env;
   // Gateway plugin metadata is process-stable. Reuse its lifecycle-owned snapshot
   // so every model turn does not rediscover the same manifest alias table.
-  const currentPlugins =
-    env === process.env
-      ? getCurrentPluginMetadataSnapshot({
-          config: params.cfg,
-          workspaceDir: params.workspaceDir,
-          env,
-          ...(params.cfg === undefined ? { requireDefaultDiscoveryContext: true } : {}),
-        })?.plugins
-      : undefined;
+  const currentPlugins = getCurrentPluginMetadataSnapshot({
+    config: params.cfg,
+    workspaceDir: params.workspaceDir,
+    env: process.env,
+    ...(params.cfg === undefined ? { requireDefaultDiscoveryContext: true } : {}),
+  })?.plugins;
   const plugins =
     currentPlugins ??
     loadPluginManifestRegistryCore({
       config: params.cfg,
       workspaceDir: params.workspaceDir,
-      env,
+      env: process.env,
     }).plugins;
   const claims: ManifestModelCatalogProviderAliasMetadata[] = [];
   const normalizedConfig = normalizePluginsConfig(params.cfg?.plugins);

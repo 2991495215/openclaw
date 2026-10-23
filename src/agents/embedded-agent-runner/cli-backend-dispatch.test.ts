@@ -29,7 +29,6 @@ const resolveRuntimeCliBackends = vi.hoisted(() => vi.fn());
 const resolveCliRuntimeExecutionProvider = vi.hoisted(() => vi.fn());
 const runCliAgent = vi.hoisted(() => vi.fn());
 const retireSessionMcpRuntime = vi.hoisted(() => vi.fn());
-const retireSessionMcpRuntimeForSessionKey = vi.hoisted(() => vi.fn());
 const tempDirs = useSessionStoreTempDirs(afterAll, "cli-dispatch-history-");
 
 // mock-isolation: Dispatch eligibility uses fixture auth modes without host credential discovery.
@@ -50,7 +49,6 @@ vi.mock("../cli-runner.runtime.js", () => ({
 }));
 vi.mock("../agent-bundle-mcp-tools.js", () => ({
   retireSessionMcpRuntime,
-  retireSessionMcpRuntimeForSessionKey,
 }));
 const transcriptRecorder = vi.hoisted(() => ({
   noteToolEvent: vi.fn(),
@@ -130,7 +128,6 @@ beforeEach(() => {
   resolveRuntimeCliBackends.mockReset();
   runCliAgent.mockReset();
   retireSessionMcpRuntime.mockReset();
-  retireSessionMcpRuntimeForSessionKey.mockReset();
   resolveCliRuntimeExecutionProvider.mockReset();
   ensureAuthProfileStore.mockReturnValue({ profiles: {} });
   resolveAuthProfileOrder.mockReturnValue([]);
@@ -140,7 +137,6 @@ beforeEach(() => {
     { id: "google-gemini-cli" },
   ]);
   resolveCliRuntimeExecutionProvider.mockReturnValue(undefined);
-  retireSessionMcpRuntimeForSessionKey.mockResolvedValue(true);
   retireSessionMcpRuntime.mockResolvedValue(true);
   runCliAgent.mockResolvedValue(cliRunResult());
   transcriptRecorder.noteToolEvent.mockReset();
@@ -547,7 +543,6 @@ describe("runEmbeddedAgentViaCliBackendIfEligible execution", () => {
     await runEmbeddedAgentViaCliBackendIfEligible(baseRunParams({ cleanupBundleMcpOnRunEnd }));
     expect(runCliAgent.mock.calls[0]?.[0]?.cleanupBundleMcpOnRunEnd).toBe(cleanupBundleMcpOnRunEnd);
     expect(retireSessionMcpRuntime).not.toHaveBeenCalled();
-    expect(retireSessionMcpRuntimeForSessionKey).not.toHaveBeenCalled();
   });
 
   it("mirrors the run into the transcript recorder", async () => {

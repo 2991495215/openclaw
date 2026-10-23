@@ -5,7 +5,6 @@ export {
   acquireSessionMcpRuntime,
   peekSessionMcpRuntime,
   retireSessionMcpRuntime,
-  retireSessionMcpRuntimeForSessionKey,
 } from "./agent-bundle-mcp-manager-api.js";
 export { resolveSessionMcpConfigSummary } from "./agent-bundle-mcp-runtime-config.js";
 export {
