@@ -3,7 +3,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { EngineConnection } from "./sql-connection.js";
 import { sqlPublicationAnchor } from "./sql-connection.js";
-import { createSqliteLifecycleAggregateError } from "./sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "./sqlite-lifecycle-errors.js";
 
 type PendingTransactionState = {
   /** Fence transferable readers immediately before the physical COMMIT. */
@@ -200,10 +200,9 @@ function rollbackTransactionState(
     }
   }
   if (failures.length > 0) {
-    throw createSqliteLifecycleAggregateError(
+    throwSqliteLifecycleErrors(
       [error, ...failures],
       "SQLite transaction and rollback observers failed",
-      error,
     );
   }
 }

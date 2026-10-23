@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { isPathInside } from "../infra/path-guards.js";
-import { createSqliteLifecycleAggregateError } from "../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
 import { escapeRegExp } from "../shared/regexp.js";
 import {
   retainLoadedPluginSourceCapture,
@@ -632,10 +632,9 @@ export function createPluginSourceCapture() {
       cleanupErrors.push(cleanupError);
     }
     if (cleanupErrors.length > 0) {
-      throw createSqliteLifecycleAggregateError(
+      throwSqliteLifecycleErrors(
         [error, ...cleanupErrors],
         "Plugin source capture setup and cleanup failed",
-        error,
       );
     }
     throw error;

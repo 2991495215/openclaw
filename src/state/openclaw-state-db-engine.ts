@@ -17,10 +17,7 @@ import {
   invalidateLocalSqliteSchemaAdmissions,
   publishSqliteDatabaseSchemaChange,
 } from "../infra/sqlite-database-admission.js";
-import {
-  createSqliteLifecycleAggregateError,
-  throwSqliteLifecycleErrors,
-} from "../infra/sqlite-lifecycle-errors.js";
+import { throwSqliteLifecycleErrors } from "../infra/sqlite-lifecycle-errors.js";
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
 import { captureSqliteSchemaFacts } from "../infra/sqlite-schema-admission.js";
 import { getAdmittedSqliteSchemaFacts } from "../infra/sqlite-schema-facts.js";
@@ -416,10 +413,9 @@ export function openExistingStatePostgresConnectionFromAnchor(
       path: pathname,
     });
     if (errors.length) {
-      throw createSqliteLifecycleAggregateError(
+      throwSqliteLifecycleErrors(
         [error, ...errors],
         "PostgreSQL state connection acquisition and cleanup failed.",
-        error,
       );
     }
     throw error;
