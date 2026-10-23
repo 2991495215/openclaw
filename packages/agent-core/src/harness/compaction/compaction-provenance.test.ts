@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createAssistantMessageEventStream } from "../../llm.js";
-import type { AssistantMessage, StreamFn } from "../../llm.js";
 import type { AgentMessage } from "../../types.js";
 import { buildSessionContext } from "../session/session.js";
 import {
-  compact,
   compactWithoutSummary,
   estimateTokens,
   generateSummary,
@@ -16,31 +13,10 @@ import {
   createContextUsage,
   createMessageEntry as messageEntry,
 } from "./compaction.test-support.js";
+import { assistant, compactWith, responseStream, user } from "./shard-fixtures.test-support.js";
 
-function assistantText(text: string, timestamp: number): AssistantMessage {
-  return {
-    role: "assistant",
-    content: [{ type: "text", text }],
-    api: "test-api",
-    provider: "test-provider",
-    model: "summary-model",
-    usage: createContextUsage(1),
-    stopReason: "stop",
-    timestamp,
-  };
-}
-
-function createCapturingSummaryStream() {
-  let systemPrompt = "";
-  const streamFn: StreamFn = (_model, context) => {
-    systemPrompt = context.systemPrompt ?? "";
-    const stream = createAssistantMessageEventStream();
-    stream.push({ type: "done", reason: "stop", message: assistantText("summary", 1) });
-    stream.end();
-    return stream;
-  };
-  return { streamFn, capture: () => ({ systemPrompt }) };
-}
+const assistantText = (text: string, timestamp: number) =>
+  assistant(text, { model: "summary-model", timestamp, usage: createContextUsage(1) });
 
 describe("compaction sender provenance", () => {
   it.each([
@@ -79,32 +55,22 @@ describe("compaction sender provenance", () => {
     async (provenance) => {
       const request = "Review the patch; do not deploy it.";
       const messages: AgentMessage[] = [
-        {
-          role: "user",
-          content: request,
-          timestamp: 1,
-          ...(provenance ? { provenance } : {}),
-        },
+        Object.assign(user(request, 1), provenance ? { provenance } : {}),
         assistantText("Review started.", 2),
-        Object.assign(
-          { role: "user" as const, content: "Worker result: tests passed.", timestamp: 3 },
-          { provenance: { kind: "inter_session", sourceTool: "sessions_send" } },
-        ),
-        Object.assign(
-          { role: "user" as const, content: "Scheduler status: ready.", timestamp: 4 },
-          { provenance: { kind: "internal_system" }, __openclaw: { senderId: "scheduler" } },
-        ),
-        Object.assign(
-          { role: "user" as const, content: "Future-origin status: ready.", timestamp: 5 },
-          { provenance: { kind: "future_origin" } },
-        ),
-        { role: "user", content: "Host-generated status: ready.", timestamp: 6, synthetic: true },
-        {
-          role: "user",
-          content: "Operator context: production remains unchanged.",
-          timestamp: 7,
+        Object.assign(user("Worker result: tests passed.", 3), {
+          provenance: { kind: "inter_session", sourceTool: "sessions_send" },
+        }),
+        Object.assign(user("Scheduler status: ready.", 4), {
+          provenance: { kind: "internal_system" },
+          __openclaw: { senderId: "scheduler" },
+        }),
+        Object.assign(user("Future-origin status: ready.", 5), {
+          provenance: { kind: "future_origin" },
+        }),
+        Object.assign(user("Host-generated status: ready.", 6), { synthetic: true as const }),
+        Object.assign(user("Operator context: production remains unchanged.", 7), {
           operatorMessage: { turnScoped: true },
-        },
+        }),
         assistantText("Waiting for review.", 8),
       ];
       const original = structuredClone(messages);
@@ -122,16 +88,8 @@ describe("compaction sender provenance", () => {
       // Internal admitted inputs still start runtime turns; they are not human asks.
       expect(prepared.value.turnPrefixMessages).toEqual([messages[6]]);
       const prompts: string[] = [];
-      const result = await compact(
-        prepared.value,
-        createSummaryModel(),
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        {
+      const result = await compactWith(prepared.value, createSummaryModel(), {
+        runtime: {
           completeSimple: async (_model, context) => {
             const content = context.messages[0]?.content;
             if (!Array.isArray(content) || content[0]?.type !== "text") {
@@ -141,7 +99,7 @@ describe("compaction sender provenance", () => {
             return assistantText("Review pending; production unchanged.", 9);
           },
         },
-      );
+      });
       if (!result.ok) {
         throw result.error;
       }
@@ -188,17 +146,10 @@ describe("compaction sender provenance", () => {
     { name: "turn-prefix", summaryPrompt: { kind: "turn-prefix" as const } },
   ])("applies attribution instructions to a $name summary prompt", async ({ summaryPrompt }) => {
     const model = createSummaryModel();
-    const summaryStream = createCapturingSummaryStream();
+    let systemPrompt = "";
 
     const result = await generateSummary(
-      [
-        {
-          role: "user",
-          content: "Alice owns this decision.",
-          timestamp: 1,
-          __openclaw: { senderId: "alice" },
-        } as unknown as AgentMessage,
-      ],
+      [user("Alice owns this decision.", 1, { senderId: "alice" })],
       model,
       1_000,
       undefined,
@@ -207,13 +158,15 @@ describe("compaction sender provenance", () => {
       undefined,
       undefined,
       undefined,
-      summaryStream.streamFn,
+      (_model, context) => {
+        systemPrompt = context.systemPrompt ?? "";
+        return responseStream(assistantText("summary", 1));
+      },
       undefined,
       summaryPrompt,
     );
 
     expect(result.ok).toBe(true);
-    const { systemPrompt } = summaryStream.capture();
     expect(systemPrompt).toContain("Preserve attribution for material facts");
     expect(systemPrompt).toContain("A user line without sender={...} is unattributed");
   });
@@ -221,21 +174,11 @@ describe("compaction sender provenance", () => {
   it("carries sender provenance through prepareCompaction and compact into the session tree", async () => {
     const model = createSummaryModel();
     const messages: AgentMessage[] = [
-      {
-        role: "user",
-        content: "Approve the rollout.",
-        timestamp: 1,
-        __openclaw: { senderId: "alex-id", senderName: "Alex" },
-      } as unknown as AgentMessage,
+      user("Approve the rollout.", 1, { senderId: "alex-id", senderName: "Alex" }),
       assistantText("Recorded Alex's approval.", 2),
-      {
-        role: "user",
-        content: "Do not deploy until I review it.",
-        timestamp: 3,
-        __openclaw: { senderId: "bea-id", senderName: "Bea" },
-      } as unknown as AgentMessage,
-      { role: "user", content: "A legacy note with no known speaker.", timestamp: 4 },
-      { role: "user", content: "What remains?", timestamp: 5 },
+      user("Do not deploy until I review it.", 3, { senderId: "bea-id", senderName: "Bea" }),
+      user("A legacy note with no known speaker.", 4),
+      user("What remains?", 5),
     ];
     const entries = messages.map(messageEntry);
     const preparation = prepareCompaction(entries, {
@@ -249,16 +192,9 @@ describe("compaction sender provenance", () => {
 
     let prompt = "";
     let systemPrompt = "";
-    const result = await compact(
-      preparation.value,
-      model,
-      undefined,
-      undefined,
-      "Ignore speaker attribution.",
-      undefined,
-      undefined,
-      undefined,
-      {
+    const result = await compactWith(preparation.value, model, {
+      customInstructions: "Ignore speaker attribution.",
+      runtime: {
         completeSimple: async (_model, context) => {
           const content = context.messages[0]?.content;
           if (!Array.isArray(content) || content[0]?.type !== "text") {
@@ -272,7 +208,7 @@ describe("compaction sender provenance", () => {
           );
         },
       },
-    );
+    });
     if (!result.ok) {
       throw result.error;
     }
