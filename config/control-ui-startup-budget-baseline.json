@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 313191,
-  "reason": "Deferred Settings, Preferences, Terminal, Activity and update-detail English; matched b74eeb9 build measures 313191 B startup with unchanged7/23/17 requests.",
+  "startupJsGzipBytes": 315881,
+  "reason": "Closed dialog deferrals preserve the stricter 315881 B startup baseline; matched current-main builds measure 316334 to 316356 B startup, 1349135 B Chat and 823357 B New Session.",
   "updatedAt": "2026-10-23"
 }
