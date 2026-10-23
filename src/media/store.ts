@@ -314,20 +314,34 @@ export type SavedMedia = {
   contentType?: string;
 };
 
-function buildSavedMediaId(params: {
+async function resolveSavedMediaMetadata(params: {
+  buffer: Buffer;
   baseId: string;
-  ext: string;
+  headerExt?: string;
+  contentType?: string;
   originalFilename?: string;
-}): string {
-  if (!params.originalFilename) {
-    return params.ext ? `${params.baseId}${params.ext}` : params.baseId;
-  }
-
-  const base = nameFromAnyPath(params.originalFilename);
-  const sanitized = sanitizeFilename(base);
-  return sanitized
-    ? `${sanitized}---${params.baseId}${params.ext}`
-    : `${params.baseId}${params.ext}`;
+  detectionFilePathHint?: string;
+}): Promise<Pick<SavedMedia, "id" | "contentType">> {
+  const mime = await detectMime({
+    buffer: params.buffer,
+    headerMime: params.contentType,
+    filePath: params.originalFilename ?? params.detectionFilePathHint,
+  });
+  const trustedHeaderExt =
+    params.headerExt && isGenericContainerMime(mime) && isImageHeaderMime(params.contentType)
+      ? undefined
+      : params.headerExt;
+  const ext =
+    trustedHeaderExt ??
+    extensionForMime(mime) ??
+    safeOriginalFilenameExtension(params.originalFilename) ??
+    getFileExtension(params.detectionFilePathHint) ??
+    "";
+  const sanitized = params.originalFilename
+    ? sanitizeFilename(nameFromAnyPath(params.originalFilename))
+    : "";
+  const id = sanitized ? `${sanitized}---${params.baseId}${ext}` : `${params.baseId}${ext}`;
+  return { id, contentType: mime };
 }
 
 function safeOriginalFilenameExtension(originalFilename?: string): string | undefined {
@@ -355,28 +369,6 @@ function isGenericContainerMime(mime?: string): boolean {
 
 function isImageHeaderMime(contentType?: string): boolean {
   return normalizeMimeType(contentType)?.startsWith("image/") === true;
-}
-
-function resolveSavedMediaExtension(params: {
-  detectedMime?: string;
-  headerExt?: string;
-  contentType?: string;
-  originalFilename?: string;
-  detectionFilePathHint?: string;
-}): string {
-  const trustedHeaderExt =
-    params.headerExt &&
-    isGenericContainerMime(params.detectedMime) &&
-    isImageHeaderMime(params.contentType)
-      ? undefined
-      : params.headerExt;
-  return (
-    trustedHeaderExt ??
-    extensionForMime(params.detectedMime) ??
-    safeOriginalFilenameExtension(params.originalFilename) ??
-    getFileExtension(params.detectionFilePathHint) ??
-    ""
-  );
 }
 
 function toSaveMediaSourceError(
@@ -496,19 +488,14 @@ export async function saveMediaBuffer(
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   const uuid = crypto.randomUUID();
   const headerExt = extensionForAuthoritativeHeaderMime(contentType);
-  const mime = await detectMime({
+  const { id, contentType: mime } = await resolveSavedMediaMetadata({
     buffer,
-    headerMime: contentType,
-    filePath: originalFilename ?? detectionFilePathHint,
-  });
-  const ext = resolveSavedMediaExtension({
-    detectedMime: mime,
+    baseId: uuid,
     headerExt,
     contentType,
     originalFilename,
     detectionFilePathHint,
   });
-  const id = buildSavedMediaId({ baseId: uuid, ext, originalFilename });
   const assertCommitAllowed = options?.assertCommitAllowed;
   assertCommitAllowed?.();
   const readScope = captureChannelReadScope();
@@ -590,19 +577,14 @@ export async function saveMediaStream(
     }
     readScope?.assertCurrent();
     options?.assertCommitAllowed?.();
-    const mime = await detectMime({
+    const { id, contentType: mime } = await resolveSavedMediaMetadata({
       buffer: sniffBuffer.subarray(0, sniffLen),
-      headerMime: contentType,
-      filePath: originalFilename ?? detectionFilePathHint,
-    });
-    const ext = resolveSavedMediaExtension({
-      detectedMime: mime,
+      baseId,
       headerExt,
       contentType,
       originalFilename,
       detectionFilePathHint,
     });
-    const id = buildSavedMediaId({ baseId, ext, originalFilename });
     return { id, size, contentType: mime };
   };
   let result: Omit<SavedMedia, "path">;
