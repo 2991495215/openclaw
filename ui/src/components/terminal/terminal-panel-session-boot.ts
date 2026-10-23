@@ -18,7 +18,6 @@ import {
   replaceTerminalController,
 } from "./terminal-controller-lifecycle.ts";
 import { updateTerminalFont } from "./terminal-fonts.ts";
-import { terminalOpenErrorText } from "./terminal-panel-chrome.ts";
 import {
   TERMINAL_OUTPUT_ENCODER,
   resolveTerminalPanelOwnerSessionKey,
@@ -369,7 +368,11 @@ export function createTerminalSessionBootOperations(context: TerminalSessionBoot
       }
       if (createdTab?.cancelled !== "close") {
         setError(
-          terminalOpenErrorText(error),
+          error instanceof TerminalOpenTimeoutError
+            ? t("terminal.connectionTimedOut")
+            : error instanceof TerminalOpenUnusableSessionError
+              ? t("terminal.unusableSession", { field: error.field })
+              : formatUiError(error),
           error instanceof TerminalOpenTimeoutError ||
             error instanceof TerminalOpenUnusableSessionError
             ? action
