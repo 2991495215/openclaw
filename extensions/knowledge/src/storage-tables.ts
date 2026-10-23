@@ -12,6 +12,18 @@ export type StorageTables = {
     plan: string;
     receipt: string;
   };
+  history: {
+    sequence: Generated<number>;
+    scope: string;
+    id: string;
+    provenance: string;
+    at: string;
+    path: string;
+    revision: number;
+    hash: string;
+    raw: string;
+    agent_id: string | null;
+  };
   observations: {
     scope: string;
     id: string;

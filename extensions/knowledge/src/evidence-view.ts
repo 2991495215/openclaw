@@ -3,6 +3,13 @@ import type { contract } from "./contract.js";
 import { confidenceView } from "./knowledge-presentation.js";
 import { icon } from "./ui-icons.js";
 
+declare global {
+  interface Window {
+    /** File System Access save picker; absent in browsers without the API. */
+    showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<FileSystemFileHandle>;
+  }
+}
+
 type Detail = FeatureOutput<typeof contract, "record">;
 type FileEvidence = NonNullable<Detail["evidence"]>[number];
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => {
@@ -254,19 +261,11 @@ export function originalDownload(
   status.setAttribute("role", "status");
   const downloadOriginal = async () => {
     download.disabled = true;
-    let writer:
-      | { write(bytes: Uint8Array): Promise<void>; close(): Promise<void>; abort(): Promise<void> }
-      | undefined;
+    let writer: FileSystemWritableFileStream | undefined;
     try {
       // Stream to disk when the browser supports it; otherwise use its Blob
       // download facility. Never render source HTML/SVG in the app's origin.
-      type PickerWindow = {
-        showSaveFilePicker?: (options: {
-          suggestedName: string;
-        }) => Promise<{ createWritable(): Promise<NonNullable<typeof writer>> }>;
-      };
-      // SAFETY: feature detection; the optional File System Access picker is called only when present.
-      const picker = (window as unknown as PickerWindow).showSaveFilePicker;
+      const picker = window.showSaveFilePicker;
       if (picker) {
         writer = await (await picker.call(window, { suggestedName: name })).createWritable();
       }

@@ -169,12 +169,21 @@ export class StorageJournal extends StorageBase {
       const scope = scopeKey(access.scope),
         offset = input.offset ?? 0,
         limit = input.limit ?? 50;
-      const rows = db
-        .prepare(
-          "SELECT sequence,id,provenance,at,path,revision,hash FROM history WHERE scope=? AND (? IS NULL OR id=?) ORDER BY sequence DESC LIMIT ? OFFSET ?",
-        )
-        .all(scope, input.id ?? null, input.id ?? null, limit + 1, offset);
       const id = input.id;
+      let historyQuery = getNodeSqliteKysely<StorageTables>(db)
+        .selectFrom("history")
+        .select(["sequence", "id", "provenance", "at", "path", "revision", "hash"])
+        .where("scope", "=", scope);
+      if (id !== undefined) {
+        historyQuery = historyQuery.where("id", "=", id);
+      }
+      const rows = executeSqliteQuerySync(
+        db,
+        historyQuery
+          .orderBy("sequence", "desc")
+          .limit(limit + 1)
+          .offset(offset),
+      ).rows;
       let query = getNodeSqliteKysely<StorageTables>(db)
         .selectFrom("mutations")
         .select("receipt")
@@ -198,16 +207,7 @@ export class StorageJournal extends StorageBase {
       access.assertCurrent();
       return {
         git: this.gitStatus(db, scope),
-        // SAFETY: the history query selects exactly these columns from STRICT history.
-        entries: rows.slice(0, limit) as unknown as {
-          sequence: number;
-          id: string;
-          provenance: string;
-          at: string;
-          path: string;
-          revision: number;
-          hash: string;
-        }[],
+        entries: rows.slice(0, limit),
         mutations: mutations.slice(0, limit),
         nextOffset: rows.length > limit || mutations.length > limit ? offset + limit : null,
       };
