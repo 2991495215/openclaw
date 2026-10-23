@@ -20,6 +20,10 @@ import { sessionAttentionSubtitle } from "./session-attention-presentation.ts";
 import { SessionColorDot } from "./session-color.tsx";
 import { SessionGitDiff } from "./session-git-diff.tsx";
 import {
+  hasSessionHovercardContent,
+  hasSessionHovercardPullRequests,
+} from "./session-hovercard-content.ts";
+import {
   SessionHovercardContext,
   type SessionHovercardContextInput,
 } from "./session-hovercard-context-solid.tsx";
@@ -468,14 +472,7 @@ export function SessionHovercard(props: SessionHovercardInput & { onReady?: () =
       props.row?.hasActiveRun ?? false,
     ),
   );
-  const hasPullRequests = () =>
-    Boolean(
-      props.pullRequests &&
-      (props.pullRequests.pullRequests.length > 0 ||
-        (props.pullRequests.taskPullRequests?.length ?? 0) > 0 ||
-        props.pullRequests.branch ||
-        props.pullRequests.status !== "ready"),
-    );
+  const hasPullRequests = () => hasSessionHovercardPullRequests(props.pullRequests);
   const hasContext = () =>
     Boolean(
       props.row?.workContext ||
@@ -487,7 +484,7 @@ export function SessionHovercard(props: SessionHovercardInput & { onReady?: () =
   const preview = () =>
     props.progressCard ? undefined : props.row?.lastMessagePreview?.trim() || undefined;
   return (
-    <Show when={Boolean(props.row || hasPullRequests() || props.progressCard)}>
+    <Show when={hasSessionHovercardContent(props)}>
       <div class="session-hovercard">
         <Show when={props.row}>
           <section class="session-hovercard__section session-hovercard__section--header">

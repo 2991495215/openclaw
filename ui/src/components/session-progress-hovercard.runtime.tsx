@@ -34,6 +34,7 @@ import {
   HovercardControlsContext,
 } from "./portaled-hovercard-focus.ts";
 import { createPortaledHovercard, createPortaledHovercardOwner } from "./portaled-hovercard.ts";
+import { hasSessionHovercardContent } from "./session-hovercard-content.ts";
 import type { SessionHovercardInput } from "./session-hovercard-solid.tsx";
 import { SessionLinkTitler } from "./session-link-titling.ts";
 import {
@@ -490,30 +491,34 @@ function createSessionProgressHovercard(
         );
         return (
           <HovercardControlsContext value={controlsForHovercard(card)}>
-            <Errored
-              fallback={(error, reset) => (
-                <SessionHovercardCodeState
-                  settled={() => read().commit(card)}
-                  stale={isStaleChunkImportError(error())}
-                  retry={() => {
-                    void (async () => {
-                      const reloading =
-                        isStaleChunkImportError(error()) &&
-                        (await retryStaleChunkReloadWhenReachable({
-                          canReload: isCurrentCard,
-                        }).catch(() => false));
-                      if (isCurrentCard() && !reloading) {
-                        hovercard.renderContents(card, reset);
-                      }
-                    })();
-                  }}
-                />
-              )}
-            >
-              <Loading fallback={<SessionHovercardCodeState settled={() => read().commit(card)} />}>
-                <SessionHovercard {...read().input} onReady={() => read().commit(card)} />
-              </Loading>
-            </Errored>
+            <Show when={hasSessionHovercardContent(read().input)}>
+              <Errored
+                fallback={(error, reset) => (
+                  <SessionHovercardCodeState
+                    settled={() => read().commit(card)}
+                    stale={isStaleChunkImportError(error())}
+                    retry={() => {
+                      void (async () => {
+                        const reloading =
+                          isStaleChunkImportError(error()) &&
+                          (await retryStaleChunkReloadWhenReachable({
+                            canReload: isCurrentCard,
+                          }).catch(() => false));
+                        if (isCurrentCard() && !reloading) {
+                          hovercard.renderContents(card, reset);
+                        }
+                      })();
+                    }}
+                  />
+                )}
+              >
+                <Loading
+                  fallback={<SessionHovercardCodeState settled={() => read().commit(card)} />}
+                >
+                  <SessionHovercard {...read().input} onReady={() => read().commit(card)} />
+                </Loading>
+              </Errored>
+            </Show>
           </HovercardControlsContext>
         );
       }, card),

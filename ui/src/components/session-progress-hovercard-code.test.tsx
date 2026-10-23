@@ -12,6 +12,7 @@ const renderer = vi.hoisted(() => ({
   fail: false,
 }));
 
+// mock-isolation: Hold renderer settlement without importing its real eager dependencies.
 vi.mock("./session-hovercard-solid.tsx", () => {
   renderer.loads += 1;
   function ReadyCard(props: { label?: string; onReady?: () => void }) {
@@ -38,6 +39,16 @@ afterEach(async () => {
 
 it("hydrates titles before loading preview code and keeps pending or failed code inside its card", async () => {
   vi.useFakeTimers();
+  const empty = createHovercard({ sessionKey: "agent:research:empty", card: null });
+  empty.provider.lookupSidebarRow = null;
+  await empty.mount();
+  await empty.focus();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(document.querySelector(".session-progress-hovercard")).toBeNull();
+  expect(renderer.loads).toBe(0);
+  empty.provider.remove();
+  await empty.provider.updateComplete;
+
   const h = createHovercard({
     sessionKey: "agent:research:main",
     triggerKind: "markdown",

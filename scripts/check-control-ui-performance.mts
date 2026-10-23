@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Defer session hovercard code: 1,324,709 B Chat / 812,903 B New.
+  // Defer session hovercard code: 1,324,762 B Chat / 812,936 B New.
   // Preserve main's relative headroom against the matched 11eaa003 build.
-  chatBootJsGzipBytes: 1_373_718,
-  newBootJsGzipBytes: 822_543,
+  chatBootJsGzipBytes: 1_373_773,
+  newBootJsGzipBytes: 822_576,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
