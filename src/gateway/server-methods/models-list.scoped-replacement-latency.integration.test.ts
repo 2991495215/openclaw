@@ -20,7 +20,7 @@ import {
 } from "./models-catalog-fixture.test-support.js";
 import { serveModelsEndpoint, startModelsGateway } from "./models-integration.test-support.js";
 
-// Baseline diagnostic; the repair needs a regression that expects A to settle before B is released.
+// Candidate diagnostic: a healthy published owner must not wait for a sibling replacement.
 it("records models.list ordering during an unrelated scoped replacement", async ({ signal }) => {
   await using state = await createCatalogState("scoped-model-replacement-latency");
   const provider = "scoped-latency-fixture";
@@ -229,14 +229,14 @@ it("records models.list ordering during an unrelated scoped replacement", async 
       awaitGateBeforeSettlement(
         aCheckpoint.promise,
         unseenA,
-        "Unseen A view settled without reaching the baseline replacement checkpoint",
+        "Unseen A view settled without checking the replacement boundary",
       ),
       signal,
     );
     const retained = await withinTest(request("a-retained", "main", "configured"), signal);
     expect(retained.models).toEqual(initial.models);
-    expect(settled.has("a-unseen")).toBe(false);
-    record("a-pending-after-retained-response");
+    expect((await withinTest(unseenA, signal)).models).toEqual([]);
+    record("a-settled-before-sibling-release");
 
     observeB = true;
     const affectedB = request("b-affected", "sibling", "provider-config");
@@ -249,7 +249,7 @@ it("records models.list ordering during an unrelated scoped replacement", async 
       signal,
     );
     await withinTest(request("a-retained-checkpoint", "main", "configured"), signal);
-    expect(settled.has("a-unseen")).toBe(false);
+    expect(settled.has("a-unseen")).toBe(true);
     expect(settled.has("b-affected")).toBe(false);
     expect(heldResponses.size).toBeGreaterThan(0);
     record("b-released");
