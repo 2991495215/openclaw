@@ -186,27 +186,17 @@ export function syncCustomThemeStyleTag(
     style?.remove();
     return;
   }
-  let cssText;
-  try {
-    const light = normalizeStoredTokenMap(theme.light);
-    const dark = normalizeStoredTokenMap(theme.dark);
-    if (!light || !dark) {
-      throw new Error("Stored custom theme is missing required tokens.");
-    }
-    const renderDeclarations = (modeTokens: ThemeTokenMap) =>
-      MODE_TOKEN_ORDER.map((key) => `  --${key}: ${modeTokens[key]};`).join("\n");
-    cssText = [
-      `:root[data-theme="custom"] {`,
-      renderDeclarations(dark),
-      `}`,
-      `:root[data-theme="custom-light"] {`,
-      renderDeclarations(light),
-      `}`,
-    ].join("\n");
-  } catch {
-    style?.remove();
-    return;
-  }
+  // Storage, import and catalog boundaries already validate these token maps.
+  const renderDeclarations = (modeTokens: ThemeTokenMap) =>
+    MODE_TOKEN_ORDER.map((key) => `  --${key}: ${modeTokens[key]};`).join("\n");
+  const cssText = [
+    `:root[data-theme="custom"] {`,
+    renderDeclarations(theme.dark),
+    `}`,
+    `:root[data-theme="custom-light"] {`,
+    renderDeclarations(theme.light),
+    `}`,
+  ].join("\n");
   if (!style) {
     style = document.createElement("style");
     style.id = CUSTOM_THEME_STYLE_ID;
