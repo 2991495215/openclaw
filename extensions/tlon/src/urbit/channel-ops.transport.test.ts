@@ -21,7 +21,11 @@ async function serve(handler: RequestListener) {
   const closed: Promise<unknown>[] = [];
   server = createServer((request, response) => {
     if (request.method !== "POST") {
-      closed.push(once(request.socket, "close"));
+      closed.push(
+        new Promise<void>((resolve) => {
+          request.socket.once("close", () => resolve());
+        }),
+      );
     }
     handler(request, response);
   });
