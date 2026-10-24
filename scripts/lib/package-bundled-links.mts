@@ -89,7 +89,9 @@ async function stagePackage(
         retained.add(parent);
       }
     }
-    const copied = (await listDirectoryTreeStrict(destination)).map(({ relativePath }) => relativePath);
+    const copied = (await listDirectoryTreeStrict(destination)).map(
+      ({ relativePath }) => relativePath,
+    );
     for (const entry of copied.toSorted((left, right) => right.length - left.length)) {
       if (!retained.has(entry.split(path.sep).join("/"))) {
         await fs.rm(path.join(destination, entry), { recursive: true });
