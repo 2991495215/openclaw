@@ -32,6 +32,7 @@ import {
   captureRpcTargetForTest,
   registerRpcSourceForTest,
 } from "./server-methods/rpc-source-fixtures.test-support.js";
+import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
 import * as sessionFactsRead from "./session-facts-read.js";
 import { retainSessionListForegroundWork } from "./session-projection-work.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
@@ -40,6 +41,7 @@ import * as transcriptBackfill from "./session-row-transcript-backfill.js";
 import { claimRpcSourceForTest } from "./test-helpers.rpc-source.js";
 
 type Fixture = Awaited<ReturnType<typeof createFixture>>;
+type FactsClient = Parameters<typeof withPluginRuntimeGatewayRequestScope>[0]["client"];
 let state: Awaited<ReturnType<typeof createOpenClawTestState>> | undefined;
 const runtime = createPluginRuntime();
 const observerDigest = {
@@ -88,7 +90,7 @@ async function withFixture(
 }
 
 function bindFacts(fixture: Fixture) {
-  function inScope<T>(run: () => T, client: Fixture["client"] | undefined) {
+  function inScope<T>(run: () => T, client: FactsClient) {
     return withPluginRuntimeGatewayRequestScope(
       {
         context: fixture.context,
@@ -102,7 +104,7 @@ function bindFacts(fixture: Fixture) {
   }
   function consume<T>(
     run: (snapshot: RuntimeSessionFactsSelectionResult) => Promise<T>,
-    client = fixture.client,
+    client: FactsClient = fixture.client,
     selection: RuntimeSessionFactsSelection = { archived: false, sortBy: "activity" },
   ) {
     return inScope(() => runtime.gateway.withSessionFacts(selection, run), client);
@@ -115,7 +117,10 @@ function bindFacts(fixture: Fixture) {
         () => runtime.gateway.readSessionFacts({ sessionKeys }),
         service ? undefined : fixture.client,
       ),
-    selected: (selection: RuntimeSessionFactsSelection = {}, client = fixture.client) =>
+    selected: (
+      selection: RuntimeSessionFactsSelection = {},
+      client: FactsClient = fixture.client,
+    ) =>
       consume(async (snapshot) => snapshot, client, {
         archived: false,
         sortBy: "activity",
@@ -162,6 +167,70 @@ function fact(snapshot: RuntimeSessionFactsSelectionResult, key = sessionKey) {
 }
 
 describe("trusted plugin selected session facts", () => {
+  it.each([true, false])(
+    "preserves interleaved service readers' PR retries (connected=%s)",
+    (connected) =>
+      withFixture(async (fixture, { selected }) => {
+        using _ = holdForeground();
+        using clock = vi.spyOn(Date, "now");
+        const now = Date.now();
+        clock.mockReturnValue(now);
+        const peerKey = "agent:main:service-peer";
+        await fixture.seed(peerKey, fixture.other.id, { worktree: worktree("service-peer") });
+        const clients = [fixture.profile, fixture.other].map((profile) => {
+          const client = createSyntheticPluginRuntimeClient({
+            authenticatedUserProfile: {
+              profileId: profile.id,
+              avatarRevision: "fixture",
+              displayName: null,
+              hasAvatar: false,
+              updatedAt: 1,
+            },
+            scopes: ["operator.read"],
+          });
+          if (connected) {
+            client.connId = `service-${profile.id}`;
+          }
+          return client;
+        });
+        const read = (index: number) => selected({ involvingMe: true }, clients[index]);
+        fixture.load.mockResolvedValue({ pullRequests: [pullRequest()], rateLimited: false });
+        for (let index = 0; index < clients.length; index++) {
+          await read(index);
+          await fixture.subscriptions.pollNow();
+          const ready = await read(index);
+          expect(ready.scope).toBeUndefined();
+          expect(ready.sessions).toMatchObject([
+            {
+              key: index === 0 ? sessionKey : peerKey,
+              pullRequests: [{ number: 12, state: "open" }],
+            },
+          ]);
+          expect(ready.sessions).toHaveLength(1);
+        }
+        fixture.load.mockRejectedValue(new Error("Synthetic PR outage"));
+        for (const key of [sessionKey, peerKey]) {
+          sessionChanges.emit({ agentId: "main", sessionKey: key });
+        }
+        for (let index = 0; index < clients.length; index++) {
+          const unavailable = await read(index);
+          await fixture.subscriptions.pollNow();
+          expect(unavailable.sessions[0]).toMatchObject({
+            pullRequestsStale: true,
+            pullRequestsUnavailable: true,
+            pullRequests: [{ number: 12, state: "open" }],
+          });
+          expect(unavailable.retryAt).toBe(now + 60_000);
+        }
+        const attempts = fixture.load.mock.calls.length;
+        for (let index = 0; index < clients.length; index++) {
+          expect((await read(index)).retryAt).toBe(now + 60_000);
+          await fixture.subscriptions.pollNow();
+        }
+        expect(fixture.load).toHaveBeenCalledTimes(attempts);
+      }),
+  );
+
   it("retains PR facts only for the union of current rosters and recomputes on re-entry", () =>
     withFixture(async (fixture, { selected, getProjection }) => {
       using _ = holdForeground();
@@ -491,49 +560,64 @@ describe("trusted plugin selected session facts", () => {
       expect(empty).toMatchObject({ sessions: [], people: [] });
     }));
 
-  it("backs off unavailable selected PR facts and retains confirmed state only within its lifecycle", () =>
-    withFixture(async (fixture, { selected }) => {
-      let now = Date.now();
-      using clock = vi.spyOn(Date, "now");
-      clock.mockImplementation(() => now);
-      using _ = holdForeground();
-      fixture.load.mockResolvedValue({ pullRequests: [pullRequest()], rateLimited: false });
+  it.each(["human", "service"] as const)(
+    "backs off unavailable selected PR facts for %s readers",
+    (caller) =>
+      withFixture(async (fixture, { selected: selectFacts }) => {
+        const client =
+          caller === "human"
+            ? fixture.client
+            : {
+                ...fixture.client,
+                internal: { ...fixture.client.internal, syntheticClient: true as const },
+              };
+        const selected = () => selectFacts({}, client);
+        let now = Date.now();
+        using clock = vi.spyOn(Date, "now");
+        clock.mockImplementation(() => now);
+        using _ = holdForeground();
+        fixture.load.mockResolvedValue({ pullRequests: [pullRequest()], rateLimited: false });
 
-      await selected();
-      await fixture.subscriptions.pollNow();
-      const ready = await selected();
-      expect(fact(ready)?.pullRequests).toEqual([{ number: 12, state: "open" }]);
-      fixture.load.mockRejectedValue(new Error("Synthetic PR outage"));
-      sessionChanges.emit({ agentId: "main", sessionKey });
-      const unavailable = await selected();
-      await fixture.subscriptions.pollNow();
-      expect(fact(unavailable)).toMatchObject({
-        pullRequestsStale: true,
-        pullRequestsUnavailable: true,
-        pullRequests: [{ number: 12, state: "open" }],
-      });
-      expect(unavailable.retryAt).toBe(now + 60_000);
-      const attempts = fixture.load.mock.calls.length;
-      await selected();
-      await fixture.subscriptions.pollNow();
-      expect(fixture.load).toHaveBeenCalledTimes(attempts);
-      now += 60_000;
-      const retried = await selected();
-      await fixture.subscriptions.pollNow();
-      expect(fixture.load).toHaveBeenCalledTimes(attempts + 1);
-      expect(retried.retryAt).toBe(now + 120_000);
-      await fixture.seed(sessionKey, fixture.profile.id, { label: "Changed stored metadata" });
-      await selected();
-      await fixture.subscriptions.pollNow();
-      expect(fixture.load).toHaveBeenCalledTimes(attempts + 2);
-      await fixture.seed(sessionKey, fixture.profile.id, {
-        lifecycleRevision: "replacement-generation",
-        worktree: worktree("replacement-worktree"),
-      });
-      const replaced = fact(await selected())!;
-      expect(replaced.pullRequestsStale).toBeUndefined();
-      expect(replaced.pullRequests).toEqual([]);
-    }));
+        await selected();
+        await fixture.subscriptions.pollNow();
+        const ready = await selected();
+        expect(fact(ready)?.pullRequests).toEqual([{ number: 12, state: "open" }]);
+        if (caller === "service") {
+          expect(ready.scope).toBeUndefined();
+          expect(await selected()).not.toBe(ready);
+        }
+        fixture.load.mockRejectedValue(new Error("Synthetic PR outage"));
+        sessionChanges.emit({ agentId: "main", sessionKey });
+        const unavailable = await selected();
+        await fixture.subscriptions.pollNow();
+        expect(fact(unavailable)).toMatchObject({
+          pullRequestsStale: true,
+          pullRequestsUnavailable: true,
+          pullRequests: [{ number: 12, state: "open" }],
+        });
+        expect(unavailable.retryAt).toBe(now + 60_000);
+        const attempts = fixture.load.mock.calls.length;
+        await selected();
+        await fixture.subscriptions.pollNow();
+        expect(fixture.load).toHaveBeenCalledTimes(attempts);
+        now += 60_000;
+        const retried = await selected();
+        await fixture.subscriptions.pollNow();
+        expect(fixture.load).toHaveBeenCalledTimes(attempts + 1);
+        expect(retried.retryAt).toBe(now + 120_000);
+        await fixture.seed(sessionKey, fixture.profile.id, { label: "Changed stored metadata" });
+        await selected();
+        await fixture.subscriptions.pollNow();
+        expect(fixture.load).toHaveBeenCalledTimes(attempts + 2);
+        await fixture.seed(sessionKey, fixture.profile.id, {
+          lifecycleRevision: "replacement-generation",
+          worktree: worktree("replacement-worktree"),
+        });
+        const replaced = fact(await selected())!;
+        expect(replaced.pullRequestsStale).toBeUndefined();
+        expect(replaced.pullRequests).toEqual([]);
+      }),
+  );
 });
 
 describe("trusted plugin session facts", () => {

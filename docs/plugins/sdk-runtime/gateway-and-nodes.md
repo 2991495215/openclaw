@@ -341,7 +341,7 @@ applicable policy also requires fresh publication admission.
     facts retry from 60 seconds up to 15 minutes, retain a
     last-confirmed list with `pullRequestsStale: true`, and reset on lifecycle
     replacement or a successful read. PR facts remain cached while a retained
-    read scope selects the session; after it leaves every roster, re-entry reads
+    selection includes the session; after it leaves every roster, re-entry reads
     its facts again. Session and PR text are not secret-masked.
     `activityExpiresAt` and `retryAt` describe the next relevant deadlines; no polling timer is created. Remove these
     selection-only fields when adapting facts to another public response contract.

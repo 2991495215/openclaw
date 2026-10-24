@@ -80,6 +80,7 @@ const readScopes = new WeakMap<
     access: number;
     profiles: number;
     scopes: Map<string, ReadScope>;
+    callerIds: WeakMap<object, string>;
   }
 >();
 
@@ -170,7 +171,6 @@ export async function withTrustedPluginSessionFacts<T>(
       const projection = requireSessionRowProjection(context);
       const callerKey = () => operatorReadShareKey({ client: requestScope?.client ?? null }, {});
       const authorityKey = callerKey();
-      const scopeKey = JSON.stringify([authorityKey, select]);
       const config = context.getRuntimeConfig();
       const configRevision = getRuntimeConfigSnapshotMetadata()?.revision;
       const policy = context.getCommittedRuntimeConfig?.();
@@ -190,48 +190,57 @@ export async function withTrustedPluginSessionFacts<T>(
           throw new Error("Session read authority changed; retry the request");
         }
       };
-      let authority: ReadScope | undefined;
-      if (authorityKey !== null) {
-        let entry = readScopes.get(projection);
-        if (!entry) {
-          projection.onFactsChange((change) => {
-            for (const scope of readScopes.get(projection)?.scopes.values() ?? []) {
-              if (change.kind === "reset" || !scope.roster) {
-                scope.snapshot = undefined;
-                scope.dirty.clear();
-              } else if (scope.roster.targets.has(change.key)) {
-                scope.dirty.set(change.key, {});
-              }
+      let scopeCache = readScopes.get(projection);
+      if (!scopeCache) {
+        projection.onFactsChange((change) => {
+          for (const scope of readScopes.get(projection)?.scopes.values() ?? []) {
+            if (change.kind === "reset" || !scope.roster) {
+              scope.snapshot = undefined;
+              scope.dirty.clear();
+            } else if (scope.roster.targets.has(change.key)) {
+              scope.dirty.set(change.key, {});
             }
-          });
-        }
-        if (
-          !entry ||
-          entry.config !== config ||
-          entry.configRevision !== configRevision ||
-          entry.policy !== policy ||
-          entry.access !== access ||
-          entry.profiles !== profiles
-        ) {
-          entry = {
-            config,
-            configRevision,
-            policy,
-            access,
-            profiles,
-            scopes: new Map(),
-          };
-          readScopes.set(projection, entry);
-        }
-        authority = entry.scopes.get(scopeKey);
-        if (!authority) {
-          if (entry.scopes.size >= 64) {
-            entry.scopes.delete(entry.scopes.keys().next().value!);
           }
-          authority = createReadScope(randomUUID());
-          entry.scopes.set(scopeKey, authority);
+        });
+      }
+      if (
+        !scopeCache ||
+        scopeCache.config !== config ||
+        scopeCache.configRevision !== configRevision ||
+        scopeCache.policy !== policy ||
+        scopeCache.access !== access ||
+        scopeCache.profiles !== profiles
+      ) {
+        scopeCache = {
+          config,
+          configRevision,
+          policy,
+          access,
+          profiles,
+          scopes: new Map(),
+          callerIds: new WeakMap(),
+        };
+        readScopes.set(projection, scopeCache);
+      }
+      const caller = requestScope?.client;
+      let callerId: string | undefined;
+      if (authorityKey === null && caller) {
+        callerId = caller.connId ?? scopeCache.callerIds.get(caller);
+        if (callerId === undefined) {
+          callerId = randomUUID();
+          scopeCache.callerIds.set(caller, callerId);
         }
       }
+      const scopeKey = JSON.stringify([authorityKey, callerId, select]);
+      let cache = scopeCache.scopes.get(scopeKey);
+      if (!cache) {
+        if (scopeCache.scopes.size >= 64) {
+          scopeCache.scopes.delete(scopeCache.scopes.keys().next().value!);
+        }
+        cache = createReadScope(authorityKey === null ? "" : randomUUID());
+        scopeCache.scopes.set(scopeKey, cache);
+      }
+      const authority = authorityKey === null ? undefined : cache;
       let prFacts = selectedPrFacts.get(projection);
       if (!prFacts) {
         prFacts = { facts: new Map(), activeRosters: new Map(), needsPrune: false };
@@ -244,7 +253,6 @@ export async function withTrustedPluginSessionFacts<T>(
         });
       }
       const currentPrFacts = prFacts.facts;
-      const cache = authority ?? createReadScope("");
       const reader = {};
       const reading = projection.withSelectionPreparation(async () => {
         do {
@@ -447,14 +455,16 @@ export async function withTrustedPluginSessionFacts<T>(
         // Publications during acquisition remain pending for the next read.
         if (
           complete &&
-          authority &&
           cache.snapshot === previous &&
           currentRoster.revision === projection.state.revision
         ) {
-          cache.snapshot = result;
           cache.roster = currentRoster;
-          cache.facts = nextFacts;
-          cache.transient = transient;
+          // Non-shareable callers retain retry membership, never authorized snapshots.
+          if (authority) {
+            cache.snapshot = result;
+            cache.facts = nextFacts;
+            cache.transient = transient;
+          }
           for (const [key, token] of observed) {
             if (cache.dirty.get(key) === token) {
               cache.dirty.delete(key);
