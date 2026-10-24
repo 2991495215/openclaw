@@ -23,8 +23,13 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { inflateRawSync, constants as zlibConstants } from "node:zlib";
 import { chromium, type Response } from "playwright";
+import {
+  gatewayCredentialScope,
+  gatewayOriginScope,
+} from "../packages/gateway-client/src/gateway-origin-scope.ts";
 import type { TranscriptEvent } from "../src/config/sessions/session-accessor.sqlite-contract.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
+import { CONTROL_UI_TOKEN_SESSION_KEY_PREFIX } from "../src/shared/control-ui-storage.ts";
 import { resolvePlaywrightChromiumExecutablePath } from "../ui/src/test-helpers/playwright-chromium.ts";
 import { createControlUiWireLink } from "./lib/control-ui-wire-link.ts";
 import { stopChild } from "./lib/gateway-bench-child.ts";
@@ -37,14 +42,20 @@ const { values } = parseArgs({
     output: { type: "string" },
     pairs: { type: "string", default: "1" },
     profile: { type: "string", default: "local" },
+    auth: { type: "string", default: "none" },
     port: { type: "string" },
     worker: { type: "boolean", default: false },
     screenshots: { type: "boolean", default: false },
   },
 });
-if (!values["bundle-dir"] || !values.output || !["local", "remote"].includes(values.profile)) {
+if (
+  !values["bundle-dir"] ||
+  !values.output ||
+  !["local", "remote"].includes(values.profile) ||
+  !["none", "token"].includes(values.auth)
+) {
   throw new Error(
-    "Required: --bundle-dir <built UI> --output <directory> [--profile local|remote] [--pairs N] [--compare-source-dir <checkout>] [--compare-bundle-dir <base UI>]",
+    "Required: --bundle-dir <built UI> --output <directory> [--profile local|remote] [--auth none|token] [--pairs N] [--compare-source-dir <checkout>] [--compare-bundle-dir <base UI>]",
   );
 }
 if (values["compare-bundle-dir"] && !values["compare-source-dir"]) {
@@ -70,6 +81,7 @@ if (outputInsideRepository) {
 }
 const bundle = path.resolve(values["bundle-dir"]);
 const remote = values.profile === "remote";
+const SYNTHETIC_GATEWAY_TOKEN = "synthetic-wire-benchmark-gateway-token";
 const sessionKeys = ["agent:main:wire-fixture-a", "agent:main:wire-fixture-b"];
 type WireFrame = {
   direction: "sent" | "received";
@@ -380,7 +392,10 @@ async function runWorker() {
       mode: "local",
       bind: "loopback",
       trustedProxies: ["127.0.0.1"],
-      auth: { mode: "none" },
+      auth:
+        values.auth === "token"
+          ? { mode: "token", token: SYNTHETIC_GATEWAY_TOKEN }
+          : { mode: "none" },
       tailscale: { mode: "off" },
       controlUi: { enabled: true, allowedOrigins: [`http://127.0.0.1:${proxyPort}`] },
     },
@@ -525,6 +540,13 @@ async function runWorker() {
     console.log("Gateway ready");
     const proxy = await startProxy(gatewayPort, proxyPort);
     try {
+      const gatewayUrl = new URL(proxy.url);
+      gatewayUrl.protocol = "ws:";
+      const tokenStorageKey = `${CONTROL_UI_TOKEN_SESSION_KEY_PREFIX}${gatewayOriginScope(gatewayUrl.href)}`;
+      const bootRecordStorageKey =
+        values.auth === "token"
+          ? `openclaw.control.bootRecord.v1:${gatewayCredentialScope(gatewayUrl.href)}`
+          : undefined;
       // A deterministic, task-only browser key proves the real pairing/signature path.
       const seed = createHash("sha256").update("openclaw-wire-benchmark-synthetic-device").digest();
       const privateKey = createPrivateKey({
@@ -584,9 +606,19 @@ async function runWorker() {
                 }
               : {}),
           });
-          await context.addInitScript((deviceIdentity) => {
-            localStorage.setItem("openclaw-device-identity-v1", JSON.stringify(deviceIdentity));
-          }, identity);
+          await context.addInitScript(
+            ({ deviceIdentity, tokenKey, token }) => {
+              localStorage.setItem("openclaw-device-identity-v1", JSON.stringify(deviceIdentity));
+              if (token && sessionStorage.getItem(tokenKey) === null) {
+                sessionStorage.setItem(tokenKey, token);
+              }
+            },
+            {
+              deviceIdentity: identity,
+              tokenKey: tokenStorageKey,
+              token: values.auth === "token" ? SYNTHETIC_GATEWAY_TOKEN : undefined,
+            },
+          );
           const page = await context.newPage();
           await page.addInitScript({
             content: `const __name = (fn) => fn; (${installReadiness.toString()})();`,
@@ -975,58 +1007,68 @@ async function runWorker() {
             await capture("cold-chat", () =>
               page.goto(entryUrl, { waitUntil: "domcontentloaded" }),
             );
-            // Persistence is deferred beyond paint; warm reload requires its durable cursor.
+            // Persistence is deferred beyond paint; token auth also needs its real boot receipt.
             const snapshotDeadline = Date.now() + 10_000;
             for (;;) {
-              const persisted = await page.evaluate(async (sessionKey) => {
-                const databases = await indexedDB.databases();
-                if (!databases.some((entry) => entry.name === "openclaw-chat-snapshots")) {
-                  return false;
-                }
-                const database = await new Promise<IDBDatabase>((resolve, reject) => {
-                  const request = indexedDB.open("openclaw-chat-snapshots");
-                  request.addEventListener("success", () => resolve(request.result), {
-                    once: true,
-                  });
-                  request.addEventListener(
-                    "error",
-                    () => reject(request.error ?? new Error("Snapshot database failed to open")),
-                    { once: true },
-                  );
-                });
-                try {
-                  const request = database
-                    .transaction("snapshots", "readonly")
-                    .objectStore("snapshots")
-                    .getAll(undefined, 8);
-                  const records = await new Promise<
-                    Array<{ sessionKey: string; snapshot?: Record<string, unknown> }>
-                  >((resolve, reject) => {
+              const persisted = await page.evaluate(
+                async ({ sessionKey, bootRecordKey }) => {
+                  if (bootRecordKey && localStorage.getItem(bootRecordKey) === null) {
+                    return false;
+                  }
+                  const databases = await indexedDB.databases();
+                  if (!databases.some((entry) => entry.name === "openclaw-chat-snapshots")) {
+                    return false;
+                  }
+                  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+                    const request = indexedDB.open("openclaw-chat-snapshots");
                     request.addEventListener("success", () => resolve(request.result), {
                       once: true,
                     });
                     request.addEventListener(
                       "error",
-                      () => reject(request.error ?? new Error("Snapshot read failed")),
+                      () => reject(request.error ?? new Error("Snapshot database failed to open")),
                       { once: true },
                     );
                   });
-                  return records.some(
-                    ({ sessionKey: storedKey, snapshot }) =>
-                      storedKey.endsWith(`\u0000${sessionKey}`) &&
-                      typeof snapshot?.sessionId === "string" &&
-                      typeof snapshot.deltaCursor === "string" &&
-                      snapshot.historyState !== undefined,
-                  );
-                } finally {
-                  database.close();
-                }
-              }, sessionKeys[0]!);
+                  try {
+                    const request = database
+                      .transaction("snapshots", "readonly")
+                      .objectStore("snapshots")
+                      .getAll(undefined, 8);
+                    const records = await new Promise<
+                      Array<{ sessionKey: string; snapshot?: Record<string, unknown> }>
+                    >((resolve, reject) => {
+                      request.addEventListener("success", () => resolve(request.result), {
+                        once: true,
+                      });
+                      request.addEventListener(
+                        "error",
+                        () => reject(request.error ?? new Error("Snapshot read failed")),
+                        { once: true },
+                      );
+                    });
+                    return records.some(
+                      ({ sessionKey: storedKey, snapshot }) =>
+                        storedKey.endsWith(`\u0000${sessionKey}`) &&
+                        typeof snapshot?.sessionId === "string" &&
+                        typeof snapshot.deltaCursor === "string" &&
+                        snapshot.historyState !== undefined,
+                    );
+                  } finally {
+                    database.close();
+                  }
+                },
+                { sessionKey: sessionKeys[0]!, bootRecordKey: bootRecordStorageKey },
+              );
               if (persisted) {
                 break;
               }
               if (Date.now() >= snapshotDeadline) {
-                throw new Error("The selected transcript did not persist its warm-reload cursor");
+                throw new Error(
+                  values.auth === "token"
+                    ? "The selected transcript did not persist its warm-reload cursor and auth boot record"
+                    : "The selected transcript did not persist its warm-reload cursor",
+                );
               }
               await new Promise((resolve) => {
                 setTimeout(resolve, 250);
@@ -1077,7 +1119,7 @@ async function runWorker() {
                   revision,
                   dirty,
                   bundle,
-                  fixture: { sessions: 2, messagesEach: 120 },
+                  fixture: { sessions: 2, messagesEach: 120, auth: values.auth },
                   measurement:
                     "Real Gateway. Synthetic offline-owned state. TCP proxy measures RFC6455 headers/payloads before delivery. HTTP encodedDataLength includes headers. Remote: shared 10 Mbps link per direction, 50 ms one-way application-stream latency, no simulated packet loss/congestion or TCP handshake latency. Readiness is first animation frame with visible enabled selectors; screenshots outside timed interval.",
                   samples,
@@ -1192,6 +1234,8 @@ if (values.worker) {
         String(workerPairs),
         "--profile",
         values.profile,
+        "--auth",
+        values.auth,
         "--output",
         workerOutput,
       ];

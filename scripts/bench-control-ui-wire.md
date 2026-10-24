@@ -15,7 +15,7 @@ the same UI bundle:
 NODE_DISABLE_COMPILE_CACHE=1 node --import ./scripts/tsx.mjs scripts/bench-control-ui-wire.ts \
   --bundle-dir /absolute/immutable/control-ui \
   --compare-source-dir /absolute/baseline-checkout \
-  --profile remote --pairs 10 --output /absolute/fresh-proof-directory
+  --profile remote --auth token --pairs 10 --output /absolute/fresh-proof-directory
 ```
 
 For changes to both Gateway and UI, add `--compare-bundle-dir /absolute/base/control-ui`.
@@ -27,6 +27,10 @@ The current checkout is `candidate`; the comparison checkout is `base`. Pairs
 alternate AB/BA. Run `--profile local` separately. An A/A control uses the same
 checkout for both sides. Without `--compare-source-dir`, `--pairs` repeats the
 fixture in one Gateway process. Use a fresh output directory for each command.
+Use the same `--auth` mode on both sides. `--auth token` uses a fixed synthetic
+Gateway token through the normal per-tab session-token setting and exercises
+authenticated warm boot. The default `--auth none` preserves the original
+diagnostic fixture; do not combine samples from different auth modes.
 
 The runner copies its instrumentation into the task-owned comparison checkout.
 It temporarily points each checkout's `dist/control-ui` at the supplied bundle
@@ -41,8 +45,10 @@ is the first animation frame with a visible transcript and an enabled composer,
 or the enabled New Session input. Screenshots are taken outside timed intervals.
 Before the warm reload, the runner waits up to ten seconds for the cold visit's
 deferred IndexedDB snapshot write to retain its session identity, delta cursor,
-and history state. This fixture preparation is outside both timed intervals;
-paint and network-idle alone do not prove the transcript cache is persisted.
+and history state. Token mode also waits for the application's own persisted
+boot record, enabling normal early snapshot and validator prewarming; the
+runner never fabricates that record. This fixture preparation is outside both
+timed intervals; paint and network-idle alone do not prove persistence.
 
 The report retains HTTP resource types, encoded transfer sizes, cache status,
 response headers, and timings. WebSocket entries retain only frame identity,
@@ -55,7 +61,7 @@ delay to HTTP and WebSocket data. Each direction rotates active TCP flows in
 Backpressure limits source reads, and canceled flows cannot reserve future
 bandwidth. This avoids an abandoned speculative preload delaying a reload's
 WebSocket reply. Both profiles use the same pre-paired synthetic
-device without a shared secret. The remote profile adds trusted-proxy address
+device and selected synthetic auth mode. The remote profile adds trusted-proxy address
 attribution so the Gateway negotiates its normal remote compression policy;
 the local profile uses direct-local transport.
 
