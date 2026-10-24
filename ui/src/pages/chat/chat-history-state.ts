@@ -7,6 +7,7 @@ import {
   isUiSelectedGlobalSessionKey,
   resolveUiSelectedSessionAgentId,
 } from "../../lib/sessions/session-key.ts";
+import type { InitialChatHistoryReceipt } from "./chat-history-request.ts";
 import type { ChatHistoryResult, ObservedChatHistoryResult } from "./chat-history-snapshot.ts";
 import { clearChatPendingInputs } from "./chat-pending-inputs.ts";
 import { retirePullRequestRefreshes } from "./chat-pull-request-refresh.ts";
@@ -67,6 +68,7 @@ type ChatHistoryPaneRequests = {
   subscriptionReady?: Promise<boolean>;
   subscriptionError?: string;
   subscriptionRetry?: AbortController;
+  initialHistory?: InitialChatHistoryReceipt;
   syncRetries: Map<
     "subscription" | "history",
     {
@@ -360,6 +362,7 @@ export function resetChatHistoryProjection(state: ChatState, agentId?: string): 
   // A destructive reset keeps the session key, so invalidate both the old
   // snapshot owner and its coalesced request before creating the next epoch.
   requests.historyVersion += 1;
+  delete requests.initialHistory;
   // Keep the presentation accessor installed when clearing accepted history.
   requests.acceptedHistory = undefined;
   setChatHistoryLoad(state, { phase: "idle" });

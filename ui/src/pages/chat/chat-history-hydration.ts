@@ -10,7 +10,7 @@ import {
   isMissingOperatorReadScopeError,
 } from "../../lib/gateway-errors.ts";
 import { isSessionRunStateActive } from "../../lib/session-run-state.ts";
-import { requestSharedHistory } from "./chat-history-request.ts";
+import { captureChatHistoryRun, requestSharedHistory } from "./chat-history-request.ts";
 import { formatChatHistoryLoadError, isRetryableChatReadError } from "./chat-history-retry.ts";
 import {
   type ObservedChatHistoryResult,
@@ -48,7 +48,6 @@ import {
   publishChatSessionProjection,
   publishChatSessionProjectionMessages,
 } from "./history-merge.ts";
-import type { ChatHistoryRunObservation } from "./run-lifecycle.ts";
 import { applySessionMessagePayload } from "./session-message-apply.ts";
 import { readChatHistoryCursor, readChatHistoryState } from "./session-message-cache.ts";
 import { retainPersistedStreamPrefix } from "./stream-causal-boundary.ts";
@@ -79,22 +78,7 @@ export async function hydrateChatHistory(
 ): Promise<ObservedChatHistoryResult | undefined> {
   const ownership = beginHistoryRequest(state, client, connectionEpoch, sessionKey, requestAgentId);
   const isCurrent = () => state.sessions === sessions && acceptsHistoryResult(state, ownership);
-  const captureRun = (): ChatHistoryRunObservation | undefined => {
-    const runId = state.chatRunId;
-    const sessionId = state.currentSessionId;
-    const generation = state.chatRunLifecycleGeneration ?? 0;
-    return isCurrent() && runId && sessionId
-      ? {
-          runId,
-          sessionId,
-          isCurrent: () =>
-            isCurrent() &&
-            state.chatRunId === runId &&
-            (state.chatRunLifecycleGeneration ?? 0) === generation &&
-            state.currentSessionId === sessionId,
-        }
-      : undefined;
-  };
+  const captureRun = () => captureChatHistoryRun(state, isCurrent);
   const previousRunProjections = readRunProjections(state, sessionKey, requestAgentId);
   const previousRunId = state.chatRunId;
   // Any pending input-history snapshot becomes invalid once we start reloading transcript state.
@@ -102,6 +86,8 @@ export async function hydrateChatHistory(
   state.chatLoading = true;
   const requests = chatHistoryRequests(state);
   const request = (cursor?: string) => {
+    const initialHistory = requests.initialHistory;
+    delete requests.initialHistory;
     const historyState = readChatHistoryState(state, cursor);
     const key = `${requestKeyPrefix}${cursor === undefined ? "page" : `cursor:${cursor}`}${JSON.stringify(historyState?.stateRevision ?? null)}`;
     const load = requests.historyLoad;
@@ -129,6 +115,7 @@ export async function hydrateChatHistory(
       cursor,
       inputRunIds,
       historyState,
+      initialHistory,
     );
   };
   try {

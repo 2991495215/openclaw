@@ -31,6 +31,7 @@ import { stopChild } from "./lib/gateway-bench-child.ts";
 const { values } = parseArgs({
   options: {
     "bundle-dir": { type: "string" },
+    "compare-bundle-dir": { type: "string" },
     "compare-source-dir": { type: "string" },
     output: { type: "string" },
     pairs: { type: "string", default: "1" },
@@ -42,8 +43,11 @@ const { values } = parseArgs({
 });
 if (!values["bundle-dir"] || !values.output || !["local", "remote"].includes(values.profile)) {
   throw new Error(
-    "Required: --bundle-dir <built UI> --output <directory> [--profile local|remote] [--pairs N] [--compare-source-dir <checkout>]",
+    "Required: --bundle-dir <built UI> --output <directory> [--profile local|remote] [--pairs N] [--compare-source-dir <checkout>] [--compare-bundle-dir <base UI>]",
   );
+}
+if (values["compare-bundle-dir"] && !values["compare-source-dir"]) {
+  throw new Error("--compare-bundle-dir requires --compare-source-dir (use . for the same source)");
 }
 const output = path.resolve(values.output);
 const pairs = Number(values.pairs);
@@ -77,6 +81,8 @@ type WireFrame = {
   wireBytes: number;
   decodedBytes?: number;
   name?: string;
+  requestId?: string;
+  type?: string;
   digest?: string;
 };
 
@@ -185,6 +191,8 @@ function frameReader(
               value.event ??
               (value.id ? methods.get(value.id) : undefined) ??
               value.type;
+            message.requestId = value.id;
+            message.type = value.type;
             message.decodedBytes = payload.length;
             message.digest = createHash("sha256").update(payload).digest("hex");
           }
@@ -621,6 +629,7 @@ async function runWorker() {
             startedAtMs: number;
             browserStartedAtMs: number;
             responseAtMs?: number;
+            browserResponseAtMs?: number;
             finishedAtMs?: number;
             browserFinishedAtMs?: number;
             bytes: number;
@@ -642,16 +651,38 @@ async function runWorker() {
           const decoded: Decoded[] = [];
           const methods = new Map<string, string>();
           const errors: string[] = [];
-          const negotiations: Array<{ atMs: number; extensions: string }> = [];
-          cdp.on("Network.webSocketHandshakeResponseReceived", (event) =>
+          const upgradeRequests = new Map<
+            string,
+            { startedAtMs: number; browserStartedAtMs: number }
+          >();
+          const negotiations: Array<{
+            requestId: string;
+            startedAtMs?: number;
+            browserStartedAtMs?: number;
+            atMs: number;
+            browserResponseAtMs: number;
+            status: number;
+            extensions: string;
+          }> = [];
+          cdp.on("Network.webSocketWillSendHandshakeRequest", (event) => {
+            upgradeRequests.set(event.requestId, {
+              startedAtMs: performance.now(),
+              browserStartedAtMs: event.timestamp * 1000,
+            });
+          });
+          cdp.on("Network.webSocketHandshakeResponseReceived", (event) => {
             negotiations.push({
+              requestId: event.requestId,
+              ...upgradeRequests.get(event.requestId),
               atMs: performance.now(),
+              browserResponseAtMs: event.timestamp * 1000,
+              status: event.response.status,
               extensions:
                 Object.entries(event.response.headers).find(
                   ([name]) => name.toLowerCase() === "sec-websocket-extensions",
                 )?.[1] ?? "none",
-            }),
-          );
+            });
+          });
           page.on("pageerror", (error) => errors.push(error.message));
           cdp.on("Network.requestWillBeSent", (event) =>
             requests.set(event.requestId, {
@@ -668,6 +699,7 @@ async function runWorker() {
             if (request) {
               Object.assign(request, {
                 responseAtMs: performance.now(),
+                browserResponseAtMs: event.timestamp * 1000,
                 status: event.response.status,
                 cached:
                   request.cached ||
@@ -856,14 +888,23 @@ async function runWorker() {
                       record.browserFinishedAtMs <= readyBrowserTimestampMs,
                     url: new URL(record.url).pathname,
                     startedAtMs: record.startedAtMs - startedAtMs,
+                    browserStartedAtMs: record.browserStartedAtMs - actionBrowserStartMs,
                     responseAtMs:
                       record.responseAtMs === undefined
                         ? undefined
                         : record.responseAtMs - startedAtMs,
+                    browserResponseAtMs:
+                      record.browserResponseAtMs === undefined
+                        ? undefined
+                        : record.browserResponseAtMs - actionBrowserStartMs,
                     finishedAtMs:
                       record.finishedAtMs === undefined
                         ? undefined
                         : record.finishedAtMs - startedAtMs,
+                    browserFinishedAtMs:
+                      record.browserFinishedAtMs === undefined
+                        ? undefined
+                        : record.browserFinishedAtMs - actionBrowserStartMs,
                   }),
                 );
               samples.push({
@@ -875,6 +916,21 @@ async function runWorker() {
                 incompleteHttpRequests: http.filter((request) => request.finishedAtMs === undefined)
                   .length,
                 http,
+                websocketUpgrades: negotiations
+                  .filter((upgrade) => upgrade.atMs >= startedAtMs)
+                  .map((upgrade) => ({
+                    ...upgrade,
+                    startedAtMs:
+                      upgrade.startedAtMs === undefined
+                        ? undefined
+                        : upgrade.startedAtMs - startedAtMs,
+                    atMs: upgrade.atMs - startedAtMs,
+                    browserStartedAtMs:
+                      upgrade.browserStartedAtMs === undefined
+                        ? undefined
+                        : upgrade.browserStartedAtMs - actionBrowserStartMs,
+                    browserResponseAtMs: upgrade.browserResponseAtMs - actionBrowserStartMs,
+                  })),
                 websocket: frames,
                 summary: {
                   ...Object.fromEntries(
@@ -947,6 +1003,49 @@ async function runWorker() {
             await capture("cold-chat", () =>
               page.goto(entryUrl, { waitUntil: "domcontentloaded" }),
             );
+            // Persistence is deferred beyond paint; warm reload requires its durable cursor.
+            const snapshotDeadline = Date.now() + 10_000;
+            for (;;) {
+              const persisted = await page.evaluate(async (sessionKey) => {
+                const databases = await indexedDB.databases();
+                if (!databases.some((entry) => entry.name === "openclaw-chat-snapshots")) {
+                  return false;
+                }
+                const database = await new Promise<IDBDatabase>((resolve, reject) => {
+                  const request = indexedDB.open("openclaw-chat-snapshots");
+                  request.onsuccess = () => resolve(request.result);
+                  request.onerror = () => reject(request.error);
+                });
+                try {
+                  const request = database
+                    .transaction("snapshots", "readonly")
+                    .objectStore("snapshots")
+                    .getAll(undefined, 8);
+                  const records = await new Promise<
+                    Array<{ sessionKey: string; snapshot?: Record<string, unknown> }>
+                  >((resolve, reject) => {
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                  });
+                  return records.some(
+                    ({ sessionKey: storedKey, snapshot }) =>
+                      storedKey.endsWith(`\u0000${sessionKey}`) &&
+                      typeof snapshot?.sessionId === "string" &&
+                      typeof snapshot.deltaCursor === "string" &&
+                      snapshot.historyState !== undefined,
+                  );
+                } finally {
+                  database.close();
+                }
+              }, sessionKeys[0]!);
+              if (persisted) {
+                break;
+              }
+              if (Date.now() >= snapshotDeadline) {
+                throw new Error("The selected transcript did not persist its warm-reload cursor");
+              }
+              await new Promise((resolve) => setTimeout(resolve, 250));
+            }
             const extensions = negotiations[0]?.extensions ?? "none";
             if (remote !== extensions.includes("permessage-deflate")) {
               throw new Error(`Unexpected WebSocket compression negotiation: ${extensions}`);
@@ -1047,6 +1146,9 @@ if (values.worker) {
   const otherSource = values["compare-source-dir"]
     ? path.resolve(values["compare-source-dir"])
     : undefined;
+  const otherBundle = values["compare-bundle-dir"]
+    ? path.resolve(values["compare-bundle-dir"])
+    : bundle;
   if (otherSource) {
     for (const source of new Set([ownSource, otherSource])) {
       const branch = execFileSync("git", ["-C", source, "rev-parse", "--abbrev-ref", "HEAD"], {
@@ -1187,7 +1289,7 @@ if (values.worker) {
         [ownSource, "candidate"],
       ] as const;
       for (const [source, label] of pair % 2 ? order.toReversed() : order) {
-        await collect(source, label, bundle, 1, pair);
+        await collect(source, label, label === "base" ? otherBundle : bundle, 1, pair);
       }
     }
   } else {

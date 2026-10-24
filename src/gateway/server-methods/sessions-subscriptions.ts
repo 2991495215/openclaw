@@ -18,7 +18,7 @@ import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.j
 import { retainSessionScopedRead } from "./session-scoped-read.js";
 import { sessionsListHandler } from "./sessions-read.js";
 import { requireSessionKey } from "./sessions-shared.js";
-import type { GatewayRequestHandlers, PreparedSessionApprovalReplay } from "./types.js";
+import type { GatewayRequestHandlers, PreparedSessionApprovalReplay, RespondFn } from "./types.js";
 import { assertValidParams, defineValidatedGatewayHandler } from "./validation.js";
 
 export const sessionSubscriptionHandlers: GatewayRequestHandlers = {
@@ -215,27 +215,62 @@ export const sessionSubscriptionHandlers: GatewayRequestHandlers = {
             rollback?.commit?.();
           }
         }
-        mark?.("response");
-        respond(
-          true,
-          {
-            subscribed: Boolean(connId),
-            key: canonicalKey,
-            agentId: requestedAgentId,
-            ...(connId && params.includeApprovals === true ? { approvalReplay } : {}),
-          },
-          undefined,
-        );
       } catch (error) {
         if (!(error instanceof SessionMutationAuthorizationChangedError)) {
           throw error;
         }
         respond(false, undefined, error.error);
+        return;
       } finally {
         mark?.("cleanup");
         prepared?.release();
         read?.release();
       }
+      let initialHistory:
+        | { ok: true; payload: unknown }
+        | { ok: false; error: NonNullable<Parameters<RespondFn>[2]> }
+        | undefined;
+      if (params.initialHistory) {
+        const unavailable = errorShape(ErrorCodes.UNAVAILABLE, "initial chat history unavailable", {
+          retryable: true,
+        });
+        initialHistory = { ok: false, error: unavailable };
+        const historyParams = {
+          ...params.initialHistory,
+          sessionKey: canonicalKey,
+          agentId: requestedAgentId,
+        };
+        try {
+          const { handleChatHistoryRequest } = await import("./chat-history-handler.js");
+          // The admitted observer covers every event after this snapshot begins.
+          await handleChatHistoryRequest({
+            ...options,
+            method: "chat.startup",
+            params: historyParams,
+            req: { ...options.req, method: "chat.startup", params: historyParams },
+            respond: (ok, payload, error) => {
+              initialHistory = ok
+                ? { ok: true, payload }
+                : { ok: false, error: error ?? unavailable };
+            },
+          });
+        } catch {
+          // History failure must not turn an admitted observer into an unowned lease.
+          context.logGateway.debug("initial chat history read failed after subscription admission");
+        }
+      }
+      mark?.("response");
+      respond(
+        true,
+        {
+          subscribed: Boolean(connId),
+          key: canonicalKey,
+          agentId: requestedAgentId,
+          ...(connId && params.includeApprovals === true ? { approvalReplay } : {}),
+          ...(initialHistory ? { initialHistory } : {}),
+        },
+        undefined,
+      );
     },
   ),
   "sessions.messages.unsubscribe": defineValidatedGatewayHandler(

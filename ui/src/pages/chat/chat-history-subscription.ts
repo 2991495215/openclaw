@@ -14,24 +14,36 @@ import {
   resolveUiSelectedGlobalAgentId,
 } from "../../lib/sessions/session-key.ts";
 import {
+  captureChatHistoryRun,
+  chatHistoryRequestParams,
+  type InitialChatHistoryReceipt,
+} from "./chat-history-request.ts";
+import {
   CHAT_HISTORY_RETRY_WINDOW_MS,
   formatChatHistoryLoadError,
   isRetryableChatReadError,
 } from "./chat-history-retry.ts";
 import {
   chatHistoryRequests,
+  getChatHistoryLoadState,
   setChatHistoryLoad,
   setChatHistoryRetrying,
+  waitForInitialChatSnapshot,
 } from "./chat-history-state.ts";
+import { readChatInputRunIds } from "./chat-pending-inputs.ts";
 import type { ChatState } from "./chat-state-contract.ts";
 import {
   projectSessionApprovalReplay,
   reconcileSessionApprovalEvent,
   recordSessionApprovalReplay,
 } from "./session-approval-projection.ts";
+import { readChatHistoryCursor, readChatHistoryState } from "./session-message-cache.ts";
 
 type ChatSessionMessageSubscriptionState = ChatState & {
-  sessions: Pick<SessionCapability, "subscribeMessages" | "unsubscribeMessages">;
+  sessions: Pick<
+    SessionCapability,
+    "subscribeMessages" | "unsubscribeMessages" | "captureReconcile"
+  >;
   sessionsError?: string | null;
 };
 
@@ -74,6 +86,7 @@ export function disposeSelectedSessionMessageSubscription(state: ChatState): voi
   delete requests.subscriptionRetry;
   setChatHistoryRetrying(state, "subscription", false);
   requests.subscriptionReady = Promise.resolve(false);
+  delete requests.initialHistory;
   const subscription = state.chatSessionMessageSubscription;
   state.chatSessionMessageSubscriptionRequestedKey = null;
   state.chatSessionMessageSubscription = null;
@@ -90,7 +103,7 @@ export function disposeSelectedSessionMessageSubscription(state: ChatState): voi
 
 export function syncSelectedSessionMessageSubscription(
   state: ChatSessionMessageSubscriptionState,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; initialHistory?: boolean },
 ): Promise<boolean> {
   const requests = chatHistoryRequests(state);
   const client = state.client;
@@ -130,7 +143,7 @@ export function syncSelectedSessionMessageSubscription(
 async function synchronizeSelectedSessionMessageSubscription(
   state: ChatSessionMessageSubscriptionState,
   signal: AbortSignal,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; initialHistory?: boolean },
 ): Promise<boolean> {
   if (!state.client || !state.connected) {
     return false;
@@ -205,16 +218,63 @@ async function synchronizeSelectedSessionMessageSubscription(
       retryable: isRetryableChatReadError(error, "sessions.messages.subscribe"),
     });
   };
+  let initialHistoryReceipt: InitialChatHistoryReceipt | undefined;
   const subscribe = async () => {
+    if (opts?.initialHistory) {
+      const hydration = waitForInitialChatSnapshot(state);
+      if (hydration && !(await hydration)) {
+        return null;
+      }
+    }
     let attempt = 0;
     while (isCurrent()) {
       try {
-        return await sessions.subscribeMessages(nextKey, {
+        const cursor = opts?.initialHistory ? readChatHistoryCursor(state) : undefined;
+        const requestAgentId = isUiSelectedGlobalSessionKey(state, nextKey)
+          ? resolveUiSelectedSessionAgentId(state)
+          : undefined;
+        const params = opts?.initialHistory
+          ? chatHistoryRequestParams(
+              "chat.startup",
+              nextKey,
+              requestAgentId,
+              cursor,
+              readChatInputRunIds(state),
+              readChatHistoryState(state, cursor),
+            )
+          : undefined;
+        const observation = params
+          ? { owner: sessions, reconcile: sessions.captureReconcile() }
+          : undefined;
+        const run = params ? captureChatHistoryRun(state, isCurrent) : undefined;
+        // Subscription can start just before the initial history owner claims its version.
+        const historyVersion =
+          paneRequests.historyVersion +
+          (getChatHistoryLoadState(state).phase === "in-flight" ? 0 : 1);
+        const {
+          sessionKey: _sessionKey,
+          agentId: _agentId,
+          ...initialHistory
+        } = params ?? { sessionKey: nextKey, agentId: requestAgentId };
+        const subscribed = await sessions.subscribeMessages(nextKey, {
           agentId: nextSubscriptionAgentId ?? undefined,
           ...(hasOperatorApprovalsAccess(state.hello?.auth ?? null)
             ? { includeApprovals: true }
             : {}),
+          ...(params ? { initialHistory } : {}),
         });
+        if (params && observation && subscribed.initialHistory) {
+          initialHistoryReceipt = {
+            paramsKey: JSON.stringify(params),
+            result: subscribed.initialHistory,
+            observation,
+            owner: state,
+            run,
+            isCurrent: () => isCurrent() && paneRequests.historyVersion === historyVersion,
+          };
+          delete subscribed.initialHistory;
+        }
+        return subscribed;
       } catch (error) {
         if (!isCurrent() || !isRetryableChatReadError(error, "sessions.messages.subscribe")) {
           throw error;
@@ -287,6 +347,9 @@ async function synchronizeSelectedSessionMessageSubscription(
     }
     state.chatSessionMessageSubscriptionRequestedKey = nextKey;
     state.chatSessionMessageSubscription = subscribed;
+    if (initialHistoryReceipt) {
+      paneRequests.initialHistory = initialHistoryReceipt;
+    }
     if (subscribed.includeApprovals) {
       const agentId = nextSubscriptionAgentId ?? undefined;
       recordSessionApprovalReplay(state, subscribed.approvalReplay, agentId);

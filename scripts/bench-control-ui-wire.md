@@ -18,6 +18,11 @@ NODE_DISABLE_COMPILE_CACHE=1 node --import ./scripts/tsx.mjs scripts/bench-contr
   --profile remote --pairs 10 --output /absolute/fresh-proof-directory
 ```
 
+For changes to both Gateway and UI, add `--compare-bundle-dir /absolute/base/control-ui`.
+The `base` source then serves that bundle while `candidate` serves `--bundle-dir`.
+Omitting it preserves the shared-bundle comparison. To compare two bundles against
+the same Gateway source, use `--compare-source-dir .`.
+
 The current checkout is `candidate`; the comparison checkout is `base`. Pairs
 alternate AB/BA. Run `--profile local` separately. An A/A control uses the same
 checkout for both sides. Without `--compare-source-dir`, `--pairs` repeats the
@@ -34,6 +39,10 @@ Each sample captures cold chat navigation, an asset-cached chat reload, New
 Session navigation, and the first switch to the second conversation. Readiness
 is the first animation frame with a visible transcript and an enabled composer,
 or the enabled New Session input. Screenshots are taken outside timed intervals.
+Before the warm reload, the runner waits up to ten seconds for the cold visit's
+deferred IndexedDB snapshot write to retain its session identity, delta cursor,
+and history state. This fixture preparation is outside both timed intervals;
+paint and network-idle alone do not prove the transcript cache is persisted.
 
 The report retains HTTP resource types, encoded transfer sizes, cache status,
 response headers, and timings. WebSocket entries retain only frame identity,
@@ -45,6 +54,16 @@ delay to HTTP and WebSocket data. Both profiles use the same pre-paired syntheti
 device without a shared secret. The remote profile adds trusted-proxy address
 attribution so the Gateway negotiates its normal remote compression policy;
 the local profile uses direct-local transport.
+
+Each sample includes `websocketUpgrades` with upgrade request/response timestamps
+and status. HTTP `browserStartedAtMs`, `browserResponseAtMs`, and
+`browserFinishedAtMs`, upgrade browser timestamps, and frame `decodedAtMs` share
+the action's browser clock, starting at zero. Pair WebSocket requests and responses
+by `connection` plus `requestId`; `type` distinguishes requests, responses, and
+events. Use those timestamps with transcript/composer readiness to count serial
+round trips; `criticalBeforeReady` marks delivery before both controls are ready,
+not proof that every such frame is a dependency. No request bodies or authentication
+headers are retained.
 
 Interpret these as synthetic transport and rendering measurements. The proxy
 does not simulate TLS, TCP handshake latency, packet loss, or Internet routing.
@@ -60,7 +79,7 @@ separately. Inspect and crop screenshots before sharing: the shell can show
 host-derived names even with a synthetic profile and avatar.
 
 For a performance claim, report ten interleaved pairs with median, p95, spread,
-and host load. The target is 25% lower remote warm transcript/composer medians,
+and host load. The target is 30% lower remote warm transcript/composer medians,
 with localhost median regression at most 5% and no worse p95. On a noisy host,
 collect an A/A control and use twenty pairs with renderer CPU and structural
 counters. A smaller, clean wire-byte reduction remains useful when it misses
