@@ -5,7 +5,12 @@ import {
   prepareOperatorModelPolicy,
   restoreOperatorModelPolicySnapshot,
 } from "../../agents/operator-model-policy.js";
+import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import * as questionStorage from "../../config/sessions/session-questions.js";
+import {
+  addSessionMember,
+  removeSessionMember,
+} from "../../config/sessions/session-sharing-store.native.js";
 import * as questionChannel from "../../infra/question-channel-runtime.js";
 import * as workerAdmission from "../../infra/sqlite-worker-operation-admission.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
@@ -26,6 +31,62 @@ const answers = { answers: { destination: ["Library"] } };
 const sessionScope = { agentId: "main", sessionKey: requestParams.sessionKey };
 
 describe("durable RPC mutation admission", () => {
+  it("refuses registration when original-store membership is revoked before native admission", async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const owner = ensureProfileForEmail("membership-owner@example.test");
+      const f = await createOwnRunFixture(true, false, owner.id);
+      const id = "revoked-registration-membership";
+      f.cfg.gateway!.roles!.definitions.guest!.scopes!.push("operator.questions");
+      const runtime = {
+        ...f.runtime,
+        connect: { ...f.runtime.connect, scopes: ["operator.questions"] },
+      };
+      addSessionMember(sessionScope, { identityId: f.profile.id, addedBy: owner.id });
+      let revoked = false;
+      const operate = questionStorage.executeSessionQuestionOperation;
+      const storageSpy = vi
+        .spyOn(questionStorage, "executeSessionQuestionOperation")
+        .mockImplementation(async (target, input) => {
+          if (input.kind === "register" && !revoked) {
+            revoked = true;
+            expect(removeSessionMember(sessionScope, f.profile.id)).not.toBeNull();
+          }
+          return operate(target, input);
+        });
+      const channel = vi.spyOn(questionChannel, "handleQuestionChannelRequested");
+      broadcast.mockClear();
+      f.browser.socket.send.mockClear();
+      try {
+        expect(
+          (
+            await f.call(
+              "question.request",
+              {
+                ...requestParams,
+                id,
+                timeoutMs: 900_000,
+                durable: true,
+              },
+              runtime,
+            )
+          )[0],
+        ).toBe(false);
+        expect(revoked).toBe(true);
+        expect(
+          await operate({ ...sessionScope, assertCurrent() {} }, { kind: "get", id }),
+        ).toBeUndefined();
+        expect(loadSessionEntry(sessionScope)?.durableQuestionOwners).toBeUndefined();
+        expect(manager.get(id)).toBeNull();
+        expect(broadcast).not.toHaveBeenCalled();
+        expect(channel).not.toHaveBeenCalled();
+        expect(f.browser.socket.send).not.toHaveBeenCalled();
+      } finally {
+        storageSpy.mockRestore();
+        channel.mockRestore();
+        await f.close();
+      }
+    });
+  });
   it("registers and settles captured physical custody through a symlinked state route", async () => {
     vi.useRealTimers();
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {

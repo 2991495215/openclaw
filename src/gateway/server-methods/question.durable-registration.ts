@@ -14,6 +14,7 @@ import { handleQuestionChannelResolved } from "../../infra/question-channel-runt
 import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contract.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { installDurableQuestion } from "../durable-question-runtime.js";
+import { readGatewayAccessRevision } from "../gateway-access-revision.js";
 import { resolveGatewayOperatorRoleActor } from "../operator-role-policy.js";
 import { captureQueuedOperatorRecoverySource } from "../operator-run-recovery-source.js";
 import type { QuestionManager } from "../question-manager.js";
@@ -22,7 +23,9 @@ import {
   publishDurableQuestionResolution,
   withQuestionSessionAccess,
 } from "../question-session-access.js";
+import { prepareQuestionSharing } from "../question-session-preparation.js";
 import { authorizeOwnSessionMutation } from "../session-sharing-policy.js";
+import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
 import { QuestionRequestValidationError } from "./question.errors.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
@@ -117,11 +120,28 @@ export async function registerDurableQuestion(params: {
     },
     { assertCurrent: authority.assertCurrent, includeMembers: !narrow && requiresSharing() },
   );
+  let mutationFacts: Awaited<ReturnType<typeof prepareSessionMutationFacts>> | undefined;
   try {
     const binding = {
       ...captured.binding,
       ...(operatorAuthority?.profileId ? { profileId: operatorAuthority.profileId } : {}),
     };
+    if (requiresSharing()) {
+      mutationFacts = await prepareSessionMutationFacts({
+        cfg: options.context.getRuntimeConfig(),
+        sessionKey: binding.sessionKey,
+        agentId: binding.agentId,
+        preparedSource: {
+          agentId: binding.agentId,
+          storePath: binding.storePath,
+          canonicalKey: binding.sessionKey,
+          path: binding.databasePath,
+          databaseIdentity: binding.databaseIdentity.identity,
+          databaseBirthtime: binding.databaseIdentity.birthtime,
+          assertCurrent: captured.access.assertSourceCurrent,
+        },
+      });
+    }
     const createdAtMs = scheduler.now();
     const record: QuestionRecord = {
       id: params.reservation.id,
@@ -175,6 +195,29 @@ export async function registerDurableQuestion(params: {
       authority.assertCurrent();
       operatorAuthority?.assertCurrent();
       captured.access.assertSourceCurrent();
+      if (requiresSharing()) {
+        const cfg = options.context.getRuntimeConfig();
+        const accessRevision = readGatewayAccessRevision();
+        let current = mutationFacts?.readCurrent(cfg);
+        const sharing = prepareQuestionSharing(
+          cfg,
+          client,
+          (_target, identityId) => current?.membership.has(identityId) ?? false,
+        );
+        authority.assertCurrent();
+        operatorAuthority?.assertCurrent();
+        captured.access.assertSourceCurrent();
+        current = mutationFacts?.readCurrent(options.context.getRuntimeConfig());
+        if (
+          !current?.target ||
+          sharing.authorizeTarget(current.target) ||
+          accessRevision !== readGatewayAccessRevision()
+        ) {
+          throw new QuestionRequestValidationError(
+            "This caller cannot create a question in the selected conversation.",
+          );
+        }
+      }
       if (options.context.validateAgentRuntimeApprovalAuthority?.(requester) !== true) {
         throw new Error("The asking run no longer owns durable question registration.");
       }
@@ -202,6 +245,7 @@ export async function registerDurableQuestion(params: {
     }
     return result;
   } finally {
+    mutationFacts?.release();
     captured.access.release();
   }
 }
