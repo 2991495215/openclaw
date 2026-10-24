@@ -5,6 +5,16 @@ import { createIntersectionObserver, createResizeObserver, observeResize } from 
 
 afterEach(() => vi.unstubAllGlobals());
 
+function resizeEntry(target: Element): ResizeObserverEntry {
+  return {
+    target,
+    contentRect: new DOMRectReadOnly(),
+    borderBoxSize: [],
+    contentBoxSize: [],
+    devicePixelContentBoxSize: [],
+  };
+}
+
 it.each([
   { name: "ResizeObserver", create: createResizeObserver },
   { name: "IntersectionObserver", create: createIntersectionObserver },
@@ -97,6 +107,7 @@ it("waits for rendered refs before reading observer targets", () => {
 
 it("shares resize delivery without mixing subscribers or retaining retired targets", async () => {
   let deliver!: ResizeObserverCallback;
+  let native!: ResizeObserver;
   const observed = new Set<Element>();
   const create = vi.fn();
   vi.stubGlobal(
@@ -105,6 +116,7 @@ it("shares resize delivery without mixing subscribers or retaining retired targe
       constructor(callback: ResizeObserverCallback) {
         create();
         deliver = callback;
+        native = this;
       }
       observe(target: Element) {
         observed.add(target);
@@ -130,8 +142,7 @@ it("shares resize delivery without mixing subscribers or retaining retired targe
   onTestFinished(releaseFirst);
   onTestFinished(releaseSecond);
   expect(create).toHaveBeenCalledOnce();
-  // SAFETY: The router reads only the entry target and forwards the native observer unchanged.
-  deliver([{ target: first }, { target: second }] as ResizeObserverEntry[], {} as ResizeObserver);
+  deliver([resizeEntry(first), resizeEntry(second)], native);
   expect(batches).toEqual([[first, second]]);
   expect(secondCallback).not.toHaveBeenCalled();
   expect(observed).toEqual(new Set([first, second]));
@@ -150,6 +161,7 @@ it("shares resize delivery without mixing subscribers or retaining retired targe
 
 it("reports subscriber errors without starving independent observation", () => {
   let deliver!: ResizeObserverCallback;
+  let native!: ResizeObserver;
   const report = vi.fn();
   vi.stubGlobal("reportError", report);
   vi.stubGlobal(
@@ -157,6 +169,7 @@ it("reports subscriber errors without starving independent observation", () => {
     class {
       constructor(callback: ResizeObserverCallback) {
         deliver = callback;
+        native = this;
       }
       observe() {}
       unobserve() {}
@@ -172,8 +185,7 @@ it("reports subscriber errors without starving independent observation", () => {
   );
   const receive = vi.fn();
   onTestFinished(observeResize([target], receive));
-  // SAFETY: Only the native entry target is used to route this delivery.
-  deliver([{ target }] as ResizeObserverEntry[], {} as ResizeObserver);
+  deliver([resizeEntry(target)], native);
   expect(report).toHaveBeenCalledExactlyOnceWith(failure);
   expect(receive).toHaveBeenCalledOnce();
 });

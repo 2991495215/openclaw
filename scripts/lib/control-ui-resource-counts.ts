@@ -91,11 +91,13 @@ export function installControlUiResourceCounts() {
     );
   }
 
+  // The init script runs in a browser, even though this module also has Node types.
+  const browser: Window = window;
   const intervals = new Set<number>();
-  const setInterval = window.setInterval.bind(window);
-  const clearInterval = window.clearInterval.bind(window);
-  const clearTimeout = window.clearTimeout.bind(window);
-  window.setInterval = (handler, timeout, ...args) => {
+  const setInterval = browser.setInterval.bind(browser);
+  const clearInterval = browser.clearInterval.bind(browser);
+  const clearTimeout = browser.clearTimeout.bind(browser);
+  browser.setInterval = (handler, timeout, ...args) => {
     const timer = setInterval(
       typeof handler === "function"
         ? (...values: unknown[]) => {
@@ -117,12 +119,12 @@ export function installControlUiResourceCounts() {
       counts.intervals.active = intervals.size;
     }
   };
-  window.clearInterval = (timer) => {
+  browser.clearInterval = (timer) => {
     retireInterval(timer);
     clearInterval(timer);
   };
   // Browser timeout and interval handles share a pool and either clearer can cancel them.
-  window.clearTimeout = (timer) => {
+  browser.clearTimeout = (timer) => {
     retireInterval(timer);
     clearTimeout(timer);
   };
@@ -144,10 +146,12 @@ export function installControlUiResourceCounts() {
     remove: () => void;
   };
   const registrations = new WeakMap<EventTarget, Registration[]>();
-  // oxlint-disable-next-line typescript/unbound-method -- The probe forwards the original receiver with call below.
-  const add = EventTarget.prototype.addEventListener;
-  // oxlint-disable-next-line typescript/unbound-method -- The probe forwards the original receiver with call below.
-  const remove = EventTarget.prototype.removeEventListener;
+  const add = EventTarget.prototype.addEventListener.call.bind(
+    EventTarget.prototype.addEventListener,
+  );
+  const remove = EventTarget.prototype.removeEventListener.call.bind(
+    EventTarget.prototype.removeEventListener,
+  );
   EventTarget.prototype.addEventListener = function (type, listener, options) {
     const kind =
       this === window
@@ -158,7 +162,7 @@ export function installControlUiResourceCounts() {
             ? "mediaQuery"
             : undefined;
     if (!kind || !listener || (typeof options === "object" && options.signal?.aborted)) {
-      return add.call(this, type, listener, options);
+      return add(this, type, listener, options);
     }
     const capture = typeof options === "boolean" ? options : (options?.capture ?? false);
     const entries = registrations.get(this) ?? [];
@@ -166,7 +170,7 @@ export function installControlUiResourceCounts() {
       (entry) => entry.type === type && entry.listener === listener && entry.capture === capture,
     );
     if (existing) {
-      return add.call(this, type, existing.wrapped, options);
+      return add(this, type, existing.wrapped, options);
     }
     const signal = typeof options === "object" ? options.signal : undefined;
     const once = typeof options === "object" && options.once;
@@ -190,17 +194,17 @@ export function installControlUiResourceCounts() {
           entries.splice(index, 1);
           counts.listeners[kind]--;
           if (signal) {
-            remove.call(signal, "abort", entry.remove);
+            remove(signal, "abort", entry.remove);
           }
         }
       },
     };
-    add.call(this, type, entry.wrapped, options);
+    add(this, type, entry.wrapped, options);
     entries.push(entry);
     registrations.set(this, entries);
     counts.listeners[kind]++;
     if (signal) {
-      add.call(signal, "abort", entry.remove, { once: true });
+      add(signal, "abort", entry.remove, { once: true });
     }
   };
   EventTarget.prototype.removeEventListener = function (type, listener, options) {
@@ -216,7 +220,7 @@ export function installControlUiResourceCounts() {
     if (entry) {
       entry.remove();
     }
-    remove.call(this, type, entry?.wrapped ?? listener, options);
+    remove(this, type, entry?.wrapped ?? listener, options);
   };
 }
 

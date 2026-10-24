@@ -543,9 +543,10 @@ try {
             };
             try {
               if (minimizedWindow !== undefined && cdp) {
+                const windowId = minimizedWindow;
                 await capture(() =>
                   cdp!.send("Browser.setWindowBounds", {
-                    windowId: minimizedWindow,
+                    windowId,
                     bounds: { windowState: "normal" },
                   }),
                 );
