@@ -50,7 +50,11 @@ opcode, compression status, raw/decoded sizes, and timings. Message bodies and
 authentication headers are not included. A transparent TCP proxy counts RFC6455
 headers and compressed payloads; decoded browser events confirm delivery. The
 remote profile shares a 10 Mbps link in each direction and adds 50 ms one-way
-delay to HTTP and WebSocket data. Both profiles use the same pre-paired synthetic
+delay to HTTP and WebSocket data. Each direction rotates active TCP flows in
+16 KiB transmission quanta; propagation overlaps subsequent transmission.
+Backpressure limits source reads, and canceled flows cannot reserve future
+bandwidth. This avoids an abandoned speculative preload delaying a reload's
+WebSocket reply. Both profiles use the same pre-paired synthetic
 device without a shared secret. The remote profile adds trusted-proxy address
 attribution so the Gateway negotiates its normal remote compression policy;
 the local profile uses direct-local transport.
@@ -63,7 +67,8 @@ by `connection` plus `requestId`; `type` distinguishes requests, responses, and
 events. Use those timestamps with transcript/composer readiness to count serial
 round trips; `criticalBeforeReady` marks delivery before both controls are ready,
 not proof that every such frame is a dependency. No request bodies or authentication
-headers are retained.
+headers are retained. Frame `atMs` records proxy ingress observation, which can
+follow server transmission when the shared link applies backpressure.
 
 Interpret these as synthetic transport and rendering measurements. The proxy
 does not simulate TLS, TCP handshake latency, packet loss, or Internet routing.

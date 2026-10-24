@@ -26,6 +26,7 @@ import { chromium, type Response } from "playwright";
 import type { TranscriptEvent } from "../src/config/sessions/session-accessor.sqlite-contract.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import { resolvePlaywrightChromiumExecutablePath } from "../ui/src/test-helpers/playwright-chromium.ts";
+import { createControlUiWireLink } from "./lib/control-ui-wire-link.ts";
 import { stopChild } from "./lib/gateway-bench-child.ts";
 
 const { values } = parseArgs({
@@ -99,7 +100,7 @@ function frameReader(
   let upgraded = false;
   let message: WireFrame | undefined;
   let parts: Buffer[] = [];
-  return (chunk: Buffer, deliveredAtMs: number) => {
+  return (chunk: Buffer, deliveredAtMs: number, receivedAtMs = performance.now()) => {
     pending = Buffer.concat([pending, chunk]);
     if (headers) {
       const end = pending.indexOf("\r\n\r\n");
@@ -149,7 +150,7 @@ function frameReader(
         message = {
           direction,
           connection,
-          atMs: performance.now(),
+          atMs: receivedAtMs,
           deliveredAtMs,
           opcode,
           compressed: Boolean(first & 64),
@@ -208,62 +209,33 @@ function frameReader(
 async function startProxy(upstreamPort: number, listenPort: number) {
   const frames: WireFrame[] = [];
   const sockets = new Set<Socket>();
-  const timers = new Set<ReturnType<typeof setTimeout>>();
-  const next = { sent: 0, received: 0 };
+  const links = { sent: createControlUiWireLink(), received: createControlUiWireLink() };
   let connection = 0;
   const methods = new Map<string, string>();
-  const server = createServer((client) => {
-    const upstream = connect(upstreamPort, "127.0.0.1");
+  const server = createServer({ allowHalfOpen: true }, (client) => {
+    const upstream = connect({ port: upstreamPort, host: "127.0.0.1", allowHalfOpen: true });
     sockets.add(client);
     sockets.add(upstream);
+    client.on("close", () => sockets.delete(client));
+    upstream.on("close", () => sockets.delete(upstream));
     const id = ++connection;
     for (const [source, target, direction] of [
       [client, upstream, "sent"],
       [upstream, client, "received"],
     ] as const) {
       const inspect = frameReader(direction, id, frames, methods);
-      let queuedWrites = 0;
-      let ended = false;
-      source.on("data", (chunk: Buffer) => {
-        const now = performance.now();
-        // One shared serial link per direction: concurrent assets share 10 Mbps.
-        // 50 ms propagation each way models 100 ms RTT for both HTTP and WS.
-        const delivery = remote ? Math.max(now + 50, next[direction]) + chunk.length / 1250 : now;
-        next[direction] = delivery;
-        inspect(chunk, delivery);
-        if (!remote) {
-          target.write(chunk);
-          return;
-        }
-        queuedWrites++;
-        const timer = setTimeout(
-          () => {
-            timers.delete(timer);
-            if (!target.destroyed) {
-              target.write(chunk);
-            }
-            queuedWrites--;
-            if (ended && !queuedWrites && !target.destroyed) {
-              target.end();
-            }
-          },
-          Math.max(0, delivery - now),
-        );
-        timers.add(timer);
-      });
-      source.on("end", () => {
-        ended = true;
-        if (!queuedWrites && !target.destroyed) {
-          target.end();
-        }
-      });
-      source.on("error", () => target.destroy());
-      source.on("close", () => {
-        sockets.delete(source);
-        if (!ended || !queuedWrites) {
-          target.destroy();
-        }
-      });
+      if (remote) {
+        links[direction].connect(source, target, inspect);
+      } else {
+        source.on("data", (chunk: Buffer) => inspect(chunk, performance.now()));
+        source.pipe(target);
+        source.on("error", () => target.destroy());
+        source.on("close", () => {
+          if (!source.readableEnded) {
+            target.destroy();
+          }
+        });
+      }
     }
   });
   await new Promise<void>((resolve, reject) => {
@@ -278,9 +250,8 @@ async function startProxy(upstreamPort: number, listenPort: number) {
     frames,
     url: `http://127.0.0.1:${address.port}`,
     async close() {
-      for (const timer of timers) {
-        clearTimeout(timer);
-      }
+      links.sent.close();
+      links.received.close();
       for (const socket of sockets) {
         socket.destroy();
       }
@@ -918,19 +889,20 @@ async function runWorker() {
                 http,
                 websocketUpgrades: negotiations
                   .filter((upgrade) => upgrade.atMs >= startedAtMs)
-                  .map((upgrade) => ({
-                    ...upgrade,
-                    startedAtMs:
-                      upgrade.startedAtMs === undefined
-                        ? undefined
-                        : upgrade.startedAtMs - startedAtMs,
-                    atMs: upgrade.atMs - startedAtMs,
-                    browserStartedAtMs:
-                      upgrade.browserStartedAtMs === undefined
-                        ? undefined
-                        : upgrade.browserStartedAtMs - actionBrowserStartMs,
-                    browserResponseAtMs: upgrade.browserResponseAtMs - actionBrowserStartMs,
-                  })),
+                  .map((upgrade) =>
+                    Object.assign({}, upgrade, {
+                      startedAtMs:
+                        upgrade.startedAtMs === undefined
+                          ? undefined
+                          : upgrade.startedAtMs - startedAtMs,
+                      atMs: upgrade.atMs - startedAtMs,
+                      browserStartedAtMs:
+                        upgrade.browserStartedAtMs === undefined
+                          ? undefined
+                          : upgrade.browserStartedAtMs - actionBrowserStartMs,
+                      browserResponseAtMs: upgrade.browserResponseAtMs - actionBrowserStartMs,
+                    }),
+                  ),
                 websocket: frames,
                 summary: {
                   ...Object.fromEntries(
@@ -1013,8 +985,14 @@ async function runWorker() {
                 }
                 const database = await new Promise<IDBDatabase>((resolve, reject) => {
                   const request = indexedDB.open("openclaw-chat-snapshots");
-                  request.onsuccess = () => resolve(request.result);
-                  request.onerror = () => reject(request.error);
+                  request.addEventListener("success", () => resolve(request.result), {
+                    once: true,
+                  });
+                  request.addEventListener(
+                    "error",
+                    () => reject(request.error ?? new Error("Snapshot database failed to open")),
+                    { once: true },
+                  );
                 });
                 try {
                   const request = database
@@ -1024,8 +1002,14 @@ async function runWorker() {
                   const records = await new Promise<
                     Array<{ sessionKey: string; snapshot?: Record<string, unknown> }>
                   >((resolve, reject) => {
-                    request.onsuccess = () => resolve(request.result);
-                    request.onerror = () => reject(request.error);
+                    request.addEventListener("success", () => resolve(request.result), {
+                      once: true,
+                    });
+                    request.addEventListener(
+                      "error",
+                      () => reject(request.error ?? new Error("Snapshot read failed")),
+                      { once: true },
+                    );
                   });
                   return records.some(
                     ({ sessionKey: storedKey, snapshot }) =>
@@ -1044,7 +1028,9 @@ async function runWorker() {
               if (Date.now() >= snapshotDeadline) {
                 throw new Error("The selected transcript did not persist its warm-reload cursor");
               }
-              await new Promise((resolve) => setTimeout(resolve, 250));
+              await new Promise((resolve) => {
+                setTimeout(resolve, 250);
+              });
             }
             const extensions = negotiations[0]?.extensions ?? "none";
             if (remote !== extensions.includes("permessage-deflate")) {
@@ -1164,10 +1150,12 @@ if (values.worker) {
   const reports: unknown[] = [];
   if (otherSource && otherSource !== ownSource) {
     // A task-owned baseline checkout runs identical instrumentation against its source.
-    await copyFile(
-      fileURLToPath(import.meta.url),
-      path.join(otherSource, "scripts/bench-control-ui-wire.ts"),
-    );
+    for (const relative of [
+      "scripts/bench-control-ui-wire.ts",
+      "scripts/lib/control-ui-wire-link.ts",
+    ]) {
+      await copyFile(path.join(ownSource, relative), path.join(otherSource, relative));
+    }
   }
   async function collect(
     source: string,
