@@ -8,7 +8,9 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { withAgentDatabaseMaintenanceLease } from "../state/openclaw-agent-db-maintenance-lease.js";
 import { ensureOpenClawAgentDatabaseSchemaSteps } from "../state/openclaw-agent-db-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_V24_SQL } from "../state/openclaw-agent-schema-v24.test-support.js";
+import { OPENCLAW_AGENT_SCHEMA_V25_SQL } from "../state/openclaw-agent-schema-v25.test-support.js";
 import { createOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
+import { OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "../state/openclaw-state-db-contract.js";
 import {
   closeOpenClawStateDatabaseAsync,
   openOpenClawStateDatabase,
@@ -19,7 +21,9 @@ import {
 } from "../state/openclaw-state-db.js";
 import { addPreCutoverClientCredentialTablesForTest } from "../state/openclaw-state-schema.test-support.js";
 import { openNodeSqliteDatabase } from "./node-sqlite.js";
-import { runSqliteIntegrityOperationSync } from "./sqlite-integrity.js";
+import { runSqliteIntegrityOperationInWorker } from "./sqlite-integrity-operation.js";
+import { prepareAgentDatabaseMigrationDiscovery } from "./state-migrations.media-persistence-targets.js";
+import { migrateLegacyMediaPersistence } from "./state-migrations.media-persistence.js";
 import {
   detectSharedAuthStoreMigration,
   migrateSharedAuthStore,
@@ -227,61 +231,85 @@ it.each([false, true])(
   },
 );
 
-it("attributes a captured 9.33 schema migration and later shared-auth relocation", async () => {
-  const root = fs.realpathSync(directories.make("legacy-agent-generation-"));
-  const pathname = path.join(root, "agents", "main", "agent", "openclaw-agent.sqlite");
-  const env = { ...process.env, OPENCLAW_STATE_DIR: root };
-  const shared = openOpenClawStateDatabase({ env }).path;
-  await closeOpenClawStateDatabaseAsync();
-  fs.mkdirSync(path.dirname(pathname), { recursive: true });
-  const store = JSON.stringify({ version: 1, profiles: {} });
-  {
-    using db = new DatabaseSync(pathname);
-    db.exec("PRAGMA journal_mode = WAL;");
-    db.exec(OPENCLAW_AGENT_SCHEMA_V24_SQL);
-    db.exec(`PRAGMA user_version = 24;
-      INSERT INTO schema_meta (meta_key, role, schema_version, agent_id, created_at, updated_at)
-      VALUES ('primary', 'agent', 24, 'main', 1, 1);`);
-    db.prepare("INSERT INTO auth_profile_store VALUES ('primary', ?, 1)").run(store);
-  }
-  fs.chmodSync(pathname, 0o600);
-  const generations = {
-    [pathname]: legacyGeneration(pathname),
-    [shared]: legacyGeneration(shared),
-  };
-  const { receipt, warnings } = await withCapture(env, generations, async () => {
-    await withAgentDatabaseMaintenanceLease({ env, processBound: true }, async () => {
-      using db = openNodeSqliteDatabase(pathname);
-      runSqliteIntegrityOperationSync(
-        ensureOpenClawAgentDatabaseSchemaSteps(db, {
-          agentId: "main",
-          path: pathname,
-          env,
-          versionMigrationOnly: true,
-        }),
-      );
-      expect(db.prepare("PRAGMA user_version").get()?.user_version).toBeGreaterThan(24);
-    });
-    const detected = detectSharedAuthStoreMigration({
-      stateDir: root,
-      env,
-      doctorOnlyStateMigrations: true,
-    });
-    expect(detected.hasLegacy).toBe(true);
-    const relocation = await migrateSharedAuthStore({
-      detected,
-      stateDir: root,
-      env,
-    });
-    expect(relocation.warnings).toEqual([]);
-    expect(relocation.changes).toContain(
-      "Relocated shared auth profiles into shared SQLite state.",
-    );
+it.each([true, false])(
+  "attributes schema, media and shared-auth migration (legacy: %s)",
+  async (legacy) => {
+    const version = legacy ? 24 : 25;
+    const root = fs.realpathSync(directories.make("legacy-agent-generation-"));
+    const pathname = path.join(root, "agents", "main", "agent", "openclaw-agent.sqlite");
+    const env = { ...process.env, OPENCLAW_STATE_DIR: root };
+    const shared = openOpenClawStateDatabase({ env }).path;
     await closeOpenClawStateDatabaseAsync();
-  });
-  expect(warnings).toEqual([]);
-  expect(receipt).toMatchObject({ unchanged: true, fromGenerations: generations });
-});
+    fs.mkdirSync(path.dirname(pathname), { recursive: true });
+    const store = JSON.stringify({ version: 1, profiles: {} });
+    {
+      using db = new DatabaseSync(pathname);
+      db.exec("PRAGMA journal_mode = WAL;");
+      db.exec(legacy ? OPENCLAW_AGENT_SCHEMA_V24_SQL : OPENCLAW_AGENT_SCHEMA_V25_SQL);
+      db.exec(`PRAGMA user_version = ${version};
+      INSERT INTO schema_meta (meta_key, role, schema_version, agent_id, created_at, updated_at)
+      VALUES ('primary', 'agent', ${version}, 'main', 1, 1);`);
+      db.prepare("INSERT INTO auth_profile_store VALUES ('primary', ?, 1)").run(store);
+    }
+    fs.chmodSync(pathname, 0o600);
+    const generations = legacy
+      ? {
+          [pathname]: legacyGeneration(pathname),
+          [shared]: legacyGeneration(shared),
+        }
+      : readUpdateDatabaseGenerations([pathname, shared]);
+    const { receipt, warnings } = await withCapture(env, generations, async () => {
+      await withAgentDatabaseMaintenanceLease({ env, processBound: true }, async (lease) => {
+        using db = openNodeSqliteDatabase(pathname);
+        await runSqliteIntegrityOperationInWorker(
+          ensureOpenClawAgentDatabaseSchemaSteps(db, {
+            agentId: "main",
+            path: pathname,
+            env,
+            versionMigrationOnly: true,
+          }),
+          {
+            busyTimeoutMs: OPENCLAW_SQLITE_BUSY_TIMEOUT_MS,
+            signal: lease.signal,
+            beforeResume: () => lease.assertOwned(),
+          },
+        );
+        expect(db.prepare("PRAGMA user_version").get()?.user_version).toBeGreaterThan(24);
+      });
+      const preparedDiscovery = prepareAgentDatabaseMigrationDiscovery({
+        env,
+        configuredAgentDatabaseTargets: [{ agentId: "main", path: pathname }],
+      });
+      preparedDiscovery.versionMigrations = [{ path: pathname, foundVersion: version }];
+      expect((await migrateLegacyMediaPersistence({ env, preparedDiscovery })).warnings).toEqual(
+        [],
+      );
+      const detected = detectSharedAuthStoreMigration({
+        stateDir: root,
+        env,
+        doctorOnlyStateMigrations: true,
+      });
+      expect(detected.hasLegacy).toBe(true);
+      const relocation = await migrateSharedAuthStore({
+        detected,
+        stateDir: root,
+        env,
+      });
+      expect(relocation.warnings).toEqual([]);
+      expect(relocation.changes).toContain(
+        "Relocated shared auth profiles into shared SQLite state.",
+      );
+      await closeOpenClawStateDatabaseAsync();
+    });
+    expect(warnings).toEqual([]);
+    expect(receipt).toMatchObject({ unchanged: true, fromGenerations: generations });
+    expect(receipt?.generations).toEqual(
+      legacy
+        ? { [pathname]: legacyGeneration(pathname), [shared]: legacyGeneration(shared) }
+        : readUpdateDatabaseGenerations([pathname, shared]),
+    );
+  },
+);
 
 it("answers the unmarked 9.33 rollback request only for its recorded parent producer", async () => {
   const root = fs.realpathSync(directories.make("legacy-rollback-generation-"));
