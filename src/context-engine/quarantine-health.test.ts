@@ -50,10 +50,6 @@ import {
 import * as engines from "./registry.js";
 import { resetContextEngineRuntimeQuarantineForTests as resetQuarantine } from "./registry.test-support.js";
 
-// Sibling records need a verifiable /proc starttime, so sibling-visibility
-// coverage only runs where that identity source exists.
-const hasProcessStartTimes = process.platform === "linux";
-
 async function withLiveSiblingProcess<T>(fn: (pid: number) => Promise<T>): Promise<T> {
   return await withStateDirEnv("openclaw-context-engine-sibling-", async () => {
     const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30_000)"], {
@@ -286,7 +282,7 @@ describe("context engine quarantine health", () => {
     },
   );
 
-  it.runIf(hasProcessStartTimes).each(["engine", "process"])(
+  it.each(["engine", "process"])(
     "clears the selected %s records while preserving live sibling quarantines",
     async (scope) => {
       await withLiveSiblingProcess(async (siblingProcessId) => {
@@ -322,8 +318,8 @@ describe("context engine quarantine health", () => {
     },
   );
 
-  it.each(["stale incarnation", "unverified sibling"])("drops %s records", async (mode) => {
-    await withLiveSiblingProcess(async (siblingProcessId) => {
+  it("drops records from a previous incarnation of this PID", async () => {
+    await withStateDirEnv("openclaw-context-engine-quarantine-stale-", async () => {
       await resetQuarantine();
       seedRecord({
         engineId: "lossless-claw",
@@ -332,22 +328,6 @@ describe("context engine quarantine health", () => {
         reason: "stale process failure",
         ...createRuntimeHealthRecordEnvelope(new Date(123)),
         processToken: "stale-incarnation-token",
-        ...(mode === "unverified sibling"
-          ? { processId: siblingProcessId, processStartTime: null }
-          : {}),
-      });
-      expect(await engines.listContextEngineQuarantines()).toEqual([]);
-    });
-  });
-
-  it.runIf(hasProcessStartTimes)("drops records from a reused sibling PID", async () => {
-    await withLiveSiblingProcess(async (processId) => {
-      await resetQuarantine();
-      seedSiblingQuarantineForTest({
-        reason: "stale process failure",
-        failedAtMs: 123,
-        processId,
-        processStartTime: (getProcessStartTime(processId) ?? 0) + 1,
       });
       expect(await engines.listContextEngineQuarantines()).toEqual([]);
     });

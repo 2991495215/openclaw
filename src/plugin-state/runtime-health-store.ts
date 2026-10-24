@@ -2,7 +2,7 @@
 // core plugin-state store: envelope validation, process-liveness hygiene, and
 // per-process cleanup. Domain modules own record fields and display keys.
 import { randomUUID } from "node:crypto";
-import { getProcessStartTime } from "../shared/pid-alive.js";
+import { getProcessStartTime, isPidAlive } from "../shared/pid-alive.js";
 import { createCorePluginStateKeyedStore } from "./plugin-state-store.js";
 import { clearRuntimeHealthInWorker } from "./plugin-state-worker-client.js";
 import {
@@ -39,18 +39,13 @@ export function createRuntimeHealthRecordEnvelope(failedAt: Date): RuntimeHealth
   };
 }
 
-// Records surface only with a positive incarnation match; unverifiable
-// identity fails closed so a recycled PID can never keep stale failures alive.
-// Own PID: the per-process token proves incarnation on every platform.
-// Sibling PIDs: the Linux /proc starttime must match; where it is unavailable
-// (non-Linux, /proc read failure) sibling visibility is sacrificed instead of
-// trusting a bare kill(0) liveness probe.
+// Own-PID records require this process's token. Sibling health is descriptive:
+// PID reuse can leave a stale warning until that process exits.
 function processLooksLive(record: RuntimeHealthRecordEnvelope): boolean {
   if (record.processId === process.pid) {
     return record.processToken === currentProcessToken;
   }
-  const currentStartTime = getProcessStartTime(record.processId);
-  return currentStartTime !== null && currentStartTime === record.processStartTime;
+  return isPidAlive(record.processId);
 }
 
 /** Opens a SQLite-backed health record namespace shared across runtime processes. */
