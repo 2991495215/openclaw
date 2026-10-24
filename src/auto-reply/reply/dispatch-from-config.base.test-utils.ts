@@ -983,6 +983,7 @@ describe("dispatchReplyFromConfig", () => {
     const { activeOperation, createCtx, sessionId, sessionKey } =
       await createActiveSlackThread("U4");
     const dispatcher = createDispatcher();
+    const originalWaitForIdle = dispatcher.waitForIdle;
     const settlementEntered = Promise.withResolvers<void>();
     let finalizing = false;
     const replyResolver = vi.fn(async () => {
@@ -1037,6 +1038,7 @@ describe("dispatchReplyFromConfig", () => {
         { timeout: 500 },
       );
     } finally {
+      dispatcher.waitForIdle = originalWaitForIdle;
       activeOperation.complete();
       vi.useRealTimers();
     }
