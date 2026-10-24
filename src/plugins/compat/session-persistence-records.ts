@@ -11,14 +11,20 @@ const DEPRECATED_SESSION_COMPAT = {
   ],
 } as const;
 
+function deprecatedSessionCompat<const Date extends string>(date: Date) {
+  return {
+    ...DEPRECATED_SESSION_COMPAT,
+    deprecated: date,
+    warningStarts: date,
+  } as const;
+}
+
 export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   REPLY_TOOL_AUTHORITY_COMPAT_RECORD,
   TRANSCRIPT_STATS_COMPAT_RECORD,
   {
     code: "session-store-sync-listing",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-11",
-    warningStarts: "2026-10-11",
+    ...deprecatedSessionCompat("2026-10-11"),
     replacement:
       "Await listSessionEntriesAsync with an explicit agentId for read-only metadata; use getSessionEntryAsync for complete entries. Retain final deletion and disclosure authority at the effect boundary. The synchronous listing remains compatible through 2026-12-31.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-session-metadata-listings",
@@ -32,9 +38,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "github-publication-native-callbacks",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-09",
-    warningStarts: "2026-10-09",
+    ...deprecatedSessionCompat("2026-10-09"),
     replacement:
       "Use requestForSessionV2 and requestForClaimV2 with the host-provided GitHubPublicationRequesterV2, and requestPersonalForSessionV2 and confirmPersonalV2 with PersonalGitHubSessionActionV2. Await deferClaimPreparationAsync, deferOrphanedRequestsAsync, listUnreportedResultsAsync, markReportedAsync, readAsync, and personalStatusAsync. Legacy publication methods retain their signatures but fail at invocation. On githubOAuthService, await cancelAuthorizationAsync and retireProfileAsync; on its personal service, await cancelAuthorizationAsync and disconnectAsync. These OAuth compatibility methods retain synchronous completion. Deprecated signatures will be removed in the first January 2027 stable release after the final compatibility day, 2026-12-31.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-github-publication-operations",
@@ -64,9 +68,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "session-store-opaque-mutations",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-09",
-    warningStarts: "2026-10-09",
+    ...deprecatedSessionCompat("2026-10-09"),
     replacement:
       "Use prepareSessionEntryPatch for host preparation followed by an exact-snapshot conditional commit, applySessionEntryPatch for data-only patches, and updateLastRouteWithAuthority for guarded route updates. Legacy opaque transaction guards retain their ordering and will be removed in the first January 2027 stable release after the final compatibility day, 2026-12-31.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#prepare-session-entry-changes",
@@ -84,9 +86,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "codex-transcript-sync-validation",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-06",
-    warningStarts: "2026-10-06",
+    ...deprecatedSessionCompat("2026-10-06"),
     replacement:
       "Await readCodexSessionContextProjection for retained worker projection and final validation. Keep the released synchronous validators through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major. readCodexSessionContext remains a supported synchronous worker reader with its released three-argument generic result contract.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-session-transcript-persistence",
@@ -139,9 +139,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "session-upstream-links-sync-persistence",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-05",
-    warningStarts: "2026-10-05",
+    ...deprecatedSessionCompat("2026-10-05"),
     replacement:
       "Await upsertSessionUpstreamLinkAsync and deleteSessionUpstreamLinkAsync from session-catalog. Official harnesses await the native initializer's linkAsync method. Retain the synchronous signatures and completion timing shipped in v2026.9.8 through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-session-upstream-links",
@@ -156,9 +154,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "session-observer-progress-sync-reads",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-04",
-    warningStarts: "2026-10-04",
+    ...deprecatedSessionCompat("2026-10-04"),
     replacement:
       "Await sessionObserver.handleEventAsync, getCompanionSnapshotAsync, and disposeAsync. Use reply_dispatch shouldSendToolSummariesAsync/shouldSendFullToolDetailsAsync and onVerboseProgressVisibilityAsync. Retain synchronous contracts through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath:
@@ -175,9 +171,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "channel-inbound-sync-envelope-timestamps",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-05",
-    warningStarts: "2026-10-05",
+    ...deprecatedSessionCompat("2026-10-05"),
     replacement:
       "Await readSessionUpdatedAtAsync, createChannelInboundEnvelopeBuilderAsync, or resolveInboundSessionEnvelopeContextAsync at each message's formatting boundary. Resolve routes through resolveAgentRoute and use dispatchInboundDirectDm. Retain the synchronous signatures and callback timing shipped in 2026.9.8 through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-migration/compatibility-policy#inbound-envelope-timestamps",
@@ -195,10 +189,8 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "reply-run-start-unprepared-transcript",
-    ...DEPRECATED_SESSION_COMPAT,
+    ...deprecatedSessionCompat("2026-10-04"),
     owner: "agent-runtime",
-    deprecated: "2026-10-04",
-    warningStarts: "2026-10-04",
     replacement:
       "Use onPreparedAgentRunStart with a required transcriptStart field, forwarding the complete notification and synchronous return value. Bundled runtimes prepare the facts asynchronously; retain the released onAgentRunStart callback and omitted-facts synchronous read through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-migration/compatibility-policy#reply-run-start-transcript-facts",
@@ -212,9 +204,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "session-manager-sync-context-read",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-04",
-    warningStarts: "2026-10-04",
+    ...deprecatedSessionCompat("2026-10-04"),
     replacement:
       "Await SessionManager.readSessionContextAsync for full-fidelity context consumption. The synchronous reader retains its shipped result through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-session-transcript-persistence",
@@ -225,9 +215,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "session-reset-freshness-sync-read",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-05",
-    warningStarts: "2026-10-05",
+    ...deprecatedSessionCompat("2026-10-05"),
     replacement:
       "Await runtime.channel.session.resolveEntryResetFreshnessAsync. The released synchronous resolveEntryResetFreshness method retains its parameters and result through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-migration#session-reset-freshness",
@@ -238,10 +226,8 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "agent-end-sync-side-effects",
-    ...DEPRECATED_SESSION_COMPAT,
+    ...deprecatedSessionCompat("2026-10-04"),
     owner: "agent-runtime",
-    deprecated: "2026-10-04",
-    warningStarts: "2026-10-04",
     replacement:
       "Await runAgentEndSideEffectsAsync before releasing the turn lease. The released runAgentEndSideEffects helper retains its synchronous void result and scheduling behavior through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-agent-harness/attempt-runtime#agent-end-side-effects",
@@ -252,10 +238,8 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "native-session-generation-sync-authority",
-    ...DEPRECATED_SESSION_COMPAT,
+    ...deprecatedSessionCompat("2026-10-03"),
     owner: "agent-runtime",
-    deprecated: "2026-10-03",
-    warningStarts: "2026-10-03",
     replacement:
       "Await retainNativeSessionGenerationAuthority, resolvePreparedNativeSessionBinding, and reclaimNativeSessionGenerationWithAuthority. Release prepared captures after terminal cleanup. Released synchronous capture and two-argument mutation callbacks remain deprecated while published official harness readers migrate.",
     docsPath: "/plugins/sdk-migration/compatibility-policy#native-session-generation-authority",
@@ -268,10 +252,8 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "native-session-deletion-unbound-callbacks",
-    ...DEPRECATED_SESSION_COMPAT,
+    ...deprecatedSessionCompat("2026-10-11"),
     owner: "agent-runtime",
-    deprecated: "2026-10-11",
-    warningStarts: "2026-10-11",
     replacement:
       "Pass participants from createNativeSessionBindingLifecycleV2.withDeletion for reversible stored bindings or createNativeSessionCommitFinalizer for commit-only cleanup. Factory-produced participants and the existing harness hooks remain supported; direct unbound callbacks retain synchronous commit and rollback through 2026-12-31.",
     docsPath:
@@ -287,9 +269,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "session-manager-sync-persistence",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-01",
-    warningStarts: "2026-10-01",
+    ...deprecatedSessionCompat("2026-10-01"),
     replacement:
       "Await the matching Async-suffixed SessionManager method, including the returned rewrite commit. For resolveCurrentTurnEntryId with includeOmittedCustomMessages, await openAsync and traverse the complete view without that option. Shipped synchronous adapters remain compatible during their deprecation period and will be removed in the first January 2027 stable release after the final compatibility day, 2026-12-31.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-session-transcript-persistence",
@@ -324,9 +304,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "extension-session-sync-persistence",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-01",
-    warningStarts: "2026-10-01",
+    ...deprecatedSessionCompat("2026-10-01"),
     replacement:
       "Await ExtensionAPI.appendEntryAsync, setSessionNameAsync, and setLabelAsync, and AgentSession.setSessionNameAsync. Existing synchronous third-party methods retain their void return contract through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-extension-session-changes",
@@ -342,10 +320,8 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "provider-replay-sync-persistence",
-    ...DEPRECATED_SESSION_COMPAT,
+    ...deprecatedSessionCompat("2026-10-01"),
     owner: "provider",
-    deprecated: "2026-10-01",
-    warningStarts: "2026-10-01",
     replacement:
       "Use ProviderPlugin.sanitizeReplayHistoryAsync with ProviderSanitizeReplayHistoryContextV2 and await ProviderReplaySessionStateV2.appendCustomEntryAsync; use sanitizeGoogleGeminiReplayHistoryAsync for the shared Gemini implementation. Retain legacy third-party contexts and hooks through 2026-12-31; removal ships in the first January 2027 stable release without an SDK major.",
     docsPath: "/plugins/sdk-migration/how-to-migrate#await-provider-replay-metadata",
@@ -376,9 +352,7 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
   },
   {
     code: "acp-session-sync-read",
-    ...DEPRECATED_SESSION_COMPAT,
-    deprecated: "2026-10-11",
-    warningStarts: "2026-10-11",
+    ...deprecatedSessionCompat("2026-10-11"),
     replacement:
       "Await readAcpSessionEntryAsync. Bundled consumers use the existing worker-backed reader; the released synchronous reader keeps its result contract through 2026-12-31; removal ships in the first January 2027 stable release.",
     docsPath: "/plugins/sdk-migration/compatibility-policy#acp-metadata-binding-compatibility",

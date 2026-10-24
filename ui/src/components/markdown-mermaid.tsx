@@ -16,6 +16,7 @@ import {
   Show,
 } from "solid-js";
 import { pruneMapToMaxSize } from "../../../src/infra/map-size.ts";
+import { getOrCreatePromise } from "../../../src/shared/lazy-promise.ts";
 import { registerCodeBlocksEnglish } from "../i18n/locales/en-code-blocks.ts";
 import { copyToClipboard } from "../lib/clipboard.ts";
 import { t, registerEnglishCatalog } from "../lib/reactive/i18n.ts";
@@ -58,17 +59,10 @@ function currentTheme(): MermaidTheme {
 }
 
 function cachedDiagram(key: string, source: string, theme: MermaidTheme): Promise<string> {
-  let result = diagrams.get(key);
-  if (result) {
-    diagrams.delete(key);
-  } else {
-    result = renderMermaidSvg(source, theme);
-    void result.catch(() => {
-      if (diagrams.get(key) === result) {
-        diagrams.delete(key);
-      }
-    });
-  }
+  const result = getOrCreatePromise(diagrams, key, () => renderMermaidSvg(source, theme), {
+    cacheRejections: false,
+  });
+  diagrams.delete(key);
   diagrams.set(key, result);
   pruneMapToMaxSize(diagrams, CACHE_LIMIT);
   return result;
