@@ -23,10 +23,6 @@ export type UndiciGlobalDispatcherDeps = Pick<
   "getGlobalDispatcher" | "setGlobalDispatcher"
 >;
 
-type UndiciAgentOptions = ConstructorParameters<UndiciRuntimeDeps["Agent"]>[0];
-type UndiciEnvHttpProxyAgentOptions = ConstructorParameters<
-  UndiciRuntimeDeps["EnvHttpProxyAgent"]
->[0];
 type UndiciProxyAgentOptions = ConstructorParameters<UndiciRuntimeDeps["ProxyAgent"]>[0];
 
 /** Loads undici lazily, allowing tests to inject constructors without global side effects. */
@@ -41,7 +37,7 @@ export function loadUndiciGlobalDispatcherDeps(): UndiciGlobalDispatcherDeps {
 
 /** Creates a direct undici Agent with OpenClaw's HTTP/1-only dispatcher policy. */
 export function createHttp1Agent(
-  options?: UndiciAgentOptions,
+  options?: ConstructorParameters<UndiciRuntimeDeps["Agent"]>[0],
   timeoutMs?: number,
 ): import("undici").Agent {
   const { Agent } = loadUndiciRuntimeDeps();
@@ -130,7 +126,7 @@ function completeProxyLifecycle(
 
 /** Creates an env dispatcher with per-hop connectors and the existing dynamic bypass policy. */
 export function createHttp1EnvHttpProxyAgent(
-  options?: UndiciEnvHttpProxyAgentOptions,
+  options?: ConstructorParameters<UndiciRuntimeDeps["EnvHttpProxyAgent"]>[0],
   timeoutMs?: number,
   managedTlsEnv?: NodeJS.ProcessEnv,
 ): import("undici").EnvHttpProxyAgent {

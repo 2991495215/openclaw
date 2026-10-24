@@ -39,10 +39,6 @@ type ChannelRow = {
   detail: string;
 };
 
-type ChannelAccountRow = ChannelAccountInspectionResult & {
-  accountId: string;
-};
-
 function summarizeSources(sources: Array<string | undefined>): string {
   const counts = new Map<string, number>();
   for (const source of sources) {
@@ -91,7 +87,9 @@ export async function buildChannelsTable(
     });
     const resolvedAccountIds = accountIds.length > 0 ? accountIds : [defaultAccountId];
 
-    const accounts: ChannelAccountRow[] = [];
+    const accounts: (ChannelAccountInspectionResult & {
+      accountId: string;
+    })[] = [];
     for (const accountId of resolvedAccountIds) {
       accounts.push({
         accountId,

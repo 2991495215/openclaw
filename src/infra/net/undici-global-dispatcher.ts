@@ -28,14 +28,9 @@ let lastAppliedTimeoutKey: string | null = null;
 let lastAppliedProxyBootstrapKey: string | null = null;
 
 type DispatcherKind = "agent" | "env-proxy" | "proxyline-managed" | "unsupported";
-type SupportedDispatcherKind = Exclude<DispatcherKind, "unsupported">;
 type UndiciDispatcher = Parameters<UndiciGlobalDispatcherDeps["setGlobalDispatcher"]>[0];
 type UndiciDispatchOptions = Parameters<UndiciDispatcher["dispatch"]>[0];
 type UndiciDispatchHandler = Parameters<UndiciDispatcher["dispatch"]>[1];
-type CurrentDispatcherInfo = {
-  kind: SupportedDispatcherKind;
-  dispatcher: UndiciDispatcher;
-};
 type TimedProxylineManagedDispatcherState = {
   autoSelectFamily: boolean | undefined;
   timeoutMs: number;
@@ -150,7 +145,10 @@ function resolveEnvProxyBootstrapKey(options: EnvHttpProxyAgentProxyOptions): st
 
 function resolveCurrentDispatcherInfo(
   runtime: Pick<UndiciGlobalDispatcherDeps, "getGlobalDispatcher">,
-): CurrentDispatcherInfo | null {
+): {
+  kind: Exclude<DispatcherKind, "unsupported">;
+  dispatcher: UndiciDispatcher;
+} | null {
   let dispatcher: unknown;
   try {
     dispatcher = runtime.getGlobalDispatcher();

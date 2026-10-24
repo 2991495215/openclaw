@@ -29,7 +29,6 @@ import {
   RETRYABLE_NODE_WORKER_TRANSPORT_CODES,
 } from "./node-launch-adapter.js";
 import { raceNodeWorkerOperation } from "./node-worker-abort.js";
-import { findNodeWorker } from "./node-worker-discovery.js";
 import { nodeWorkerGatewayNamespace } from "./node-worker-gateway-namespace.js";
 import { createNodeWorkerProcessObserver } from "./node-worker-process-observation.js";
 import { parseNodeWorkerResponse } from "./node-worker-response.js";
@@ -121,8 +120,20 @@ export function createNodeWorkerTunnelManager(options: NodeWorkerTunnelManagerOp
     readWorkerProjectPreparation(
       options.getEnvironment(entry.environmentId)?.profileSnapshot.project,
     );
-  const findNode = (entry: NodeEnvironmentOwner, signal: AbortSignal) =>
-    findNodeWorker({ getTransport: options.getTransport, deviceId: entry.deviceId, signal });
+  // Resolve the connected supervisor anew so reconnects cannot reuse a stale transport.
+  const findNode = async (entry: NodeEnvironmentOwner, signal: AbortSignal) => {
+    const transport = options.getTransport();
+    if (!transport) {
+      throw new Error("device worker node transport is unavailable");
+    }
+    const node = await raceNodeWorkerOperation(transport.getCurrentNode(entry.deviceId), signal);
+    if (!node) {
+      throw new WorkerTunnelOwnerDisconnectedError(
+        "device worker node is not connected with the supervisor dialect",
+      );
+    }
+    return { transport, node };
+  };
 
   const drainWorkspace = (entry: NodeEnvironmentOwner, isAuthorized: () => boolean) =>
     drainNodeWorkerWorkspace({

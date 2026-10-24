@@ -1,13 +1,3 @@
-/** Manual-control promise cache for lazy runtime resources. */
-export type LazyPromiseLoader<T> = {
-  /** Resolves the cached value, creating one load promise when needed. */
-  load: () => Promise<T>;
-  /** Returns the current cached promise without starting a load. */
-  peek: () => Promise<T> | undefined;
-  /** Drops the cached promise so the next load starts fresh. */
-  clear: () => void;
-};
-
 type KeyedPromiseCacheOptions = {
   /** Defaults to true; set false to allow retry after a rejected load. */
   cacheRejections?: boolean;
@@ -55,7 +45,7 @@ type LazyPromiseLoaderOptions = {
 export function createLazyPromiseLoader<T>(
   load: () => T | Promise<T>,
   options: LazyPromiseLoaderOptions = {},
-): LazyPromiseLoader<T> {
+) {
   let promise: Promise<T> | undefined;
 
   const createPromise = (): Promise<T> => {
@@ -73,14 +63,14 @@ export function createLazyPromiseLoader<T>(
   };
 
   return {
-    load(): Promise<T> {
+    load: (): Promise<T> => {
       promise ??= createPromise();
       return promise;
     },
-    peek(): Promise<T> | undefined {
+    peek: (): Promise<T> | undefined => {
       return promise;
     },
-    clear(): void {
+    clear: (): void => {
       promise = undefined;
     },
   };
@@ -96,6 +86,6 @@ export function createLazyPromise<T>(
 }
 
 /** Convenience wrapper for dynamic-import-shaped loaders. */
-export function createLazyImportLoader<T>(load: () => Promise<T>): LazyPromiseLoader<T> {
+export function createLazyImportLoader<T>(load: () => Promise<T>) {
   return createLazyPromiseLoader(load);
 }

@@ -1,12 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveGlobalSingleton } from "./global-singleton.js";
 
-type Context = Readonly<Record<symbol, unknown>>;
-
 // Runtime chunks share the carrier; each owner controls only its own field.
 const context = resolveGlobalSingleton(
   Symbol.for("openclaw.asyncContext"),
-  () => new AsyncLocalStorage<Context | undefined>(),
+  () => new AsyncLocalStorage<Readonly<Record<symbol, unknown>> | undefined>(),
 );
 
 /** A field in the immutable async frame, retaining its owner's value by reference. */

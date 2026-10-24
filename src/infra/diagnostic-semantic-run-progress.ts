@@ -10,11 +10,6 @@ import {
   type CoreSemanticRunProgressProvenance,
 } from "./diagnostic-semantic-run-progress-provenance.js";
 
-type CoreSemanticRunProgressEventInput = Omit<
-  Extract<DiagnosticEventInput, { type: "run.progress" }>,
-  "runId" | "type"
-> & { runId: string };
-
 type CoreSemanticRunProgressMetadata = DiagnosticEventMetadata &
   Readonly<{
     [CORE_SEMANTIC_RUN_PROGRESS_METADATA_KEY]?: CoreSemanticRunProgressProvenance;
@@ -22,7 +17,9 @@ type CoreSemanticRunProgressMetadata = DiagnosticEventMetadata &
 
 /** Emits semantic run progress from the core boundary that validated useful work. */
 export function emitCoreSemanticRunProgressDiagnosticEvent(
-  event: CoreSemanticRunProgressEventInput,
+  event: Omit<Extract<DiagnosticEventInput, { type: "run.progress" }>, "runId" | "type"> & {
+    runId: string;
+  },
   owner?: DiagnosticEmbeddedRunOwner,
 ): void {
   if (owner?.watchdogAttempt && !owner.watchdogAttempt.progress("semantic", event.reason)) {

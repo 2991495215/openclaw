@@ -184,29 +184,6 @@ function appendProfileLevel(profile: ResolvedThinkingProfile, id: ThinkLevel) {
   profile.levels = profile.levels.toSorted((a, b) => a.rank - b.rank);
 }
 
-function appendCatalogAdvancedThinkingLevels(
-  profile: ResolvedThinkingProfile,
-  compat: ThinkingCatalogEntry["compat"],
-  thinkingLevelMap: ThinkingCatalogEntry["thinkingLevelMap"],
-) {
-  if (thinkingLevelMap) {
-    for (const level of ["xhigh", "max"] as const) {
-      if (thinkingLevelMap[level] !== undefined && thinkingLevelMap[level] !== null) {
-        appendProfileLevel(profile, level);
-      }
-    }
-  }
-  for (const level of compat?.supportedReasoningEfforts ?? []) {
-    if (
-      level === "ultra" ||
-      ((level === "adaptive" || level === "xhigh" || level === "max") &&
-        (level === "adaptive" || thinkingLevelMap?.[level] !== null))
-    ) {
-      appendProfileLevel(profile, level);
-    }
-  }
-}
-
 /** Resolve only provider-owned effort choices, before adding harness modes. */
 function resolveModelThinkingProfile(params: ThinkingProfileParams): ResolvedThinkingProfile {
   const providerRaw = normalizeOptionalString(params.provider);
@@ -277,7 +254,23 @@ function resolveModelThinkingProfile(params: ThinkingProfileParams): ResolvedThi
   }
 
   const profile = buildBaseThinkingProfile();
-  appendCatalogAdvancedThinkingLevels(profile, context.compat, context.thinkingLevelMap);
+  const { compat, thinkingLevelMap } = context;
+  if (thinkingLevelMap) {
+    for (const level of ["xhigh", "max"] as const) {
+      if (thinkingLevelMap[level] !== undefined && thinkingLevelMap[level] !== null) {
+        appendProfileLevel(profile, level);
+      }
+    }
+  }
+  for (const level of compat?.supportedReasoningEfforts ?? []) {
+    if (
+      level === "ultra" ||
+      ((level === "adaptive" || level === "xhigh" || level === "max") &&
+        (level === "adaptive" || thinkingLevelMap?.[level] !== null))
+    ) {
+      appendProfileLevel(profile, level);
+    }
+  }
   return normalizeThinkingProfile(profile, context.thinkingLevelMap, mappedLevels);
 }
 

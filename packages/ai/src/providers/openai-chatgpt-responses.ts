@@ -54,13 +54,7 @@ import {
   MALFORMED_STREAMING_FRAGMENT_ERROR_MESSAGE,
   parseRetryAfterSeconds,
 } from "../transports/transport-utils.js";
-import type {
-  AssistantMessage,
-  Model,
-  ModelRequestHeaders,
-  SimpleStreamOptions,
-  StreamFunction,
-} from "../types.js";
+import type { ModelRequestHeaders, SimpleStreamOptions, StreamFunction } from "../types.js";
 import {
   appendAssistantMessageDiagnostic,
   createAssistantMessageDiagnostic,
@@ -137,9 +131,6 @@ const WEBSOCKET_REPLAY_REJECTION =
   "Codex error: Persisted response contains hosted-tool, compaction, or unverifiable hidden reasoning state that Rustponses cannot replay. Start a new response or use the Python Responses service for this continuation.";
 const OPENAI_CHATGPT_RESPONSES_ERROR_BODY_MAX_BYTES = 16 * 1024;
 
-type ObserveResponsesPromptEgress = NonNullable<
-  ReturnType<typeof createResponsesPromptEgressObserver>
->;
 type ProcessCodexStream = (
   events: AsyncIterable<unknown>,
   options?: OpenAICodexResponsesOptions,
@@ -399,28 +390,94 @@ export const streamOpenAICodexResponses: StreamFunction<
           const dispatch: { request?: RequestBody } = {};
           websocketStarted = false;
           try {
-            const terminal = await processWebSocketStream(
+            const body = activeAttempt.request;
+            let terminal: CompletedResponse | null | undefined;
+            // Independent requests must neither consume nor replace the parent's cached continuation.
+            const { socket, entry, release } = await acquireWebSocket(
               websocketState,
               websocketAuthority,
-              activeAttempt.request,
-              output,
-              stream,
-              model,
-              () => {
-                websocketStarted = true;
-              },
-              () => {
-                commitSemanticAttempt(activeAttempt);
-              },
-              requestOptions,
-              processStream,
-              observePromptEgress,
-              activeAttempt.kind,
-              (request) => {
-                dispatch.request = request;
-              },
-              options?.signal,
+              independentResponsesRequest.has(requestOptions)
+                ? undefined
+                : requestOptions?.sessionId,
+              requestOptions?.signal,
             );
+            let keepConnection = true;
+            const useCachedContext =
+              requestOptions?.transport === "websocket-cached" ||
+              requestOptions?.transport === "auto";
+            // ChatGPT Codex Responses rejects `store: true` ("Store must be set to false").
+            // WebSocket continuation still works via connection-scoped previous_response_id state.
+            const requestBody =
+              useCachedContext && entry ? buildCachedWebSocketRequestBody(entry, body) : body;
+            async function* acceptedEvents() {
+              let started = false;
+              for await (const event of mapCodexEvents(
+                parseWebSocket(socket, requestOptions?.signal),
+                undefined,
+                requestOptions,
+              )) {
+                if (!started) {
+                  started = true;
+                  websocketStarted = true;
+                  commitSemanticAttempt(activeAttempt);
+                  await notifyProviderStreamOpened({
+                    options: requestOptions,
+                    cancelStream: () => {
+                      keepConnection = false;
+                      closeWebSocketSilently(socket);
+                    },
+                  });
+                  stream.push({ type: "start", partial: output });
+                }
+                yield event;
+              }
+            }
+            try {
+              if (requestOptions?.signal?.aborted) {
+                throw transportAbortError(requestOptions.signal);
+              }
+              observePromptEgress?.(requestBody, {
+                egress: "native-codex-websocket",
+                payloadVariant: activeAttempt.kind,
+              });
+              const lifecycle = responsesRequestLifecycle.get(requestOptions);
+              if (lifecycle) {
+                await lifecycle.beforeDispatch(requestOptions?.signal);
+                requestOptions?.signal?.throwIfAborted();
+                lifecycle.assertCurrent();
+              }
+              socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
+              dispatch.request = requestBody;
+              terminal = await processStream(acceptedEvents(), requestOptions, options?.signal);
+              if (requestOptions?.signal?.aborted) {
+                keepConnection = false;
+              } else if (useCachedContext && entry && output.responseId) {
+                const responseItems = convertResponsesMessages(
+                  model,
+                  { messages: [output] },
+                  CODEX_TOOL_CALL_PROVIDERS,
+                  {
+                    includeSystemPrompt: false,
+                    replayResponsesItemIds: false,
+                    sessionId: requestOptions?.sessionId,
+                    authProfileId: requestOptions?.authProfileId,
+                  },
+                ).filter((item) => item.type !== "function_call_output");
+                entry.continuation = {
+                  lastRequestBody: body,
+                  lastResponseId: output.responseId,
+                  lastResponseItems: responseItems,
+                };
+              }
+            } catch (error) {
+              if (entry) {
+                entry.continuation = undefined;
+              }
+              keepConnection = false;
+              throw error;
+            } finally {
+              release({ keep: keepConnection });
+            }
             completeStream(terminal, activeAttempt, CodexApiError);
             return;
           } catch (error) {
@@ -1165,108 +1222,6 @@ function buildCachedWebSocketRequestBody(
     previous_response_id: continuation.lastResponseId,
     input: currentInput.slice(baseline.length),
   };
-}
-
-async function processWebSocketStream(
-  state: OpenAICodexWebSocketRuntimeState,
-  authority: CodexWebSocketAuthority,
-  body: RequestBody,
-  output: AssistantMessage,
-  stream: AssistantMessageEventStream,
-  model: Model<"openai-chatgpt-responses">,
-  onFirstProviderEvent: () => void,
-  onStart: () => void,
-  options: OpenAICodexResponsesOptions | undefined,
-  processStream: ProcessCodexStream,
-  observePromptEgress?: ObserveResponsesPromptEgress,
-  payloadVariant: ResponsesEncryptedContentAttempt<RequestBody>["kind"] = "initial",
-  onRequestSent?: (request: RequestBody) => void,
-  activitySignal?: AbortSignal,
-): Promise<CompletedResponse | null | undefined> {
-  // Independent requests must neither consume nor replace the parent's cached continuation.
-  const { socket, entry, release } = await acquireWebSocket(
-    state,
-    authority,
-    independentResponsesRequest.has(options) ? undefined : options?.sessionId,
-    options?.signal,
-  );
-  let keepConnection = true;
-  const useCachedContext =
-    options?.transport === "websocket-cached" || options?.transport === "auto";
-  // ChatGPT Codex Responses rejects `store: true` ("Store must be set to false").
-  // WebSocket continuation still works via connection-scoped previous_response_id state.
-  const requestBody =
-    useCachedContext && entry ? buildCachedWebSocketRequestBody(entry, body) : body;
-  async function* acceptedEvents() {
-    let started = false;
-    for await (const event of mapCodexEvents(
-      parseWebSocket(socket, options?.signal),
-      undefined,
-      options,
-    )) {
-      if (!started) {
-        started = true;
-        onFirstProviderEvent();
-        onStart();
-        await notifyProviderStreamOpened({
-          options,
-          cancelStream: () => {
-            keepConnection = false;
-            closeWebSocketSilently(socket);
-          },
-        });
-        stream.push({ type: "start", partial: output });
-      }
-      yield event;
-    }
-  }
-  try {
-    if (options?.signal?.aborted) {
-      throw transportAbortError(options.signal);
-    }
-    observePromptEgress?.(requestBody, {
-      egress: "native-codex-websocket",
-      payloadVariant,
-    });
-    const lifecycle = responsesRequestLifecycle.get(options);
-    if (lifecycle) {
-      await lifecycle.beforeDispatch(options?.signal);
-      options?.signal?.throwIfAborted();
-      lifecycle.assertCurrent();
-    }
-    socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
-    onRequestSent?.(requestBody);
-    const terminal = await processStream(acceptedEvents(), options, activitySignal);
-    if (options?.signal?.aborted) {
-      keepConnection = false;
-    } else if (useCachedContext && entry && output.responseId) {
-      const responseItems = convertResponsesMessages(
-        model,
-        { messages: [output] },
-        CODEX_TOOL_CALL_PROVIDERS,
-        {
-          includeSystemPrompt: false,
-          replayResponsesItemIds: false,
-          sessionId: options?.sessionId,
-          authProfileId: options?.authProfileId,
-        },
-      ).filter((item) => item.type !== "function_call_output");
-      entry.continuation = {
-        lastRequestBody: body,
-        lastResponseId: output.responseId,
-        lastResponseItems: responseItems,
-      };
-    }
-    return terminal;
-  } catch (error) {
-    if (entry) {
-      entry.continuation = undefined;
-    }
-    keepConnection = false;
-    throw error;
-  } finally {
-    release({ keep: keepConnection });
-  }
 }
 
 async function readChatGptResponsesErrorTextLimited(

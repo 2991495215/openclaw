@@ -623,18 +623,6 @@ function appendParagraphSeparator(
   state.text += token?.hidden ? "\n" : "\n\n";
 }
 
-function appendTopLevelListSeparator(state: RenderState) {
-  if (!state.text.endsWith("\n\n")) {
-    state.text += "\n";
-  }
-}
-
-function appendNestedListSeparator(state: RenderState) {
-  if (!state.text.endsWith("\n")) {
-    state.text += "\n";
-  }
-}
-
 function appendListPrefix(
   state: RenderState,
   isTask: boolean,
@@ -730,49 +718,6 @@ function renderInlineCode(state: RenderState, content: string) {
   target.styles.push({ start, end: start + content.length, style: "code" });
 }
 
-function renderCodeBlock(
-  state: RenderState,
-  content: string,
-  info: string | undefined,
-  sourceNewlineCount: number | undefined,
-  origin: "fenced" | "indented",
-  sourceMap?: [number, number] | null,
-  codeClosed?: boolean,
-) {
-  let code = content;
-  if (!code.endsWith("\n")) {
-    code = `${code}\n`;
-  }
-  const target = resolveRenderTarget(state);
-  const start = target.text.length;
-  const language = info?.trim().split(/\s+/, 1)[0] || undefined;
-  target.text += code;
-  target.styles.push(
-    createStyleSpan({
-      start,
-      end: start + code.length,
-      style: "code_block",
-      language,
-    }),
-  );
-  state.blocks.push({
-    kind: "code_block",
-    start,
-    end: start + code.length,
-    depth: state.env.listStack.length + state.blockquoteStack.length + 1,
-    blockquoteDepth: state.blockquoteStack.length,
-    codeOrigin: origin,
-    ...(codeClosed !== undefined ? { codeClosed } : {}),
-    ...(language ? { language } : {}),
-    ...(sourceMap ? { sourceStartLine: sourceMap[0], sourceEndLine: sourceMap[1] } : {}),
-  });
-  if (state.env.listStack.length === 0) {
-    const extraNewlines =
-      sourceNewlineCount === undefined ? 1 : Math.max(0, sourceNewlineCount - 1);
-    target.text += "\n".repeat(extraNewlines);
-  }
-}
-
 function isFenceClosed(token: MarkdownToken): boolean {
   const sourceLines = (token.map?.[1] ?? 0) - (token.map?.[0] ?? 0);
   const content = token.content ?? "";
@@ -803,20 +748,6 @@ function handleLinkClose(state: RenderState) {
   const end = target.text.length;
   const span = createMarkdownLinkSpan({ start, end, href }, link.autoLinked);
   target.links.push(span);
-}
-
-function initTableState(): TableState {
-  return {
-    sourceHeaders: [],
-    sourceRows: [],
-    currentSourceRow: [],
-    headers: [],
-    rows: [],
-    aligns: [],
-    currentRow: [],
-    currentCell: null,
-    inHeader: false,
-  };
 }
 
 function finishTableCell(cell: RenderTarget): MarkdownTableCell {
@@ -858,36 +789,6 @@ function appendCell(state: RenderState, cell: MarkdownTableCell) {
   );
 }
 
-function collectTableBlock(
-  state: RenderState,
-  tableState: TableState,
-  headerCells: MarkdownTableCell[],
-  rowCells: MarkdownTableCell[][],
-) {
-  const table: MarkdownTableWithSource = {
-    headers: headerCells.map((cell) => cell.text),
-    rows: rowCells.map((row) => row.map((cell) => cell.text)),
-    headerCells,
-    rowCells,
-    placeholderOffset: state.text.length,
-    ...(tableState.aligns.some(Boolean) ? { aligns: [...tableState.aligns] } : {}),
-  };
-  state.collectedTables.push(table);
-  if (tableState.sourceLines) {
-    const [first, after] = tableState.sourceLines;
-    const { lines, starts } = (state.sourceIndex ??= indexSourceLines(state.source));
-    const column = state.env.tableSourceColumns?.get(first) ?? 0;
-    defineMetadata(table, "source", {
-      start: (starts[first] ?? 0) + column,
-      end: (starts[after - 1] ?? 0) + (lines[after - 1]?.length ?? 0),
-      // Continue list markers as indentation while retaining enclosing quote markers.
-      prefix: (lines[first] ?? "").slice(0, column).replace(/[^\t >]/gu, " "),
-      headers: tableState.sourceHeaders,
-      rows: tableState.sourceRows,
-    });
-  }
-}
-
 function renderTable(state: RenderState) {
   const table = state.table;
   if (!table || !["block", "bullets", "code"].includes(state.tableMode)) {
@@ -896,7 +797,28 @@ function renderTable(state: RenderState) {
   const headers = table.headers.map(trimCell);
   const rows = table.rows.map((row) => row.map(trimCell));
   if (state.tableMode === "block") {
-    collectTableBlock(state, table, headers, rows);
+    const collectedTable: MarkdownTableWithSource = {
+      headers: headers.map((cell) => cell.text),
+      rows: rows.map((row) => row.map((cell) => cell.text)),
+      headerCells: headers,
+      rowCells: rows,
+      placeholderOffset: state.text.length,
+      ...(table.aligns.some(Boolean) ? { aligns: [...table.aligns] } : {}),
+    };
+    state.collectedTables.push(collectedTable);
+    if (table.sourceLines) {
+      const [first, after] = table.sourceLines;
+      const { lines, starts } = (state.sourceIndex ??= indexSourceLines(state.source));
+      const column = state.env.tableSourceColumns?.get(first) ?? 0;
+      defineMetadata(collectedTable, "source", {
+        start: (starts[first] ?? 0) + column,
+        end: (starts[after - 1] ?? 0) + (lines[after - 1]?.length ?? 0),
+        // Continue list markers as indentation while retaining enclosing quote markers.
+        prefix: (lines[first] ?? "").slice(0, column).replace(/[^\t >]/gu, " "),
+        headers: table.sourceHeaders,
+        rows: table.sourceRows,
+      });
+    }
     // Reserve a coordinate so later siblings cannot share this table's container boundary.
     state.text += "\n";
     return;
@@ -1067,7 +989,9 @@ function renderTokens(tokens: MarkdownToken[], state: RenderState): void {
       case "bullet_list_open":
       case "ordered_list_open": {
         if (state.env.listStack.length > 0) {
-          appendNestedListSeparator(state);
+          if (!state.text.endsWith("\n")) {
+            state.text += "\n";
+          }
         }
         const ordered = token.type === "ordered_list_open";
         state.env.listStack.push({
@@ -1085,7 +1009,9 @@ function renderTokens(tokens: MarkdownToken[], state: RenderState): void {
       case "ordered_list_close":
         state.env.listStack.pop();
         if (state.env.listStack.length === 0) {
-          appendTopLevelListSeparator(state);
+          if (!state.text.endsWith("\n\n")) {
+            state.text += "\n";
+          }
         }
         break;
       case "list_item_open": {
@@ -1135,21 +1061,49 @@ function renderTokens(tokens: MarkdownToken[], state: RenderState): void {
         break;
       }
       case "code_block":
-      case "fence":
-        renderCodeBlock(
-          state,
-          token.content ?? "",
-          token.info,
-          sourceBlockNewlineCount(
-            state.preserveSourceBlockSpacing,
-            nextMappedBlockStarts[tokenIndex],
-            token.map?.[1],
-          ),
-          token.type === "fence" ? "fenced" : "indented",
-          token.map,
-          token.type === "fence" ? isFenceClosed(token) : undefined,
+      case "fence": {
+        let code = token.content ?? "";
+        const info = token.info;
+        const sourceNewlineCount = sourceBlockNewlineCount(
+          state.preserveSourceBlockSpacing,
+          nextMappedBlockStarts[tokenIndex],
+          token.map?.[1],
         );
+        const sourceMap = token.map;
+        const codeClosed = token.type === "fence" ? isFenceClosed(token) : undefined;
+        if (!code.endsWith("\n")) {
+          code = `${code}\n`;
+        }
+        const target = resolveRenderTarget(state);
+        const start = target.text.length;
+        const language = info?.trim().split(/\s+/, 1)[0] || undefined;
+        target.text += code;
+        target.styles.push(
+          createStyleSpan({
+            start,
+            end: start + code.length,
+            style: "code_block",
+            language,
+          }),
+        );
+        state.blocks.push({
+          kind: "code_block",
+          start,
+          end: start + code.length,
+          depth: state.env.listStack.length + state.blockquoteStack.length + 1,
+          blockquoteDepth: state.blockquoteStack.length,
+          codeOrigin: token.type === "fence" ? "fenced" : "indented",
+          ...(codeClosed !== undefined ? { codeClosed } : {}),
+          ...(language ? { language } : {}),
+          ...(sourceMap ? { sourceStartLine: sourceMap[0], sourceEndLine: sourceMap[1] } : {}),
+        });
+        if (state.env.listStack.length === 0) {
+          const extraNewlines =
+            sourceNewlineCount === undefined ? 1 : Math.max(0, sourceNewlineCount - 1);
+          target.text += "\n".repeat(extraNewlines);
+        }
         break;
+      }
       case "html_block":
       case "html_inline":
       case RAW_HTML_TOKEN_TYPE:
@@ -1158,7 +1112,17 @@ function renderTokens(tokens: MarkdownToken[], state: RenderState): void {
 
       case "table_open":
         if (state.tableMode !== "off") {
-          state.table = initTableState();
+          state.table = {
+            sourceHeaders: [],
+            sourceRows: [],
+            currentSourceRow: [],
+            headers: [],
+            rows: [],
+            aligns: [],
+            currentRow: [],
+            currentCell: null,
+            inHeader: false,
+          };
           state.table.sourceLines = token.map ?? undefined;
           state.hasTables = true;
         }

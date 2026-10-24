@@ -79,7 +79,26 @@ export function createCompactionCapture(output: ReplayOut, model: Model, options
         return false;
       }
       pending.delete(index);
-      captureAnthropicCompaction(output, capture, model, options);
+      const { content: summary, replayIndex, encryptedContent } = capture;
+      const context = buildProviderReplayContext(model, options);
+      if (
+        !summary ||
+        !context.baseUrlHash ||
+        !Number.isSafeInteger(replayIndex) ||
+        replayIndex < 0
+      ) {
+        return true;
+      }
+      const replay: AnthropicCompactionReplayState = {
+        v: 1,
+        type: ANTHROPIC_COMPACTION_REPLAY_TYPE,
+        data: summary,
+        ...(encryptedContent !== undefined ? { encryptedContent } : {}),
+        replayIndex,
+        ...context,
+        baseUrlHash: context.baseUrlHash,
+      };
+      output.providerReplay = replay;
       return true;
     },
   };
@@ -111,35 +130,6 @@ function isAnthropicCompactionState(
         Number.isSafeInteger(state.replayIndex) &&
         state.replayIndex >= 0))
   );
-}
-
-function readAnthropicCompactionState(
-  value: unknown,
-): AnthropicCompactionReplayState | AnthropicCompactionSuppressionState | undefined {
-  return isRecord(value) && isAnthropicCompactionState(value) ? value : undefined;
-}
-
-function captureAnthropicCompaction(
-  output: ReplayOut,
-  capture: PendingCompaction,
-  model: Model,
-  options?: ReplayOpts,
-): void {
-  const { content: summary, replayIndex, encryptedContent } = capture;
-  const context = buildProviderReplayContext(model, options);
-  if (!summary || !context.baseUrlHash || !Number.isSafeInteger(replayIndex) || replayIndex < 0) {
-    return;
-  }
-  const replay: AnthropicCompactionReplayState = {
-    v: 1,
-    type: ANTHROPIC_COMPACTION_REPLAY_TYPE,
-    data: summary,
-    ...(encryptedContent !== undefined ? { encryptedContent } : {}),
-    replayIndex,
-    ...context,
-    baseUrlHash: context.baseUrlHash,
-  };
-  output.providerReplay = replay;
 }
 
 /**
@@ -186,7 +176,8 @@ export function resolveNewestAnthropicCompaction(
     if (message?.role !== "assistant") {
       continue;
     }
-    const replayState = readAnthropicCompactionState(message.providerReplay);
+    const value = message.providerReplay;
+    const replayState = isRecord(value) && isAnthropicCompactionState(value) ? value : undefined;
     if (replayState?.type === ANTHROPIC_COMPACTION_SUPPRESSION_TYPE) {
       if (providerReplayContextMatches(replayState, context)) {
         return undefined;

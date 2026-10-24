@@ -23,17 +23,6 @@ type StatusOverviewRow = {
   Value: string;
 };
 
-type StatusGatewayConnection = {
-  url: string;
-  urlSource?: string;
-};
-
-type StatusGatewayProbe = {
-  connectLatencyMs?: number | null;
-  error?: string | null;
-  startupPhase?: string;
-} | null;
-
 type StatusGatewayProbeAuth = {
   token?: string;
   password?: string;
@@ -138,9 +127,16 @@ export function buildStatusOverviewSurfaceRows(params: {
   decorateTailscaleWarn?: (value: string) => string;
   gatewayMode: "local" | "remote";
   remoteUrlMissing: boolean;
-  gatewayConnection: StatusGatewayConnection;
+  gatewayConnection: {
+    url: string;
+    urlSource?: string;
+  };
   gatewayReachable: boolean;
-  gatewayProbe: StatusGatewayProbe;
+  gatewayProbe: {
+    connectLatencyMs?: number | null;
+    error?: string | null;
+    startupPhase?: string;
+  } | null;
   gatewayProbeAuth: StatusGatewayProbeAuth;
   gatewayProbeAuthWarning?: string | null;
   gatewaySelf: StatusGatewaySelf;

@@ -26,17 +26,6 @@ type ParseTtsDirectiveOptions = {
   preferredProviderId?: string;
 };
 
-// TRANSITIONAL(marker-retirement): the [[tts ...]] text DSL is a transitional
-// adapter for automatic-mode replies; structured voiceText/voiceProvider/voiceId
-// fields are canonical. Delete the DSL parse forms and this streaming cleaner
-// when the visibleReplies default flips to "message_tool".
-/** Streaming cleaner used to strip TTS tags before final text parsing is available. */
-type TtsDirectiveTextStreamCleaner = {
-  push: (text: string) => string;
-  flush: () => string;
-  hasBufferedDirectiveText: () => boolean;
-};
-
 function classifyTtsTag(body: string): "hidden-open" | "hidden-close" | "tts" | "other" {
   const normalized = body.trim().replace(/\s+/g, "").toLowerCase();
   if (normalized === "tts:text") {
@@ -56,8 +45,12 @@ function classifyTtsTag(body: string): "hidden-open" | "hidden-close" | "tts" | 
   return "other";
 }
 
+// TRANSITIONAL(marker-retirement): the [[tts ...]] text DSL is a transitional
+// adapter for automatic-mode replies; structured voiceText/voiceProvider/voiceId
+// fields are canonical. Delete the DSL parse forms and this streaming cleaner
+// when the visibleReplies default flips to "message_tool".
 /** Create an incremental cleaner for hiding [[tts:*]] directive text while streaming. */
-export function createTtsDirectiveTextStreamCleaner(): TtsDirectiveTextStreamCleaner {
+export function createTtsDirectiveTextStreamCleaner() {
   let pending = "";
   let insideHiddenTextBlock = false;
   let inlineCode = createInlineCodeState();

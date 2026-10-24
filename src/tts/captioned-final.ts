@@ -1,8 +1,4 @@
-import {
-  copyReplyPayloadMetadata,
-  isReplyPayloadTerminalContent,
-  type ReplyPayload,
-} from "../auto-reply/reply-payload.js";
+import { copyReplyPayloadMetadata, type ReplyPayload } from "../auto-reply/reply-payload.js";
 import { resolveChannelTtsVoiceDelivery } from "../channels/plugins/tts-capabilities.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { TtsAutoMode } from "../config/types.tts.js";
@@ -61,10 +57,6 @@ export function mergeDeferredFinalText(streamedText: string, finalText?: string)
     return final;
   }
   return `${streamed}\n${final}`;
-}
-
-export function isCaptionedFinalTextPayload(payload: ReplyPayload): boolean {
-  return isReplyPayloadTerminalContent(payload);
 }
 
 export function cleanDeferredFinalText(text: string | undefined): string {

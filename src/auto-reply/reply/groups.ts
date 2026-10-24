@@ -147,32 +147,23 @@ function buildGroupChatContext(params: {
   return lines.join(" ");
 }
 
-/** Builds system prompt context for direct conversations. */
-function buildDirectChatContext(params: {
-  sessionCtx: TemplateContext;
-  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
-}): string {
-  const providerLabel = resolveProviderLabel(params.sessionCtx.Provider);
-  return [
-    `You are in a ${providerLabel} direct conversation.`,
-    ...(params.sourceReplyDeliveryMode === "message_tool_only"
-      ? [
-          "Normal final replies are private and are not automatically sent to this conversation. To post visible output here, use the message tool with action=send; the target defaults to this conversation.",
-          "If no visible direct response is needed, do not call message(action=send). Your normal final answer stays private and will not be posted to the conversation.",
-        ]
-      : [
-          "Your replies are automatically sent to this conversation unless the current-turn context says final replies stay private.",
-        ]),
-  ].join(" ");
-}
-
 /** Selects the conversation guidance shared by incoming and continuation turns. */
 export function buildSourceConversationContext(
   params: Parameters<typeof buildGroupChatContext>[0],
 ): string {
   const chatType = normalizeOptionalLowercaseString(params.sessionCtx.ChatType);
   return chatType === "direct" || chatType === "dm"
-    ? buildDirectChatContext(params)
+    ? [
+        `You are in a ${resolveProviderLabel(params.sessionCtx.Provider)} direct conversation.`,
+        ...(params.sourceReplyDeliveryMode === "message_tool_only"
+          ? [
+              "Normal final replies are private and are not automatically sent to this conversation. To post visible output here, use the message tool with action=send; the target defaults to this conversation.",
+              "If no visible direct response is needed, do not call message(action=send). Your normal final answer stays private and will not be posted to the conversation.",
+            ]
+          : [
+              "Your replies are automatically sent to this conversation unless the current-turn context says final replies stay private.",
+            ]),
+      ].join(" ")
     : chatType === "group" || chatType === "channel"
       ? buildGroupChatContext(params)
       : "";

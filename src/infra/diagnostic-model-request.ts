@@ -12,11 +12,6 @@ import {
   type CoreModelRequestOwnerGeneration,
 } from "./diagnostic-model-request-provenance.js";
 
-type CoreModelRequestStartedEventInput = Omit<
-  Extract<DiagnosticEventInput, { type: "model.call.started" }>,
-  "observationUnit" | "type"
->;
-
 type CoreModelRequestStartedMetadata = DiagnosticEventMetadata &
   Readonly<{
     [CORE_MODEL_REQUEST_LIFECYCLE_METADATA_KEY]?: CoreModelRequestLifecycleProvenance;
@@ -24,7 +19,10 @@ type CoreModelRequestStartedMetadata = DiagnosticEventMetadata &
 
 /** Emits a request attempt from the core boundary that owns provider streaming. */
 export function emitCoreModelRequestStartedDiagnosticEvent(
-  event: CoreModelRequestStartedEventInput,
+  event: Omit<
+    Extract<DiagnosticEventInput, { type: "model.call.started" }>,
+    "observationUnit" | "type"
+  >,
   generation?: CoreModelRequestOwnerGeneration,
   requestTimeoutMs?: number,
   privateData?: DiagnosticEventPrivateData,
@@ -55,14 +53,9 @@ export function emitCoreModelRequestStartedDiagnosticEvent(
   );
 }
 
-type CoreModelRequestEndedEventInput = Extract<
-  DiagnosticEventInput,
-  { type: "model.call.completed" | "model.call.error" }
->;
-
 /** Emits a terminal owned by the same core model-request generation as its start. */
 export function emitCoreModelRequestEndedDiagnosticEvent(
-  event: CoreModelRequestEndedEventInput,
+  event: Extract<DiagnosticEventInput, { type: "model.call.completed" | "model.call.error" }>,
   generation?: CoreModelRequestOwnerGeneration,
   privateData?: DiagnosticEventPrivateData,
 ): void {

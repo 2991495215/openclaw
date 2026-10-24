@@ -4,11 +4,9 @@ export type Deferred<T = void> = {
   reject: (reason?: unknown) => void;
 };
 
-type PromiseConstructorWithResolvers = PromiseConstructor & {
+const promiseWithResolvers = Promise as PromiseConstructor & {
   withResolvers<T>(): Deferred<T>;
 };
-
-const promiseWithResolvers = Promise as PromiseConstructorWithResolvers;
 
 export function createDeferredCore<T = void>(): Deferred<T> {
   return promiseWithResolvers.withResolvers<T>();

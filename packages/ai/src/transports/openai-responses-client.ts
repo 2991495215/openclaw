@@ -672,7 +672,26 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
   return createResponsesTransportExecutor({
     outputApi: "azure-openai-responses",
     firstEventTimeoutMs: AZURE_RESPONSES_FIRST_EVENT_TIMEOUT_MS,
-    createClient: createAzureOpenAIClient,
+    createClient(model, apiKey, defaultHeaders, fetchOverride) {
+      const baseURL = model.baseUrl.replace(/\/+$/, "");
+      const clientOptions = {
+        apiKey,
+        dangerouslyAllowBrowser: true,
+        defaultHeaders,
+        baseURL,
+        fetch: fetchOverride ?? buildGuardedModelFetch(model),
+        ...buildOpenAISdkClientOptions(model),
+      };
+
+      if (isOpenAICompatibleAzureResponsesBaseUrl(baseURL)) {
+        return new OpenAI(clientOptions);
+      }
+
+      return new AzureOpenAI({
+        ...clientOptions,
+        apiVersion: resolveAzureOpenAIApiVersion(),
+      });
+    },
     buildRequest: (model, context, options, metadata, replayMode) => {
       const deploymentName = resolveAzureDeploymentNameFromMap({
         modelId: model.id,
@@ -683,31 +702,5 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
       delete params.store;
       return params;
     },
-  });
-}
-
-function createAzureOpenAIClient(
-  model: Model,
-  apiKey: string,
-  defaultHeaders: ModelRequestHeaders,
-  fetchOverride?: typeof globalThis.fetch,
-) {
-  const baseURL = model.baseUrl.replace(/\/+$/, "");
-  const clientOptions = {
-    apiKey,
-    dangerouslyAllowBrowser: true,
-    defaultHeaders,
-    baseURL,
-    fetch: fetchOverride ?? buildGuardedModelFetch(model),
-    ...buildOpenAISdkClientOptions(model),
-  };
-
-  if (isOpenAICompatibleAzureResponsesBaseUrl(baseURL)) {
-    return new OpenAI(clientOptions);
-  }
-
-  return new AzureOpenAI({
-    ...clientOptions,
-    apiVersion: resolveAzureOpenAIApiVersion(),
   });
 }

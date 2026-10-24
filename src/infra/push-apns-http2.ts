@@ -30,21 +30,6 @@ type ApnsResponseBodyCapture = {
   truncated: boolean;
 };
 
-/** Parameters for opening an APNs HTTP/2 client session. */
-type ConnectApnsHttp2SessionParams = {
-  authority: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-};
-
-/** Parameters for validating APNs reachability through an explicit proxy. */
-type ProbeApnsHttp2ReachabilityViaProxyParams = {
-  authority: string;
-  proxyUrl: string;
-  proxyTls?: ManagedProxyTlsOptions;
-  timeoutMs: number;
-};
-
 /** APNs probe response used to prove a proxy tunneled to Apple. */
 type ProbeApnsHttp2ReachabilityViaProxyResult = {
   status: number;
@@ -75,24 +60,6 @@ function assertApnsAuthority(authority: string): ApnsAuthority {
   return parsed.origin as ApnsAuthority;
 }
 
-function normalizeConnectProxyUrl(proxyUrl: URL): URL {
-  const normalized = new URL(proxyUrl);
-  normalized.pathname = "/";
-  normalized.search = "";
-  normalized.hash = "";
-  try {
-    // Proxyline decodes auth from its socket callback. Validate first so bad
-    // config rejects normally instead of escaping the EventEmitter boundary.
-    decodeURIComponent(normalized.username);
-    decodeURIComponent(normalized.password);
-  } catch (err) {
-    const detail =
-      err instanceof URIError ? "URI malformed" : err instanceof Error ? err.message : String(err);
-    throw new Error(`Proxy CONNECT failed via ${normalized.origin}: ${detail}`, { cause: err });
-  }
-  return normalized;
-}
-
 async function openApnsTlsTunnel(params: {
   proxyUrl: URL;
   proxyTls?: ManagedProxyTlsOptions;
@@ -103,7 +70,20 @@ async function openApnsTlsTunnel(params: {
 }): Promise<tls.TLSSocket> {
   // CONNECT ignores URL paths. Strip path metadata before Proxyline sees it so
   // tokens embedded in a configured proxy URL cannot surface in errors.
-  const proxyUrl = normalizeConnectProxyUrl(params.proxyUrl);
+  const proxyUrl = new URL(params.proxyUrl);
+  proxyUrl.pathname = "/";
+  proxyUrl.search = "";
+  proxyUrl.hash = "";
+  try {
+    // Proxyline decodes auth from its socket callback. Validate first so bad
+    // config rejects normally instead of escaping the EventEmitter boundary.
+    decodeURIComponent(proxyUrl.username);
+    decodeURIComponent(proxyUrl.password);
+  } catch (err) {
+    const detail =
+      err instanceof URIError ? "URI malformed" : err instanceof Error ? err.message : String(err);
+    throw new Error(`Proxy CONNECT failed via ${proxyUrl.origin}: ${detail}`, { cause: err });
+  }
   const deadline = Date.now() + params.timeoutMs;
   const proxySocket = await openProxyConnectTunnel({
     proxyUrl,
@@ -196,9 +176,11 @@ async function openProxiedApnsHttp2Session(params: {
 }
 
 /** Connects to APNs directly, or through the active managed proxy when present. */
-export async function connectApnsHttp2Session(
-  params: ConnectApnsHttp2SessionParams,
-): Promise<http2.ClientHttp2Session> {
+export async function connectApnsHttp2Session(params: {
+  authority: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+}): Promise<http2.ClientHttp2Session> {
   const authority = assertApnsAuthority(params.authority);
   const timeoutMs = resolveApnsHttp2TimeoutMs(params.timeoutMs);
   const proxyUrl = getActiveManagedProxyUrl();
@@ -251,9 +233,12 @@ export function getApnsResponseBodyCaptureText(capture: ApnsResponseBodyCapture)
 }
 
 /** Sends an intentionally invalid APNs push through a proxy to prove HTTP/2 reachability. */
-export async function probeApnsHttp2ReachabilityViaProxy(
-  params: ProbeApnsHttp2ReachabilityViaProxyParams,
-): Promise<ProbeApnsHttp2ReachabilityViaProxyResult> {
+export async function probeApnsHttp2ReachabilityViaProxy(params: {
+  authority: string;
+  proxyUrl: string;
+  proxyTls?: ManagedProxyTlsOptions;
+  timeoutMs: number;
+}): Promise<ProbeApnsHttp2ReachabilityViaProxyResult> {
   const authority = assertApnsAuthority(params.authority);
   const timeoutMs = resolveApnsHttp2TimeoutMs(params.timeoutMs);
   const session = await openProxiedApnsHttp2Session({
