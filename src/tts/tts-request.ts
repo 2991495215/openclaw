@@ -15,17 +15,12 @@ import type { TtsDirectiveOverrides, TtsDirectiveParseResult } from "./provider-
 import { resolveTtsProvider, resolveTtsProviderAsync } from "./tts-provider-resolution.js";
 import { resolveTtsConfig, resolveTtsPrefsPath, resolveTtsPrefsPathAsync } from "./tts-settings.js";
 
-type PreparedTtsRequest = {
-  cfg: OpenClawConfig;
-  directives: TtsDirectiveParseResult;
-};
-
 /** Merge a surface TTS override and resolve its inline synthesis directives. */
 export async function prepareTtsRequest(params: {
   cfg: OpenClawConfig;
   override?: TtsConfig;
   text: string;
-}): Promise<PreparedTtsRequest> {
+}): Promise<{ cfg: OpenClawConfig; directives: TtsDirectiveParseResult }> {
   const host = getLegacyPluginSdkResourceHost();
   return await host.track(async () => {
     using projection = createLegacyPluginSdkProviderProjection();
