@@ -18,6 +18,7 @@ import { TLON_PENDING_APPROVAL_LIMIT, type PendingApproval } from "../settings.j
 import { useTlonMonitorFixture } from "./monitor.test-harness.js";
 
 const {
+  startMonitor,
   monitorTlonProvider,
   authenticateMock,
   buildChannelInboundEnvelopeMock,
@@ -49,21 +50,12 @@ afterEach(async () => {
 });
 
 async function withMonitor(run: (runtime: RuntimeEnv) => Promise<void>) {
-  const controller = new AbortController();
-  const runtime = { error: vi.fn(), exit: vi.fn(), log: vi.fn() } satisfies RuntimeEnv;
-  const monitor = monitorTlonProvider({
-    scheduler: createTestPluginServiceScheduler(),
-    abortSignal: controller.signal,
-    runtime,
-  });
-  // Observe startup failures while the subscription assertion is pending.
-  void monitor.catch(() => {});
+  const { runtime, stop } = startMonitor();
   try {
     await vi.waitFor(() => expect(sseClientMock.connect).toHaveBeenCalledOnce());
     await run(runtime);
   } finally {
-    controller.abort();
-    await monitor;
+    await stop();
   }
 }
 
