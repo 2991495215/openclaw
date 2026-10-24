@@ -1,4 +1,3 @@
-import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import type { AgentIdentityResult, SessionsListResult } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
 import { scopedAgentParamsForSession } from "../../lib/sessions/index.ts";
@@ -21,11 +20,13 @@ export function sessionPathAgentId(key: string, context: ApplicationContext): st
 }
 
 export function sessionAgentIds(result: SessionsListResult | null): string[] {
-  return uniqueStrings(
-    (result?.sessions ?? [])
-      .map((row) => parseAgentSessionKey(row.key)?.agentId)
-      .filter((agentId): agentId is string => Boolean(agentId)),
-  );
+  return [
+    ...new Set(
+      (result?.sessions ?? [])
+        .map((row) => parseAgentSessionKey(row.key)?.agentId)
+        .filter((agentId): agentId is string => Boolean(agentId)),
+    ),
+  ];
 }
 
 export function sessionAgentIdentityById(

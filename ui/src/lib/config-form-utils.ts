@@ -58,10 +58,6 @@ export function schemaType(schema: JsonSchema): string | undefined {
   return schema.type;
 }
 
-export function isNonNullSchema(schema: JsonSchema): boolean {
-  return !(schema.type === "null" || (Array.isArray(schema.type) && schema.type.includes("null")));
-}
-
 export function schemaMayAcceptString(schema: JsonSchema): boolean {
   const declaredTypes = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
   if (declaredTypes.length > 0 && !declaredTypes.includes("string")) {

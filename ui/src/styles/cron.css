@@ -1058,7 +1058,10 @@
     padding-bottom: var(--space-3);
   }
 
-  .cron-table__name,
+  .cron-table__name {
+    grid-column: 1 / -1;
+  }
+
   .cron-table__schedule {
     grid-column: 1 / -1;
   }

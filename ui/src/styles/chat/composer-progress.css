@@ -183,7 +183,10 @@
     grid-column: 4;
   }
 
-  .agent-chat__goal[data-expanded="false"] .agent-chat__goal-command-actions,
+  .agent-chat__goal[data-expanded="false"] .agent-chat__goal-command-actions {
+    display: none;
+  }
+
   .agent-chat__goal[data-expanded="false"]
     .agent-chat__goal-command-actions
     .agent-chat__goal-action:not(.agent-chat__goal-resume) {

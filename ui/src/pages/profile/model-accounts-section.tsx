@@ -17,7 +17,7 @@ import { WizardStepControls } from "../../components/wizard-step-controls.tsx";
 import { registerModelAccountsEnglish } from "../../i18n/locales/en-model-accounts.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import type { ModelAccountsActions } from "./model-accounts-actions.ts";
-import { ModelAccountsState } from "./model-accounts-state.ts";
+import type { ModelAccountsState } from "./model-accounts-state.ts";
 
 registerEnglishCatalog(registerModelAccountsEnglish);
 
@@ -193,11 +193,19 @@ function SignIn(props: StateProps) {
   const flow = () => props.actions.flow();
   const catalogReceipt = createMemo(() => state().catalogReceipt);
   const catalogRead = createDeferred(() =>
-    catalogReceipt().result.then(ModelAccountsState.assertRead),
+    catalogReceipt().result.then((error) => {
+      if (error) {
+        throw new Error(error);
+      }
+    }),
   );
   const statusReceipt = createMemo(() => state().statusReceipt);
   const statusRead = createDeferred(() =>
-    statusReceipt().result.then(ModelAccountsState.assertRead),
+    statusReceipt().result.then((error) => {
+      if (error) {
+        throw new Error(error);
+      }
+    }),
   );
   const readCatalog = () => {
     catalogRead();

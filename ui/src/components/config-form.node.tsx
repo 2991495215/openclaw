@@ -1,6 +1,5 @@
 import type { JSX } from "@solidjs/web";
 import { createMemo, Match, Show, Switch } from "solid-js";
-import { isNonNullSchema } from "../lib/config-form-utils.ts";
 import { getLocale, t } from "../lib/reactive/i18n.ts";
 import { resolveStructuredDraftInitialValue } from "./config-form-structured-draft.ts";
 import { ConfigStructuredDraft } from "./config-form-structured-draft.tsx";
@@ -40,7 +39,13 @@ function resolveNode(
   inputType?: "text" | "number";
 } {
   if (schema.anyOf || schema.oneOf) {
-    const nonNull = (schema.anyOf ?? schema.oneOf ?? []).filter(isNonNullSchema);
+    const nonNull = (schema.anyOf ?? schema.oneOf ?? []).filter(
+      (variant) =>
+        !(
+          variant.type === "null" ||
+          (Array.isArray(variant.type) && variant.type.includes("null"))
+        ),
+    );
     if (nonNull.length === 1 && nonNull[0]) {
       return resolveNode(nonNull[0], params);
     }

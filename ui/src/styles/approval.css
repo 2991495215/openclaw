@@ -433,7 +433,10 @@
     padding: 14px;
   }
 
-  .approval-page__meta,
+  .approval-page__meta {
+    grid-template-columns: 1fr;
+  }
+
   .approval-page__actions {
     grid-template-columns: 1fr;
   }

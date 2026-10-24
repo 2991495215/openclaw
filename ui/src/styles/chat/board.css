@@ -140,7 +140,11 @@
 
 .chat-dashboard-menu__panel .session-menu__icon,
 .chat-dashboard-menu__panel .session-menu__check,
-.chat-dashboard-menu__panel .board-widget__menu-icon,
+.chat-dashboard-menu__panel .board-widget__menu-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .chat-dashboard-menu__panel .oc-menu-item__icon svg,
 .chat-dashboard-menu__panel .session-menu__check svg {
   width: 16px;

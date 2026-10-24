@@ -1,4 +1,3 @@
-import { normalizeUniqueTrimmedStringList } from "@openclaw/normalization-core/string-normalization";
 import type { PresenceEntry } from "../api/types.ts";
 import { t } from "../i18n/index.ts";
 import { gatewayClientKind } from "./gateway-client-kind.ts";
@@ -10,12 +9,18 @@ function presenceConnectionDescription(entry: PresenceEntry): string {
   const familyPlatform = family === "Mac" ? "macOS" : family === "iPad" ? "iPadOS" : family;
   const kind = gatewayClientKind({ id: entry.clientId, mode: entry.mode });
   const app = kind ? t(`presence.card.${kind}`) : undefined;
-  return normalizeUniqueTrimmedStringList([
-    family,
-    platform.label === familyPlatform ? undefined : platform.label,
-    platform.architecture,
-    app,
-  ]).join(" · ");
+  return [
+    ...new Set(
+      [
+        family,
+        platform.label === familyPlatform ? undefined : platform.label,
+        platform.architecture,
+        app,
+      ]
+        .map((value) => value?.trim())
+        .filter(Boolean),
+    ),
+  ].join(" · ");
 }
 
 export function presenceConnectionDescriptions(entries: readonly PresenceEntry[]): string[] {

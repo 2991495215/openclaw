@@ -1,6 +1,5 @@
 import { For } from "solid-js";
 import type { WebSearchTestResult } from "../../../../packages/gateway-protocol/src/schema/web-search.ts";
-import { dedupeByKey } from "../../../../src/shared/dedupe-by-key.ts";
 import {
   SettingsEmpty,
   SettingsRow,
@@ -20,9 +19,12 @@ export function renderSearchTestResult(result: WebSearchTestResult | null, error
   if (!result) {
     return undefined;
   }
-  const uniqueSources = dedupeByKey<{ url: string; title?: string; snippet?: string }>(
-    [...(result.results ?? []), ...(result.citations ?? [])],
-    (source) => source.url,
+  const sources: Array<{ url: string; title?: string; snippet?: string }> = [
+    ...(result.results ?? []),
+    ...(result.citations ?? []),
+  ];
+  const uniqueSources = sources.filter(
+    (source, index) => sources.findIndex((item) => item.url === source.url) === index,
   );
   return (
     <>

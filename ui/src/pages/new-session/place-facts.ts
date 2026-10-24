@@ -1,4 +1,3 @@
-import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { t } from "../../i18n/index.ts";
 import { registerNewSessionSetupEnglish } from "../../i18n/locales/en-new-session-setup.ts";
 import { formatDurationCompact } from "../../lib/format-duration.ts";
@@ -79,11 +78,13 @@ export function environmentMenuFacts(
 }
 
 export function environmentCapabilityLabels(capabilities: readonly string[] = []): string[] {
-  return uniqueStrings(
-    capabilities.flatMap((capability) => {
-      const family = capability.split(".", 1)[0]?.toLowerCase();
-      const key = Object.entries(CAPABILITY_FACT_KEYS).find(([name]) => name === family)?.[1];
-      return key ? [t(key)] : [];
-    }),
-  );
+  return [
+    ...new Set(
+      capabilities.flatMap((capability) => {
+        const family = capability.split(".", 1)[0]?.toLowerCase();
+        const key = Object.entries(CAPABILITY_FACT_KEYS).find(([name]) => name === family)?.[1];
+        return key ? [t(key)] : [];
+      }),
+    ),
+  ];
 }
