@@ -4120,3 +4120,39 @@ and paired-delta rules. Worker byte counts are partial and retain their
 sampling excludes worker heaps and external Buffer backing stores. RSS includes
 workers. This isolates the cleanup boundary; it is not a full Gateway throughput
 or retained-memory soak result.
+
+## Device-pairing publication snapshots
+
+`device-pairing-publication-measure.ts` exercises the real pairing reader and
+SQLite worker after invalidating each retained node snapshot. It checks the
+synthetic records before and after capture, including nested mutation protection.
+This measures publication misses, not Gateway RPC or model throughput.
+
+Prepare separate fresh fixtures for the two arms before launching either process:
+
+```sh
+node --import ./scripts/tsx.mjs scripts/perf/device-pairing-publication-measure.ts \
+  --mode prepare --state-dir /path/to/new-pairing-state --devices 64 \
+  --output /path/to/prepared.json
+node --import ./scripts/tsx.mjs scripts/perf/device-pairing-publication-measure.ts \
+  --mode timing --state-dir /path/to/new-pairing-state --devices 64 \
+  --operations 4000 --warmup 30 --pace-ms 1 \
+  --ready-file /path/to/arm-ready --start-file /path/to/pair-start \
+  --output /path/to/timing.json
+```
+
+After both ready files exist, atomically write a short future epoch in milliseconds
+to the common start file. Use a new start file for every pair. Alternate launch
+order and swap interleaved CPU placement under the campaign's quiet lock and shared
+guard. Keep maintenance enabled. Apply the matched A/A calibration and acceptance
+rules in [Calibrating paired GC measurements](#calibrating-paired-gc-measurements).
+
+Use a fresh process with `--mode promotion --expose-gc --trace-gc-nvp` (Node flags
+precede the script), `--gc-log /path/to/trace.log`, and stdout redirected to that
+same log for promotion attribution. Run `--mode allocation` separately for sampled
+bytes per publication. Only untraced `timing` reports are eligible for timing/GC
+gates. Every report includes completed work, process age, heap spaces, per-kind GC
+counts and pause distributions, both loop and GC maxima, and tail sample counts.
+CPU and GC cover the main thread; latency includes worker reads. An optional
+`--publication-source` selects a sibling module for matched source overrides;
+use the same loader arrangement on both arms and verify the reported source hashes.
