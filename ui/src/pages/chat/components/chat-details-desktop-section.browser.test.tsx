@@ -66,12 +66,13 @@ async function settleAnimations(element: HTMLElement) {
 }
 
 it("restores a closed choice before paint and gives keyboard activation immediate access", async () => {
-  const { disclosure, summary, artifact } = mount(false);
+  const { disclosure, summary } = mount(false);
   expect(disclosure.open).toBe(false);
-  expect(artifact.checkVisibility()).toBe(false);
+  expect(disclosure.querySelector("button")).toBeNull();
   summary.focus();
   await userEvent.keyboard("{Enter}");
   flush();
+  const artifact = disclosure.querySelector("button")!;
   expect(disclosure.open).toBe(true);
   expect(artifact.checkVisibility()).toBe(true);
   expect(disclosure.getAnimations({ subtree: true })).toHaveLength(0);
@@ -82,6 +83,9 @@ it("restores a closed choice before paint and gives keyboard activation immediat
   flush();
   expect(disclosure.open).toBe(false);
   expect(document.activeElement).toBe(summary);
+  await userEvent.keyboard("{Enter}");
+  flush();
+  expect(disclosure.querySelector("button")).toBe(artifact);
 });
 
 it("reverses a pointer collapse, accommodates new content, and settles when parked", async () => {
