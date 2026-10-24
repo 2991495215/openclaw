@@ -9,12 +9,15 @@ import { messageRecoveryKey } from "../chat-message-recovery.ts";
 import * as chatThreadBuild from "../chat-thread-build.ts";
 import { persistedMessageEntryId } from "../chat-thread-items.ts";
 import { setExpansionState } from "../chat-thread.ts";
+import { createChatViewFrame } from "../chat-view-frame.ts";
 import {
+  createChatProps,
   createTestTranscript as createTranscript,
   stubAnimationFrames,
 } from "../chat-view.test-helpers.ts";
 import { saveChatSessionScrollPosition } from "../scroll.ts";
 import { render, renderChatThread } from "../test-helpers/chat-transcript-native.tsx";
+import { createAsyncQuestionPresentation } from "./chat-async-question.ts";
 import { getTranscriptState, type ChatThreadProps } from "./chat-thread-interactions.ts";
 import { ChatThread } from "./chat-thread-view.tsx";
 import * as transcriptIndex from "./chat-transcript-message-index.ts";
@@ -104,7 +107,12 @@ describe("transcript projection", () => {
       updateText = setText;
       updateContext = setContext;
       const props = {
-        ...threadProps(paneId, "agent:main:stream-leaf", [msg("user", "Prompt", 1_000)]),
+        ...createChatProps({
+          paneId,
+          sessionKey: "agent:main:stream-leaf",
+          messages: [msg("user", "Prompt", 1_000)],
+          transcript,
+        }),
         runId: "live",
         runActive: true,
         runWorking: true,
@@ -116,7 +124,12 @@ describe("transcript projection", () => {
           return context() ? "Updated assistant" : "Assistant";
         },
       };
-      return createComponent(ChatThread, { props, transcript });
+      const viewFrame = createChatViewFrame(
+        props,
+        () => undefined,
+        createAsyncQuestionPresentation(getTranscriptState(paneId), props),
+      );
+      return createComponent(ChatThread, { props: viewFrame.threadProps, transcript });
     });
     onTestFinished(view.unmount);
     transcript.start();
