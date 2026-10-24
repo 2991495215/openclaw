@@ -104,7 +104,7 @@ function readQuestion(
     : undefined;
 }
 
-export function readSessionQuestions(
+function readSessionQuestions(
   database: OpenClawAgentReadOnlyDatabase,
   input: Extract<SessionQuestionOperation, { kind: "get" | "list" }>,
 ): SessionQuestionResult {
@@ -129,7 +129,7 @@ export function readSessionQuestions(
 }
 
 /** Read-only custody repair requires exact physical and session facts in one native snapshot. */
-export function readSessionQuestionCustodyInDatabase(
+function readSessionQuestionCustodyInDatabase(
   database: OpenClawAgentReadOnlyDatabase,
   binding: DurableQuestionSessionBinding,
   id: string,
