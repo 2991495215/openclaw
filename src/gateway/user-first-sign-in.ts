@@ -104,6 +104,10 @@ export function noteUserSignIn(
 
 /** Retry deliveries a previous process recorded but did not finish. */
 export async function resumeUserFirstSignInDeliveries(): Promise<void> {
+  // Rows wait for a start with handlers; a Gateway without consumers does not read the store.
+  if (firstSignInHooks().length === 0) {
+    return;
+  }
   for (const { key, value } of await openRecords().entries()) {
     if (value.pendingPluginIds.length === 0) {
       settled.add(key);
