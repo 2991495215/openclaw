@@ -96,6 +96,17 @@
   color: var(--danger);
 }
 
+.session-menu__panel > .session-menu__item--original-unavailable {
+  flex-wrap: wrap;
+  padding-block: 8px;
+}
+
+.session-menu__item--original-unavailable > .oc-menu-item__details {
+  flex: 1 1 100%;
+  margin-inline-start: 0;
+  white-space: normal;
+}
+
 .session-menu__icon,
 .session-menu__avatar,
 .session-menu__check {
