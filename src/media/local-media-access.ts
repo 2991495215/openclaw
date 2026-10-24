@@ -21,12 +21,11 @@ export type LocalMediaAccessErrorCode =
   | "not-file";
 
 export class LocalMediaAccessError extends Error {
-  constructor(
-    public code: LocalMediaAccessErrorCode,
-    message: string,
-    options?: ErrorOptions,
-  ) {
+  code: LocalMediaAccessErrorCode;
+
+  constructor(code: LocalMediaAccessErrorCode, message: string, options?: ErrorOptions) {
     super(message, options);
+    this.code = code;
     this.name = "LocalMediaAccessError";
   }
 }

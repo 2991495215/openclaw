@@ -14,11 +14,10 @@ export type ErrorCode =
   | "internal";
 
 export class RelayError extends Error {
-  constructor(
-    readonly code: ErrorCode,
-    message: string,
-  ) {
+  readonly code: ErrorCode;
+  constructor(code: ErrorCode, message: string) {
     super(message);
+    this.code = code;
   }
 }
 

@@ -9,12 +9,11 @@ export type OnePasswordErrorCode =
   | "OP_ERROR";
 
 export class OnePasswordError extends Error {
-  constructor(
-    readonly code: OnePasswordErrorCode,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
+  readonly code: OnePasswordErrorCode;
+
+  constructor(code: OnePasswordErrorCode, message: string, options?: { cause?: unknown }) {
     super(message, options);
     this.name = "OnePasswordError";
+    this.code = code;
   }
 }
