@@ -33,6 +33,7 @@ import type { AgentFallbackCandidateCommonParams } from "./agent-runner-fallback
 import { deliverPreparedBlockReply } from "./agent-runner-presentation.js";
 import {
   buildFallbackCandidateTurnParams,
+  notifyScheduledCandidateStart,
   buildReplyRunStateParams,
   resolveRunModelHasVision,
   resolveReplyScheduledToolPolicy,
@@ -394,38 +395,7 @@ export async function runCliFallbackCandidate(
             agentId: turn.followupRun.run.agentId,
             jobId: turn.followupRun.run.scheduledAutomation?.job.id,
             onExecutionStarted: turn.followupRun.run.scheduledAutomation
-              ? async () => {
-                  try {
-                    await turn.followupRun.run.internalEventExecution?.beforeScheduledStart?.(
-                      params.runId,
-                    );
-                    params.runAbortSignal?.throwIfAborted();
-                    turn.followupRun.run.internalEventExecution?.assertCurrent?.();
-                    const automation = turn.followupRun.run.scheduledAutomation;
-                    if (automation && sessionKey) {
-                      automation.onExecutionStarted?.({
-                        runId: params.runId,
-                        sessionId: turn.followupRun.run.sessionId,
-                        sessionKey,
-                        provider: params.provider,
-                        model: params.model,
-                        ...(params.isFallbackRetry ? { isFallback: true } : {}),
-                      });
-                    }
-                  } catch (error) {
-                    if (!params.hasAgentRunStarted()) {
-                      lifecycleBackstop.note({
-                        stream: "lifecycle",
-                        data: {
-                          phase: "finishing",
-                          executionStarted: false,
-                          providerStarted: false,
-                        },
-                      });
-                    }
-                    throw error;
-                  }
-                }
+              ? () => notifyScheduledCandidateStart(params, lifecycleBackstop, () => sessionKey)
               : undefined,
             scheduledToolPolicy: resolveReplyScheduledToolPolicy(turn.followupRun.run),
             config: params.runtimeConfig,

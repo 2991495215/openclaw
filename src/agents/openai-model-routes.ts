@@ -154,15 +154,7 @@ export function resolveOpenAIModelRoutes(params: {
   if (normalizeProviderId(params.provider ?? "") !== OPENAI_PROVIDER_ID) {
     return null;
   }
-  return createOpenAIModelRoutesResolver({
-    config: params.config,
-    agentId: params.agentId,
-    primaryModel: params.primaryModel,
-    resolveProfileAuthMode: params.resolveProfileAuthMode,
-    resolveProfileAuthFlow: params.resolveProfileAuthFlow,
-    env: params.env,
-    requestTransportOverrides: params.requestTransportOverrides,
-  })({
+  return createOpenAIModelRoutesResolver(params)({
     modelId: params.modelId,
     api: params.api as ModelApi | null | undefined,
     baseUrl: params.baseUrl,

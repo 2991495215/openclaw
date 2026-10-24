@@ -144,6 +144,39 @@ export async function resolveRunModelHasVision(params: {
   return modelSupportsInput(findModelInCatalog(catalog, provider, model), "image");
 }
 
+export async function notifyScheduledCandidateStart(
+  params: AgentFallbackCandidateCommonParams,
+  lifecycleBackstop: Parameters<AgentFallbackCandidateCommonParams["onLifecycleBackstop"]>[0],
+  resolveSessionKey = () => params.turn.sessionKey ?? params.turn.followupRun.run.sessionKey,
+): Promise<void> {
+  const { turn } = params;
+  try {
+    await turn.followupRun.run.internalEventExecution?.beforeScheduledStart?.(params.runId);
+    params.runAbortSignal?.throwIfAborted();
+    turn.followupRun.run.internalEventExecution?.assertCurrent?.();
+    const automation = turn.followupRun.run.scheduledAutomation;
+    const sessionKey = resolveSessionKey();
+    if (automation && sessionKey) {
+      automation.onExecutionStarted?.({
+        runId: params.runId,
+        sessionId: turn.followupRun.run.sessionId,
+        sessionKey,
+        provider: params.provider,
+        model: params.model,
+        ...(params.isFallbackRetry ? { isFallback: true } : {}),
+      });
+    }
+  } catch (error) {
+    if (!params.hasAgentRunStarted()) {
+      lifecycleBackstop.note({
+        stream: "lifecycle",
+        data: { phase: "finishing", executionStarted: false, providerStarted: false },
+      });
+    }
+    throw error;
+  }
+}
+
 /** Project prepared turn facts shared by the CLI and embedded runtime adapters. */
 export function buildFallbackCandidateTurnParams(params: AgentFallbackCandidateCommonParams) {
   const { turn } = params;
