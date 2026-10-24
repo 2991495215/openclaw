@@ -186,18 +186,6 @@ export async function uninstallLegacySystemdUnits({
   return units;
 }
 
-type UninstallUserSystemdGatewayUnitResult = {
-  unitName: string;
-  unitPath: string;
-  removed: boolean;
-  /**
-   * False when systemctl could not disable/stop the unit. Deleting the unit
-   * file alone does not evict an already-loaded unit, so callers must not
-   * claim the conflict is resolved on a file-only removal.
-   */
-  disabled: boolean;
-};
-
 /**
  * Removes the canonical *user-scope* gateway unit, leaving any system-scope
  * unit untouched. Used by doctor to resolve a `dueling` installation by
@@ -213,7 +201,7 @@ export async function uninstallUserSystemdGatewayUnit({
   target,
 }: GatewayServiceManageArgs & {
   target?: SystemdServiceReadTarget;
-}): Promise<UninstallUserSystemdGatewayUnitResult> {
+}) {
   const installed = await findInstalledSystemdGatewayScope(env);
   if (target) {
     if (target.scope !== "user") {
