@@ -21,6 +21,12 @@ external writes, TTL expiry and restart remain correct. Keep multi-statement
 snapshots and effect-time authority. Preserve the WAL checkpoint cadence unless
 its redundancy is demonstrated. No schema change is authorized.
 
+For Reef empty delivery recovery, each operation must use one autocommit namespace
+read instead of four statements. Populated recovery must reread deliveries and
+peers inside its normal snapshot (five statements including the initial probe).
+The existing watched namespaces and receipt invalidation must remain unchanged.
+Deliveries arriving just after an empty read may wait until the next reconciliation.
+
 For SQL counts use three alternating baseline/candidate pairs when load is below
 64 and internal free space is at least 12 GiB; otherwise use one pair and attribute
 every operation delta. No latency or CPU improvement is claimed from these counts.
