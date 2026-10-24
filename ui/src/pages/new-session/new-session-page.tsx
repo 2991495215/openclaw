@@ -17,6 +17,7 @@ import {
   reloadAfterRenderErrorOnce,
   retryStaleChunkReloadWhenReachable,
 } from "../../app/stale-chunk-reload.ts";
+import { ImageLightbox } from "../../components/image-lightbox.tsx";
 import { SessionBackgroundLayoutScope } from "../../components/session-background-layout-context.tsx";
 import { SessionBackgroundView } from "../../components/session-background-view.tsx";
 import { Icon } from "../../components/solid/icon.tsx";
@@ -34,7 +35,6 @@ import "../../styles/new-session-attachment-panel.css";
 import { defineSolidBridge } from "../../lib/solid-bridge.ts";
 import { focusChatComposerFromPrintableKeydown } from "../chat/chat-pane-shared.ts";
 import { chatStartupStatusLabel } from "../chat/chat-run-startup.ts";
-import { ChatImageLightbox } from "../chat/components/chat-image-lightbox-view.tsx";
 import { ChatPermissionPicker } from "../chat/components/chat-permission-picker.tsx";
 import { installChatComposerPickerDismissal } from "../chat/components/chat-picker-overlay.ts";
 import { ComposerDictationStatus } from "../chat/components/chat-voice-activity.tsx";
@@ -525,7 +525,23 @@ function renderPageContent(host: PageHost) {
                   owner.context?.navigate("devices");
                 })}
               />
-              <ChatImageLightbox item={lightbox()} onClose={() => owner.setImageLightbox(null)} />
+              <Show when={lightbox()}>
+                {(item) => (
+                  <ImageLightbox
+                    mediaKind={item().kind ?? "image"}
+                    gallery={item().gallery}
+                    connectVideo={item().connectVideo}
+                    loadDisplayImage={item().loadDisplayImage}
+                    readOriginalBlob={item().readOriginalBlob}
+                    src={item().src}
+                    originalSrc={item().originalSrc ?? ""}
+                    imageTitle={item().title}
+                    imageWidth={item().width}
+                    imageHeight={item().height}
+                    onImage-lightbox-close={() => owner.setImageLightbox(null)}
+                  />
+                )}
+              </Show>
             </div>
             <Show when={panel()}>
               {(_attachment) => {
