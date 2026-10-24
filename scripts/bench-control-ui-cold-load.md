@@ -336,7 +336,10 @@ intervals, media queries, and global listeners before and after each action.
 Run timing comparisons separately without instrumentation, with
 `--thread-cpu-time --pairs 20 --compare-bundle-dir <other-build>` and an A/A
 control on a loaded host. Hidden idle requires `--headed`: the runner minimizes
-its own Chromium window and verifies native document visibility. A browser that
+its own Chromium window and verifies native document visibility. Hidden samples
+use a fresh runner-owned profile and Playwright's `noDefaults` connection so its
+normal focus emulation cannot override native visibility. The profile and process
+are removed after each sample. A browser that
 remains visible produces an explicit skip, never a simulated hidden result.
 
 Each invocation keeps its exact Git head and dirty-tree inventory, raw Chrome trace,

@@ -1,8 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 // Production-renderer warm interactions. Trace once for attribution; compare untraced AB pairs.
 // --thread-cpu-time excludes renderer descheduling from duration metrics.
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -150,6 +150,75 @@ const browser = await chromium.launch({
   executablePath: resolvePlaywrightChromiumExecutablePath(chromium.executablePath()),
   headless: !values.headed,
 });
+
+async function launchNativeVisibilityContext() {
+  const profile = await mkdtemp(path.join(artifactDir, "native-chromium-"));
+  const child = spawn(
+    resolvePlaywrightChromiumExecutablePath(chromium.executablePath()),
+    [
+      `--user-data-dir=${profile}`,
+      "--remote-debugging-port=0",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--password-store=basic",
+      "--use-mock-keychain",
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  const stopped = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+  });
+  let nativeBrowser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  const close = async () => {
+    try {
+      await nativeBrowser?.close();
+    } finally {
+      if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGTERM");
+        await stopped;
+      }
+      await rm(profile, { recursive: true, force: true });
+    }
+  };
+  try {
+    const endpoint = await new Promise<string>((resolve, reject) => {
+      let output = "";
+      const timeout = setTimeout(() => reject(new Error("Native Chromium did not start")), 30_000);
+      child.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.once("exit", () => {
+        clearTimeout(timeout);
+        reject(new Error("Native Chromium exited before connection"));
+      });
+      const readEndpoint = (data: Buffer) => {
+        output += data.toString();
+        const match = output.match(/DevTools listening on (ws:\/\/\S+)/u);
+        if (match) {
+          clearTimeout(timeout);
+          child.stderr.off("data", readEndpoint);
+          child.stderr.resume();
+          resolve(match[1]!);
+        }
+      };
+      child.stderr.on("data", readEndpoint);
+    });
+    // Playwright's normal contexts force focus/visibility even after minimization.
+    // Only this runner-owned fresh profile uses native browser visibility.
+    nativeBrowser = await chromium.connectOverCDP(endpoint, { noDefaults: true });
+    const context = nativeBrowser.contexts()[0];
+    if (!context) {
+      throw new Error("Native Chromium did not expose its default context");
+    }
+    return { context, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
+
 class ScenarioSkipped extends Error {}
 try {
   for (const directory of bundles) {
@@ -225,17 +294,34 @@ try {
         const startedAt = new Date().toISOString();
         const startLoad = os.loadavg();
         for (const [bundle, slot] of servers.entries()) {
-          const context = await browser.newContext({
-            viewport: { width: viewport.width, height: viewport.height },
-            serviceWorkers: "block",
-            colorScheme: theme,
-          });
-          const page = await context.newPage();
-          page.setDefaultTimeout(15_000);
-          // tsx preserves names in serialized fixture callbacks, as in the cold-load runner.
-          await page.addInitScript("globalThis.__name = (fn) => fn");
-          if (values["resource-counts"]) {
-            await page.addInitScript(installControlUiResourceCounts);
+          const nativeVisibility =
+            scenario.visibility === "hidden" && values.headed
+              ? await launchNativeVisibilityContext()
+              : undefined;
+          const context =
+            nativeVisibility?.context ??
+            (await browser.newContext({
+              viewport: { width: viewport.width, height: viewport.height },
+              serviceWorkers: "block",
+              colorScheme: theme,
+            }));
+          let page: Page;
+          try {
+            page = await context.newPage();
+            if (nativeVisibility) {
+              await page.setViewportSize({ width: viewport.width, height: viewport.height });
+              await page.emulateMedia({ colorScheme: theme });
+              await page.bringToFront();
+            }
+            page.setDefaultTimeout(15_000);
+            // tsx preserves names in serialized fixture callbacks, as in the cold-load runner.
+            await page.addInitScript("globalThis.__name = (fn) => fn");
+            if (values["resource-counts"]) {
+              await page.addInitScript(installControlUiResourceCounts);
+            }
+          } catch (error) {
+            await nativeVisibility?.close();
+            throw error;
           }
           const errors: string[] = [];
           page.on("pageerror", (error) => errors.push(error.message));
@@ -554,7 +640,7 @@ try {
               }
             } finally {
               await capture(async () => cdp?.detach());
-              await capture(() => context.close());
+              await capture(() => (nativeVisibility ? nativeVisibility.close() : context.close()));
             }
             if (errors.length) {
               result.status = "failed";
