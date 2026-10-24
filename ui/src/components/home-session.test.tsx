@@ -94,6 +94,7 @@ it.each([false, true])(
     context.agents.state.agentsList = {
       defaultId: "main",
       mainKey: "main",
+      scope: "per-sender",
       agents: [{ id: "main" }],
     };
     const hello = gatewayHelloForMethods(["sessions.resolve"], ["operator.sessions.write"]);
