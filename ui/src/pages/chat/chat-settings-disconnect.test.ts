@@ -60,7 +60,7 @@ const nextModel = "gpt-5-mini";
 const roster = createSessionsListResult({ model: nextModel, modelOverrideSource: "user" });
 roster.sessions[0]!.sessionId = "main";
 
-async function fixture() {
+async function fixture({ activeRun = false } = {}) {
   const bootstrap = createConnectionBootstrapCoordinator();
   const client = new GatewayBrowserClient({
     url: "ws://127.0.0.1:18789",
@@ -127,7 +127,15 @@ async function fixture() {
     await vi.advanceTimersByTimeAsync(0);
     expect(client.connected).toBe(true);
     for (const frame of requests(ws, "sessions.list")) {
-      respond(ws, frame, createSessionsListResult({ model: "gpt-5", modelOverrideSource: "user" }));
+      const result = createSessionsListResult({ model: "gpt-5", modelOverrideSource: "user" });
+      if (activeRun) {
+        Object.assign(result.sessions[0]!, {
+          sessionId: "main",
+          hasActiveRun: true,
+          status: "running",
+        });
+      }
+      respond(ws, frame, result);
     }
     await vi.advanceTimersByTimeAsync(0);
     return ws;
@@ -199,6 +207,75 @@ it("allows Remove during settings reconciliation without a late send", async () 
   expect(listStoredChatOutboxes(host)).toEqual([]);
   expect(requests(ws, "chat.send")).toHaveLength(0);
 });
+
+it.each([false, true])(
+  "preserves an existing queue after an interrupted model change with newer draft: %s",
+  async (newerDraft) => {
+    const { host, ws, client, connect } = await fixture({ activeRun: true });
+    host.chatRunId = "active-run";
+    const backlog = ["First queued request", "Second queued request", "Third queued request"];
+    for (const [index, text] of backlog.entries()) {
+      host.chatMessage = text;
+      host.chatAttachments = index === 1 ? [createStagedAttachment("queued-document")] : [];
+      await handleSendChat(host, undefined, { followUpMode: "queue" });
+    }
+    expect(host.chatQueue.map((item) => item.text)).toEqual(backlog);
+    const queued = host.chatQueue.map(({ id, sendRunId, orderKey }) => [id, sendRunId, orderKey]);
+    const selection = switchChatModel(host, `openai/${nextModel}`);
+    host.chatMessage = message;
+    const admitted = createDeferred();
+    const sending = handleSendChat(
+      host,
+      undefined,
+      { followUpMode: "queue", onOutboxAdmitted: admitted.resolve },
+      new Event("submit"),
+    );
+    await admitted.promise;
+    const interrupted = host.chatQueue.at(-1)!;
+    expect(interrupted).toMatchObject({
+      text: message,
+      sendState: "waiting-model",
+      sendAttempts: 0,
+    });
+    if (newerDraft) {
+      host.chatMessage = "Keep my newer draft";
+    }
+    ws.emitClose(1012, "controlled restart with a queued backlog");
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(selection).resolves.toBe(false);
+    await sending;
+    client.stop();
+    const replacement = await connect();
+    await resumeStoredChatOutboxes(host);
+
+    expect(
+      host.chatQueue
+        .slice(0, backlog.length)
+        .map(({ id, sendRunId, orderKey }) => [id, sendRunId, orderKey]),
+    ).toEqual(queued);
+    expect(host.chatQueue.map((item) => item.text)).toEqual(
+      newerDraft ? [...backlog, message] : backlog,
+    );
+    expect(host.chatMessage).toBe(newerDraft ? "Keep my newer draft" : message);
+    if (newerDraft) {
+      expect(host.chatQueue.at(-1)).toMatchObject({
+        id: interrupted.id,
+        sendState: "failed",
+        sendAttempts: 0,
+      });
+    }
+    const payload = await prepareOutboxPayload(host, host.chatQueue[1]!);
+    expect(payload.status).toBe("ready");
+    if (payload.status !== "ready") {
+      throw new Error("The existing queued attachment could not be restored");
+    }
+    expect(getChatAttachmentDataUrl(payload.update.attachments![0]!)).toBe(
+      "data:application/pdf;base64,JVBERi0xLjQK",
+    );
+    expect(requests(ws, "chat.send")).toHaveLength(0);
+    expect(requests(replacement, "chat.send")).toHaveLength(0);
+  },
+);
 
 it.each([
   { payload: "text", newerDraft: false },
