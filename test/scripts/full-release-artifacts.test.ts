@@ -764,9 +764,11 @@ describe.skipIf(process.platform === "win32")("immutable release artifact CLI", 
     expectRejected(result, message);
   });
 
-  it("reports a failed receipt producer job before its siblings finish", () => {
+  it.each([
+    ["raw", "Prepare npm artifacts / Prepare publishable npm package"],
+    ["receipt", "Prepare npm artifacts / Check npm dependencies"],
+  ] as const)("reports a failed %s producer job before its siblings finish", (output, name) => {
     const test = fixture();
-    const name = "Prepare npm artifacts / Check npm dependencies";
     test.api("actions/runs/81/attempts/1/jobs?per_page=100&page=1", {
       total_count: 2,
       jobs: [
@@ -779,7 +781,7 @@ describe.skipIf(process.platform === "win32")("immutable release artifact CLI", 
       artifacts: [],
     });
     const result = test.run("wait", {
-      ARTIFACT_OUTPUT: "receipt",
+      ARTIFACT_OUTPUT: output,
       FIXTURE_STOP_ON_WAIT: "true",
     });
     expectRejected(result, `${name} ended with failure`);
