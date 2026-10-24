@@ -118,7 +118,7 @@ describe("Codex direct tool loading", () => {
     expect(tool.execute).not.toHaveBeenCalled();
   });
 
-  it("executes only fresh matching definitions from an accepted catalog", async () => {
+  it("executes only fresh matching definitions under current owner authority", async () => {
     const originalTools = ["unchanged", "description_changed", "schema_changed", "removed"].map(
       createRuntimeDynamicTool,
     );
@@ -142,11 +142,17 @@ describe("Codex direct tool loading", () => {
     };
     const added = createRuntimeDynamicTool("added");
     const currentTools = [unchanged, descriptionChanged, schemaChanged, added];
+    let current = true;
     const params = {
       tools: currentTools,
       registeredSpecs,
       requireExactRegisteredDefinitions: true,
       signal: new AbortController().signal,
+      assertCurrentAsync: async () => {
+        if (!current) {
+          throw new Error("Synthetic owner authority revoked");
+        }
+      },
     };
     const bridge = createCodexDynamicToolBridge(params);
     expect(JSON.stringify(bridge.specs)).toBe(acceptedCatalog);
@@ -174,6 +180,18 @@ describe("Codex direct tool loading", () => {
       success: true,
       contentItems: [{ type: "inputText", text: "fresh executor" }],
     });
+    expect(unchanged.execute).toHaveBeenCalledTimes(1);
+    current = false;
+    const revoked = await bridge.handleToolCall({
+      threadId: "retained-parent",
+      turnId: "next-turn",
+      callId: "revoked-unchanged",
+      namespace: "openclaw",
+      tool: "unchanged",
+      arguments: {},
+    });
+    expect(revoked).toMatchObject({ success: false, executionStarted: false });
+    expect(JSON.stringify(revoked)).toContain("Synthetic owner authority revoked");
     expect(unchanged.execute).toHaveBeenCalledTimes(1);
     for (const tool of [...originalTools, descriptionChanged, schemaChanged, added]) {
       expect(tool.execute).not.toHaveBeenCalled();

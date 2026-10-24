@@ -215,12 +215,26 @@ export function withoutCodexSkillDiscovery(methods: string[]): string[] {
   return methods.filter((method) => method !== "skills/list");
 }
 
-export function isCodexTurnContextHandoff(params: unknown): boolean {
+function readCodexInjectedDeveloperText(params: unknown): string | undefined {
   if (!isJsonObject(params) || !Array.isArray(params.items)) {
-    return false;
+    return undefined;
   }
   const item = params.items[0];
-  return isJsonObject(item) && item.role === "developer";
+  if (!isJsonObject(item) || item.role !== "developer" || !Array.isArray(item.content)) {
+    return undefined;
+  }
+  const content = item.content[0];
+  return isJsonObject(content) && content.type === "input_text" && typeof content.text === "string"
+    ? content.text
+    : undefined;
+}
+
+export function isCodexTurnContextHandoff(params: unknown): boolean {
+  return (
+    readCodexInjectedDeveloperText(params)?.startsWith(
+      "Current OpenClaw conversation instructions (replace earlier conversation context, not persistent policy):",
+    ) === true
+  );
 }
 
 export function withoutCodexTurnContextHandoffs(

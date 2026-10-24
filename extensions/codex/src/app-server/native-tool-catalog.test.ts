@@ -16,6 +16,7 @@ import {
   buildCodexAppServerConnectionFingerprint,
   buildCodexAppServerRuntimeFingerprint,
 } from "./plugin-app-cache-key.js";
+import { readStoredCodexAppServerBinding } from "./session-binding-record-codec.js";
 import {
   getOrCreateSharedClientEntry,
   getSharedCodexAppServerClientState,
@@ -129,14 +130,25 @@ it("loads a protected managed catalog only with its original runtime fingerprint
         appServerVersion: harness.client.getServerVersion(),
         runtimeIdentity: harness.client.getRuntimeIdentity(),
       };
-      const binding = {
-        threadId,
-        cwd: agentDir,
-        rolloutPath,
-        clientId: harness.client.getInstanceId(),
-        dynamicToolsFingerprint: codexDynamicToolsFingerprint([tool]),
-        appServerRuntimeFingerprint: buildCodexAppServerRuntimeFingerprint(runtime),
-      };
+      // Exact V1 active-record shape accepted by v2026.10.6. Prove that an
+      // already-stored stable binding can recover its native accepted catalog.
+      const stableRecord = readStoredCodexAppServerBinding({
+        version: 1,
+        state: "active",
+        binding: {
+          threadId,
+          cwd: agentDir,
+          rolloutPath,
+          clientId: harness.client.getInstanceId(),
+          dynamicToolsFingerprint: codexDynamicToolsFingerprint([tool]),
+          appServerRuntimeFingerprint: buildCodexAppServerRuntimeFingerprint(runtime),
+        },
+      });
+      expect(stableRecord?.state).toBe("active");
+      if (stableRecord?.state !== "active") {
+        throw new Error("Expected the v2026.10.6 binding fixture to decode");
+      }
+      const binding = stableRecord.binding;
       const params = {
         binding,
         appServer,

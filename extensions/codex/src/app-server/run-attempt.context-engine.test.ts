@@ -39,6 +39,7 @@ import {
   writeCodexAppServerBinding,
 } from "./run-attempt.context-engine.test-support.js";
 import { readCodexAppServerBinding } from "./session-binding.test-helpers.js";
+import { isCodexTurnContextHandoff } from "./test-support.js";
 
 const CODEX_TURN_START_TEXT_INPUT_MAX_CHARS = 1 << 20;
 
@@ -1012,7 +1013,10 @@ describe("Codex configured context budget", () => {
       expect(bootstrapCall?.runtimeSettings?.limits.promptTokenBudget).toBe(500_000);
       expect(getRequestInputText(harness)).toContain(params.prompt);
       expect(getRequestInputText(harness)).toContain("CURRENT_INBOUND_REFERENCE");
-      const history = harness.requests.filter(({ method }) => method === "thread/inject_items");
+      const history = harness.requests.filter(
+        ({ method, params: requestParams }) =>
+          method === "thread/inject_items" && !isCodexTurnContextHandoff(requestParams),
+      );
       expect(history).toHaveLength(1);
       expect(JSON.stringify(history[0]?.params)).toContain("PRIOR_BUDGET_CONTEXT");
       expect(getRequestInputText(harness)).not.toContain("PRIOR_BUDGET_CONTEXT");
@@ -1037,6 +1041,11 @@ describe("Codex configured context budget", () => {
     const assembly = assemble.mock.calls[0]?.[0];
     expect(assembly?.tokenBudget).toBe(500_000);
     expect(assembly?.runtimeSettings?.limits.promptTokenBudget).toBe(500_000);
-    expect(harness.requests.some(({ method }) => method === "thread/inject_items")).toBe(false);
+    expect(
+      harness.requests.some(
+        ({ method, params: requestParams }) =>
+          method === "thread/inject_items" && !isCodexTurnContextHandoff(requestParams),
+      ),
+    ).toBe(false);
   });
 });
