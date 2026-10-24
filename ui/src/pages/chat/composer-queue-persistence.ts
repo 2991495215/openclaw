@@ -182,13 +182,8 @@ export function admitStoredChatComposerQueueItemResult(
       store.sessions[storeSessionKey]!.awaitingDefaults = true;
     }
     writeStore(storage, target, store);
-    const persisted = readStore(storage, target).sessions[storeSessionKey]?.queue?.find(
-      (entry) => entry.id === serialized.id,
-    );
-    // Verify the captured write before subscribers can change defaults or drain it.
-    const admitted = Boolean(persisted && queueItemsEqual(persisted, serialized, scope));
     notifyStoredChatOutboxChanges();
-    return admitted ? "admitted" : "storage-failed";
+    return "admitted";
   } catch {
     return "storage-failed";
   }
