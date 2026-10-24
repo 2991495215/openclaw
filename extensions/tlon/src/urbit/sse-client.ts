@@ -234,15 +234,9 @@ export class UrbitSSEClient {
     });
   }
 
-  async processStream(body: unknown) {
-    if (!body) {
-      return;
-    }
+  async processStream(body: ReadableStream<Uint8Array>) {
     // Bridge DOM fetch stream types to Node's stream/web declaration on newer TS/node combos.
-    const stream =
-      body instanceof ReadableStream
-        ? Readable.fromWeb(body as never)
-        : (body as NodeJS.ReadableStream);
+    const stream = Readable.fromWeb(body as never);
     const decoder = new TextDecoder();
     let buffer = "";
     let bufferBytes = 0;
@@ -250,17 +244,8 @@ export class UrbitSSEClient {
     let pendingCarriageReturn = false;
 
     const appendPending = (text: string) => {
-      const previousCodeUnit = buffer.charCodeAt(buffer.length - 1);
-      const firstCodeUnit = text.charCodeAt(0);
-      const joinsSurrogatePair =
-        previousCodeUnit >= 0xd800 &&
-        previousCodeUnit <= 0xdbff &&
-        firstCodeUnit >= 0xdc00 &&
-        firstCodeUnit <= 0xdfff;
-      // Buffer.byteLength counts either lone surrogate as three bytes. When
-      // chunks join a pair, correct the retained total to the combined four bytes.
-      const nextBytes =
-        bufferBytes + Buffer.byteLength(text, "utf8") - (joinsSurrogatePair ? 2 : 0);
+      // The fetch byte stream's decoder emits only complete Unicode code points.
+      const nextBytes = bufferBytes + Buffer.byteLength(text, "utf8");
       if (nextBytes > MAX_SSE_PAYLOAD_BYTES) {
         throw new Error("Tlon Urbit SSE stream buffer exceeded 16 MiB limit");
       }
@@ -310,12 +295,7 @@ export class UrbitSSEClient {
         if (this.aborted) {
           break;
         }
-        if (typeof chunk === "string") {
-          await consumeText(decoder.decode());
-          await consumeText(chunk);
-        } else {
-          await consumeText(decoder.decode(chunk as Uint8Array, { stream: true }));
-        }
+        await consumeText(decoder.decode(chunk as Uint8Array, { stream: true }));
       }
       await consumeText(decoder.decode());
     } finally {

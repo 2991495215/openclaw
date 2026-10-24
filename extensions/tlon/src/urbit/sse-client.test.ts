@@ -1,4 +1,3 @@
-import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { urbitFetch } from "./fetch.js";
 import { UrbitSSEClient } from "./sse-client.js";
@@ -15,13 +14,6 @@ function guardedResponse(response = new Response(null, { status: 200 })) {
 const CAP = 16 * 1024 * 1024;
 const frame = (key: string, value: string) =>
   `id: 1\ndata: ${JSON.stringify({ json: { [key]: value } })}`;
-async function* stopAfterStream(client: UrbitSSEClient, stream: AsyncIterable<string | Buffer>) {
-  try {
-    yield* stream;
-  } finally {
-    client.stopReceiving();
-  }
-}
 describe("UrbitSSEClient", () => {
   let client: UrbitSSEClient;
   let handler: ReturnType<typeof vi.fn<(data: unknown) => void | Promise<void>>>;
@@ -33,7 +25,17 @@ describe("UrbitSSEClient", () => {
     client.eventHandlers.set(1, { event: handler });
   });
   function consume(...chunks: Array<string | Buffer>) {
-    return client.processStream(stopAfterStream(client, Readable.from(chunks)));
+    vi.spyOn(client, "attemptReconnect").mockResolvedValue(undefined);
+    return client.processStream(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+          }
+          controller.close();
+        },
+      }),
+    );
   }
   afterEach(() => {
     vi.useRealTimers();
@@ -103,15 +105,14 @@ describe("UrbitSSEClient", () => {
       it("preserves CRLF delimiters split across byte chunks", async () => {
         const chunks = ["id:1\r", '\ndata:{"id":1,"json":{"text":"split"}}\r', "\n\r", "\n"];
         await client.subscribe({ app: "chat", path: "/inbox", event: handler });
-        const stream = Readable.from(chunks.map((chunk) => Buffer.from(chunk)));
-        await client.processStream(stopAfterStream(client, stream));
+        await consume(...chunks);
         expect(handler.mock.calls).toEqual([[{ text: "split" }]]);
       });
-      it("accepts a boundary-sized event with split surrogate pair and delimiter", async () => {
+      it("accepts a boundary-sized event with split UTF-8 code point and delimiter", async () => {
         const padLen = CAP - Buffer.byteLength(frame("text", "😀"), "utf8");
-        const event = frame("text", "a".repeat(padLen) + "😀");
-        const split = event.indexOf("😀") + 1;
-        await consume(event.slice(0, split), event.slice(split) + "\n", "\n");
+        const event = Buffer.from(frame("text", "a".repeat(padLen) + "😀"));
+        const split = event.indexOf(Buffer.from("😀")) + 2;
+        await consume(event.subarray(0, split), event.subarray(split), "\n", "\n");
         const payload = handler.mock.calls[0]?.[0] as { text?: string } | undefined;
         expect(payload?.text).toHaveLength(padLen + 2);
         expect(payload?.text?.endsWith("😀")).toBe(true);
