@@ -11,7 +11,10 @@ import {
   resolveCollapsedSessionAuthPinSource,
   resolveSessionAuthProfileOverrideSource,
 } from "../config/sessions/auth-profile-override-provenance.js";
-import { hasSessionAutoModelFallbackProvenance } from "../config/sessions/model-override-provenance.js";
+import {
+  hasSessionAutoModelFallbackProvenance,
+  type ModelOverrideProvenanceEntry,
+} from "../config/sessions/model-override-provenance.js";
 import { resolvePersistedSessionStoreOwnerForKey } from "../config/sessions/session-store-owner.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
@@ -103,20 +106,11 @@ export type AutoFallbackPrimaryProbe = {
   fallbackAuthProfileIdSource?: "auto" | "user";
 };
 
-type AutoFallbackSessionEntry = Pick<
-  SessionEntry,
-  | "providerOverride"
-  | "modelOverride"
-  | "modelOverrideSource"
-  | "modelOverrideFallbackOriginProvider"
-  | "modelOverrideFallbackOriginModel"
->;
-
 /** Detects old auto-fallback session entries that lack primary-origin metadata. */
 export function hasLegacyAutoFallbackWithoutOrigin(
   entry:
     | Pick<
-        AutoFallbackSessionEntry,
+        ModelOverrideProvenanceEntry,
         | "modelOverrideSource"
         | "modelOverrideFallbackOriginProvider"
         | "modelOverrideFallbackOriginModel"
@@ -133,7 +127,7 @@ export function hasLegacyAutoFallbackWithoutOrigin(
 
 export function resolveAutoFallbackPrimaryProbe(params: {
   entry:
-    | (AutoFallbackSessionEntry &
+    | (ModelOverrideProvenanceEntry &
         Pick<
           SessionEntry,
           "authProfileOverride" | "authProfileOverrideSource" | "authProfileOverrideCompactionCount"
@@ -217,7 +211,7 @@ export function markAutoFallbackPrimaryProbe(params: {
 }
 
 export function entryMatchesAutoFallbackPrimaryProbe(
-  entry: AutoFallbackSessionEntry | null | undefined,
+  entry: ModelOverrideProvenanceEntry | null | undefined,
   probe: AutoFallbackPrimaryProbe,
 ): boolean {
   if (!entry) {

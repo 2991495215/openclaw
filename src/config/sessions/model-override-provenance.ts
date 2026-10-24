@@ -2,7 +2,7 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { SessionEntry } from "./types.js";
 
-type ModelOverrideProvenanceEntry = Pick<
+export type ModelOverrideProvenanceEntry = Pick<
   SessionEntry,
   | "providerOverride"
   | "modelOverride"

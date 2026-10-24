@@ -20,15 +20,8 @@ type SessionRuntimeCompatEntry = Pick<
   SessionEntry,
   "agentHarnessId" | "agentRuntimeOverride" | "modelSelectionLocked" | "pluginOwnerId"
 >;
-type ManualCompactionRuntimeEntry = Pick<
-  SessionEntry,
-  | "agentHarnessId"
-  | "agentRuntimeOverride"
-  | "cliSessionBindings"
-  | "cliSessionIds"
-  | "modelSelectionLocked"
-  | "pluginOwnerId"
->;
+type ManualCompactionRuntimeEntry = SessionRuntimeCompatEntry &
+  Pick<SessionEntry, "cliSessionBindings" | "cliSessionIds">;
 
 type ManualCompactionCliTarget = {
   agentHarnessId?: string;

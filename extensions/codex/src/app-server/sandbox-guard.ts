@@ -69,12 +69,6 @@ export function resolveCodexAppServerDirectSandboxBypassBlock(params: {
   // Reloading MCP servers can start app-backed processes in the Codex app-server environment.
   if (!controlPlane || params.method === "config/mcpServer/reload") {
     const nodeExecBlock = resolveCodexNativeNodeExecBlock({
-      config: params.config,
-      sessionKey: params.sessionKey,
-      sessionId: params.sessionId,
-      agentId: params.agentId,
-      storePath: params.storePath,
-      sessionTarget: params.sessionTarget,
       executionPolicy: params.executionPolicy,
       surface: `app-server method \`${params.method}\``,
     });
@@ -217,12 +211,6 @@ function formatCodexNativeSandboxBlock(params: { surface: string }): string {
 }
 
 function resolveCodexNativeNodeExecBlock(params: {
-  config?: OpenClawConfig;
-  sessionKey?: string;
-  sessionId?: string;
-  agentId?: string;
-  storePath?: string;
-  sessionTarget?: Parameters<typeof resolveCodexNativeExecutionPolicy>[0]["sessionTarget"];
   executionPolicy: CodexNativeExecutionPolicy;
   surface: string;
 }): string | undefined {
