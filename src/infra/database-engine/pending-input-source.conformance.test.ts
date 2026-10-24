@@ -68,7 +68,8 @@ for (const engine of ["sqlite", "postgres"] as const) {
               const result = withEngineStoreAdmission(() =>
                 readPendingInputSourceInDatabase(database, input),
               );
-              const expected = source === "new" ? 1 : source === "pending" ? 6 : 9;
+              const expected =
+                source === "new" || input.pendingOnly ? 1 : source === "pending" ? 6 : 9;
               expect(statements).toBe(expected);
               return result;
             } finally {
@@ -82,6 +83,8 @@ for (const engine of ["sqlite", "postgres"] as const) {
               expect(result.pending?.message_json).toBe(JSON.stringify(receipt!.message));
             } else if (source === "committed") {
               expect(result.committed).toEqual(receipt!.message);
+              input.pendingOnly = true;
+              expect(read()).toEqual({ kind: "source", current: true });
             } else {
               expect(result).toEqual({ kind: "source", current: true });
               withEngineStoreAdmission(() =>

@@ -40,20 +40,21 @@ export function readPendingInputSourceInDatabase(
               .where("idempotency_key", "=", input.idempotencyKey)
           : eb.val(null)
         ).as("pending_bytes"),
-        eb
-          .selectFrom("transcript_event_identities as identity")
-          .innerJoin("transcript_events as event", (join) =>
-            join
-              .onRef("event.session_id", "=", "identity.session_id")
-              .onRef("event.seq", "=", "identity.seq"),
-          )
-          .select(transcriptEventReadBytesSql("event").as("bytes"))
-          .where("identity.session_id", "=", input.sessionId)
-          .where("identity.message_idempotency_key", "=", input.idempotencyKey)
-          .where((where) => where.val(!input.pendingOnly))
-          .orderBy("identity.seq", "desc")
-          .limit(1)
-          .as("committed_bytes"),
+        (input.pendingOnly
+          ? eb.val(null)
+          : eb
+              .selectFrom("transcript_event_identities as identity")
+              .innerJoin("transcript_events as event", (join) =>
+                join
+                  .onRef("event.session_id", "=", "identity.session_id")
+                  .onRef("event.seq", "=", "identity.seq"),
+              )
+              .select(transcriptEventReadBytesSql("event").as("bytes"))
+              .where("identity.session_id", "=", input.sessionId)
+              .where("identity.message_idempotency_key", "=", input.idempotencyKey)
+              .orderBy("identity.seq", "desc")
+              .limit(1)
+        ).as("committed_bytes"),
       ])
       .where("session_nodes.session_key", "=", input.sessionKey)
       .where("session_windows.session_key", "=", input.sessionKey),
