@@ -208,7 +208,10 @@ suite.define(() => {
         return observation;
       }, CHAT_RUN_ACTIVITY_CHANGED_EVENT);
       await emitDelta("Preparing. Checking.");
-      await page.getByText("Preparing. Checking.", { exact: true }).waitFor();
+      await page
+        .locator(".chat-group.assistant .chat-text")
+        .getByText("Preparing. Checking.", { exact: true })
+        .waitFor();
       expect(await activity.evaluate((observation) => observation.changes)).toBe(0);
     }));
 
