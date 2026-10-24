@@ -215,12 +215,11 @@ describe("Dockerfile", () => {
     expect(workspaceDepsEnd).toBeGreaterThan(workspaceDepsStart);
 
     const workspaceDeps = dockerfile.slice(workspaceDepsStart, workspaceDepsEnd);
-    const extractionIndex = workspaceDeps.indexOf(
-      'RUN mkdir -p /out/packages "/out/${OPENCLAW_BUNDLED_PLUGIN_DIR}"',
-    );
+    const extractionIndex = workspaceDeps.indexOf("RUN mkdir -p /out/");
     const inputCopies = [
       "COPY scripts/lib/docker-plugin-selection.mjs /tmp/docker-plugin-selection.mjs",
       "COPY packages /tmp/packages",
+      "COPY examples /tmp/examples",
       "COPY ${OPENCLAW_BUNDLED_PLUGIN_DIR} /tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}",
     ];
 
@@ -257,8 +256,15 @@ describe("Dockerfile", () => {
     expect(dockerfile).toContain(
       'node /tmp/docker-plugin-selection.mjs "/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}" "$OPENCLAW_EXTENSIONS"',
     );
+    // pnpm 12.7+ frozen installs validate every lockfile importer, so all
+    // manifests are staged; only the production install filters plugins.
+    expect(dockerfile).toContain(
+      'for manifest in /tmp/packages/*/package.json /tmp/examples/*/package.json "/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}"/*/package.json; do',
+    );
     expect(dockerfile).toContain("done < /tmp/openclaw-workspace-plugin-dirs");
-    expect(dockerfile).toContain(`if [ -f "$ext_dir/package.json" ]; then`);
+    expect(dockerfile).toContain(
+      "COPY --from=workspace-deps /out/openclaw-workspace-plugin-dirs /tmp/openclaw-workspace-plugin-dirs",
+    );
     expect(dockerfile).toContain(
       "COPY --from=workspace-deps /out/openclaw-selected-plugin-dirs /tmp/openclaw-selected-plugin-dirs",
     );
