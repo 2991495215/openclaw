@@ -1,9 +1,8 @@
+import { createChangeListeners } from "../../../../src/shared/listeners.js";
 import type {
   CustodianAlert,
   CustodianTurnAdmission,
 } from "../../components/custodian-alert-contract.ts";
-
-type AlertListener = () => void;
 
 class CustodianAlertStore {
   private presentedAlert: CustodianAlert | null = null;
@@ -19,11 +18,10 @@ class CustodianAlertStore {
   // the same job breaks. Automatic presentations have their own admission
   // owner, and both observing surfaces still share this one flag.
   private askedPresented = false;
-  private readonly listeners = new Set<AlertListener>();
+  private readonly listeners = createChangeListeners();
 
-  subscribe(listener: AlertListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  subscribe(listener: () => void): () => void {
+    return this.listeners.subscribe(listener);
   }
 
   present(alert: CustodianAlert, admission?: CustodianTurnAdmission): void {
@@ -56,9 +54,7 @@ class CustodianAlertStore {
   }
 
   private emit(): void {
-    for (const listener of this.listeners) {
-      listener();
-    }
+    this.listeners.publish();
   }
 }
 

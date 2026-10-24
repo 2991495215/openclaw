@@ -1,4 +1,4 @@
-import { createChangeListeners, registerListener } from "../../../../src/shared/listeners.js";
+import { createChangeListeners } from "../../../../src/shared/listeners.js";
 import type { ApplicationConfigCapability } from "../../app/config.ts";
 import { registerControlUiReloadGuard } from "../../app/document-reload-guard.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
@@ -73,7 +73,7 @@ export class CreationComposer {
   flushInput: (() => void) | undefined;
   releasePresentation: (() => void) | undefined;
   private readonly listeners = createChangeListeners();
-  private readonly invalidations = new Set<() => void>();
+  private readonly invalidations = createChangeListeners();
   private readonly gatewayUrl;
   private readonly recoveryScope;
   private readonly presentationScope;
@@ -245,7 +245,7 @@ export class CreationComposer {
           listener();
           return () => {};
         }
-        return registerListener(this.invalidations, listener);
+        return this.invalidations.subscribe(listener);
       },
       complete: () => {
         this.invalidations.clear();
@@ -282,9 +282,7 @@ export class CreationComposer {
       return;
     }
     this.disposed = true;
-    for (const listener of this.invalidations) {
-      listener();
-    }
+    this.invalidations.publish();
     this.invalidations.clear();
     this.transfer = undefined;
     this.unregisterReload();

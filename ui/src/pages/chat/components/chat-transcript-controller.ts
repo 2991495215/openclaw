@@ -1,4 +1,5 @@
 // Session-owned virtualizer lifecycle for chat transcripts.
+import { createChangeListeners } from "../../../../../src/shared/listeners.js";
 import { areUiSessionKeysEquivalent } from "../../../lib/sessions/session-key.ts";
 import {
   getChatSessionScrollPosition,
@@ -18,20 +19,11 @@ export function createChatTranscript(
   let activeSessionKey: string | null = null;
   let sessionVirtualizer: ChatSessionVirtualizerHost | null = null;
   let connected = false;
-  const listeners = new Set<() => void>();
-  const publish = () => {
-    for (const listener of listeners) {
-      listener();
-    }
-  };
+  const listeners = createChangeListeners();
+  const publish = listeners.publish;
 
   return {
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: listeners.subscribe,
     get renderedSessionKey(): string | null {
       return activeSessionKey;
     },
