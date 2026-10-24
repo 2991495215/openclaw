@@ -1,3 +1,4 @@
+import { uniqueValues } from "@openclaw/normalization-core/string-normalization";
 import type { JSX } from "@solidjs/web";
 import { createMemo, For } from "solid-js";
 import type { WorkerMachineOption } from "../../../../packages/gateway-protocol/src/schema/environments.ts";
@@ -236,14 +237,12 @@ export function SessionMenuItem(props: { item: NativeSessionMenuItem; submitting
                 <DetailRow icon="server" text={props.item.provider} />
                 <DetailRow icon="info" text={props.item.hardware} />
                 <For
-                  each={[
-                    ...new Set(
-                      [
-                        props.item.description,
-                        props.item.provider && !props.item.disabled ? undefined : props.item.title,
-                      ].filter(Boolean),
-                    ),
-                  ]}
+                  each={uniqueValues(
+                    [
+                      props.item.description,
+                      props.item.provider && !props.item.disabled ? undefined : props.item.title,
+                    ].filter(Boolean),
+                  )}
                 >
                   {(detail) => <DetailRow icon="info" text={detail} />}
                 </For>
