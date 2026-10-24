@@ -2,6 +2,7 @@ import { render } from "@solidjs/web";
 import type { GatewayBrowserClient } from "../../../../ui/src/api/gateway.ts";
 import type { ApplicationContext } from "../../../../ui/src/app/context.ts";
 import { ApplicationProvider } from "../../../../ui/src/lib/reactive/context.ts";
+import { createCustodianActions } from "../../../../ui/src/pages/custodian/custodian-actions.ts";
 import { CustodianSessionStore } from "../../../../ui/src/pages/custodian/custodian-session-store.ts";
 import { CustodianSetupCard } from "../../../../ui/src/pages/custodian/custodian-setup-card.tsx";
 import "../../../../ui/src/styles/base.css";
@@ -76,6 +77,11 @@ window.addEventListener("openclaw:gateway-notice", (event) => {
 });
 window.addEventListener("openclaw:native-gateways-changed", report);
 
+function SetupCard() {
+  const { actions } = createCustodianActions(() => store);
+  return <CustodianSetupCard store={store} actions={actions.setup} />;
+}
+
 render(
   () => (
     <ApplicationProvider value={context}>
@@ -83,7 +89,7 @@ render(
       <main>
         <h1>{title()}</h1>
         <p>Production setup card in the native desktop app. Provider results are synthetic.</p>
-        <CustodianSetupCard store={store} />
+        <SetupCard />
         <p id="action-error" role="alert" />
         <nav aria-label="Proof navigation">
           <a href="/fixture/chat/custodian">Open chat</a>
