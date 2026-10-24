@@ -75,12 +75,10 @@ export function normalizeOutboundLocation(
 }
 
 /** Location payload after default source and live-state inference. */
-type ResolvedLocation = NormalizedLocation & {
+function resolveLocation(location: NormalizedLocation): NormalizedLocation & {
   source: LocationSource;
   isLive: boolean;
-};
-
-function resolveLocation(location: NormalizedLocation): ResolvedLocation {
+} {
   // Infer once so text formatting and structured context agree on pin/place/live semantics.
   const source =
     location.source ??
