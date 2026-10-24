@@ -5,8 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
-const { gh } = vi.hoisted(() => ({ gh: vi.fn() }));
+const { gh, pauseBuild } = vi.hoisted(() => ({ gh: vi.fn(), pauseBuild: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFileSync: gh }));
+vi.mock("node:timers/promises", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:timers/promises")>()),
+  setTimeout: pauseBuild,
+}));
 const nativeProcess =
   await vi.importActual<typeof import("node:child_process")>("node:child_process");
 
@@ -29,18 +33,20 @@ type Fixture = {
   previous?: Record<string, unknown>[];
   source?: Record<string, unknown>;
   build?: Record<string, unknown>;
-  automatic?: boolean;
-  organizationAutomatic?: boolean;
+  automatic?: boolean | string;
+  organizationAutomatic?: boolean | string;
+  automaticAfterBuild?: string;
   largeHistory?: boolean;
   incompleteHistory?: boolean;
   expiredBundle?: boolean;
   ambiguousStore?: boolean;
-  revokeBeforeStore?: boolean;
+  cancelDuringBuildWait?: boolean;
 };
 
 beforeEach(() => {
   vi.resetModules();
   gh.mockReset();
+  pauseBuild.mockReset();
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -58,7 +64,12 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
   const dispatches: Dispatch[] = [];
   const parentPath =
     mode === "request" ? "openclaw-release-publish.yml" : "windows-gateway-store.yml";
-  let authorityReads = 0;
+  let requestCancelled = false;
+  let buildPending = fixture.cancelDuringBuildWait ?? false;
+  let buildObserved = false;
+  pauseBuild.mockImplementation(async () => {
+    requestCancelled = fixture.cancelDuringBuildWait ?? false;
+  });
   process.argv = [process.execPath, "scripts/windows-gateway-store-release.mjs", mode];
   process.exitCode = undefined;
   for (const [name, value] of Object.entries({
@@ -118,7 +129,6 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
     }
     let value: unknown;
     if (endpoint.endsWith("/actions/runs/10")) {
-      authorityReads += 1;
       value = {
         repository: { full_name: core },
         head_repository: { full_name: core },
@@ -126,7 +136,7 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
         event: "workflow_dispatch",
         head_branch: "main",
         head_sha: tooling,
-        status: fixture.revokeBeforeStore && authorityReads === 3 ? "cancelled" : "in_progress",
+        status: requestCancelled ? "cancelled" : "in_progress",
         run_attempt: 1,
         run_number: 10,
         ...fixture.current,
@@ -187,7 +197,9 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
     ) {
       const automatic = endpoint.includes("/organization-variables")
         ? fixture.organizationAutomatic
-        : fixture.automatic;
+        : buildObserved
+          ? (fixture.automaticAfterBuild ?? fixture.automatic)
+          : fixture.automatic;
       value = {
         items:
           automatic === undefined ? [] : [{ name: "MSSTORE_ENABLED", value: String(automatic) }],
@@ -203,10 +215,12 @@ async function run(mode: "request" | "publish", fixture: Fixture = {}) {
         event: "workflow_dispatch",
         head_branch: "main",
         head_sha: packagingHead,
-        status: "completed",
+        status: buildPending ? "in_progress" : "completed",
         conclusion: "success",
         ...fixture.build,
       };
+      buildPending = false;
+      buildObserved = true;
     } else if (endpoint.includes("/artifacts?")) {
       value = {
         items: [
@@ -298,9 +312,34 @@ describe("Gateway Store release handoff", () => {
   });
 
   it("honors a repository override disabling inherited automatic Store submission", async () => {
-    const result = await run("publish", { organizationAutomatic: true, automatic: false });
+    const result = await run("publish", { organizationAutomatic: "TrUe", automatic: "FaLsE" });
     expect(result.status).toBe(0);
     expect(result.evidence).toMatchObject({ state: "store-requested", storeRunId: "61" });
+  });
+
+  it.each([
+    { automatic: "TRUE" },
+    { automatic: "True" },
+    { organizationAutomatic: "TRUE" },
+    { organizationAutomatic: "TrUe" },
+    { organizationAutomatic: false, automatic: "True" },
+  ])("rejects mixed-case automatic Store submission before any dispatch: %j", async (fixture) => {
+    const result = await run("publish", fixture);
+    expect(result.status).toBe(1);
+    expect(result.dispatches).toEqual([]);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("MSSTORE_ENABLED must remain disabled"),
+    );
+  });
+
+  it("does not request Store submission when automatic mode becomes mixed-case true during the build", async () => {
+    const result = await run("publish", { automaticAfterBuild: "TrUe" });
+    expect(result.status).toBe(1);
+    expect(result.dispatches).toHaveLength(1);
+    expect(result.evidence).toMatchObject({ state: "building", buildRunId: "51" });
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("MSSTORE_ENABLED must remain disabled"),
+    );
   });
 
   it.each([
@@ -327,7 +366,7 @@ describe("Gateway Store release handoff", () => {
     { build: { conclusion: "failure" } },
     { build: { head_branch: "feature" } },
     { expiredBundle: true },
-    { revokeBeforeStore: true },
+    { cancelDuringBuildWait: true },
   ])("keeps failed, foreign, expired, and revoked builds out of the Store: %j", async (fixture) => {
     const result = await run("publish", fixture);
     expect(result.status).toBe(1);
@@ -337,6 +376,7 @@ describe("Gateway Store release handoff", () => {
   it.each([
     { automatic: true },
     { organizationAutomatic: true },
+    { current: { status: "cancelled" } },
     { current: { run_attempt: 2 } },
     {
       previous: [

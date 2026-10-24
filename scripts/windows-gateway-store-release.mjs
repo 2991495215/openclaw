@@ -169,8 +169,9 @@ function requireManualStoreMode() {
       ...collection(`repos/${packaging}/actions/variables`, "variables"),
     ].map(({ name, value }) => [name, value]),
   );
+  // Match the automatic publisher's case-insensitive GitHub expression.
   requireValue(
-    variables.get("MSSTORE_ENABLED") !== "true",
+    variables.get("MSSTORE_ENABLED")?.toLowerCase() !== "true",
     "Packaging MSSTORE_ENABLED must remain disabled for the exact-source handoff; its automatic publisher would duplicate this request.",
   );
 }
