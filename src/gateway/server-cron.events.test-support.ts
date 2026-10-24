@@ -5,7 +5,7 @@ import { withFullRuntimeReplyConfig } from "../auto-reply/reply/get-reply-fast-p
 import { getReplyFromConfig } from "../auto-reply/reply/get-reply.js";
 import { getRuntimeConfig } from "../config/config.js";
 import type { CronJobCreate } from "../cron/types.js";
-import type { GatewayCronState } from "./server-cron.js";
+import type { GatewayCronState } from "./server-cron-contract.js";
 import {
   gatewayReplyMock,
   onceMessage,

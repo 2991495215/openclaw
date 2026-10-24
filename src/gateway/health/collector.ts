@@ -50,6 +50,7 @@ import {
 } from "../channel-health-policy.js";
 import type { GatewayHotReloadStatus } from "../config-reload-status.types.js";
 import type { ChannelRuntimeSnapshot } from "../server-channel-runtime.types.js";
+import type { GatewayCronState } from "../server-cron-contract.js";
 import type { SessionRowProjection } from "../session-row-projection.js";
 import { buildNonSensitiveProbeFailure, resolveHealthAccountContext } from "./account-context.js";
 import { buildContextEngineHealthSummary } from "./context-engine.js";
@@ -149,13 +150,16 @@ async function prepareHealthAgentSummaries(
   cfg: OpenClawConfig,
   { defaultAgentId, ordered }: ReturnType<typeof resolveHealthAgentOrder>,
   projection?: SessionRowProjection,
-  cronStorePath?: string,
+  cronState?: Pick<GatewayCronState, "storePath" | "readHeartbeatSummary">,
 ) {
   const { prepareStatusSessionStores } = await import("../../status/session-stores.js");
   const { isTransientSqliteError } = await import("../../infra/unhandled-rejections.js");
   // Receipts list the primary job first; retain it when converted siblings share an agent.
   const heartbeatJobs = new Map(
-    (await readHeartbeatSummarySnapshot(cfg, cronStorePath))
+    (
+      await (cronState?.readHeartbeatSummary?.(cfg) ??
+        readHeartbeatSummarySnapshot(cfg, cronState?.storePath))
+    )
       .toReversed()
       .map((job) => [job.agentId, job]),
   );
@@ -544,7 +548,7 @@ export async function collectGatewayHealthSnapshot(params: {
   eventLoop?: HealthSummary["eventLoop"];
   configReloadHotReloadStatus?: GatewayHotReloadStatus;
   sessionRowProjection?: SessionRowProjection;
-  cronStorePath?: string;
+  cronState?: Pick<GatewayCronState, "storePath" | "readHeartbeatSummary">;
 }): Promise<HealthSummary> {
   const stateContext = captureDeliveryQueueHealthContext();
   const start = performance.now();
@@ -556,7 +560,7 @@ export async function collectGatewayHealthSnapshot(params: {
     cfg,
     { defaultAgentId, ordered },
     params.sessionRowProjection,
-    params.cronStorePath,
+    params.cronState,
   );
 
   const includeSensitive = params.audience === "admin";
