@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
@@ -315,10 +315,7 @@ export async function inspectPreparedDoctorRehearsal(params: {
     env: { ...env },
     observe: false,
     pluginValidation: "skip",
-  }).readConfigFileSnapshot();
-  if (snapshot.path !== configPath || snapshot.raw !== raw) {
-    refuse("the copied configuration changed during inspection");
-  }
+  }).readConfigFileSnapshotFromRaw(raw);
   const config = snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig;
   const registered = await registryApi.inspectOpenClawRegisteredAgentDatabases({
     env,
@@ -444,9 +441,6 @@ export async function inspectPreparedDoctorRehearsal(params: {
       if (inspectPath(filename, false, true)?.isDirectory()) {
         remaining.push(...readdirSync(filename).map((name) => path.join(filename, name)));
       }
-    }
-    if (readFileSync(configPath, "utf8") !== raw) {
-      refuse("the copied configuration changed before admission");
     }
   };
   assertPrepared();
