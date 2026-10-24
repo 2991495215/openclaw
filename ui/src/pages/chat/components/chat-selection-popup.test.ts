@@ -46,10 +46,11 @@ function pointerUp(
   },
   settle = true,
 ) {
-  handleChatSelectionPointerUp({ currentTarget: thread } as unknown as PointerEvent, {
-    paneId: "pane-a",
-    ...options,
-  });
+  handleChatSelectionPointerUp(
+    { currentTarget: thread } as unknown as PointerEvent,
+    { paneId: "pane-a", ...options },
+    null,
+  );
   if (settle) {
     vi.runAllTimers();
   }
@@ -161,32 +162,6 @@ describe("chat selection popup", () => {
       window.getSelection()?.removeAllRanges();
       document.dispatchEvent(new Event("selectionchange"));
     }
-    expect(popup()).toBeNull();
-  });
-
-  it.each([
-    { pointerType: "mouse", button: 2 },
-    { pointerType: "mouse", button: 0, ctrlKey: true },
-    { pointerType: "mouse", button: 0, shiftKey: true },
-    { pointerType: "touch", button: 0 },
-  ])("preserves native selection for $pointerType gesture %j", (gesture) => {
-    const thread = selection("Preserve this selection", 8);
-    pointerUp(thread);
-    thread.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, ...gesture }));
-    expect(window.getSelection()?.toString()).toBe("Preserve");
-    expect(popup()).toBeNull();
-  });
-
-  it("does not clear a replacement selection outside its transcript", () => {
-    const thread = selection("Original selection", 8);
-    pointerUp(thread);
-    const outside = document.body.appendChild(document.createElement("p"));
-    outside.textContent = "Other selection";
-    selectRange(outside.firstChild as Text, 0, 5);
-    outside.dispatchEvent(
-      new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse", button: 0 }),
-    );
-    expect(window.getSelection()?.toString()).toBe("Other");
     expect(popup()).toBeNull();
   });
 

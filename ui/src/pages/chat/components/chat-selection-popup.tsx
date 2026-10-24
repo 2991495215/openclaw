@@ -77,11 +77,11 @@ function mountPopup(
   layout: () => void,
   paneId: string,
   dispose: () => void,
-  options: {
-    onEscape?: () => void;
-    onPointerDownOutside?: (event: PointerEvent) => void;
-    shouldDismissOnScroll?: () => boolean;
-  } = {},
+  onEscape?: () => void,
+  // A layout-driven transcript scroll must not dismiss in-progress input. The
+  // annotation editor supplies its own policy; the selection toolbar keeps the
+  // default scroll dismissal.
+  shouldDismissOnScroll: () => boolean = () => true,
 ) {
   const listeners = new AbortController();
   activeSelectionPopup = { element: popup, listeners, paneId, dispose };
@@ -92,7 +92,6 @@ function mountPopup(
     "pointerdown",
     (event) => {
       if (!(event.target instanceof Node) || !popup.contains(event.target)) {
-        options.onPointerDownOutside?.(event);
         removeChatSelectionPopup();
       }
     },
@@ -106,7 +105,7 @@ function mountPopup(
         event.preventDefault();
         event.stopPropagation();
         removeChatSelectionPopup();
-        options.onEscape?.();
+        onEscape?.();
       }
     },
     { signal },
@@ -116,7 +115,7 @@ function mountPopup(
     "scroll",
     (event) => {
       if (!(event.target instanceof Node) || !popup.contains(event.target)) {
-        if (options.shouldDismissOnScroll?.() !== false) {
+        if (shouldDismissOnScroll()) {
           removeChatSelectionPopup();
         }
       }
@@ -287,10 +286,14 @@ export function showChatAnnotationEditor(options: {
   // comment the user is still writing, so an edited comment survives the
   // scroll; an untouched editor still closes, keeping its existing behavior.
   const originalComment = options.comment;
-  const signal = mountPopup(popup, resizeInput, options.paneId, dispose, {
-    onEscape: options.onCancel,
-    shouldDismissOnScroll: () => input.value === originalComment,
-  });
+  const signal = mountPopup(
+    popup,
+    resizeInput,
+    options.paneId,
+    dispose,
+    options.onCancel,
+    () => input.value === originalComment,
+  );
   if (options.sourceRange && typeof Highlight !== "undefined") {
     // Keep the passage visible as a selection after focus moves into the textarea.
     CSS.highlights.set("openclaw-comment", new Highlight(options.sourceRange));
@@ -315,6 +318,7 @@ export function showChatAnnotationEditor(options: {
 export function handleChatSelectionPointerUp(
   event: PointerEvent,
   actions: ChatSelectionPopupActions,
+  previousSelection: Range | null,
 ) {
   const threadRoot = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   if (!threadRoot) {
@@ -330,6 +334,11 @@ export function handleChatSelectionPointerUp(
         return;
       }
       const range = selection.getRangeAt(0);
+      // Native user selection replaces the associated Range, even when the
+      // selected words are unchanged. A control click retains the old Range.
+      if (range === previousSelection) {
+        return;
+      }
       const container = range.commonAncestorContainer;
       const selectionElement = container instanceof Element ? container : container.parentElement;
       const bubble = selectionElement?.closest<HTMLElement>(".chat-bubble");
@@ -397,28 +406,7 @@ export function handleChatSelectionPointerUp(
         ),
         document.createElement("div"),
       );
-      const signal = mountPopup(
-        popup,
-        () => positionPopup(popup, anchor),
-        actions.paneId,
-        dispose,
-        {
-          onPointerDownOutside: (pointerEvent) => {
-            // Non-selectable transcript space can retain the range and reopen the
-            // toolbar on pointerup. Retire only this toolbar's mouse selection.
-            if (
-              pointerEvent.pointerType === "mouse" &&
-              pointerEvent.button === 0 &&
-              !pointerEvent.ctrlKey &&
-              !pointerEvent.shiftKey &&
-              selection.rangeCount === 1 &&
-              selection.getRangeAt(0) === range
-            ) {
-              selection.removeAllRanges();
-            }
-          },
-        },
-      );
+      const signal = mountPopup(popup, () => positionPopup(popup, anchor), actions.paneId, dispose);
       listen(
         document,
         "selectionchange",

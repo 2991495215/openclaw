@@ -84,9 +84,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   overflow-anchor: none;
-  /* Only message text opts in; selecting across turns must not paint layout or media. */
-  -webkit-user-select: none;
-  user-select: none;
+  /* Leave content and blank space native so outside clicks collapse selection. */
+  -webkit-user-select: text;
+  user-select: text;
   scrollbar-gutter: stable both-edges;
   /* The pane header owns the titlebar and native drag surface. No horizontal
      padding: macOS overlay scrollbars render inside the
@@ -189,6 +189,12 @@
 
 .creation-composer > .callout {
   margin-inline: var(--chat-composer-side-inset, 16px);
+}
+
+/* Exclude chrome and media without disabling native selection on blank space. */
+.chat-thread :is(.chat-group-footer, .chat-avatar, .chat-avatar-slot, img, audio, video, iframe) {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .chat-text,
