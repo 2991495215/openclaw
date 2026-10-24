@@ -12,7 +12,6 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { copyFileHandle } from "../infra/file-descriptor.js";
 import { openLocalFileSafely } from "../infra/fs-safe.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
-import { runBestEffortCleanup } from "../infra/non-fatal-cleanup.js";
 import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createPermitPool } from "../shared/permit-pool.js";
@@ -567,19 +566,16 @@ export async function resolvePlaybackTranscode(
       },
       async (workspace) => {
         const inputName = makePlaybackInputFileName(source.path, transcodeMimeType);
-        const stagingName = `.${inputName}.stage`;
-        // Keep private-store admission without its full-payload buffering path.
-        await workspace.store.write(stagingName, "", { durable: false });
+        // Admit one private leaf, then stream through its owned descriptor.
+        const inputPath = await workspace.store.write(inputName, "", { durable: false });
         const inputRoot = await workspace.store.root();
-        let inputPath: string;
         {
-          await using staged = await inputRoot.openWritable(stagingName, {
+          await using input = await inputRoot.openWritable(inputName, {
             writeMode: "update",
             mode: 0o600,
             mkdir: false,
           });
-          const inputIdentity = await staged.handle.stat({ bigint: true });
-          const copiedBytes = await copyFileHandle(opened.handle, staged.handle, {
+          const copiedBytes = await copyFileHandle(opened.handle, input.handle, {
             maxBytes: Math.min(source.size, maxBytes),
           });
           if (
@@ -592,19 +588,6 @@ export async function resolvePlaybackTranscode(
           ) {
             throw new Error("Playback source changed during transcode read");
           }
-          // Keep the writer live so replacement cannot reuse its inode before verification.
-          await inputRoot.move(stagingName, inputName);
-          await using input = await inputRoot.open(inputName);
-          const stat = await input.handle.stat({ bigint: true });
-          // The move owns its path checks; bind its result to our completed writer.
-          if (
-            !sameFileIdentity(inputIdentity, stat) ||
-            stat.size !== BigInt(source.size) ||
-            (process.platform !== "win32" && (stat.mode & 0o7777n) !== 0o600n)
-          ) {
-            throw new Error("Playback staged input changed before transcode");
-          }
-          inputPath = input.realPath;
         }
         const outputPath = workspace.path(`output${transcodePolicy.target.extension}`);
         const inputFormat = resolvePlaybackInputFormat(transcodePolicy, transcodeMimeType);
@@ -678,16 +661,8 @@ export async function resolvePlaybackTranscode(
         if (!outputStat.isFile() || outputStat.size === 0 || outputStat.size > maxBytes) {
           throw new Error("Playback transcode output exceeds its media limit");
         }
-        const outputHandle = await fs.open(outputPath, "r");
-        let outputProbe: PlaybackMediaProbeResult | null;
-        try {
-          outputProbe = await probePlaybackMediaFileDescriptor(outputHandle.fd, transcodeKind);
-        } finally {
-          await runBestEffortCleanup({
-            cleanup: () => outputHandle.close(),
-            onError: (error) => log.warn("Failed to close playback probe output", { error }),
-          });
-        }
+        await using outputHandle = await fs.open(outputPath, "r");
+        const outputProbe = await probePlaybackMediaFileDescriptor(outputHandle.fd, transcodeKind);
         if (
           !outputProbe?.durationMs ||
           !playbackDurationsMatch(transcodeInspection.durationMs, outputProbe.durationMs)
