@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import type { StreamFn } from "openclaw/plugin-sdk/agent-core";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
-import type { ProviderPrepareRuntimeAuthContextV2 } from "openclaw/plugin-sdk/core";
+import type {
+  ProviderPrepareRuntimeAuthContext,
+  ProviderPrepareRuntimeAuthContextV2,
+} from "openclaw/plugin-sdk/core";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
@@ -94,7 +97,7 @@ let runtimeAuthTestSequence = 0;
 let runtimeAuthTestTenantId = "tenant-0";
 
 function makeModel(
-  overrides: Partial<ProviderPrepareRuntimeAuthContextV2["model"]> & {
+  overrides: Partial<ProviderPrepareRuntimeAuthContext["model"]> & {
     api?: FoundryProviderApi;
   } = {},
 ) {

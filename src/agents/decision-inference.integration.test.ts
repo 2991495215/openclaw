@@ -522,6 +522,7 @@ it.each([
         }
         expect(trace.context!.model.baseUrl).toBe("https://entitlement.fixture.invalid/v1");
         expect(trace.preparedApi).toBe("openai-responses");
+        expect(trace.context!.model.api).toBe(trace.preparedApi);
         expect(trace.context?.model.inference?.decision?.billing).toBeUndefined();
         expect(getModelProviderRequestTransport(trace.context!.model)).toMatchObject({
           headers: { "x-fixture-entitlement": "synthetic-entitlement" },
