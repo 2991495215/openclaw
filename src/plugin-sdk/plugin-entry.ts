@@ -196,6 +196,10 @@ export type {
   PluginHookSkillChangedEvent,
   PluginHookSkillContext,
 } from "../plugins/hook-types.js";
+export type {
+  PluginHookUserFirstSignInContext,
+  PluginHookUserFirstSignInEvent,
+} from "../plugins/hook-user-sign-in.types.js";
 export type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.types.js";
 export type {
   UnifiedModelCatalogEntry,

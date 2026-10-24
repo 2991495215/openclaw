@@ -34,6 +34,7 @@ import type { GatewayOperatorAccessAuthority } from "./operator-access-policy.ty
 import { resolveOperatorRolePolicyForAssignment } from "./operator-role-policy.js";
 import { resolveBrowserOriginPolicy } from "./origin-check.js";
 import type { GatewayClient, GatewayOperatorRoleActor } from "./server-methods/shared-types.js";
+import { noteUserSignIn } from "./user-first-sign-in.js";
 import { formatForLog } from "./ws-log.js";
 
 const profileLog = createSubsystemLogger("gateway/user-profiles");
@@ -211,12 +212,14 @@ export async function resolveAuthenticatedHttpUserProfile(params: {
           )
         : await ensureCanonicalUserProfileForEmail(authenticatedUserId, options);
     const profileId = "profileId" in profile ? profile.profileId : profile.id;
-    return await prepareHttpProfile(
+    const prepared = await prepareHttpProfile(
       profileId,
       profile.updatedAt,
       assertCurrent,
       usesSharedSecretGatewayMethod(params.authResult.method) ? undefined : params.cfg,
     );
+    noteUserSignIn(params.authResult, prepared.authenticatedUserProfile.profileId);
+    return prepared;
   } catch (error) {
     assertCurrent();
     // Attribution enriches authenticated requests; configured role/access policies

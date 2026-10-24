@@ -16,6 +16,7 @@ import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import type { AgentRecoveryProgress } from "../state/agent-database-preparation-recovery.js";
 import type { GatewayContextResolver } from "./server-methods/types.js";
 import { measureStartup, type GatewayStartupTrace } from "./server-startup-trace.js";
+import { resumeUserFirstSignInDeliveries } from "./user-first-sign-in.js";
 
 // Keep orphan marking independent of the resume and delivery runtime.
 const loadMainSessionRestartRecoveryMarkingModule = createLazyRuntimeModule(
@@ -317,6 +318,12 @@ export async function runGatewayStartupObservers(params: {
       params.log.warn(`gateway_start hook failed: ${String(err)}`);
     });
   } finally {
+    if (!params.signal.aborted && !params.isClosing?.()) {
+      // After gateway_start, so plugin services are ready; delivery owns its own admission.
+      void resumeUserFirstSignInDeliveries().catch((err: unknown) => {
+        params.log.warn(`first sign-in delivery resume failed: ${String(err)}`);
+      });
+    }
     // Independent observers overlap, but shutdown joins all accepted startup work.
     await Promise.all([sentinelRefresh, initialRecovery, inputRecovery]);
   }

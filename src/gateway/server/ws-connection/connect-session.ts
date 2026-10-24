@@ -46,6 +46,7 @@ import {
   setClientPluginNodeCapability,
   type PluginNodeCapabilitySurface,
 } from "../../plugin-node-capability.js";
+import { noteUserSignIn } from "../../user-first-sign-in.js";
 import { formatForLog } from "../../ws-log.js";
 import { truncateCloseReason } from "../close-reason.js";
 import type { GatewayWsClient } from "../ws-types.js";
@@ -691,6 +692,9 @@ export async function attachAuthenticatedGatewayConnect(
   }
 
   await sendGatewayHello(context, state, pluginSurfaceUrls, authenticatedUserProfile?.profileId);
+  if (role === "operator" && authenticatedUserProfile) {
+    noteUserSignIn(authResult, authenticatedUserProfile.profileId);
+  }
 
   scheduleGatewayConnectProfileSync({
     context,

@@ -21,6 +21,7 @@ import type {
   PluginHookBeforePromptBuildResult,
 } from "./hook-before-agent-start.types.js";
 import type { PluginHookBeforeToolCallResult } from "./hook-before-tool-call-result.js";
+import type { PluginHookChannelPairingRequestedHook } from "./hook-channel-pairing.types.js";
 import type { InputGateDecision } from "./hook-decision-types.js";
 import type {
   PluginHookCronChangedEvent,
@@ -39,6 +40,7 @@ import type {
 } from "./hook-message.types.js";
 import type { PluginHookReplyDispatchEvent } from "./hook-reply-dispatch-event.types.js";
 import type { PluginHookSkillChangedEvent, PluginHookSkillContext } from "./hook-skill.types.js";
+import type { PluginHookUserFirstSignInHook } from "./hook-user-sign-in.types.js";
 import type { PluginJsonValue } from "./host-hook-json.js";
 import type {
   PluginAgentTurnPrepareEvent,
@@ -155,30 +157,13 @@ export const PLUGIN_HOOK_METADATA: Readonly<Record<PluginHookName, PluginHookMet
   cron_reconciled: {},
   cron_changed: {},
   skill_changed: { voidTimeoutMs: 30_000 },
+  // The Gateway sign-in owner dispatches this hook and owns its retry and timeout policy.
+  user_first_sign_in: {},
   before_dispatch: {},
   reply_dispatch: {},
   before_install: { modifyingTimeoutMs: 15_000 },
   before_agent_run: { conversationAccess: true, modifyingTimeoutMs: 15_000 },
   resolve_exec_env: { modifyingTimeoutMs: 15_000 },
-};
-
-type PluginHookChannelPairingRequestedEvent = {
-  /** Channel that created the pending pairing request. */
-  channel: string;
-  /** Provider account ID for multi-account channel setups. */
-  accountId?: string;
-  /** Channel-scoped sender ID awaiting operator approval. */
-  senderId: string;
-  /** Short-lived code accepted by `openclaw pairing approve`. */
-  code: string;
-  /** Sender-supplied channel metadata for operator notification/audit. Treat as untrusted. */
-  metadata?: Record<string, string | undefined>;
-};
-
-type PluginHookChannelPairingContext = {
-  channelId: string;
-  accountId?: string;
-  senderId: string;
 };
 
 export const isPluginHookName = (hookName: unknown): hookName is PluginHookName =>
@@ -882,10 +867,7 @@ export type PluginHookHandlerMap = PluginMessageHookHandlerMap & {
     PluginHookInboundClaimContext,
     PluginHookInboundClaimResult
   >;
-  channel_pairing_requested: AsyncPluginHook<
-    PluginHookChannelPairingRequestedEvent,
-    PluginHookChannelPairingContext
-  >;
+  channel_pairing_requested: PluginHookChannelPairingRequestedHook;
   before_dispatch: AsyncPluginHook<
     PluginHookBeforeDispatchEvent,
     PluginHookBeforeDispatchContext,
@@ -935,6 +917,7 @@ export type PluginHookHandlerMap = PluginMessageHookHandlerMap & {
   cron_reconciled: AsyncPluginHook<PluginHookCronReconciledEvent, PluginHookCronReconciledContext>;
   cron_changed: AsyncPluginHook<PluginHookCronChangedEvent, PluginHookGatewayContext>;
   skill_changed: AsyncPluginHook<PluginHookSkillChangedEvent, PluginHookSkillContext>;
+  user_first_sign_in: PluginHookUserFirstSignInHook;
   before_install: AsyncPluginHook<
     PluginHookBeforeInstallEvent,
     PluginHookBeforeInstallContext,

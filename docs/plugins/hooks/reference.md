@@ -256,6 +256,7 @@ For `sessions.create` calls with `parentSessionKey` and `emitCommandHooks: true`
 | `cron_changed`                   | Observe       | Observe Gateway-owned cron lifecycle changes (added, updated, removed, started, finished, scheduled) |
 | `before_install`                 | Modify / gate | Inspect staged skill or plugin install material from a loaded plugin runtime                         |
 | `skill_changed`                  | Observe       | Observe committed live-skill create, update, and removal events                                      |
+| `user_first_sign_in`             | Observe       | React once, with retries, when a verified person first signs in to the Gateway                       |
 
 ### Skill lifecycle
 

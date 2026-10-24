@@ -14,6 +14,7 @@ import {
 } from "../../local-user-ingress.js";
 import { hasGatewayOperatorAccessPolicies } from "../../operator-access-policy.js";
 import { WEBSOCKET_OPEN_READY_STATE } from "../../server-constants.js";
+import { noteUserSignIn } from "../../user-first-sign-in.js";
 import { formatForLog } from "../../ws-log.js";
 import type { GatewayWsClient } from "../ws-types.js";
 import {
@@ -148,6 +149,9 @@ export function createGatewayConnectProfileLifecycle(
       attachGatewayLocalUserIngress(registered, prepareIngress(profile));
       const { profileId: id, ...display } = profile;
       handler.buildRequestContext().refreshConnectedUserProfile?.({ id, ...display });
+      if (state.role === "operator") {
+        noteUserSignIn(state.authResult, id);
+      }
     },
   };
 }

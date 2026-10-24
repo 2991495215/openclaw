@@ -1,8 +1,9 @@
 ---
-summary: "Plugin install checks, Gateway start and stop, and Gateway-owned cron events"
+summary: "Plugin install checks, Gateway start and stop, first sign-in, and Gateway-owned cron events"
 read_when:
   - You are inspecting staged install material from a plugin runtime
   - You are starting or stopping plugin-owned services with the Gateway
+  - You are onboarding people when they first sign in
   - You are projecting OpenClaw cron wakes into an external host scheduler
 title: "Gateway and install lifecycle hooks"
 sidebarTitle: "Lifecycle"
@@ -53,6 +54,44 @@ The legacy `api.on("deactivate", ...)` alias was removed in August 2026. Use
 
 Do not rely on the internal `gateway:startup` hook for plugin-owned runtime
 services.
+
+## First sign-in
+
+`user_first_sign_in` fires once per person, after their first sign-in through a
+verified identity (trusted-proxy or Tailscale) has a durable profile and has
+passed Gateway admission, including access-policy plugins. Shared-secret
+operators, the Gateway owner profile, paired devices, and nodes never trigger it.
+
+```ts
+api.on("user_first_sign_in", async (event, ctx) => {
+  // event: profileId, displayName, emails, githubAccountIds, isNewProfile,
+  // profileCreatedAt, firstSignedInAt, attempt
+  await onboardOnce(event.profileId, event.emails, ctx.config);
+});
+```
+
+Delivery runs detached from sign-in, so a slow or failing handler never delays
+or rejects the person. The Gateway durably records the first sign-in and the
+plugins that had handlers at that moment, then keeps the delivery pending for
+each plugin until its handler resolves:
+
+- A rejected or timed-out handler (60 seconds by default) is retried with
+  backoff starting at 5 seconds and capped at one hour.
+- Pending deliveries resume after the Gateway's `gateway_start` hooks on the
+  next start, so a restart before the handler finished does not lose the event.
+- Delivery is at least once. A handler can run again after it already did its
+  work (for example after a timeout or a crash), and `event.attempt` counts
+  attempts for that plugin. Handlers must be idempotent: key every effect by
+  `profileId` or by your own durable record.
+- Only plugins with handlers at the recorded first sign-in receive it; a
+  plugin that registers later does not get earlier people. While no plugin
+  handles the hook, sign-ins are not recorded, so those people (and profiles
+  from before this hook shipped) get one event on their next sign-in after a
+  handler registers, with `isNewProfile: false`.
+- `emails` and `githubAccountIds` are the verified identities bound to the
+  profile when the event is delivered, not values the browser supplied.
+  `isNewProfile` is true when the profile was created at most one minute
+  before its first sign-in.
 
 `cron_reconciled` fires after the Gateway cron scheduler and its on-exit
 watchers have reconciled their durable state. It fires for both initial

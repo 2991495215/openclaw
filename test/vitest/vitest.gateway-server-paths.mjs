@@ -357,6 +357,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/update-recovery-cleanup.authority.integration.test.ts",
   "src/gateway/update-run-notice-target.test.ts",
   "src/gateway/update-run-notice.test.ts",
+  "src/gateway/user-first-sign-in.test.ts",
   "src/gateway/user-profiles-http.auth.test.ts",
   "src/gateway/watch-node-http.test.ts",
   "src/gateway/worker-environments/bundle.test.ts",
