@@ -17,6 +17,7 @@ import {
 } from "../plugins/runtime-state.js";
 import { getPluginRegistryForContext } from "../plugins/runtime/gateway-request-scope.js";
 import { getPluginRuntimeGenerationRegistry } from "../plugins/runtime/generation-state.js";
+import { createObjectIdAllocator } from "../shared/object-id.js";
 import { resolveAgentConfig, resolveAgentModelConfigForRuntime } from "./agent-scope-config.js";
 import {
   allowsPluginModelNormalization,
@@ -50,8 +51,7 @@ import { readUtilityModelSetting } from "./utility-model-setting.js";
 
 const MAX_FALLBACK_CANDIDATE_CACHE_ENTRIES = 256;
 const fallbackCandidateCache = new Map<string, ModelFallbackCandidate[]>();
-const fallbackContextIds = new WeakMap<object, number>();
-let nextFallbackContextId = 0;
+const getFallbackContextId = createObjectIdAllocator();
 const log = createSubsystemLogger("model-selection");
 
 /** Prefer known headroom without dropping operator-selected models with incomplete metadata. */
@@ -208,16 +208,6 @@ export function resolveModelCandidateChain(
     pruneMapToMaxSize(fallbackCandidateCache, MAX_FALLBACK_CANDIDATE_CACHE_ENTRIES);
   }
   return candidates;
-}
-
-function getFallbackContextId(value: object): number {
-  const existing = fallbackContextIds.get(value);
-  if (existing !== undefined) {
-    return existing;
-  }
-  const id = nextFallbackContextId++;
-  fallbackContextIds.set(value, id);
-  return id;
 }
 
 function resolveFallbackCandidateContext(params: ModelCandidateChainParams) {

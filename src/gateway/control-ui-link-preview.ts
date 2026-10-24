@@ -11,6 +11,7 @@ import { fetchWithSsrFGuard, withStrictGuardedFetchMode } from "../infra/net/fet
 import { normalizeHostname } from "../infra/net/hostname.js";
 import { isBlockedHostnameOrIp } from "../infra/net/ssrf.js";
 import { createImageProcessor, readImageMetadataFromHeader } from "../media/image-ops.js";
+import { createObjectIdAllocator } from "../shared/object-id.js";
 import type { ControlUiLinkPreview } from "./control-ui-contract.js";
 
 const HTML_MAX_BYTES = 64 * 1024;
@@ -26,8 +27,7 @@ const loads = pLimit(4);
 const processor = createImageProcessor();
 type PreviewScope = { principal: object; revision: string | number };
 type CacheEntry = { expiresAt: number; promise: Promise<ControlUiLinkPreview> };
-const principals = new WeakMap<object, number>();
-let nextPrincipal = 0;
+const principalId = createObjectIdAllocator(1);
 const cache = new Map<string, CacheEntry>();
 
 /** Public presentation only: never reuse browser credentials or private-network policy. */
@@ -315,11 +315,7 @@ export async function loadControlUiLinkPreview(
   if (!isEnabled()) {
     return {};
   }
-  let principal = principals.get(scope.principal);
-  if (principal === undefined) {
-    principal = ++nextPrincipal;
-    principals.set(scope.principal, principal);
-  }
+  const principal = principalId(scope.principal);
   const key = JSON.stringify([principal, scope.revision, url.href]);
   const now = Date.now();
   const existing = cache.get(key);

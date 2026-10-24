@@ -1,6 +1,7 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
+import { createObjectIdAllocator } from "../shared/object-id.js";
 import {
   createPublicSessionRepresentationCache,
   type PublicSessionRepresentation,
@@ -88,8 +89,7 @@ export function createControlUiPublicSessionRequestGate(): ControlUiPublicSessio
   >();
   const cache = createPublicSessionRepresentationCache();
   let active = true;
-  const configIds = new WeakMap<object, number>();
-  let nextConfigId = 1;
+  const configId = createObjectIdAllocator(1);
   let activeReads = 0;
 
   const queued: Array<{
@@ -140,16 +140,6 @@ export function createControlUiPublicSessionRequestGate(): ControlUiPublicSessio
     return new Promise((resolve) => {
       queued.push({ publicationKey, resolve });
     });
-  };
-
-  const configId = (config: OpenClawConfig): number => {
-    const existing = configIds.get(config);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const created = nextConfigId++;
-    configIds.set(config, created);
-    return created;
   };
 
   return {

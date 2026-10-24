@@ -1,22 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { createObjectIdAllocator } from "../shared/object-id.js";
 import type { GatewaySessionRow } from "./session-utils.types.js";
 
-const rowIds = new WeakMap<GatewaySessionRow, number>();
+const rowId = createObjectIdAllocator(1);
 const revisions = new WeakMap<GatewaySessionRow[], string>();
-let nextRowId = 0;
 
 export type SessionRowGeneration = { revision: string; ids: Float64Array };
 
 export function sessionRowId(row: GatewaySessionRow): number {
-  let id = rowIds.get(row);
-  if (id === undefined) {
-    if (nextRowId === Number.MAX_SAFE_INTEGER) {
-      throw new RangeError("Session row identity space exhausted");
-    }
-    id = ++nextRowId;
-    rowIds.set(row, id);
-  }
-  return id;
+  return rowId(row);
 }
 
 export function sessionRowsRevision(rows: GatewaySessionRow[]): string {

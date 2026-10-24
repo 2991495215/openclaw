@@ -8,6 +8,7 @@ import type {
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
 import { captureChannelReadAuthority } from "../../shared/channel-read-authority.js";
+import { createObjectIdAllocator } from "../../shared/object-id.js";
 import { buildDirectoryCacheKey, DirectoryCache } from "./directory-cache.js";
 // Message CLI actions use scoped registries without activating the process-root registry.
 import { getRuntimeVisibleChannelPlugin } from "./runtime-visible-channels.js";
@@ -37,8 +38,7 @@ type ResolveMessagingTargetResult =
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const directoryCache = new DirectoryCache<ChannelDirectoryEntry[]>(CACHE_TTL_MS);
-const directoryPluginIds = new WeakMap<ChannelPlugin, number>();
-let nextDirectoryPluginId = 1;
+const directoryPluginId = createObjectIdAllocator(1);
 
 export function resetDirectoryCache(params?: {
   cfg: OpenClawConfig;
@@ -166,11 +166,7 @@ async function getDirectoryEntries(params: {
   plugin?: ChannelPlugin;
 }): Promise<ChannelDirectoryEntry[]> {
   const plugin = params.plugin ?? getRuntimeVisibleChannelPlugin(params.channel);
-  let pluginId = plugin ? directoryPluginIds.get(plugin) : undefined;
-  if (plugin && pluginId === undefined) {
-    pluginId = nextDirectoryPluginId++;
-    directoryPluginIds.set(plugin, pluginId);
-  }
+  const pluginId = plugin ? directoryPluginId(plugin) : undefined;
   const cacheQuery = normalizeLowercaseStringOrEmpty(params.query ?? "");
   const cacheKey = buildDirectoryCacheKey({
     channel: params.channel,

@@ -5,6 +5,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
+import { createObjectIdAllocator } from "../../shared/object-id.js";
 import {
   captureSkillLibraryPreparation,
   loadSkillLibrarySelection,
@@ -47,8 +48,7 @@ type LocalSkillTiers = {
 };
 const skillEntryCache = new Map<string, LocalSkillTiers>();
 const agentSkillEntryCache = new Map<string, SkillEntry[]>();
-const pluginMetadataIds = new WeakMap<PluginMetadataSnapshot, number>();
-let nextPluginMetadataId = 0;
+const pluginMetadataId = createObjectIdAllocator(1);
 
 type WorkspaceSkillLoadOptions = {
   watch?: boolean;
@@ -92,11 +92,7 @@ function loadLocalSkillTiers(
   });
   const custodianAgentId = resolveCustodianSkillAgentId(opts?.config, opts?.agentId, workspaceOnly);
   const metadata = opts?.pluginMetadataSnapshot;
-  let metadataId = metadata && pluginMetadataIds.get(metadata);
-  if (metadata && metadataId === undefined) {
-    metadataId = ++nextPluginMetadataId;
-    pluginMetadataIds.set(metadata, metadataId);
-  }
+  const metadataId = metadata && pluginMetadataId(metadata);
   // Source revisions invalidate discovery even when resolved content stays unchanged.
   const agentSourceKey = JSON.stringify([
     workspaceDir,
