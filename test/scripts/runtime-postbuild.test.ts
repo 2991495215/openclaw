@@ -1962,32 +1962,33 @@ describe("previous release update compatibility", () => {
     expect(calls).toEqual([npmArgs]);
   });
 
-  // Extended-stable lines keep bridges for newer monthly releases whose
-  // updaters can replace themselves with this candidate.
-  it("records newer-release bridge sources during generate", () => {
+  it.each(["generate", "check"])("refuses newer-release downgrade inventory during %s", (mode) => {
     const root = createTempDir("update-compat-newer-source-");
     const output = writeWindowInventory(root);
+    const original = fsSync.readFileSync(output, "utf8");
     const version = newerReleaseVersion;
-    const packageDir = path.join(root, version);
-    write(packageDir, "package.json", JSON.stringify({ name: "openclaw", version }));
-    write(
-      packageDir,
-      "dist/build-info.json",
-      JSON.stringify({ version, buildId: version, commit: "0".repeat(40) }),
-    );
-    write(packageDir, "dist/entry.js", "export {};\n");
-    const { result, calls } = runInventoryCli([
-      "--output",
-      output,
-      "--release",
-      `${packageDir}=${integrity}`,
-    ]);
-    expect(result.stderr).not.toContain(`newer than target ${targetVersion}`);
-    expect(result.status).toBe(0);
-    const inventory = JSON.parse(fsSync.readFileSync(output, "utf8"));
-    expect(inventory.releases.map((release: { version: string }) => release.version)).toContain(
-      version,
-    );
+    let args: string[];
+    if (mode === "generate") {
+      const packageDir = path.join(root, version);
+      write(packageDir, "package.json", JSON.stringify({ name: "openclaw", version }));
+      write(
+        packageDir,
+        "dist/build-info.json",
+        JSON.stringify({ version, buildId: version, commit: "0".repeat(40) }),
+      );
+      write(packageDir, "dist/entry.js", "export {};\n");
+      args = ["--output", output, "--release", `${packageDir}=${integrity}`];
+    } else {
+      const inventory = JSON.parse(original);
+      inventory.releases.push({ ...inventory.releases[0], version, chunks: [] });
+      write(root, path.basename(output), JSON.stringify(inventory));
+      args = ["--check", "--output", output];
+    }
+    const before = fsSync.readFileSync(output, "utf8");
+    const { result, calls } = runInventoryCli(args);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`source ${version} is newer than target ${targetVersion}`);
+    expect(fsSync.readFileSync(output, "utf8")).toBe(before);
     expect(calls).toEqual([]);
   });
 
