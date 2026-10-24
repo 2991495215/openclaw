@@ -1,13 +1,6 @@
 import { resolveSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import type { DiscordCredentialStatus } from "./token.js";
 
-type DiscordAccountTokenState = {
-  token: string;
-  tokenSource: "env" | "config" | "none";
-  tokenStatus: DiscordCredentialStatus;
-  configured: boolean;
-};
-
 function inspectDiscordConfiguredToken(value: unknown) {
   const credential = resolveSecretInputString({ value, path: "Discord token", mode: "inspect" });
   return credential.status === "missing"
@@ -26,7 +19,12 @@ export function inspectDiscordAccountTokenState<TBase extends object, TConfig>(p
   hasAccountToken: boolean;
   channelToken: unknown;
   resolveFallbackToken: () => { token: string; source: "env" | "config" | "none" };
-}): TBase & DiscordAccountTokenState & { config: TConfig } {
+}): TBase & {
+  token: string;
+  tokenSource: "env" | "config" | "none";
+  tokenStatus: DiscordCredentialStatus;
+  configured: boolean;
+} & { config: TConfig } {
   const configuredToken =
     inspectDiscordConfiguredToken(params.accountToken) ??
     (params.hasAccountToken ? null : inspectDiscordConfiguredToken(params.channelToken));

@@ -75,25 +75,16 @@ export function normalizeOutboundLocation(
 }
 
 /** Location payload after default source and live-state inference. */
-type ResolvedLocation = NormalizedLocation & {
+function resolveLocation(location: NormalizedLocation): NormalizedLocation & {
   source: LocationSource;
   isLive: boolean;
-};
-
-function resolveLocation(location: NormalizedLocation): ResolvedLocation {
+} {
   // Infer once so text formatting and structured context agree on pin/place/live semantics.
   const source =
     location.source ??
     (location.isLive ? "live" : location.name || location.address ? "place" : "pin");
   const isLive = location.isLive ?? source === "live";
   return { ...location, source, isLive };
-}
-
-function formatAccuracy(accuracy?: number): string {
-  if (!Number.isFinite(accuracy)) {
-    return "";
-  }
-  return ` ±${Math.round(accuracy ?? 0)}m`;
 }
 
 /**
@@ -105,7 +96,8 @@ function formatAccuracy(accuracy?: number): string {
 export function formatLocationText(location: NormalizedLocation): string {
   const resolved = resolveLocation(location);
   const coords = `${resolved.latitude.toFixed(6)}, ${resolved.longitude.toFixed(6)}`;
-  const accuracy = formatAccuracy(resolved.accuracy);
+  const accuracyValue = resolved.accuracy;
+  const accuracy = !Number.isFinite(accuracyValue) ? "" : ` ±${Math.round(accuracyValue ?? 0)}m`;
 
   if (resolved.source === "live" || resolved.isLive) {
     return `🛰 Live location: ${coords}${accuracy}`;
