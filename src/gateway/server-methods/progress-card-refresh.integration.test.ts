@@ -376,6 +376,7 @@ describe("registered progress refresh admission", () => {
       };
       const cancel = vi.fn();
       const claim = vi.fn(async () => true);
+      const injectionAccepted = createDeferredCore();
       const queueMessage = vi.fn<ReplyBackendMessageInjectionV2["queueMessage"]>(
         async (_text, options, assertCurrent) => {
           assertCurrent();
@@ -386,6 +387,7 @@ describe("registered progress refresh admission", () => {
           await options?.userTurnTranscriptRecorder?.persistApproved();
           assertCurrent();
           options?.onQueueAccepted?.(true);
+          injectionAccepted.resolve();
           if (unconfirmed) {
             return { transcriptCommit: "unconfirmed", errorMessage: "Receipt still pending" };
           }
@@ -426,6 +428,8 @@ describe("registered progress refresh admission", () => {
         expect(claim).not.toHaveBeenCalled();
         expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
         expect(getAgentRunContext("original-work")).toMatchObject(visibleProjection);
+        // Refresh ACKs precede steering; keep the incumbent alive through acceptance.
+        await injectionAccepted.promise;
         await f.finishDispatch();
         const retry = await refreshCard(f, "active-refresh", undefined, { id: "retry-steer" });
         expect(retry).toHaveBeenCalledWith(...acceptedResponse());
