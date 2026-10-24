@@ -291,11 +291,19 @@ export class MarkdownDomReconciler {
     ) {
       return false;
     }
-    // Structural boundaries and control syntax must use the full renderer immediately.
-    if (/[\n\r<>&]/u.test(source.slice(this.source.length)) || /[\uE000-\uF8FF]/u.test(source)) {
+    // Keep inline delimiters canonical: transient syntax can wrap, then shrink again.
+    if (
+      /[\n\r<>&`*_~[\]()!\\|]/u.test(source.slice(this.source.length)) ||
+      /[\uE000-\uF8FF]/u.test(source)
+    ) {
       return false;
     }
-    return Boolean(this.previewText || this.findPreviewText(this.tail.children));
+    if (this.previewText) {
+      return true;
+    }
+    const preview = this.findPreviewText(this.tail.children);
+    // A closed emphasis/link/code leaf cannot own text following its closing delimiter.
+    return Boolean(preview && this.source.endsWith(preview.node.data));
   }
 
   private findPreviewPath(nodes: RenderedNode[]): RenderedNode[] | undefined {

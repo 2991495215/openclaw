@@ -108,6 +108,18 @@ function drawContent(content: RawContent["content"], media?: MarkdownMedia) {
 }
 
 describe("streaming Markdown DOM", () => {
+  it.each([
+    ["A reply", "A reply with **bold**", "strong", "bold"],
+    ["A reply", "A reply with `code`", "code", "code"],
+    ["A reply", "A reply with [link](https://example.com)", "a", "link"],
+    ["A **bold**", "A **bold** trailing text", "strong", "bold"],
+  ])("keeps inline syntax canonical while streaming %s", (initial, next, tag, text) => {
+    draw(initial);
+    draw(next);
+    expect(container.querySelector(tag)?.textContent).toBe(text);
+    expect(container.querySelector("p")?.textContent).not.toMatch(/\*|`|https:/u);
+  });
+
   it("formats the first delta after an idle formatting window immediately", async () => {
     vi.useFakeTimers();
     try {
@@ -126,19 +138,18 @@ describe("streaming Markdown DOM", () => {
     try {
       draw("A growing reply");
       const parsed = parse.mock.calls.length;
-      draw("A growing reply with **bold**");
-      draw("A growing reply with **bold** text");
-      expect(container.querySelector("strong")).toBeNull();
-      expect(container.textContent).toContain("with **bold** text");
+      draw("A growing reply with more");
+      draw("A growing reply with more text");
+      expect(container.textContent).toContain("with more text");
       expect(parse.mock.calls.length).toBe(parsed);
       await vi.advanceTimersByTimeAsync(50);
-      expect(container.querySelector("strong")?.textContent).toBe("bold");
       expect(parse.mock.calls.length).toBeGreaterThan(parsed);
 
-      draw("A growing reply with **bold** text and *more*");
-      expect(container.querySelector("em")).toBeNull();
+      const caughtUp = parse.mock.calls.length;
+      draw("A growing reply with more text and another suffix");
+      expect(parse.mock.calls.length).toBe(caughtUp);
       await vi.advanceTimersByTimeAsync(50);
-      expect(container.querySelector("em")?.textContent).toBe("more");
+      expect(parse.mock.calls.length).toBeGreaterThan(caughtUp);
     } finally {
       parse.mockRestore();
       vi.useRealTimers();
@@ -174,16 +185,15 @@ describe("streaming Markdown DOM", () => {
       draw("A growing reply");
       const paragraph = container.querySelector("p");
       const parsed = parse.mock.calls.length;
-      draw("A growing reply with **bold** tail");
-      expect(paragraph?.textContent).toBe("A growing reply with **bold** tail");
+      draw("A growing reply with a plain tail");
+      expect(paragraph?.textContent).toBe("A growing reply with a plain tail");
       expect(parse.mock.calls.length).toBe(parsed);
       await vi.advanceTimersByTimeAsync(50);
       expect(container.querySelector("p")).toBe(paragraph);
-      expect(container.querySelector("strong")?.textContent).toBe("bold");
       expect(parse.mock.calls.length).toBeGreaterThan(parsed);
 
-      draw("A growing reply with **bold** tail and *final*");
-      draw("A growing reply with **bold** tail and *final*", { streaming: false });
+      draw("A growing reply with a plain tail and *final*");
+      draw("A growing reply with a plain tail and *final*", { streaming: false });
       expect(container.querySelector("em")?.textContent).toBe("final");
       draw("Replacement", { key: "replacement", streaming: false });
       await vi.advanceTimersByTimeAsync(50);
