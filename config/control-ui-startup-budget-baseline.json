@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 281671,
-  "reason": "Bound Cron run-history selector traversal: matched c64f3109 startup 281744 to 281671 B gzip, style CPU median down 15.25% desktop and 17.09% mobile; 7 JS and 1 CSS request unchanged.",
+  "startupJsGzipBytes": 281142,
+  "reason": "Matched ad9f814 base/head startup 281039 to 281142 B gzip (+103 B), with 7 JS and 1 CSS request unchanged; combined subscription/history removes one serial RPC. Original 20-pair remote/local switch medians improved 13.8%/26.5%.",
   "updatedAt": "2026-10-24"
 }

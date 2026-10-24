@@ -5,6 +5,7 @@ import { createDeferred as deferred } from "../../../../test/helpers/promise.js"
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../lib/session-pull-requests.ts";
 import type { SessionCapability } from "../../lib/sessions/index.ts";
+import { createFrameClock } from "../../test-helpers/animation-frame-clock.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { setChatHistoryLoad } from "./chat-history-state.ts";
 import { createTestChatPane } from "./chat-pane.test-support.ts";
@@ -37,23 +38,17 @@ function createSecondaryHydrationPane(scopes = ["operator.admin"]) {
     ],
     scopes,
   );
-  const syncReactions = vi.spyOn(
-    pane as typeof pane & { syncSessionReactions(): void },
-    "syncSessionReactions",
-  );
   const commitEffects: AfterCommitEffect[] = [];
   const afterCommit = (effect: AfterCommitEffect) => {
     commitEffects.push(effect);
     return () => undefined;
   };
   state.renderLifecycle = { afterCommit };
-  const frames = new Map<number, FrameRequestCallback>();
-  let nextFrame = 0;
-  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-    frames.set(++nextFrame, callback);
-    return nextFrame;
-  });
-  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => frames.delete(id));
+  const framesClock = createFrameClock();
+  const frames = framesClock.frames;
+
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation(framesClock.request);
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(framesClock.cancel);
   const paintFrame = async () => {
     const callbacks = [...frames.values()];
     frames.clear();
@@ -95,7 +90,6 @@ function createSecondaryHydrationPane(scopes = ["operator.admin"]) {
     patch,
     request,
     listBranches,
-    syncReactions,
     state,
     deferTranscript,
     expectNoSecondaryReads,
@@ -138,7 +132,6 @@ it.each([
   }
   const expectPending = () => {
     expect(f.patch).not.toHaveBeenCalled();
-    expect(f.syncReactions).not.toHaveBeenCalled();
     if (!returning) {
       f.expectNoSecondaryReads();
     }
@@ -156,7 +149,6 @@ it.each([
   expect(complete).not.toHaveBeenCalled();
   await f.paintFrame();
   expect(f.patch).toHaveBeenCalledTimes(Number(returning && committed));
-  expect(f.syncReactions).toHaveBeenCalledOnce();
   if (!returning) {
     expect(f.listBranches).toHaveBeenCalledOnce();
     expect(f.request.mock.calls.map(([method]) => method)).toEqual([
