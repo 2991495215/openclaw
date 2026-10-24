@@ -266,8 +266,16 @@ describe("widget-card", () => {
     vi.stubGlobal(
       "ResizeObserver",
       class {
-        observe() {}
-        disconnect() {}
+        private readonly targets = new Set<Element>();
+        observe(target: Element) {
+          this.targets.add(target);
+        }
+        unobserve(target: Element) {
+          this.targets.delete(target);
+        }
+        disconnect() {
+          this.targets.clear();
+        }
       },
     );
     onTestFinished(() => {

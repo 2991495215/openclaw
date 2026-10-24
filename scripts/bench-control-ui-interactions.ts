@@ -27,6 +27,11 @@ import {
   summarizeLongTaskCpuProfiles,
   type InteractionStyleSheet,
 } from "./lib/control-ui-interaction-trace.ts";
+import {
+  installControlUiResourceCounts,
+  readControlUiResourceCounts,
+  type ControlUiResourceCounts,
+} from "./lib/control-ui-resource-counts.ts";
 
 const { values } = parseArgs({
   options: {
@@ -42,6 +47,8 @@ const { values } = parseArgs({
     "thread-cpu-time": { type: "boolean", default: false },
     "first-pair-screenshots": { type: "boolean", default: false },
     "invalidation-tracking": { type: "boolean", default: false },
+    "resource-counts": { type: "boolean", default: false },
+    headed: { type: "boolean", default: false },
   },
 });
 const trace = values.trace || values["selector-stats"];
@@ -57,8 +64,8 @@ if (!["desktop", "mobile", "both"].includes(values.viewport)) {
   throw new Error("viewport must be desktop, mobile or both");
 }
 const selectedIds = values.steps?.split(",");
-const scenarios = interactionScenarios.filter(
-  (step) => !selectedIds || selectedIds.includes(step.id),
+const scenarios = interactionScenarios.filter((step) =>
+  selectedIds ? selectedIds.includes(step.id) : !step.resourceOnly || values["resource-counts"],
 );
 if (!scenarios.length || selectedIds?.some((id) => !scenarios.some((step) => step.id === id))) {
   throw new Error("Unknown or empty interaction steps");
@@ -103,7 +110,7 @@ type Result = {
   viewport: string;
   bundle: number;
   pair: number;
-  status: "passed" | "failed";
+  status: "passed" | "failed" | "skipped";
   hostLoadAverage: number[];
   wallMs?: number;
   scriptMs?: number;
@@ -114,6 +121,9 @@ type Result = {
   domBefore?: { nodes: number; menuItems: number; namedAnchors: number };
   domAfter?: { nodes: number; menuItems: number; namedAnchors: number };
   rowIdentity?: { initial: number; created: number; retained: number; final: number };
+  resourcesBefore?: ControlUiResourceCounts;
+  resourcesAfter?: ControlUiResourceCounts;
+  skipReason?: string;
   trace?: ReturnType<typeof summarizeInteractionTrace>;
   longTaskDetails?: ReturnType<typeof summarizeLongTaskCpuProfiles>;
   selectorStats?: { artifact: string; stylePasses: number; selectorCount: number };
@@ -138,8 +148,9 @@ const servers: Array<{
 }> = [];
 const browser = await chromium.launch({
   executablePath: resolvePlaywrightChromiumExecutablePath(chromium.executablePath()),
-  headless: true,
+  headless: !values.headed,
 });
+class ScenarioSkipped extends Error {}
 try {
   for (const directory of bundles) {
     const resolved = path.resolve(directory);
@@ -175,6 +186,10 @@ try {
           : "untraced CDP metrics",
         metricTimeDomain: values["thread-cpu-time"] ? "threadTicks" : "timeTicks",
         screenshots: values["first-pair-screenshots"] ? "first pair per cell" : "all",
+        resourceCounts: values["resource-counts"]
+          ? "Instrumented top-frame native registrations, including fixture resources; measure timings separately without this flag."
+          : false,
+        headed: values.headed,
         invalidationTracking:
           trace && (values["invalidation-tracking"] || values["selector-stats"]),
         selectorStats: values["selector-stats"],
@@ -219,6 +234,9 @@ try {
           page.setDefaultTimeout(15_000);
           // tsx preserves names in serialized fixture callbacks, as in the cold-load runner.
           await page.addInitScript("globalThis.__name = (fn) => fn");
+          if (values["resource-counts"]) {
+            await page.addInitScript(installControlUiResourceCounts);
+          }
           const errors: string[] = [];
           page.on("pageerror", (error) => errors.push(error.message));
           const artifactPrefix = `${viewport.name}-${theme}-${scenario.id}-${pair + 1}-${bundle}`;
@@ -234,6 +252,7 @@ try {
           let cdp: CDPSession | undefined;
           let tracing = false;
           let profiling = false;
+          let minimizedWindow: number | undefined;
           const events: unknown[] = [];
           const styleSheets = new Map<string, InteractionStyleSheet>();
           try {
@@ -308,6 +327,33 @@ try {
               await cdp.send("Profiler.start");
               profiling = true;
             }
+            if (values["resource-counts"]) {
+              result.resourcesBefore = await readControlUiResourceCounts(page);
+            }
+            if (scenario.visibility === "hidden") {
+              const { windowId } = await cdp.send("Browser.getWindowForTarget");
+              minimizedWindow = windowId;
+              await cdp.send("Browser.setWindowBounds", {
+                windowId,
+                bounds: { windowState: "minimized" },
+              });
+              // Headless Chromium accepts minimization without hiding the page.
+              // A frozen renderer would make this idle measurement meaningless.
+              const hidden = await page
+                .waitForFunction(() => document.visibilityState === "hidden", undefined, {
+                  timeout: 1_000,
+                  polling: 50,
+                })
+                .then(
+                  () => true,
+                  () => false,
+                );
+              if (!hidden) {
+                throw new ScenarioSkipped(
+                  "Native window minimization did not hide the page; use --headed on a windowed host for hidden-idle proof.",
+                );
+              }
+            }
             const requestsBefore = (await gateway.getRequests()).length;
             const countDom = () =>
               page.evaluate(() => ({
@@ -350,7 +396,9 @@ try {
             await page.evaluate(() => performance.mark("interaction:start"));
             const start = performance.now();
             await scenario.run(page, gateway);
-            await settle(page);
+            if (scenario.visibility !== "hidden") {
+              await settle(page);
+            }
             result.wallMs = performance.now() - start;
             await page.evaluate(() => performance.mark("interaction:end"));
             const after = await metrics(cdp);
@@ -367,6 +415,9 @@ try {
                 };
               }, scenario.rowSelector);
               await rowProbe.dispose();
+            }
+            if (values["resource-counts"]) {
+              result.resourcesAfter = await readControlUiResourceCounts(page);
             }
             for (const [key, name] of [
               ["scriptMs", "ScriptDuration"],
@@ -388,7 +439,12 @@ try {
             }
             result.status = "passed";
           } catch (error) {
-            result.error = String(error);
+            if (error instanceof ScenarioSkipped) {
+              result.status = "skipped";
+              result.skipReason = error.message;
+            } else {
+              result.error = String(error);
+            }
           } finally {
             const capture = async <T>(operation: () => Promise<T>): Promise<T | undefined> => {
               try {
@@ -400,6 +456,17 @@ try {
               }
             };
             try {
+              if (minimizedWindow !== undefined && cdp) {
+                await capture(() =>
+                  cdp!.send("Browser.setWindowBounds", {
+                    windowId: minimizedWindow,
+                    bounds: { windowState: "normal" },
+                  }),
+                );
+              }
+              if (values["resource-counts"] && !result.resourcesAfter) {
+                result.resourcesAfter = await capture(() => readControlUiResourceCounts(page));
+              }
               const profile =
                 profiling && cdp
                   ? await capture(async () => (await cdp!.send("Profiler.stop")).profile)
@@ -547,6 +614,13 @@ const summary = viewports
               row.bundle === bundle &&
               row.status === "failed",
           ).length,
+          skipped: results.filter(
+            (row) =>
+              row.viewport === name &&
+              row.step === id &&
+              row.bundle === bundle &&
+              row.status === "skipped",
+          ).length,
           trace:
             trace && samples.length
               ? Object.fromEntries(
@@ -611,7 +685,7 @@ await writeFile(
       planned: viewports.length * scenarios.length * pairs * servers.length,
       executed: results.length,
       failed: results.filter((row) => row.status === "failed").length,
-      skipped: 0,
+      skipped: results.filter((row) => row.status === "skipped").length,
       summary,
     },
     null,
@@ -647,12 +721,12 @@ const rows = summary
           )
           .join(" ")
       : "";
-    return `<tr><td>${escapeHtml(row.viewport)}</td><td>${escapeHtml(row.step)}</td><td>${row.bundle}</td><td>${row.passed}/${row.failed}</td><td>${metric("scriptMs")}</td><td>${metric("taskMs")}</td><td>${metric("layoutMs")}</td><td>${metric("styleMs")}</td><td>${row.trace?.longTasks?.median ?? "—"}</td><td>${links}</td></tr>`;
+    return `<tr><td>${escapeHtml(row.viewport)}</td><td>${escapeHtml(row.step)}</td><td>${row.bundle}</td><td>${row.passed}/${row.failed}/${row.skipped}</td><td>${metric("scriptMs")}</td><td>${metric("taskMs")}</td><td>${metric("layoutMs")}</td><td>${metric("styleMs")}</td><td>${row.trace?.longTasks?.median ?? "—"}</td><td>${links}</td></tr>`;
   })
   .join("\n");
 await writeFile(
   path.join(artifactDir, "report.html"),
-  `<!doctype html><meta charset="utf-8"><title>Warm interactions</title><style>body{font:15px system-ui;padding:24px}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #bbb;text-align:left}a{margin-right:6px}</style><h1>Production-renderer warm interactions</h1><p>${trace ? "Trace and CPU sampling overhead included." : "Untraced CDP metric deltas."} ${values["selector-stats"] ? "CSS selector instrumentation overhead included; selectors ranked by elapsed microseconds." : ""} Theme: ${theme}. Cells: median / p95 / min–max (ms). Wall time in JSON is automation-to-assertion, not INP. Synthetic Gateway; native clocks. <a href="manifest.json">Manifest</a> <a href="summary.json">Summary</a></p><table><tr><th>Viewport</th><th>Step</th><th>Bundle</th><th>Pass/fail</th><th>Script</th><th>Task</th><th>Layout</th><th>Style</th><th>Long tasks</th><th>Evidence</th></tr>${rows}</table>`,
+  `<!doctype html><meta charset="utf-8"><title>Warm interactions</title><style>body{font:15px system-ui;padding:24px}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #bbb;text-align:left}a{margin-right:6px}</style><h1>Production-renderer warm interactions</h1><p>${trace ? "Trace and CPU sampling overhead included." : "Untraced CDP metric deltas."} ${values["selector-stats"] ? "CSS selector instrumentation overhead included; selectors ranked by elapsed microseconds." : ""} Theme: ${theme}. Cells: median / p95 / min–max (ms). Wall time in JSON is automation-to-assertion, not INP. Synthetic Gateway; native clocks. <a href="manifest.json">Manifest</a> <a href="summary.json">Summary</a></p><table><tr><th>Viewport</th><th>Step</th><th>Bundle</th><th>Pass/fail/skip</th><th>Script</th><th>Task</th><th>Layout</th><th>Style</th><th>Long tasks</th><th>Evidence</th></tr>${rows}</table>`,
 );
 console.log(`Warm interaction artifacts: ${artifactDir}`);
 if (results.some((result) => result.status === "failed")) {

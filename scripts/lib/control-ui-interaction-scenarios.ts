@@ -20,13 +20,16 @@ const activePane = ".chat-pane-cache__pane--active";
 const sidebarClocks = ".sidebar-recent-session openclaw-elapsed-time";
 const initialClockLabels = new WeakMap<Page, string>();
 
-type InteractionFixtureOptions = { runningSessions?: boolean };
+type InteractionFixtureOptions = { runningSessions?: boolean; longSessionLabels?: boolean };
 
 export type InteractionScenario = {
   id: string;
   route: string;
   expected: string;
   fixture?: InteractionFixtureOptions;
+  /** Resource campaigns opt into the longer inventory and idle scenarios. */
+  resourceOnly?: boolean;
+  visibility?: "hidden";
   /** Count newly inserted rows across the action, including transient replacements. */
   rowSelector?: string;
   prepare: (page: Page, gateway: MockGatewayControls) => Promise<void>;
@@ -54,7 +57,11 @@ export function createInteractionFixture(
       sessionId: `interaction-session-${index}`,
       agentId: "main",
       kind: "direct" as const,
-      label: `Interaction ${String(index).padStart(4, "0")}`,
+      label:
+        `Interaction ${String(index).padStart(4, "0")}` +
+        (options.longSessionLabels
+          ? " — investigate the synthetic deployment and review the complete verification record"
+          : ""),
       updatedAt: 1_800_000_000_000 - index * 1_000,
       childOwnerSessionKeys: runningChild ? [sessionKeys[0]] : [],
       ...(options.runningSessions && index === 0
@@ -295,6 +302,51 @@ async function prepareSessionSwitch(page: Page) {
   await switchSession(page, 0);
 }
 
+async function prepareSidebarInventory(page: Page, gateway: MockGatewayControls) {
+  await prepareChat(page);
+  await navigation(page, "sessions");
+  const more = page.locator(
+    ".sidebar-session-pagination--roster > .sidebar-session-pagination__button",
+  );
+  for (const offset of [200, 400, 600, 800]) {
+    await more.click();
+    await gateway.waitForRequest("sessions.list", {
+      match: { source: "sidebar", offset, limit: 200 },
+    });
+    await frames(page);
+  }
+  await more.waitFor({ state: "hidden" });
+}
+
+async function prepareSidebarResources(page: Page, gateway: MockGatewayControls) {
+  await prepareSidebarInventory(page, gateway);
+  const showMore = page.locator(
+    '.sidebar-session-pagination__button[aria-label="Show more"]:visible',
+  );
+  // Section pagination reveals ten of the already-loaded 1,000 rows per click.
+  for (let pageIndex = 0; pageIndex < 100 && (await showMore.count()); pageIndex++) {
+    await showMore.first().click();
+    await frames(page);
+  }
+  await showMore.waitFor({ state: "hidden" });
+  await page
+    .locator(".sidebar-shell__body")
+    .first()
+    .evaluate((element) => {
+      element.scrollTop = 0;
+    });
+  await frames(page);
+  const label = page.locator(".sidebar-recent-session__name.hover-marquee").first();
+  await label.waitFor({ state: "visible" });
+  if (!(await label.textContent())?.includes("synthetic deployment")) {
+    throw new Error("Resource scenario requires the long-label 1,000-session fixture");
+  }
+  // Leave the pointer away from rows; idle measurements must not include a hovered marquee.
+  const viewport = page.viewportSize()!;
+  await page.mouse.move(viewport.width - 4, viewport.height - 4);
+  await frames(page);
+}
+
 async function routeLink(page: Page, route: "sessions" | "cron") {
   await navigation(page, "pages");
   return page.locator(`.sidebar-pages a[href="${pathForRoute(route)}"]`).first();
@@ -422,6 +474,66 @@ async function searchModels(page: Page) {
 }
 
 export const interactionScenarios: readonly InteractionScenario[] = [
+  {
+    id: "sidebar-resources-scroll-resize",
+    route: controlUiSessionPath(sessionKeys[0]),
+    fixture: { longSessionLabels: true },
+    resourceOnly: true,
+    expected:
+      "The 1,000-session sidebar reaches its final row, survives a viewport resize, and returns to its first row.",
+    rowSelector: ".sidebar-recent-session",
+    prepare: prepareSidebarResources,
+    run: async (page) => {
+      const scroller = page.locator(".sidebar-shell__body").first();
+      const viewport = page.viewportSize()!;
+      for (const fraction of [0.25, 0.5, 0.75, 1]) {
+        await scroller.evaluate((element, position) => {
+          element.scrollTop = (element.scrollHeight - element.clientHeight) * position;
+        }, fraction);
+        await frames(page);
+      }
+      await page
+        .locator('.sidebar-recent-session[data-session-key="agent:main:interaction-999"]')
+        .waitFor({ state: "visible" });
+      if ((await scroller.evaluate((element) => element.scrollTop)) <= 0) {
+        throw new Error("The sidebar did not scroll through its loaded inventory");
+      }
+      await page.setViewportSize({ width: viewport.width + 48, height: viewport.height });
+      await frames(page);
+      await page.setViewportSize(viewport);
+      await scroller.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      await page
+        .locator(`.sidebar-recent-session[data-session-key="${sessionKeys[0]}"]`)
+        .waitFor({ state: "visible" });
+      await frames(page);
+    },
+  },
+  ...(["visible", "hidden"] as const).map((visibility): InteractionScenario => ({
+    id: `sidebar-resources-idle-${visibility}`,
+    route: controlUiSessionPath(sessionKeys[0]),
+    fixture: { longSessionLabels: true },
+    resourceOnly: true,
+    visibility: visibility === "hidden" ? visibility : undefined,
+    expected: `The 1,000-session sidebar remains mounted and ${visibility} for three native-clock idle seconds.`,
+    prepare: prepareSidebarResources,
+    run: async (page) => {
+      const state = () => page.evaluate(() => document.visibilityState);
+      if ((await state()) !== visibility) {
+        throw new Error(`Expected a ${visibility} page before the idle interval`);
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 3_000);
+      });
+      if (
+        (await state()) !== visibility ||
+        !(await page.locator(".sidebar-recent-session").count())
+      ) {
+        throw new Error(`Sidebar or ${visibility} state changed during the idle interval`);
+      }
+    },
+  })),
   {
     id: "sidebar-clock-idle",
     route: "/new",
@@ -614,21 +726,7 @@ export const interactionScenarios: readonly InteractionScenario[] = [
     id: "sidebar-toggle",
     route: controlUiSessionPath(sessionKeys[0]),
     expected: "The 1,000-session sidebar closes and reopens.",
-    prepare: async (page, gateway) => {
-      await prepareChat(page);
-      await navigation(page, "sessions");
-      const more = page.locator(
-        ".sidebar-session-pagination--roster > .sidebar-session-pagination__button",
-      );
-      for (const offset of [200, 400, 600, 800]) {
-        await more.click();
-        await gateway.waitForRequest("sessions.list", {
-          match: { source: "sidebar", offset, limit: 200 },
-        });
-        await frames(page);
-      }
-      await more.waitFor({ state: "hidden" });
-    },
+    prepare: prepareSidebarInventory,
     run: async (page) => {
       if (await page.locator(".shell--mobile-nav").count()) {
         await page.keyboard.press("Escape");

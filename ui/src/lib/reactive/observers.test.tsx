@@ -1,7 +1,7 @@
 import { createRoot, createSignal, flush } from "solid-js";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
-import { createIntersectionObserver, createResizeObserver } from "./observers.ts";
+import { createIntersectionObserver, createResizeObserver, observeResize } from "./observers.ts";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -19,6 +19,9 @@ it.each([
       }
       observe(target: Element) {
         this.targets.add(target);
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target);
       }
       disconnect() {
         this.targets.clear();
@@ -64,6 +67,9 @@ it("waits for rendered refs before reading observer targets", () => {
       observe(target: Element) {
         targets.add(target);
       }
+      unobserve(target: Element) {
+        targets.delete(target);
+      }
       disconnect() {
         targets.clear();
       }
@@ -87,4 +93,87 @@ it("waits for rendered refs before reading observer targets", () => {
   expect(targets).toEqual(new Set([view.container.firstElementChild]));
   view.unmount();
   expect(targets.size).toBe(0);
+});
+
+it("shares resize delivery without mixing subscribers or retaining retired targets", async () => {
+  let deliver!: ResizeObserverCallback;
+  const observed = new Set<Element>();
+  const create = vi.fn();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        create();
+        deliver = callback;
+      }
+      observe(target: Element) {
+        observed.add(target);
+      }
+      unobserve(target: Element) {
+        observed.delete(target);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    },
+  );
+  const first = document.createElement("div");
+  const second = document.createElement("div");
+  const batches: Element[][] = [];
+  let releaseSecond = () => {};
+  const releaseFirst = observeResize([first, second], (entries) => {
+    batches.push(entries.map((entry) => entry.target));
+    releaseSecond();
+  });
+  const secondCallback = vi.fn();
+  releaseSecond = observeResize([second], secondCallback);
+  onTestFinished(releaseFirst);
+  onTestFinished(releaseSecond);
+  expect(create).toHaveBeenCalledOnce();
+  // SAFETY: The router reads only the entry target and forwards the native observer unchanged.
+  deliver([{ target: first }, { target: second }] as ResizeObserverEntry[], {} as ResizeObserver);
+  expect(batches).toEqual([[first, second]]);
+  expect(secondCallback).not.toHaveBeenCalled();
+  expect(observed).toEqual(new Set([first, second]));
+  const lateCallback = vi.fn();
+  const releaseLate = observeResize([second], lateCallback);
+  onTestFinished(releaseLate);
+  await Promise.resolve();
+  expect(lateCallback.mock.calls[0]?.[0].map((entry: ResizeObserverEntry) => entry.target)).toEqual(
+    [second],
+  );
+  releaseFirst();
+  expect(observed).toEqual(new Set([second]));
+  releaseLate();
+  expect(observed.size).toBe(0);
+});
+
+it("reports subscriber errors without starving independent observation", () => {
+  let deliver!: ResizeObserverCallback;
+  const report = vi.fn();
+  vi.stubGlobal("reportError", report);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        deliver = callback;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const target = document.createElement("div");
+  const failure = new Error("Observer callback failed");
+  onTestFinished(
+    observeResize([target], () => {
+      throw failure;
+    }),
+  );
+  const receive = vi.fn();
+  onTestFinished(observeResize([target], receive));
+  // SAFETY: Only the native entry target is used to route this delivery.
+  deliver([{ target }] as ResizeObserverEntry[], {} as ResizeObserver);
+  expect(report).toHaveBeenCalledExactlyOnceWith(failure);
+  expect(receive).toHaveBeenCalledOnce();
 });
