@@ -14,10 +14,11 @@ export function createGitHubIdentityStatusTool(
 ): AnyAgentTool {
   const callGateway = options.callGateway ?? callInProcessGatewayTool;
   let githubIdentitySettingsAvailable = options.githubIdentitySettingsAvailable === true;
+  let githubIdentitySettingsOffered = githubIdentitySettingsAvailable;
   const tool: AnyAgentTool = {
     label: "GitHub Identity Status",
     name: "github_identity_status",
-    description: githubIdentityStatusDescription(githubIdentitySettingsAvailable),
+    description: githubIdentityStatusDescription(githubIdentitySettingsOffered),
     parameters: Type.Object({}, { additionalProperties: false }),
     execute: async () => {
       const caller = getGatewayToolCallerIdentity();
@@ -44,13 +45,18 @@ export function createGitHubIdentityStatusTool(
     },
   };
   return bindAgentToolAvailability(tool, {
-    prepare(preparedTool, callableTools) {
-      const screen = callableTools.get("screen");
+    prepare(preparedTool, callableTools, offeredTools) {
+      const callableScreen = callableTools.get("screen");
+      const offeredScreen = offeredTools.get("screen");
       githubIdentitySettingsAvailable =
         options.githubIdentitySettingsAvailable === true &&
-        screen !== undefined &&
-        schemaIncludesAction(screen.parameters, "github_identity_settings");
-      preparedTool.description = githubIdentityStatusDescription(githubIdentitySettingsAvailable);
+        callableScreen !== undefined &&
+        schemaIncludesAction(callableScreen.parameters, "github_identity_settings");
+      githubIdentitySettingsOffered =
+        options.githubIdentitySettingsAvailable === true &&
+        offeredScreen !== undefined &&
+        schemaIncludesAction(offeredScreen.parameters, "github_identity_settings");
+      preparedTool.description = githubIdentityStatusDescription(githubIdentitySettingsOffered);
     },
   });
 }
