@@ -418,6 +418,7 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
       });
 
       const providers: ModelAuthStatusProvider[] = [];
+      let localProfileIdSet: Set<string> | undefined;
       for (const prov of authHealth.providers) {
         const providerKey = normalizeProviderId(prov.provider);
         const authProviderKey = resolveProviderIdForAuth(prov.provider, authAliasLookupParams);
@@ -433,10 +434,10 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
         const localOrderStored =
           storedOrderKey !== undefined &&
           store.runtimeLocalOrderProviderIds?.includes(storedOrderKey);
-        const localProfileIds = new Set(
+        const localProfileIds = (localProfileIdSet ??= new Set(
           store.runtimeLocalProfileIds ??
             Object.keys(store.profiles).filter((profileId) => !externalProfileIds.has(profileId)),
-        );
+        ));
         const providerOrderLocked = configBoundAuthProviders.has(authProviderKey);
         const configuredOrderLocked = profileOrder.order !== undefined && !profileOrder.fromStore;
         const usageProfile =
