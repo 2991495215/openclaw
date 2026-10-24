@@ -34,6 +34,20 @@ export function hashCliSessionText(value: string | undefined): string | undefine
   return crypto.createHash("sha256").update(trimmed).digest("hex");
 }
 
+const CALLER_SURFACE_TOOL_NAMES = new Set([
+  "screen",
+  "show_widget",
+  "suggest_task",
+  "dismiss_task",
+]);
+
+export function hashCliToolNames(toolNames: readonly string[]): string | undefined {
+  // Caller-surface tools may change between ordinary, channel, and completion turns. The
+  // system prompt still restarts a warm process, while native session identity excludes them.
+  const stableNames = toolNames.filter((name) => !CALLER_SURFACE_TOOL_NAMES.has(name)).toSorted();
+  return hashCliSessionText(JSON.stringify(stableNames));
+}
+
 /** Projects explicit native continuity; diagnostic sessionId can name the local session. */
 export function applyCliSessionBindingResult(
   entry: SessionEntry,
