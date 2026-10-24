@@ -145,14 +145,14 @@ jobs:
           persist-credentials: false
       - name: Prepare pinned isolation image
         run: docker pull ubuntu@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc
-      # Immutable CI candidate, expiring 2026-10-21. Never fall back to a moving
+      # Immutable CI candidate, expiring 2026-11-23. Never fall back to a moving
       # build or the older npm release; the collector pins tar and binary hashes.
       - name: Stage pinned fork native compiler
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           repository: vincentkoc/tsc-ts
-          run-id: 39162206911
-          artifact-ids: 12149466946
+          run-id: 40055744106
+          artifact-ids: 12545079224
           github-token: ${{ github.token }}
           digest-mismatch: error
           path: ${{ runner.temp }}/compiler-candidate

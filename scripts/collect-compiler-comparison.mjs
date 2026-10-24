@@ -156,11 +156,11 @@ async function main() {
     distribution: "fork-ci-native",
     repository: "vincentkoc/tsc-ts",
     revision: "a80cd9190942d16286a8483f1f51d9a68037324f",
-    runId: 39162206911,
+    runId: 40055744106,
     runAttempt: 1,
-    artifactId: 12149466946,
-    artifactSha256: "e980b95b04e69c901b59c6ff6f90f8da3d4619dd386cb5067d64233ed28de423",
-    tarSha256: "4aebeece3702944225ddd8b957889279510aeeb6246fe9b29a02158268c7c79b",
+    artifactId: 12545079224,
+    artifactSha256: "bc7e7ab2562ba84e1c55b85ea70155bb35d44d1670cfa716f2c2b6188d5b27d7",
+    tarSha256: "a435f15e1fd1c7f20e9732823e43c82a0c0fa0a27674b39f234b50c66d404c75",
     binarySha256: "9785e87da1650d3a4007d234bc194c63b640524c010497884e4b93161c7bb149",
   };
   assert(process.env.RUNNER_TEMP, "Missing workflow staging directory");
