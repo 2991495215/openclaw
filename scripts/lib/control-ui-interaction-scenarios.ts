@@ -58,7 +58,11 @@ export function createInteractionFixture(
       updatedAt: 1_800_000_000_000 - index * 1_000,
       childOwnerSessionKeys: runningChild ? [sessionKeys[0]] : [],
       ...(options.runningSessions && index === 0
-        ? { childSessions: Array.from({ length: 200 }, (childValue, child) => keyForIndex(child + 1)) }
+        ? {
+            childSessions: Array.from({ length: 200 }, (_childValue, child) =>
+              keyForIndex(child + 1),
+            ),
+          }
         : {}),
       ...(runningChild
         ? {
