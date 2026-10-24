@@ -28,16 +28,17 @@ export function createMarkdownRef(
   let current: MarkdownDomReconciler | undefined;
   const [tick, setTick] = createSignal(0);
   let frame: number | undefined;
-  let formattedTick = -1;
+  let pendingPreview = false;
   const cancel = () => {
     if (frame !== undefined) {
       cancelAnimationFrame(frame);
       frame = undefined;
     }
+    pendingPreview = false;
   };
   createEffect(
     () => {
-      const generation = tick();
+      tick();
       const reconciler = owner();
       const value = read();
       const content = value.content;
@@ -46,7 +47,7 @@ export function createMarkdownRef(
         typeof content !== "string" &&
         content.deferFormatting &&
         !value.media &&
-        generation === formattedTick &&
+        frame !== undefined &&
         reconciler.canPreview(content.messageKey, content.source),
       );
       // Formatting stays in the tracked phase: late code highlighting must still invalidate it.
@@ -56,9 +57,9 @@ export function createMarkdownRef(
             ? content.parts()
             : content.parts
           : undefined;
-      return { reconciler, value, preview, parts, generation };
+      return { reconciler, value, preview, parts };
     },
-    ({ reconciler, value, preview, parts, generation }) => {
+    ({ reconciler, value, preview, parts }) => {
       if (!reconciler) {
         return;
       }
@@ -66,10 +67,7 @@ export function createMarkdownRef(
       const content = value.content;
       if (preview && typeof content !== "string") {
         reconciler.preview(content.source);
-        frame ??= requestAnimationFrame(() => {
-          frame = undefined;
-          setTick((previous) => previous + 1);
-        });
+        pendingPreview = true;
         return;
       }
       cancel();
@@ -78,7 +76,16 @@ export function createMarkdownRef(
       } else {
         reconciler.update(content.messageKey, content.source, parts!, value.media);
       }
-      formattedTick = generation;
+      if (typeof content !== "string" && content.deferFormatting && !value.media) {
+        // Sparse deltas render directly; only arrivals sharing this frame need a catch-up.
+        frame = requestAnimationFrame(() => {
+          frame = undefined;
+          if (pendingPreview) {
+            pendingPreview = false;
+            setTick((previous) => previous + 1);
+          }
+        });
+      }
       value.onUpdate?.();
     },
   );
@@ -88,7 +95,6 @@ export function createMarkdownRef(
   });
   return (element) => {
     cancel();
-    formattedTick = -1;
     current?.dispose();
     // Create the boundary synchronously so a fragment caller can return its markers.
     current = new MarkdownDomReconciler(element, registerSessionTitleTarget);

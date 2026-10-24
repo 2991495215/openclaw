@@ -107,6 +107,18 @@ function drawContent(content: RawContent["content"], media?: MarkdownMedia) {
 }
 
 describe("streaming Markdown DOM", () => {
+  it("formats the first delta of a new frame without an extra deferred pass", async () => {
+    vi.useFakeTimers();
+    try {
+      draw("A growing reply");
+      await vi.advanceTimersByTimeAsync(17);
+      draw("A growing reply with **bold** text");
+      expect(container.querySelector("strong")?.textContent).toBe("bold");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("coalesces burst formatting into one frame and flushes an idle preview", async () => {
     vi.useFakeTimers();
     const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
