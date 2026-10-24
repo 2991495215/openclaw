@@ -58,6 +58,13 @@ export function createControlUiMockSessionSubscriptions(
             capabilities = Array.isArray(params.caps) ? params.caps : [];
           } else if (method === "sessions.subscribe") {
             observesSessions = isRecord(result) && result.subscribed === true;
+          } else if (
+            method === "chat.startup" &&
+            isRecord(params.subscription) &&
+            typeof params.sessionKey === "string"
+          ) {
+            keys.add(subscriptionKey(params.sessionKey, params.agentId));
+            lifecycle?.startRepeatingEvents();
           } else if (typeof params.key === "string" && params.key.trim()) {
             const key = subscriptionKey(params.key, params.agentId);
             if (method === "sessions.messages.subscribe") {

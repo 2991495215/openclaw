@@ -372,28 +372,15 @@ suite.define(() => {
       await installRecoverySnapshot(gateway, history, { ts: user.timestamp });
       const startupCount = (await gateway.getRequests("chat.startup")).length;
       const historyCount = (await gateway.getRequests("chat.history")).length;
-      const subscriptionCount = (await gateway.getRequests("sessions.messages.subscribe")).length;
       await gateway.deferNext("chat.startup", { sessionKey });
       await gateway.setOnline(true);
       await waitForGatewayConnected(page);
-      await gateway.waitForRequest("sessions.messages.subscribe", { after: subscriptionCount });
-      await expect
-        .poll(() =>
-          pane.evaluate((element, previous) => {
-            const subscription = (element as HTMLElement & { state: ChatPageHost }).state
-              .chatSessionMessageSubscription;
-            return subscription != null && subscription !== previous;
-          }, oldSubscription),
-        )
-        .toBe(true);
-      await oldSubscription.dispose();
       await gateway.waitForRequest("chat.startup", { after: startupCount });
       const recovery = await gateway.waitForRequest("chat.history", { after: historyCount });
       expect(recovery.params).toMatchObject({ sessionKey, limit: 1000, inputRunIds: [runId] });
       await expect.poll(readPane).toMatchObject({
         connected: true,
         loading: true,
-        subscriptionKey: sessionKey,
         runId,
         queue: [{ sendRunId: runId, sendState: "waiting-reconnect" }],
         messageCount: initial.messageCount,
@@ -447,7 +434,20 @@ suite.define(() => {
 
       await gateway.resolveDeferred("chat.startup", completeHistory);
       await gateway.resolveDeferred("chat.history", completeHistory);
-      await expect.poll(readPane).toMatchObject({ loading: false, queue: [] });
+      await expect
+        .poll(readPane)
+        .toMatchObject({ loading: false, queue: [], subscriptionKey: sessionKey });
+      await expect
+        .poll(() =>
+          pane.evaluate(
+            (element, previous) =>
+              (element as HTMLElement & { state: ChatPageHost }).state
+                .chatSessionMessageSubscription !== previous,
+            oldSubscription,
+          ),
+        )
+        .toBe(true);
+      await oldSubscription.dispose();
       await gateway.emitChatFinal({ runId, sessionKey, text: reply });
       await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0);
       await assertOrder();

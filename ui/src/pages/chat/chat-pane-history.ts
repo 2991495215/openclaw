@@ -38,7 +38,6 @@ import {
   type ChatHistoryResult,
 } from "./chat-history-snapshot.ts";
 import { chatHistoryRequests, getChatHistoryLoadState } from "./chat-history-state.ts";
-import { syncSelectedSessionMessageSubscription } from "./chat-history-subscription.ts";
 import { loadChatHistory } from "./chat-history.ts";
 import {
   CHAT_HISTORY_PREFETCH_EDGE_PX,
@@ -94,9 +93,6 @@ export abstract class ChatPaneHistory extends ChatPaneSnapshotHydration {
     }
     resetToolStream(state, { preserveStreamSegments: state.chatRunId !== null });
     this.reconcileWaitingApprovalSnapshot();
-    if (chatHistoryRequests(state).subscriptionError) {
-      void syncSelectedSessionMessageSubscription(state);
-    }
     const historyLoad = getChatHistoryLoadState(state);
     const startup = historyLoad.phase === "failed" && historyLoad.startup;
     void refreshPageChat(state, {

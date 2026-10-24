@@ -666,13 +666,13 @@ describe("chat pane connection lifecycle", () => {
       expect(state.connectionEpoch).toBe(initialGeneration + 2);
       applyPhase("connected", 2, true);
 
-      await expect(chatHistoryRequests(state).subscriptionReady).resolves.toBe(true);
+      await waitForSolid(() => expect(requestCalls(request, "chat.startup")).toHaveLength(1));
       expect(requestCalls(request, "chat.startup")).toHaveLength(1);
       expect(requestCalls(request, "question.list")).toHaveLength(questions);
       expect(request).toHaveBeenCalledWith(
         "chat.startup",
         expect.objectContaining({ limit: 80, maxBytes: 256 * 1024, sessionKey: state.sessionKey }),
-        { signal: expect.any(AbortSignal), timeoutMs: 30_000 },
+        { timeoutMs: 30_000 },
       );
       expect(deferHydration).toHaveBeenCalledExactlyOnceWith(state.sessionKey, expect.any(Promise));
       expect(branches).not.toHaveBeenCalled();

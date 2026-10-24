@@ -143,7 +143,10 @@ export function scheduleGatewayRequestStart(
       request.method === "sessions.subscribe" ||
       request.method === "models.list" ||
       (request.method === "sessions.messages.subscribe" &&
-        asOptionalRecord(request.params)?.includeApprovals === true);
+        asOptionalRecord(request.params)?.includeApprovals === true) ||
+      (request.method === "chat.startup" &&
+        asOptionalRecord(asOptionalRecord(request.params)?.subscription)?.includeApprovals ===
+          true);
     const lifecycle =
       frameBytes <= MAX_CONTROL_FRAME_BYTES &&
       (request.method === "gateway.suspend.prepare" ||

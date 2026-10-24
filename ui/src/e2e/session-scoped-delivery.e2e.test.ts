@@ -76,10 +76,12 @@ suite.define(() => {
         } else {
           await page.locator(`[data-session-key="${keys[1]}"]`).first().waitFor();
         }
-        await gateway.waitForRequest(subscribe, { match: { key: first } });
+        expect(
+          (await gateway.waitForRequest("chat.startup", { match: { sessionKey: first } })).params,
+        ).toHaveProperty("subscription");
         if (mode === "roster") {
           const subscriptions = await gateway.getRequests(subscribe);
-          expect(subscriptions).toMatchObject([{ params: { key: first } }]);
+          expect(subscriptions).toEqual([]);
         } else {
           await gateway.waitForRequest(subscribe, { match: { key: keys[1] } });
           await gateway.emitGatewayEvent("session.observer", {
@@ -145,9 +147,12 @@ suite.define(() => {
         const panes = page.locator(".chat-split-view__cell");
         await waitText(panes.nth(0), "Attached 0");
         await waitText(panes.nth(1), "Attached 1");
-        for (const key of [first, second, narrated]) {
-          await gateway.waitForRequest(subscribe, { match: { key } });
+        for (const key of [first, second]) {
+          expect(
+            (await gateway.waitForRequest("chat.startup", { match: { sessionKey: key } })).params,
+          ).toHaveProperty("subscription");
         }
+        await gateway.waitForRequest(subscribe, { match: { key: narrated } });
         await evaluateControlUiContext(page, (context) => {
           // This page-lifetime observer opts the delivery proof into diagnostic capture.
           context.gateway.subscribeEventLog(() => undefined);
@@ -220,16 +225,19 @@ suite.define(() => {
         expect(await gateway.getRequests(subscribe, { key: unrelated })).toHaveLength(0);
 
         const subscriptionsBefore = await gateway.getRequests(subscribe);
+        const startupsBefore = await gateway.getRequests("chat.startup");
         await reconnectMockGateway(page, gateway);
         for (const key of [first, second, narrated]) {
-          await gateway.waitForRequest(subscribe, {
-            match: { key },
-            after: subscriptionsBefore.filter(
+          const foreground = key !== narrated;
+          await gateway.waitForRequest(foreground ? "chat.startup" : subscribe, {
+            match: foreground ? { sessionKey: key } : { key },
+            after: (foreground ? startupsBefore : subscriptionsBefore).filter(
               (request) =>
                 typeof request.params === "object" &&
                 request.params !== null &&
-                "key" in request.params &&
-                request.params.key === key,
+                (foreground
+                  ? "sessionKey" in request.params && request.params.sessionKey === key
+                  : "key" in request.params && request.params.key === key),
             ).length,
           });
         }

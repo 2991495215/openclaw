@@ -1,6 +1,7 @@
 import type {
   SessionsRecoverParams,
   SessionsRecoverResult,
+  ChatHistoryParams,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type {
@@ -154,7 +155,12 @@ export function createSessionScopedOperations(host: SessionScopedOperationsHost)
 
   const subscribeMessages = async (
     key: string,
-    options: { agentId?: string | null; includeApprovals?: boolean; mode?: "narration" } = {},
+    options: {
+      agentId?: string | null;
+      includeApprovals?: boolean;
+      mode?: "narration";
+      startup?: Omit<ChatHistoryParams, "sessionKey" | "agentId">;
+    } = {},
   ): Promise<SessionMessageSubscription> => {
     const scope = host.connection.capture();
     if (!scope || disposed) {
@@ -175,6 +181,7 @@ export function createSessionScopedOperations(host: SessionScopedOperationsHost)
         agentId,
         ...(includeApprovals ? { includeApprovals: true } : {}),
         ...(mode ? { mode } : {}),
+        ...(options.startup ? { startup: options.startup } : {}),
       });
     ownedSubscriptions.add(subscription);
     if (disposed || !host.connection.isCurrent(scope)) {

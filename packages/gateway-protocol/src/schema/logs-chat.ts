@@ -66,7 +66,15 @@ export const ChatHistoryParamsSchema = closedObject({
 
 /** Resolve a short chat link and fetch its first page under the same discovery policy. */
 export const ChatStartupParamsSchema = Type.Union([
-  ChatHistoryParamsSchema,
+  closedObject({
+    ...ChatHistoryParamsSchema.properties,
+    subscription: Type.Optional(
+      closedObject({
+        subscriptionId: Type.String({ minLength: 1, maxLength: 128 }),
+        includeApprovals: Type.Optional(Type.Literal(true)),
+      }),
+    ),
+  }),
   closedObject({
     shortId: NonEmptyString,
     slugHint: Type.Optional(NonEmptyString),

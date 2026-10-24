@@ -35,7 +35,7 @@ import {
   getChatHistoryLoadState,
   synchronizeInitialChatSnapshotConnection,
 } from "./chat-history-state.ts";
-import { syncSelectedSessionMessageSubscription } from "./chat-history-subscription.ts";
+import { disposeSelectedSessionMessageSubscription } from "./chat-history-subscription.ts";
 import { applyChatAgentsList, resumePendingChatHistoryLoad } from "./chat-history.ts";
 import { ChatPaneLifecycle } from "./chat-pane-lifecycle.ts";
 import { resolvePlacementComposer } from "./chat-pane-placement.ts";
@@ -339,6 +339,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       retireChatMetadataRequests(state, { keepPresentation: !metadataOwnerChanged });
     }
     if (sourceChanged) {
+      disposeSelectedSessionMessageSubscription(state);
       this.retireDetailsOutputs();
       this.resetSessionReadAcknowledgements();
       this.headerPresentation.continueInTerminalDialog = null;
@@ -414,13 +415,6 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
     this.refreshBoardSubscriptions();
     const routeSessionKey = this.sessionKey.trim();
     const catalogRouteKey = parseCatalogSessionKey(routeSessionKey);
-    if (
-      state.connected &&
-      !catalogRouteKey &&
-      (sourceChanged || this.connectedClient !== snapshot.client)
-    ) {
-      void syncSelectedSessionMessageSubscription(state, { force: true });
-    }
     this.reconcileTaskSuggestionConnection(sourceChanged);
     this.synchronizeSessionObservation();
     if (readsResumed && !sourceChanged && this.presented) {

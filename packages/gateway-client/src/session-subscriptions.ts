@@ -1,3 +1,4 @@
+import type { ChatHistoryParams, ErrorShape } from "@openclaw/gateway-protocol";
 import { normalizeAgentIdStrict } from "@openclaw/normalization-core/agent-id";
 import { generateUUID } from "@openclaw/normalization-core/uuid";
 import type { GatewayProtocolRequestOptions } from "./protocol-request.js";
@@ -17,18 +18,28 @@ export type GatewaySessionMessageSubscription = {
   mode?: "narration";
   includeApprovals?: true;
   approvalReplay?: unknown;
+  startup?: { ok: boolean; payload?: unknown; error?: ErrorShape };
 };
 
 export type GatewaySessionMessageSubscriptionOptions = {
   agentId?: string | null;
   mode?: "narration";
   includeApprovals?: boolean;
+  startup?: Omit<ChatHistoryParams, "sessionKey" | "agentId">;
 };
 
 type SessionMessageSubscriptionResponse = {
   key: string;
+  agentId?: string;
   approvalReplay?: unknown;
+  startup?: GatewaySessionMessageSubscription["startup"];
 };
+
+type SessionMessageWireResponse = Partial<SessionMessageSubscriptionResponse> &
+  Record<string, unknown> & {
+    subscription?: SessionMessageSubscriptionResponse;
+    startupError?: ErrorShape;
+  };
 
 type SessionMessageSubscriptionEntry = {
   subscriptionId: string;
@@ -110,6 +121,9 @@ export class GatewaySessionMessageSubscriptionCoordinator {
     const agentId = options.agentId?.trim() || null;
     const scopeAgentId = normalizedAgentScope(agentId);
     const narration = options.mode === "narration";
+    if (narration && options.startup) {
+      throw new Error("Chat startup requires a full message subscription");
+    }
     const includeApprovals = options.includeApprovals === true;
 
     let entry: SessionMessageSubscriptionEntry;
@@ -158,14 +172,23 @@ export class GatewaySessionMessageSubscriptionCoordinator {
     }
     try {
       if (created) {
-        entry.ready = this.#requestSubscribe(entry, includeApprovals);
+        entry.ready = this.#requestSubscribe(entry, includeApprovals, undefined, options.startup);
         if (includeApprovals) {
           entry.ready = this.#trackApprovalRequest(entry, entry.ready);
         }
         // Concurrent owners share this request without an unhandled side branch.
         void entry.ready.catch(() => undefined);
       }
-      const result = await this.#acquireCapability(entry, includeApprovals);
+      const result =
+        options.startup && !created
+          ? await entry.ready.then(() =>
+              this.#requestSubscribe(entry, includeApprovals, "full", options.startup),
+            )
+          : await this.#acquireCapability(entry, includeApprovals);
+      if (created && options.startup) {
+        // The observer retains admission, not the one-shot transcript payload.
+        entry.ready = Promise.resolve({ key: result.key, approvalReplay: result.approvalReplay });
+      }
       if (!narration && entry.mode === "narration") {
         await this.#requestSubscribe(entry, false, "full");
       }
@@ -176,6 +199,7 @@ export class GatewaySessionMessageSubscriptionCoordinator {
       const subscription: GatewaySessionMessageSubscription = {
         key: result.key,
         agentId,
+        ...(options.startup ? { startup: result.startup } : {}),
         ...(narration ? { mode: "narration" as const } : {}),
         ...(includeApprovals
           ? {
@@ -350,8 +374,9 @@ export class GatewaySessionMessageSubscriptionCoordinator {
     entry: SessionMessageSubscriptionEntry,
     includeApprovals: boolean,
     mode?: "full" | "narration",
+    startup?: GatewaySessionMessageSubscriptionOptions["startup"],
   ): Promise<SessionMessageSubscriptionResponse> {
-    const send = () => this.#sendSubscribe(entry, includeApprovals, mode);
+    const send = () => this.#sendSubscribe(entry, includeApprovals, mode, startup);
     // Approval replay and stream-mode changes replace the same wire observer.
     // Serializing them prevents a slow narration replay from undoing a full upgrade.
     const request = entry.wireRequest ? entry.wireRequest.then(send, send) : send();
@@ -366,10 +391,29 @@ export class GatewaySessionMessageSubscriptionCoordinator {
 
   #requestMessages(
     entry: SessionMessageSubscriptionEntry,
-    subscription?: { mode?: "narration"; includeApprovals: boolean },
+    subscription?: {
+      mode?: "narration";
+      includeApprovals: boolean;
+      startup?: GatewaySessionMessageSubscriptionOptions["startup"];
+    },
   ) {
     const agentId = entry.key === "global" ? (entry.ownerAgentId ?? entry.agentId) : entry.agentId;
-    return this.#client.request(
+    if (subscription?.startup) {
+      return this.#client.request<SessionMessageWireResponse>(
+        "chat.startup",
+        {
+          ...subscription.startup,
+          sessionKey: entry.key,
+          ...(agentId ? { agentId } : {}),
+          subscription: {
+            subscriptionId: entry.subscriptionId,
+            ...(subscription.includeApprovals ? { includeApprovals: true } : {}),
+          },
+        },
+        { timeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS },
+      );
+    }
+    return this.#client.request<SessionMessageWireResponse>(
       subscription ? "sessions.messages.subscribe" : "sessions.messages.unsubscribe",
       {
         subscriptionId: entry.subscriptionId,
@@ -386,12 +430,13 @@ export class GatewaySessionMessageSubscriptionCoordinator {
     entry: SessionMessageSubscriptionEntry,
     requestedApprovals: boolean,
     requestedMode?: "full" | "narration",
+    startup?: GatewaySessionMessageSubscriptionOptions["startup"],
   ): Promise<SessionMessageSubscriptionResponse> {
     if (this.#retired) {
       throw new Error("Session message subscription belongs to a replaced Gateway connection");
     }
     // A preceding queued request may already have upgraded every full owner.
-    if (requestedMode === "full" && entry.mode !== "narration") {
+    if (!startup && requestedMode === "full" && entry.mode !== "narration") {
       return { key: entry.key };
     }
     const includeApprovals =
@@ -404,8 +449,10 @@ export class GatewaySessionMessageSubscriptionCoordinator {
         ? "narration"
         : undefined;
     // A lost acknowledgment can leave stale observation until a fresh subscribe or reconnect.
-    const result = await this.#requestMessages(entry, { mode, includeApprovals });
-    const response = result && typeof result === "object" ? result : null;
+    const result = await this.#requestMessages(entry, { mode, includeApprovals, startup });
+    const payload = result && typeof result === "object" ? result : null;
+    const subscription = startup ? (payload?.subscription ?? payload) : payload;
+    const response = subscription && typeof subscription === "object" ? subscription : null;
     const responseKey = response && "key" in response ? response.key : undefined;
     entry.key =
       typeof responseKey === "string" && responseKey.trim() ? responseKey.trim() : entry.key;
@@ -420,6 +467,15 @@ export class GatewaySessionMessageSubscriptionCoordinator {
     entry.includeApprovals = includeApprovals;
     return {
       key: entry.key,
+      ...(startup
+        ? {
+            startup: {
+              ok: payload?.startupError === undefined,
+              payload,
+              ...(payload?.startupError ? { error: payload.startupError } : {}),
+            },
+          }
+        : {}),
       ...(response && "approvalReplay" in response
         ? { approvalReplay: response.approvalReplay }
         : {}),

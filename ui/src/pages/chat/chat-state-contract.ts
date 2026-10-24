@@ -29,7 +29,10 @@ type ChatAgentsListSnapshot = Partial<Omit<AgentsListResult, "agents">> & {
   agents?: AgentsListResult["agents"];
 };
 
-export type ChatHistorySessions = Pick<SessionCapability, "captureReconcile">;
+export type ChatHistorySessions = Pick<
+  SessionCapability,
+  "captureReconcile" | "subscribeMessages" | "unsubscribeMessages"
+>;
 
 export type ChatHistoryHost = ChatState & { sessions: ChatHistorySessions };
 

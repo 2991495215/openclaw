@@ -24,7 +24,6 @@ import { takeCreatedComposer } from "../new-session/creation-composer-registry.t
 import * as chatAvatars from "./chat-avatar.ts";
 import { CHAT_ROUTE_READY_EVENT } from "./chat-history-events.ts";
 import { retireInitialChatSnapshot } from "./chat-history-state.ts";
-import { syncSelectedSessionMessageSubscription } from "./chat-history-subscription.ts";
 import {
   type ChatAttachmentGatewayOwner,
   ChatPaneComposerHandoff,
@@ -426,9 +425,6 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
         this.synchronizeForegroundTranscript();
         if (agentChanged) {
           this.refreshSwarmRoster();
-        }
-        if (this.state) {
-          void syncSelectedSessionMessageSubscription(this.state);
         }
         this.activateComposerPresentation();
       }),

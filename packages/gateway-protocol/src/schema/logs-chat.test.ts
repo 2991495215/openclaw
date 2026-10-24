@@ -22,12 +22,21 @@ describe("ChatStartupParamsSchema", () => {
       ...canonical,
       knownState: { pendingInputs: "pending-revision", sessionInfo: "session-revision" },
     });
+    const subscribed = {
+      ...canonical,
+      subscription: { subscriptionId: "pane", includeApprovals: true },
+    };
+    startup.accepts(subscribed);
+    schemaValidation(S.ChatHistoryParamsSchema).rejects(subscribed);
     schemaValidation(S.ChatHistoryParamsSchema).rejects(short);
     startup.rejects(
       { ...short, sessionKey: canonical.sessionKey },
       { ...short, cursor: "cursor" },
       { shortId: "12345678" },
       { sessionKey: canonical.sessionKey, knownState: { pendingInputs: "x".repeat(65) } },
+      { ...canonical, subscription: { subscriptionId: "" } },
+      { ...canonical, subscription: { subscriptionId: "x".repeat(129) } },
+      { ...short, subscription: { subscriptionId: "pane" } },
     );
   });
 });

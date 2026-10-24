@@ -114,6 +114,7 @@ function mountPane(
       state.client = client;
       state.connected = true;
       state.connectionEpoch += 1;
+      state.sessions = createTestSessionCapability(createGatewayHarness(client).gateway);
       synchronizeInitialChatSnapshotConnection(state);
     },
     start() {
@@ -243,11 +244,12 @@ describe("first chat startup snapshot ordering", () => {
     const loading = h.start();
     expect(h.request).not.toHaveBeenCalled();
     h.read.resolve(stored);
+    await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(0);
     expect(h.request).toHaveBeenCalledExactlyOnceWith(
       "chat.startup",
       expect.objectContaining({ cursor: "stored-cursor" }),
-      { signal: expect.any(AbortSignal), timeoutMs: 30_000 },
+      { timeoutMs: 30_000 },
     );
     expect(h.state.chatMessages).toEqual(stored.messages);
     network.resolve(h.liveResult);
@@ -371,7 +373,7 @@ describe("first chat startup snapshot ordering", () => {
     expect(h.request).toHaveBeenCalledExactlyOnceWith(
       "chat.startup",
       expect.objectContaining({ sessionKey, cursor: "stored-cursor" }),
-      { signal: expect.any(AbortSignal), timeoutMs: 30_000 },
+      { timeoutMs: 30_000 },
     );
     expect(h.request.mock.calls[0]?.[1]).toMatchObject({ knownState: {} });
   });
@@ -564,10 +566,8 @@ describe("first chat startup snapshot ordering", () => {
     );
   });
 
-  it("shares the restored cursor request when the cache settles during stream admission", async () => {
+  it("shares the restored cursor and stream admission in one startup request", async () => {
     const h = mountPane();
-    const admission = createDeferred<boolean>();
-    chatHistoryRequests(h.state).subscriptionReady = admission.promise;
     const delta = {
       kind: "delta" as const,
       messages: [],
@@ -581,13 +581,10 @@ describe("first chat startup snapshot ordering", () => {
     h.read.resolve(stored);
     await vi.advanceTimersByTimeAsync(0);
     expect(h.state.chatMessages).toEqual(stored.messages);
-    expect(h.request).not.toHaveBeenCalled();
-    admission.resolve(true);
-    await vi.advanceTimersByTimeAsync(0);
     expect(h.request).toHaveBeenCalledExactlyOnceWith(
       "chat.startup",
       expect.objectContaining({ sessionKey, cursor: "stored-cursor" }),
-      { signal: expect.any(AbortSignal), timeoutMs: 30_000 },
+      { timeoutMs: 30_000 },
     );
     const shared = h.start();
     response.resolve(delta);
@@ -617,6 +614,7 @@ describe("first chat startup snapshot ordering", () => {
     first.request.mockClear();
     first.request.mockReturnValue(response.promise);
     const loads = [first.start(), second.start()];
+    await vi.advanceTimersByTimeAsync(0);
     expect(first.request).toHaveBeenCalledTimes(2);
     expect(first.request.mock.calls.map(([, params]) => params)).toEqual([
       expect.objectContaining({ knownState: { pendingInputs: "empty", sessionInfo: "info-0" } }),
@@ -677,11 +675,6 @@ describe("first chat startup snapshot ordering", () => {
     const full = createDeferred<unknown>();
     first.request.mockReturnValueOnce(omitted.promise).mockReturnValueOnce(full.promise);
     const loads = [first.start(), second.start()];
-    expect(first.request).toHaveBeenCalledTimes(2);
-    expect(first.request.mock.calls.map(([, params]) => params)).toEqual([
-      expect.objectContaining({ knownState: stateRevision }),
-      expect.objectContaining({ knownState: { sessionInfo: "info-1" } }),
-    ]);
     const delta = {
       kind: "delta",
       messages: [],
@@ -690,6 +683,12 @@ describe("first chat startup snapshot ordering", () => {
       sessionInfoSnapshotAt: 2,
     };
     omitted.resolve(delta);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(first.request).toHaveBeenCalledTimes(2);
+    expect(first.request.mock.calls.map(([, params]) => params)).toEqual([
+      expect.objectContaining({ knownState: stateRevision }),
+      expect.objectContaining({ knownState: { sessionInfo: "info-1" } }),
+    ]);
     full.resolve({ ...delta, pendingInputs });
     await Promise.all(loads);
     expect(first.state.chatPendingInputs?.queuedInputs).toEqual(pendingInputs.items);
@@ -805,7 +804,7 @@ describe("first chat startup snapshot ordering", () => {
     expect(h.request).toHaveBeenCalledExactlyOnceWith(
       "chat.startup",
       expect.objectContaining({ cursor: "stored-cursor", knownState: stateRevision }),
-      { signal: expect.any(AbortSignal), timeoutMs: 30_000 },
+      { timeoutMs: 30_000 },
     );
     expect(h.state.chatMessages).toEqual(stored.messages);
     expect(h.state.chatHistoryPagination.hasMore).toBe(false);

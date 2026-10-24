@@ -32,13 +32,13 @@ suite.define(() => {
           ],
           sessions: [{ key, label: "Task estimates", status: "done", hasActiveRun: false }],
           methodResponses: {
-            "sessions.messages.subscribe": {
+            "chat.startup": {
               __mockError: {
                 code: "INVALID_REQUEST",
-                message: "session changed before sessions.messages.subscribe; retry the request",
+                message: "session changed before chat.startup; retry the request",
                 details: {
                   code: "SESSION_MUTATION_AUTHORIZATION_CHANGED",
-                  method: "sessions.messages.subscribe",
+                  method: "chat.startup",
                   sessionKey: key,
                 },
               },
@@ -46,21 +46,23 @@ suite.define(() => {
           },
         });
         await page.goto(controlUiSessionUrl(suite.server.baseUrl, key));
-        await gateway.waitForRequest("sessions.messages.subscribe", { match: { key } });
+        await gateway.waitForRequest("chat.startup", { match: { sessionKey: key } });
         await pauseVirtualClock(page);
-        await gateway.setMethodResponse("sessions.messages.subscribe", {
-          key,
-          agentId: "main",
-          subscribed: true,
+        await gateway.setMethodResponse("chat.startup", {
+          subscription: { key, agentId: "main", subscribed: true },
+          messages: [
+            { role: "user", content: "Add up these task estimates." },
+            { role: "assistant", content: answer },
+          ],
+          sessionInfo: { key, sessionId: "estimates" },
         });
         await page.clock.runFor(1_500);
         await page.screenshot({ path: path.join(suite.artifactDir, "subscription-recovery.png") });
         expect(await page.getByText(answer, { exact: true }).count()).toBe(1);
         expect(await page.locator(".chat-history-error").count()).toBe(0);
         expect(await gateway.getRequests("chat.send")).toHaveLength(0);
-        expect((await gateway.getRequests("sessions.messages.subscribe")).length).toBeGreaterThan(
-          1,
-        );
+        expect((await gateway.getRequests("chat.startup")).length).toBeGreaterThan(1);
+        expect(await gateway.getRequests("sessions.messages.subscribe")).toHaveLength(0);
       },
     );
   });

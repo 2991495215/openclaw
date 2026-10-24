@@ -177,7 +177,7 @@ Small `sessions.messages.subscribe` requests without approval replay and
 `sessions.messages.unsubscribe` requests have separate bounded waiting capacity,
 including a per-connection limit. All requests share the same yielding budget.
 Roster subscriptions, catalog reads, and message subscriptions with approval
-replay share four preparation slots. A slot remains occupied until its request
+replay, including combined `chat.startup` subscriptions, share four preparation slots. A slot remains occupied until its request
 settles, and each start yields to ready socket I/O. A request waiting for a
 preparation slot stays in the bounded queue while eligible requests start:
 `chat.history` and `sessions.list` reads can pass waiting preparations, as can

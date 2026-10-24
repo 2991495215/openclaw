@@ -225,7 +225,9 @@ suite.define(() => {
       const draft = "Synthetic draft while background lists are pending.";
       await expect.poll(() => composer.isEnabled()).toBe(true);
       await composer.fill(draft);
-      await gateway.waitForRequest("sessions.messages.subscribe", { match: { key: sessionKey } });
+      expect(
+        (await gateway.waitForRequest("chat.startup", { match: { sessionKey } })).params,
+      ).toHaveProperty("subscription");
       // Bulk replies are still held: the selected transcript and its live stream must work alone.
       await gateway.deferNext("chat.history");
       await gateway.emitGatewayEvent("session.message", {

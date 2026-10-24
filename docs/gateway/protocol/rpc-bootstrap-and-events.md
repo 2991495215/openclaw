@@ -190,6 +190,17 @@ Omitting the ID retains the legacy single-observer behavior.
 Older clients remain compatible with the updated Gateway; the updated SDK's
 ownership fields require an updated Gateway.
 
+Canonical `chat.startup` requests can include `subscription: { subscriptionId,
+includeApprovals? }` to admit a full message observer before reading history in
+one round trip. The response includes the normal startup fields and a
+`subscription` receipt with the normalized key, agent, and optional approval
+replay. Admission failures reject the request. If admission succeeds but the
+history read fails, the successful response instead includes `startupError` and
+the subscription receipt: retain or release that observer even when retrying the
+read. Existing startup requests without this option and short-reference startup
+keep their behavior. Cursor and input receipts follow the ordinary startup
+contract; reconcile overlapping live and history messages by message identity.
+
 Background narration consumers declare `mode: "narration"`. The Gateway replaces
 their token-level `chat` deltas and raw `agent` assistant events with
 `session.narration` snapshots. Each snapshot contains `sessionKey`, optional

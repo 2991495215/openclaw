@@ -64,7 +64,6 @@ type ChatHistoryPaneRequests = {
   branchQuery: ChatBranchesQueryReceipt | undefined;
   subscriptionGeneration: number;
   pendingApprovalReplay?: { generation: number; events: Map<string, SessionApprovalEvent> };
-  subscriptionReady?: Promise<boolean>;
   subscriptionError?: string;
   subscriptionRetry?: AbortController;
   syncRetries: Map<

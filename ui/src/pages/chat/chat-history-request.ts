@@ -1,9 +1,11 @@
 import {
   DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
   GatewayProtocolRequestTimeoutError,
+  type GatewayProtocolRequestOptions,
 } from "@openclaw/gateway-client/browser";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { sleepWithAbort } from "@openclaw/retry";
+import type { ChatHistoryParams } from "../../../../packages/gateway-protocol/src/index.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import { t } from "../../i18n/index.ts";
@@ -114,6 +116,10 @@ type SharedChatHistoryArgs = [
   inputRunIds?: string[],
   budget?: { limit: number; maxBytes: number },
   historyState?: ChatHistoryState,
+  readStartup?: (
+    params: ChatHistoryParams,
+    options: GatewayProtocolRequestOptions,
+  ) => Promise<ChatHistoryResponse>,
 ];
 
 export function requestSharedHistory(
@@ -138,6 +144,7 @@ export function requestSharedHistory(
     inputRunIds = [],
     budget = { limit: CHAT_HISTORY_REQUEST_LIMIT, maxBytes: CHAT_HISTORY_REQUEST_MAX_BYTES },
     historyState,
+    readStartup,
   ]: SharedChatHistoryArgs
 ): Promise<ChatHistoryResponse & { observation?: ChatHistoryObservation }> {
   const knownState =
@@ -160,8 +167,8 @@ export function requestSharedHistory(
     owners = new WeakMap();
     sharedChatHistoryRequests.set(client, owners);
   }
-  // Snapshot-only readers share transport work without acquiring roster observations.
-  const owner = sessions ?? client;
+  // Atomic startup also acquires this pane's lease; it cannot share another pane's admission.
+  const owner = readStartup ? consumerOwner : (sessions ?? client);
   const requests = owners.get(owner) ?? new Map<string, SharedChatHistoryRequest>();
   owners.set(owner, requests);
   let shared = requests.get(requestKey);
@@ -207,10 +214,15 @@ export function requestSharedHistory(
         ? { owner: sessions, reconcile: sessions.captureReconcile() }
         : undefined;
       const response = attachHistoryActivity(
-        await client.request<ChatHistoryResponse>(method, params, {
-          signal: controller.signal,
-          timeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
-        }),
+        await (readStartup
+          ? readStartup(params, {
+              signal: controller.signal,
+              timeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
+            })
+          : client.request<ChatHistoryResponse>(method, params, {
+              signal: controller.signal,
+              timeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
+            })),
       );
       if (!(isHistoryCursor(response) && response.kind === "reset") && historyState) {
         // Resolve omissions against this request's exact payload, never a later cache write.

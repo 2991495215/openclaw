@@ -10,10 +10,12 @@ import {
   isMissingOperatorReadScopeError,
 } from "../../lib/gateway-errors.ts";
 import { isSessionRunStateActive } from "../../lib/session-run-state.ts";
+import type { SessionMessageSubscription } from "../../lib/sessions/index.ts";
 import { requestSharedHistory } from "./chat-history-request.ts";
 import { formatChatHistoryLoadError, isRetryableChatReadError } from "./chat-history-retry.ts";
 import {
   type ObservedChatHistoryResult,
+  type ChatHistoryResponse,
   isHistoryCursor,
   resolveChatHistoryPagination,
   historySessionId,
@@ -38,6 +40,7 @@ import {
   readRunProjections,
   applyHistoryRun,
 } from "./chat-history-stream.ts";
+import { syncSelectedSessionMessageSubscription } from "./chat-history-subscription.ts";
 import { applyChatPendingInputs } from "./chat-pending-inputs.ts";
 import { isChatRunRecoveryStatus, reconcileChatRunStartup } from "./chat-run-startup.ts";
 import type { ChatHistoryHost, ChatHistorySessions, ChatState } from "./chat-state-contract.ts";
@@ -101,6 +104,15 @@ export async function hydrateChatHistory(
   state.resetChatInputHistoryNavigation?.();
   state.chatLoading = true;
   const requests = chatHistoryRequests(state);
+  const accepted = requests.acceptedHistory;
+  const observed = Boolean(
+    state.chatSessionMessageSubscription &&
+    accepted?.sessions === sessions &&
+    accepted.client === client &&
+    accepted.connectionEpoch === connectionEpoch &&
+    accepted.sessionKey === sessionKey &&
+    accepted.requestAgentId === requestAgentId,
+  );
   const request = (cursor?: string) => {
     const historyState = readChatHistoryState(state, cursor);
     const key = `${requestKeyPrefix}${cursor === undefined ? "page" : `cursor:${cursor}`}${JSON.stringify(historyState?.stateRevision ?? null)}`;
@@ -130,32 +142,42 @@ export async function hydrateChatHistory(
       inputRunIds,
       undefined,
       historyState,
+      method === "chat.startup" && !observed
+        ? async (params, options) => {
+            let startup: SessionMessageSubscription["startup"];
+            const { sessionKey: _key, agentId: _agent, ...read } = params;
+            const ready = await syncSelectedSessionMessageSubscription(state, {
+              startup: {
+                params: read,
+                receive: (result) => {
+                  startup = result;
+                },
+              },
+            });
+            if (!ready || !isCurrent()) {
+              throw new GatewayRequestError({
+                code: "UNAVAILABLE",
+                message: requests.subscriptionError ?? "Message subscription is no longer current",
+                retryable:
+                  requests.historyLoad.phase === "failed" && requests.historyLoad.retryable,
+              });
+            }
+            if (!startup) {
+              return client.request<ChatHistoryResponse>(method, params, options);
+            }
+            if (!startup.ok) {
+              throw new GatewayRequestError(
+                startup.error ?? { code: "UNAVAILABLE", message: "Chat startup failed" },
+              );
+            }
+            return startup.payload as ChatHistoryResponse;
+          }
+        : undefined,
     );
   };
   try {
-    let admission = requests.subscriptionReady;
-    while (admission) {
-      const ready = await admission;
-      if (!isCurrent()) {
-        return undefined;
-      }
-      if (admission === requests.subscriptionReady) {
-        if (!ready) {
-          if (requests.subscriptionError) {
-            setChatHistoryLoad(state, {
-              phase: "failed",
-              sessionKey,
-              requestAgentId,
-              startup: method === "chat.startup",
-              message: requests.subscriptionError,
-              retryable: requests.historyLoad.phase === "failed" && requests.historyLoad.retryable,
-            });
-          }
-          return undefined;
-        }
-        break;
-      }
-      admission = requests.subscriptionReady;
+    if (method === "chat.history" && !(await syncSelectedSessionMessageSubscription(state))) {
+      return undefined;
     }
     // A pane mounted after hello can still be hydrating its retained cursor and
     // receipts. Join that data read before constructing the first request.

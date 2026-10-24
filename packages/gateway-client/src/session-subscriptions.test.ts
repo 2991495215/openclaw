@@ -18,6 +18,32 @@ afterEach(() => {
 });
 
 describe("GatewaySessionMessageSubscriptionCoordinator", () => {
+  it("acquires startup and its observer together, preserving the lease when only history fails", async () => {
+    const { coordinator, request } = createClient(async (method) =>
+      method === "chat.startup"
+        ? {
+            subscription: { subscribed: true, key: "agent:main:main", agentId: "main" },
+            startupError: { code: "UNAVAILABLE", message: "History unavailable" },
+          }
+        : {},
+    );
+    const lease = await coordinator.acquire("main", { startup: { cursor: "retained" } });
+    expect(lease).toMatchObject({
+      key: "agent:main:main",
+      startup: { ok: false, error: { message: "History unavailable" } },
+    });
+    expect(request).toHaveBeenCalledExactlyOnceWith("chat.startup", {
+      sessionKey: "main",
+      cursor: "retained",
+      subscription: { subscriptionId: expect.any(String) },
+    });
+    await coordinator.release(lease);
+    expect(request).toHaveBeenLastCalledWith("sessions.messages.unsubscribe", {
+      key: "agent:main:main",
+      subscriptionId: expect.any(String),
+    });
+  });
+
   it("shares one in-flight wire subscription across canonical session aliases", async () => {
     const { client, request } = createClient();
     const coordinator = new GatewaySessionMessageSubscriptionCoordinator(client, {

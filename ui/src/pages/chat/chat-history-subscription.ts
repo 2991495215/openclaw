@@ -35,6 +35,16 @@ type ChatSessionMessageSubscriptionState = ChatState & {
   sessionsError?: string | null;
 };
 
+type SubscriptionSyncOptions = {
+  force?: boolean;
+  startup?: {
+    params: NonNullable<Parameters<SessionCapability["subscribeMessages"]>[1]>["startup"];
+    receive: (
+      result: NonNullable<Awaited<ReturnType<SessionCapability["subscribeMessages"]>>["startup"]>,
+    ) => void;
+  };
+};
+
 function resolveSelectedSessionMessageSubscriptionAgentId(
   state: ChatSessionMessageSubscriptionState,
   key: string,
@@ -73,7 +83,6 @@ export function disposeSelectedSessionMessageSubscription(state: ChatState): voi
   requests.subscriptionRetry?.abort();
   delete requests.subscriptionRetry;
   setChatHistoryRetrying(state, "subscription", false);
-  requests.subscriptionReady = Promise.resolve(false);
   const subscription = state.chatSessionMessageSubscription;
   state.chatSessionMessageSubscriptionRequestedKey = null;
   state.chatSessionMessageSubscription = null;
@@ -90,7 +99,7 @@ export function disposeSelectedSessionMessageSubscription(state: ChatState): voi
 
 export function syncSelectedSessionMessageSubscription(
   state: ChatSessionMessageSubscriptionState,
-  opts?: { force?: boolean },
+  opts?: SubscriptionSyncOptions,
 ): Promise<boolean> {
   const requests = chatHistoryRequests(state);
   const client = state.client;
@@ -123,14 +132,13 @@ export function syncSelectedSessionMessageSubscription(
       state.chatSessionMessageSubscriptionRequestedKey === requestedKey &&
       state.chatSessionMessageSubscription != null,
   );
-  requests.subscriptionReady = ready;
   return ready;
 }
 
 async function synchronizeSelectedSessionMessageSubscription(
   state: ChatSessionMessageSubscriptionState,
   signal: AbortSignal,
-  opts?: { force?: boolean },
+  opts?: SubscriptionSyncOptions,
 ): Promise<boolean> {
   if (!state.client || !state.connected) {
     return false;
@@ -138,6 +146,7 @@ async function synchronizeSelectedSessionMessageSubscription(
   const client = state.client;
   const sessions = state.sessions;
   const retryDeadline = Date.now() + CHAT_HISTORY_RETRY_WINDOW_MS;
+  const method = opts?.startup ? "chat.startup" : "sessions.messages.subscribe";
   const connectionEpoch = state.connectionEpoch;
   const nextKey = state.sessionKey.trim();
   if (!nextKey) {
@@ -202,7 +211,7 @@ async function synchronizeSelectedSessionMessageSubscription(
       startup:
         load.phase !== "idle" && "startup" in load ? load.startup : !paneRequests.acceptedHistory,
       message,
-      retryable: isRetryableChatReadError(error, "sessions.messages.subscribe"),
+      retryable: isRetryableChatReadError(error, method),
     });
   };
   const subscribe = async () => {
@@ -214,9 +223,10 @@ async function synchronizeSelectedSessionMessageSubscription(
           ...(hasOperatorApprovalsAccess(state.hello?.auth ?? null)
             ? { includeApprovals: true }
             : {}),
+          ...(opts?.startup ? { startup: opts.startup.params } : {}),
         });
       } catch (error) {
-        if (!isCurrent() || !isRetryableChatReadError(error, "sessions.messages.subscribe")) {
+        if (!isCurrent() || !isRetryableChatReadError(error, method)) {
           throw error;
         }
         const remaining = retryDeadline - Date.now();
@@ -293,6 +303,11 @@ async function synchronizeSelectedSessionMessageSubscription(
     }
     state.chatSessionMessageSubscriptionRequestedKey = nextKey;
     state.chatSessionMessageSubscription = subscribed;
+    const startup = subscribed.startup;
+    delete subscribed.startup;
+    if (startup) {
+      opts?.startup?.receive(startup);
+    }
     if (subscribed.includeApprovals) {
       const agentId = nextSubscriptionAgentId ?? undefined;
       recordSessionApprovalReplay(state, subscribed.approvalReplay, agentId);
