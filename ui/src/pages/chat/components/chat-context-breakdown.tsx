@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { For, Loading, Show, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 import type { SessionSystemPromptReport } from "../../../../../src/config/sessions/session-system-prompt-report.js";
 import type { GatewaySessionRow } from "../../../api/types.ts";
+import { gatewayPresentationScope } from "../../../app/gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
@@ -16,7 +17,7 @@ import {
   areUiSessionKeysEquivalent,
   scopedSessionArtifactKey,
 } from "../../../lib/sessions/session-key.ts";
-import { requestSessionUsage } from "../../../lib/sessions/usage.ts";
+import { requestSessionUsage, sessionUsageRetryState } from "../../../lib/sessions/usage.ts";
 import { showToast } from "../../../lib/toast.ts";
 import "../../../styles/chat/context-breakdown.css";
 import {
@@ -212,6 +213,7 @@ export function ChatContextBreakdown(props: {
       return {
         client: connection.snapshot.phase === "connected" ? connection.snapshot.client : null,
         connectionRevision: connection.connectionRevision,
+        presentationScope: gatewayPresentationScope(props.gateway).key,
         key: scopedSessionArtifactKey(props.session.key, props.agentId),
         sessionId: props.session.sessionId,
         model: props.session.activeModel || props.session.model,
@@ -222,21 +224,33 @@ export function ChatContextBreakdown(props: {
       equals: (a, b) =>
         a.client === b.client &&
         a.connectionRevision === b.connectionRevision &&
+        a.presentationScope === b.presentationScope &&
         a.key === b.key &&
         a.sessionId === b.sessionId &&
         a.model === b.model &&
         a.provider === b.provider,
     },
   );
-  const recovery = createMemo<{
-    retry: ReturnType<typeof createGatewayRetryOwner>;
-    skipped: boolean;
-    report: SessionSystemPromptReport | null;
-  }>(() => {
-    target();
+  const recovery = createMemo(() => {
+    const current = target();
+    const saved = sessionUsageRetryState(
+      current.client,
+      JSON.stringify([current.connectionRevision, current.presentationScope]),
+      JSON.stringify([current.key, current.sessionId, current.model, current.provider]),
+    );
     const retry = createGatewayRetryOwner();
+    const receipt = saved.read();
+    retry.restore(receipt, () => setRevision((value) => value + 1));
+    if (!documentVisible()) {
+      retry.pause();
+    }
     onCleanup(retry.cancel);
-    return { retry, skipped: false, report: null };
+    return {
+      retry,
+      saved,
+      skipped: false,
+      report: null as SessionSystemPromptReport | null,
+    };
   });
   onSettled(() =>
     listen(document, "visibilitychange", () => {
@@ -273,6 +287,20 @@ export function ChatContextBreakdown(props: {
     const pending = recovery();
     const userRequested = manualRefresh === current;
     manualRefresh = undefined;
+    const newerRetry = pending.saved.read();
+    if (
+      !userRequested &&
+      newerRetry &&
+      newerRetry.deadline > Date.now() &&
+      (pending.retry.snapshot()?.deadline ?? 0) < newerRetry.deadline
+    ) {
+      pending.retry.restore(newerRetry, () => setRevision((value) => value + 1));
+      if (!documentVisible()) {pending.retry.pause();}
+    }
+    if (!userRequested && pending.retry.hasPending()) {
+      return { report: pending.report };
+    }
+    const observedRetry = pending.saved.read();
     pending.retry.cancel();
     pending.skipped = false;
     if (!current.client || !documentVisible()) {
@@ -303,6 +331,7 @@ export function ChatContextBreakdown(props: {
         return { report: null };
       }
       pending.retry.reset();
+      pending.saved.clear(observedRetry);
       const row = response.sessions.find((entry) =>
         areUiSessionKeysEquivalent(entry.key, current.key),
       );
@@ -336,11 +365,13 @@ export function ChatContextBreakdown(props: {
           },
           error instanceof GatewayProtocolRequestError ? error.retryAfterMs : undefined,
         );
+        pending.saved.remember(pending.retry.snapshot());
         if (!documentVisible()) {
           pending.retry.pause();
         }
       } else {
         pending.retry.reset();
+        pending.saved.clear(observedRetry);
         pending.report = null;
       }
       return { report: pending.report };

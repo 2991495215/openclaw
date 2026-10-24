@@ -34,6 +34,9 @@ export async function fetchChildSessionRows(params: {
     if (snapshot.error) {
       throw new Error(snapshot.error);
     }
+    if (snapshot.readSucceeded === false) {
+      throw new Error("Child conversations are temporarily unavailable. Try again.");
+    }
     pagination = snapshot.pagination;
     return snapshot.result;
   };

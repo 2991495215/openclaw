@@ -329,6 +329,7 @@ export function createSessionManagedListRefresh(
               loading: false,
               error: awaitingGateway ? null : formatUiError(error),
               readSucceeded: false,
+              readRetryable: isRetryableGatewayReadError(error, "sessions.list"),
               startupPending,
             },
             isCurrent,

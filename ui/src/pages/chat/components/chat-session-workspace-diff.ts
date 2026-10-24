@@ -111,6 +111,10 @@ export function resolveSessionWorkspaceDiff(
         })
         .catch((error: unknown) => {
           if (uncommittedLoad === load && currentScope()) {
+            if (error instanceof GatewayRequestError && error.gatewayCode === "FORBIDDEN") {
+              delete workspace.diffContent!.uncommitted;
+              sessionWorkspaceForHost(state).publish();
+            }
             pendingRead = isRetryableGatewayReadError(error, "sessions.diff");
             if (pendingRead) {
               retry.schedule(

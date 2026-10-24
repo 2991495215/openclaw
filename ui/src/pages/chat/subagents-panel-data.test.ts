@@ -1,4 +1,5 @@
 /* @vitest-environment jsdom */
+import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
@@ -470,4 +471,80 @@ describe("Subagents panel data ownership", () => {
     expect(view(f)?.activity).toBeUndefined();
     expect(f.changed).toHaveBeenCalledOnce();
   });
+});
+
+it.each([undefined, "agent-database-inspection-pending"])(
+  "retains child rows and metrics without history fan-out on transient refresh failure (%s)",
+  async (code) => {
+    const row = runningChild("retained");
+    let unavailable = false;
+    const f = fixture(
+      (params) => {
+        if (unavailable && params.spawnedBy) {
+          throw new GatewayProtocolRequestError({
+            code: "UNAVAILABLE",
+            retryable: true,
+            details: { code },
+          });
+        }
+        return page(params.spawnedBy ? [row] : []);
+      },
+      () => history(row, 2),
+    );
+    await ready(f, () => view(f)?.callCount?.count === 2);
+    const held = f.data.rows;
+    const histories = () =>
+      f.request.mock.calls.filter(([method]) => method === "chat.history").length;
+    const before = histories();
+    unavailable = true;
+    await f.data.refresh();
+    expect(f.data.rows).toEqual(held);
+    expect(histories()).toBe(before);
+    expect(f.subscriptions.has(row.key)).toBe(true);
+  },
+);
+
+it("waits for suppressed pagination recovery instead of repeating the failed cursor", async () => {
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  const row = child("partial");
+  const last = child("last-page");
+  let recovering = true;
+  const f = fixture(
+    (params) => {
+      if (!params.spawnedBy) {
+        return page([]);
+      }
+      if (params.offset && !recovering) {
+        return page([last], { hasMore: false, nextOffset: null, totalCount: 2 });
+      }
+      if (params.offset) {
+        throw new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          retryable: true,
+          retryAfterMs: 120000,
+          details: { code: "agent-database-inspection-pending" },
+        });
+      }
+      return page([row], { hasMore: true, nextOffset: 1, totalCount: 2 });
+    },
+    () => history(row),
+  );
+  f.open();
+  await vi.advanceTimersByTimeAsync(0);
+  const reads = f.request.mock.calls.filter(
+    ([method, params]) => method === "sessions.list" && asOptionalRecord(params)?.spawnedBy,
+  );
+  expect(reads).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(119999);
+  expect(
+    f.request.mock.calls.filter(
+      ([method, params]) => method === "sessions.list" && asOptionalRecord(params)?.spawnedBy,
+    ),
+  ).toHaveLength(2);
+  recovering = false;
+  await vi.advanceTimersByTimeAsync(1);
+  expect(f.data.rows.map((item) => item.session.key)).toEqual([row.key, last.key]);
 });

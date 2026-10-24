@@ -248,3 +248,25 @@ it.each(["failure", "computing"] as const)(
     expect(request).toHaveBeenCalledTimes(outcome === "failure" ? 3 : 4);
   },
 );
+
+it.each(["UNAVAILABLE", "FORBIDDEN"])(
+  "Environment handles %s without confusing availability with authority",
+  async (code) => {
+    const result = { sessionKey: "agent:main:workspace", files: [], additions: 248, deletions: 61 };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(result)
+      .mockRejectedValueOnce(
+        new GatewayRequestError({ code, message: code, retryable: code === "UNAVAILABLE" }),
+      );
+    const { state, resolve } = diffFixture(request);
+    const content = resolve();
+    await content.load({ scope: "uncommitted" });
+    expect(content.uncommitted).toEqual(result);
+    const retained = { ...content };
+    getSessionWorkspace(state).diffContent = retained;
+    await expect(retained.load({ scope: "uncommitted" })).rejects.toBeDefined();
+    expect(retained.uncommitted).toEqual(code === "FORBIDDEN" ? undefined : result);
+    content.retireUncommitted?.();
+  },
+);

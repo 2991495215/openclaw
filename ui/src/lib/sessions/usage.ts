@@ -1,4 +1,5 @@
 import type { SessionsUsageResult } from "../../../../src/shared/usage-types.js";
+import type { GatewayRetrySnapshot } from "../gateway-retry.ts";
 import type { SessionRequestClient } from "./session-capability.ts";
 
 export type SessionUsageTarget = { key: string; agentId?: string };
@@ -79,4 +80,49 @@ export function requestSessionUsage(
   return options?.signal
     ? client.request<SessionsUsageResult>("sessions.usage", params, { signal: options.signal })
     : client.request<SessionsUsageResult>("sessions.usage", params);
+}
+
+const usageRetries = new WeakMap<
+  SessionRequestClient,
+  { scope: string; entries: Map<string, GatewayRetrySnapshot> }
+>();
+
+/** Only numeric retry facts survive a Context mount; timers and callbacks stay local. */
+export function sessionUsageRetryState(
+  client: SessionRequestClient | null,
+  scope: string,
+  key: string,
+) {
+  let cache = client ? usageRetries.get(client) : undefined;
+  if (cache?.scope !== scope) {
+    cache = { scope, entries: new Map() };
+    if (client) {
+      usageRetries.set(client, cache);
+    }
+  }
+  const entries = cache.entries;
+  // No expiry timer is needed while hidden; the next acquisition drops old deadlines.
+  for (const [id, retry] of entries) {
+    if (id !== key && retry.deadline <= Date.now()) {
+      entries.delete(id);
+    }
+  }
+  return {
+    read: () => entries.get(key),
+    remember(retry: GatewayRetrySnapshot | undefined) {
+      if (!retry) {
+        return;
+      }
+      const previous = entries.get(key);
+      entries.set(key, {
+        deadline: Math.max(previous?.deadline ?? 0, retry.deadline),
+        nextDelayMs: Math.max(previous?.nextDelayMs ?? 0, retry.nextDelayMs),
+      });
+    },
+    clear(receipt: GatewayRetrySnapshot | undefined) {
+      if (receipt && entries.get(key) === receipt) {
+        entries.delete(key);
+      }
+    },
+  };
 }

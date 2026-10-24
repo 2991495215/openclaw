@@ -94,6 +94,7 @@ export class SubagentsPanelData {
   private input: SubagentsPanelInput | null = null;
   private scope: ReturnType<SessionCapability["captureConnectionScope"]> = null;
   private observation: ReturnType<SessionCapability["observeList"]> | null = null;
+  private refreshMetrics = false;
   private pendingListRead: Promise<void> | null = null;
   private generation = 0;
   private disposed = false;
@@ -221,7 +222,7 @@ export class SubagentsPanelData {
     if (!this.current(generation)) {
       return;
     }
-    this.metrics.clear();
+    this.refreshMetrics = true;
     this.error = null;
     await this.readList();
   }
@@ -271,11 +272,15 @@ export class SubagentsPanelData {
       (pagination?.totalCount !== undefined && pagination.count < pagination.totalCount);
     this.loading = snapshot.loading || incomplete;
     this.error = snapshot.error;
-    if (snapshot.error) {
+    if (snapshot.error && !snapshot.readRetryable) {
       // Access loss must not leave previously readable child contents onscreen.
       this.sessions = [];
       this.metrics.clear();
-    } else if (result && !incomplete) {
+    } else if (!snapshot.error && result && !incomplete) {
+      if (this.refreshMetrics && !snapshot.loading && snapshot.readSucceeded !== false) {
+        this.metrics.clear();
+        this.refreshMetrics = false;
+      }
       this.hasResult = true;
       const sampledAt = Date.now();
       const previous = new Map(this.sessions.map((row) => [row.key, row]));
@@ -304,8 +309,16 @@ export class SubagentsPanelData {
     }
     this.syncNarration();
     this.publish();
-    this.readMetrics();
-    if (result && incomplete && !snapshot.loading && !snapshot.error) {
+    if (!snapshot.error && snapshot.readSucceeded !== false) {
+      this.readMetrics();
+    }
+    if (
+      result &&
+      incomplete &&
+      !snapshot.loading &&
+      !snapshot.error &&
+      snapshot.readSucceeded !== false
+    ) {
       void this.readList(result);
     }
   }
@@ -616,6 +629,7 @@ export class SubagentsPanelData {
     this.observation?.dispose();
     this.observation = null;
     this.pendingListRead = null;
+    this.refreshMetrics = false;
     this.scope = null;
     this.sessions = [];
     this.metrics.clear();

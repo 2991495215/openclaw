@@ -132,3 +132,23 @@ describe("session organizer nested archive choice", () => {
     },
   );
 });
+
+it("reports a suppressed child-list failure instead of silently cancelling Archive", async () => {
+  const harness = createHarness();
+  const root = { ...sessionRow(0), hasArchiveDescendants: true };
+  prepareArchiveTree(harness, [gatewayRow(0)]);
+  harness.scope.sessions.listSnapshot = () => ({
+    result: sessionsResult([], 1),
+    agentId: "main",
+    loading: false,
+    error: null,
+    readSucceeded: false,
+  });
+  await archiveSessionWithUndo(harness.host, root, harness.scope);
+  expect(harness.patch).not.toHaveBeenCalled();
+  expect(harness.request).not.toHaveBeenCalled();
+  expect(harness.publishSessionMutationError).toHaveBeenCalledWith(
+    harness.scope,
+    expect.any(Error),
+  );
+});

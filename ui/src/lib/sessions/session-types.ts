@@ -91,6 +91,8 @@ export type SessionListSnapshot = Pick<
 > & {
   /** Outcome of the latest settled managed-list read, including suppressed availability errors. */
   readSucceeded?: boolean;
+  /** Typed availability failure; false/absent never authorizes retaining denied content. */
+  readRetryable?: boolean;
   /** Accepted server-window membership before local visibility and generation filters. */
   pagination?: Pick<SessionsListResult, "totalCount" | "hasMore" | "nextOffset"> & {
     count: number;

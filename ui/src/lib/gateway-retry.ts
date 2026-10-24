@@ -1,6 +1,8 @@
 const GATEWAY_RETRY_INITIAL_DELAY_MS = 30_000;
 const GATEWAY_RETRY_MAX_DELAY_MS = 5 * 60_000;
 
+export type GatewayRetrySnapshot = { deadline: number; nextDelayMs: number };
+
 /** Owns one reconnect-safe retry timer and its bounded exponential backoff. */
 export function createGatewayRetryOwner() {
   let timer: ReturnType<typeof globalThis.setTimeout> | null = null;
@@ -39,6 +41,16 @@ export function createGatewayRetryOwner() {
 
   return {
     hasPending: () => pending !== undefined,
+    snapshot: (): GatewayRetrySnapshot | undefined =>
+      pending ? { deadline: pending.deadline, nextDelayMs } : undefined,
+    restore(snapshot: GatewayRetrySnapshot | undefined, callback: () => void) {
+      if (snapshot) {
+        cancel();
+        nextDelayMs = snapshot.nextDelayMs;
+        pending = { callback, deadline: snapshot.deadline };
+        resume();
+      }
+    },
     cancel,
     pause,
     resume,

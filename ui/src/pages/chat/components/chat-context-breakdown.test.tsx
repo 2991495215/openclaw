@@ -174,6 +174,19 @@ function mountRecoveringContext(request: ReturnType<typeof createGatewayRequestM
   return { ...view, gateway, publish, setPresented, setUsed };
 }
 
+function mountSiblingContext(gateway: ReturnType<typeof mountRecoveringContext>["gateway"]) {
+  const view = mountSolid(() => (
+    <ChatContextBreakdown
+      gateway={gateway}
+      session={{ key: "agent:main:task", kind: "direct", sessionId: "task" }}
+      used={50000}
+      limit={100000}
+    />
+  ));
+  onTestFinished(view.unmount);
+  return view;
+}
+
 it("bounds failed reads, coalesces in-flight recovery, and stops reading once healthy", async () => {
   vi.useFakeTimers();
   const pending = createDeferredCore<ReturnType<typeof usage>>();
@@ -187,40 +200,34 @@ it("bounds failed reads, coalesces in-flight recovery, and stops reading once he
   expect(request).toHaveBeenCalledTimes(1);
   await advance(1);
   expect(request).toHaveBeenCalledTimes(2);
+  request.mockReturnValueOnce(pending.promise);
   await advance(59999);
   expect(request).toHaveBeenCalledTimes(2);
   await advance(1);
   expect(request).toHaveBeenCalledTimes(3);
-  await advance(210000);
-  expect(request).toHaveBeenCalledTimes(4); // Initial request plus three retries in five minutes.
-  await advance(300000);
-  expect(request).toHaveBeenCalledTimes(5); // Four retries in ten minutes.
-  request.mockReturnValueOnce(pending.promise);
-  await advance(150000);
-  expect(request).toHaveBeenCalledTimes(6);
   await advance(600000);
-  expect(request).toHaveBeenCalledTimes(6);
+  expect(request).toHaveBeenCalledTimes(3);
   pending.resolve(usage("task"));
   await advance();
   expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
   expect(vi.getTimerCount()).toBe(0);
   await advance(600000);
-  expect(request).toHaveBeenCalledTimes(6);
+  expect(request).toHaveBeenCalledTimes(3);
   const visibility = vi.spyOn(document, "visibilityState", "get");
   for (const state of ["hidden", "visible"] as const) {
     visibility.mockReturnValue(state);
     document.dispatchEvent(new Event("visibilitychange"));
     await advance();
   }
-  expect(request).toHaveBeenCalledTimes(6);
+  expect(request).toHaveBeenCalledTimes(3);
   view.getByRole("button", { name: "Refresh" }).click();
   await advance();
-  expect(request).toHaveBeenCalledTimes(7);
+  expect(request).toHaveBeenCalledTimes(4);
   request.mockResolvedValue(usage("task"));
   await advance(29999);
-  expect(request).toHaveBeenCalledTimes(7);
+  expect(request).toHaveBeenCalledTimes(4);
   await advance(1);
-  expect(request).toHaveBeenCalledTimes(8);
+  expect(request).toHaveBeenCalledTimes(5);
   expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
   expect(vi.getTimerCount()).toBe(0);
 });
@@ -330,5 +337,192 @@ it.each([30_000, 600_000])(
     expect(request).toHaveBeenCalledTimes(3);
     expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
     expect(vi.getTimerCount()).toBe(0);
+  },
+);
+
+it("preserves the server wait across Context unmount and remount", async () => {
+  vi.useFakeTimers();
+  const request = createGatewayRequestMock()
+    .mockRejectedValueOnce(
+      new GatewayProtocolRequestError({
+        code: "UNAVAILABLE",
+        retryable: true,
+        retryAfterMs: 120000,
+      }),
+    )
+    .mockResolvedValue(usage("task"));
+  const view = mountRecoveringContext(request);
+  await advance();
+  for (let i = 0; i < 5; i++) {
+    view.setPresented(false);
+    await advance(1000);
+    view.setPresented(true);
+    await advance();
+  }
+  expect(request).toHaveBeenCalledOnce();
+  await advance(114999);
+  expect(request).toHaveBeenCalledOnce();
+  await advance(1);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+  view.unmount();
+});
+
+it("preserves Context deadlines across consumers and retires them on client replacement", async () => {
+  vi.useFakeTimers();
+  const request = createGatewayRequestMock().mockRejectedValue(
+    new GatewayProtocolRequestError({ code: "UNAVAILABLE", retryable: true, retryAfterMs: 120000 }),
+  );
+  const first = mountRecoveringContext(request);
+  await advance();
+  const second = mountSiblingContext(first.gateway);
+  await advance();
+  expect(request).toHaveBeenCalledOnce();
+  first.setPresented(false);
+  await advance(1000);
+  expect(vi.getTimerCount()).toBe(1);
+  second.unmount();
+  await advance();
+  expect(vi.getTimerCount()).toBe(0);
+  first.setPresented(true);
+  await advance();
+  expect(request).toHaveBeenCalledOnce();
+  const replacement = createGatewayRequestMock().mockResolvedValue(usage("task"));
+  first.publish({ ...first.gateway.snapshot, client: createTestGatewayClient(replacement) });
+  await advance();
+  expect(replacement).toHaveBeenCalledOnce();
+  expect(first.container.querySelector(".chat-context__bar")).not.toBeNull();
+  await advance(120000);
+  expect(request).toHaveBeenCalledOnce();
+  expect(replacement).toHaveBeenCalledOnce();
+});
+
+it("does not strand another Context when one consumer refreshes successfully", async () => {
+  vi.useFakeTimers();
+  const request = createGatewayRequestMock().mockRejectedValue(
+    new GatewayProtocolRequestError({ code: "UNAVAILABLE", retryable: true, retryAfterMs: 120000 }),
+  );
+  const first = mountRecoveringContext(request);
+  await advance();
+  const second = mountSiblingContext(first.gateway);
+  await advance();
+  expect(second.container.querySelector(".chat-context__bar")).toBeNull();
+  request.mockResolvedValue(usage("task"));
+  first.getByRole("button", { name: "Refresh" }).click();
+  await advance();
+  expect(first.container.querySelector(".chat-context__bar")).not.toBeNull();
+  await advance(120000);
+  expect(second.container.querySelector(".chat-context__bar")).not.toBeNull();
+});
+
+it.each([false, true])(
+  "honors a newer Context deadline with an older view (remount=%s)",
+  async (remount) => {
+    vi.useFakeTimers();
+    const request = createGatewayRequestMock()
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          retryable: true,
+          retryAfterMs: 120000,
+        }),
+      )
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          retryable: true,
+          retryAfterMs: 300000,
+        }),
+      )
+      .mockResolvedValue(usage("task"));
+    const first = mountRecoveringContext(request);
+    await advance();
+    const second = mountSiblingContext(first.gateway);
+    await advance();
+    second.getByRole("button", { name: "Refresh" }).click();
+    await advance();
+    if (remount) {
+      first.setPresented(false);
+      await advance();
+      first.setPresented(true);
+    }
+    await advance(120000);
+    expect(request).toHaveBeenCalledTimes(2);
+    second.unmount();
+    await advance(179999);
+    expect(request).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(3);
+  },
+);
+
+it("clears the observed cooldown after a successful manual Context refresh", async () => {
+  vi.useFakeTimers();
+  const request = createGatewayRequestMock()
+    .mockRejectedValueOnce(
+      new GatewayProtocolRequestError({
+        code: "UNAVAILABLE",
+        retryable: true,
+        retryAfterMs: 120000,
+      }),
+    )
+    .mockRejectedValueOnce(
+      new GatewayProtocolRequestError({ code: "UNAVAILABLE", retryable: true }),
+    )
+    .mockResolvedValue(usage("task"));
+  const view = mountRecoveringContext(request);
+  await advance(30000);
+  view.getByRole("button", { name: "Refresh" }).click();
+  await advance();
+  view.getByRole("button", { name: "Refresh" }).click();
+  await advance();
+  expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+  view.setPresented(false);
+  await advance();
+  view.setPresented(true);
+  await advance();
+  expect(view.container.querySelector(".chat-context__bar")).not.toBeNull();
+  expect(request).toHaveBeenCalledTimes(4);
+});
+
+it.each([30000, 300000])(
+  "keeps a later %i ms failure when an older Context request succeeds",
+  async (retryAfterMs) => {
+    vi.useFakeTimers();
+    const pending = createDeferredCore<ReturnType<typeof usage>>();
+    const request = createGatewayRequestMock()
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestError({
+          code: "UNAVAILABLE",
+          retryable: true,
+          retryAfterMs: 120000,
+        }),
+      )
+      .mockReturnValueOnce(pending.promise)
+      .mockRejectedValueOnce(
+        new GatewayProtocolRequestError({ code: "UNAVAILABLE", retryable: true, retryAfterMs }),
+      )
+      .mockResolvedValue(usage("task"));
+    const first = mountRecoveringContext(request);
+    await advance();
+    first.getByRole("button", { name: "Refresh" }).click();
+    await advance();
+    const second = mountSiblingContext(first.gateway);
+    await advance();
+    second.getByRole("button", { name: "Refresh" }).click();
+    await advance();
+    pending.resolve(usage("task"));
+    await advance();
+    expect(first.container.querySelector(".chat-context__bar")).not.toBeNull();
+    second.unmount();
+    first.setPresented(false);
+    await advance();
+    first.setPresented(true);
+    await advance();
+    expect(request).toHaveBeenCalledTimes(3);
+    await advance(Math.max(120000, retryAfterMs) - 1);
+    expect(request).toHaveBeenCalledTimes(3);
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(4);
   },
 );
