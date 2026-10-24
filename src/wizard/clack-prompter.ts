@@ -67,81 +67,6 @@ function resolveNavigationDirection(
   return undefined;
 }
 
-async function runPromptWithNavigation<T>(
-  navigation: WizardPromptNavigation | undefined,
-  work: (signal: AbortSignal | undefined) => Promise<T | symbol>,
-  output: NodeJS.WriteStream,
-  externalSignal?: AbortSignal,
-): Promise<T> {
-  const navigationEnabled = navigation?.canGoBack === true || navigation?.canGoForward === true;
-  const hadLeft = navigationEnabled && settings.actions.delete("left");
-  const hadRight = navigationEnabled && settings.actions.delete("right");
-  try {
-    const controller = new AbortController();
-    const signal = externalSignal
-      ? AbortSignal.any([controller.signal, externalSignal])
-      : controller.signal;
-    let navigationDirection: "back" | "forward" | undefined;
-    let promptSettled = false;
-    let cancellationImmediate: NodeJS.Immediate | undefined;
-    const queueCancellation = () => {
-      if (cancellationImmediate || signal.aborted || navigationDirection) {
-        return;
-      }
-      // Input completion can settle Clack in the same event dispatch. Defer the
-      // fallback abort so Clack owns finalization when it consumed the input.
-      cancellationImmediate = setImmediate(() => {
-        cancellationImmediate = undefined;
-        if (!promptSettled && !signal.aborted && !navigationDirection) {
-          controller.abort();
-        }
-      });
-    };
-    const onKeypress = (input: string | undefined, key: KeypressInfo | undefined) => {
-      if (input === "\x04" || (key?.ctrl === true && key.name === "d")) {
-        queueCancellation();
-        return;
-      }
-      const nextDirection = resolveNavigationDirection(navigation, key);
-      if (!nextDirection) {
-        return;
-      }
-      navigationDirection ??= nextDirection;
-      controller.abort();
-    };
-
-    try {
-      process.stdin.once("end", queueCancellation);
-      if (process.stdin.readableEnded) {
-        queueCancellation();
-      }
-      process.stdin.on("keypress", onKeypress);
-      const value = await work(signal).finally(() => {
-        promptSettled = true;
-      });
-      if (navigationDirection) {
-        throw new WizardNavigationError(navigationDirection);
-      }
-      return guardCancel(value, output, externalSignal);
-    } finally {
-      if (cancellationImmediate) {
-        clearImmediate(cancellationImmediate);
-        cancellationImmediate = undefined;
-      }
-      process.stdin.off("end", queueCancellation);
-      process.stdin.off("keypress", onKeypress);
-    }
-  } finally {
-    // Restore after cancellation handling and stdin cleanup, not during prompt finalization.
-    if (hadLeft) {
-      settings.actions.add("left");
-    }
-    if (hadRight) {
-      settings.actions.add("right");
-    }
-  }
-}
-
 export function tokenizedOptionFilter<T>(search: string, option: Option<T>): boolean {
   const tokens = normalizeLowercaseStringOrEmpty(search)
     .split(/\s+/)
@@ -158,8 +83,82 @@ export function tokenizedOptionFilter<T>(search: string, option: Option<T>): boo
 
 export function createClackPrompter(
   output: NodeJS.WriteStream = process.stdout,
-  signal?: AbortSignal,
+  ownerSignal?: AbortSignal,
 ): WizardPrompter {
+  async function run<T>(
+    navigation: WizardPromptNavigation | undefined,
+    work: (signal: AbortSignal | undefined) => Promise<T | symbol>,
+    externalSignal: AbortSignal | undefined = ownerSignal,
+  ): Promise<T> {
+    const navigationEnabled = navigation?.canGoBack === true || navigation?.canGoForward === true;
+    const hadLeft = navigationEnabled && settings.actions.delete("left");
+    const hadRight = navigationEnabled && settings.actions.delete("right");
+    try {
+      const controller = new AbortController();
+      const signal = externalSignal
+        ? AbortSignal.any([controller.signal, externalSignal])
+        : controller.signal;
+      let navigationDirection: "back" | "forward" | undefined;
+      let promptSettled = false;
+      let cancellationImmediate: NodeJS.Immediate | undefined;
+      const queueCancellation = () => {
+        if (cancellationImmediate || signal.aborted || navigationDirection) {
+          return;
+        }
+        // Input completion can settle Clack in the same event dispatch. Defer the
+        // fallback abort so Clack owns finalization when it consumed the input.
+        cancellationImmediate = setImmediate(() => {
+          cancellationImmediate = undefined;
+          if (!promptSettled && !signal.aborted && !navigationDirection) {
+            controller.abort();
+          }
+        });
+      };
+      const onKeypress = (input: string | undefined, key: KeypressInfo | undefined) => {
+        if (input === "\x04" || (key?.ctrl === true && key.name === "d")) {
+          queueCancellation();
+          return;
+        }
+        const nextDirection = resolveNavigationDirection(navigation, key);
+        if (!nextDirection) {
+          return;
+        }
+        navigationDirection ??= nextDirection;
+        controller.abort();
+      };
+
+      try {
+        process.stdin.once("end", queueCancellation);
+        if (process.stdin.readableEnded) {
+          queueCancellation();
+        }
+        process.stdin.on("keypress", onKeypress);
+        const value = await work(signal).finally(() => {
+          promptSettled = true;
+        });
+        if (navigationDirection) {
+          throw new WizardNavigationError(navigationDirection);
+        }
+        return guardCancel(value, output, externalSignal);
+      } finally {
+        if (cancellationImmediate) {
+          clearImmediate(cancellationImmediate);
+          cancellationImmediate = undefined;
+        }
+        process.stdin.off("end", queueCancellation);
+        process.stdin.off("keypress", onKeypress);
+      }
+    } finally {
+      // Restore after cancellation handling and stdin cleanup, not during prompt finalization.
+      if (hadLeft) {
+        settings.actions.add("left");
+      }
+      if (hadRight) {
+        settings.actions.add("right");
+      }
+    }
+  }
+
   return {
     intro: async (title) => {
       intro(stylePromptTitle(title) ?? title, { output });
@@ -177,60 +176,50 @@ export function createClackPrompter(
       const { message, options: styledOptions } = styleSelectParams(params);
       const options = styledOptions as Option<(typeof params.options)[number]["value"]>[];
 
-      return await runPromptWithNavigation(
-        params.navigation,
-        async (promptSignal) => {
-          const prompt = params.searchable
-            ? params.navigation
-              ? autocompleteWithNavigationFooter
-              : autocomplete
-            : params.navigation
-              ? selectWithNavigationFooter
-              : select;
-          return await prompt<(typeof params.options)[number]["value"]>({
-            message,
-            options,
-            initialValue: params.initialValue,
-            ...(params.searchable ? { filter: tokenizedOptionFilter } : {}),
-            signal: promptSignal,
-            ...(params.navigation ? { navigation: params.navigation } : {}),
-            output,
-          });
-        },
-        output,
-        signal,
-      );
+      return await run(params.navigation, async (promptSignal) => {
+        const prompt = params.searchable
+          ? params.navigation
+            ? autocompleteWithNavigationFooter
+            : autocomplete
+          : params.navigation
+            ? selectWithNavigationFooter
+            : select;
+        return await prompt<(typeof params.options)[number]["value"]>({
+          message,
+          options,
+          initialValue: params.initialValue,
+          ...(params.searchable ? { filter: tokenizedOptionFilter } : {}),
+          signal: promptSignal,
+          ...(params.navigation ? { navigation: params.navigation } : {}),
+          output,
+        });
+      });
     },
     multiselect: async (params) => {
       const { message, options: styledOptions } = styleSelectParams(params);
       const options = styledOptions as Option<(typeof params.options)[number]["value"]>[];
 
-      return await runPromptWithNavigation(
-        params.navigation,
-        async (promptSignal) => {
-          const prompt = params.searchable
-            ? params.navigation
-              ? autocompleteMultiselectWithNavigationFooter
-              : autocompleteMultiselect
-            : params.navigation
-              ? multiselectWithNavigationFooter
-              : multiselect;
-          return await prompt({
-            message,
-            options,
-            initialValues: params.initialValues,
-            ...(params.searchable ? { filter: tokenizedOptionFilter } : {}),
-            signal: promptSignal,
-            ...(params.navigation ? { navigation: params.navigation } : {}),
-            output,
-          });
-        },
-        output,
-        signal,
-      );
+      return await run(params.navigation, async (promptSignal) => {
+        const prompt = params.searchable
+          ? params.navigation
+            ? autocompleteMultiselectWithNavigationFooter
+            : autocompleteMultiselect
+          : params.navigation
+            ? multiselectWithNavigationFooter
+            : multiselect;
+        return await prompt({
+          message,
+          options,
+          initialValues: params.initialValues,
+          ...(params.searchable ? { filter: tokenizedOptionFilter } : {}),
+          signal: promptSignal,
+          ...(params.navigation ? { navigation: params.navigation } : {}),
+          output,
+        });
+      });
     },
     text: async (params) => {
-      return await runPromptWithNavigation(
+      return await run(
         params.navigation,
         async (promptSignal) => {
           const validate = params.validate;
@@ -252,30 +241,24 @@ export function createClackPrompter(
             output,
           });
         },
-        output,
-        params.signal && signal
-          ? AbortSignal.any([params.signal, signal])
-          : (params.signal ?? signal),
+        params.signal && ownerSignal
+          ? AbortSignal.any([params.signal, ownerSignal])
+          : (params.signal ?? ownerSignal),
       );
     },
     confirm: async (params) =>
-      await runPromptWithNavigation(
-        params.navigation,
-        async (promptSignal) => {
-          const message = stylePromptMessage(params.message);
-          const prompt = params.navigation ? confirmWithNavigationFooter : confirm;
-          return await prompt({
-            message,
-            initialValue: params.initialValue,
-            vertical: params.layout === "vertical",
-            ...(params.navigation ? { navigation: params.navigation } : {}),
-            signal: promptSignal,
-            output,
-          });
-        },
-        output,
-        signal,
-      ),
+      await run(params.navigation, async (promptSignal) => {
+        const message = stylePromptMessage(params.message);
+        const prompt = params.navigation ? confirmWithNavigationFooter : confirm;
+        return await prompt({
+          message,
+          initialValue: params.initialValue,
+          vertical: params.layout === "vertical",
+          ...(params.navigation ? { navigation: params.navigation } : {}),
+          signal: promptSignal,
+          output,
+        });
+      }),
     progress: (label: string): WizardProgress => {
       const useClawSpinner = output.isTTY && isRich() && !process.env.CI && !process.env.VITEST;
       const spin = createProgressSpinner(
