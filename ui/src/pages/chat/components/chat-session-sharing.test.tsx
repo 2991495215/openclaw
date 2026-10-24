@@ -430,9 +430,11 @@ describe("chat session sharing menu", () => {
       onCopyPublicLink: vi.fn(),
     });
     await waitForSolid(() =>
-      expect(root.querySelector(".chat-pane__sharing-qr .qr-code")).not.toBeNull(),
+      expect(root.querySelector(".chat-session-public-qr .qr-code")).not.toBeNull(),
     );
-    expect(part(root, "sharing-qr")?.textContent).toContain("Scan to open the public link");
+    expect(root.querySelector(".chat-session-public-qr")?.textContent).toContain(
+      "Scan to open the public link",
+    );
 
     // Past QR capacity the encoder throws; copy stays, and no caption points at a missing code.
     render(
@@ -446,7 +448,7 @@ describe("chat session sharing menu", () => {
       }),
       root,
     );
-    await waitForSolid(() => expect(part(root, "sharing-qr")).toBeNull());
+    await waitForSolid(() => expect(root.querySelector(".chat-session-public-qr")).toBeNull());
     expect(root.textContent).not.toContain("Scan to open the public link");
     expect(item(root, "public:copy")?.disabled).toBe(false);
   });

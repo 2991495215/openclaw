@@ -5,8 +5,6 @@ import {
   createOptimistic,
   createSignal,
   Errored,
-  lazy,
-  Loading,
   onSettled,
   Show,
 } from "solid-js";
@@ -28,24 +26,6 @@ import { listen } from "../../../lib/reactive/listener.ts";
 registerEnglishCatalog(registerChatSessionEnglish);
 
 registerEnglishCatalog(registerSessionPeopleEnglish);
-
-// The encoder loads only once a public link is shown, keeping it off the chat startup path.
-const QrCode = lazy(() => import("../../../components/solid/qr-code.tsx"), { export: "QrCode" });
-
-/** Scannable twin of the copy action: encodes exactly the public URL it is given. */
-export function ChatSessionPublicQr(props: { url: string; class: string }) {
-  return (
-    // A failed chunk load drops the code and its caption; the copy action beside it still works.
-    <Errored fallback={null}>
-      <Loading>
-        <div class={props.class}>
-          <QrCode value={props.url} label={t("chat.sessionSharing.publicLinkQr")} />
-          <span>{t("chat.sessionSharing.scanPublicLink")}</span>
-        </div>
-      </Loading>
-    </Errored>
-  );
-}
 
 export type ChatSessionSharingOutcome =
   | { status: "success" }

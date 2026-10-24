@@ -1,9 +1,0 @@
-/* QR symbols stay dark-on-light in every theme; inverted codes fail on many scanners. */
-.qr-code {
-  display: block;
-  box-sizing: border-box;
-  aspect-ratio: 1;
-  border-radius: 6px;
-  background: var(--qr-bg);
-  fill: var(--qr-fg);
-}

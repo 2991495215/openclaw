@@ -1048,21 +1048,6 @@
   color: var(--muted);
 }
 
-.chat-pane__sharing-menu--desktop .chat-pane__sharing-qr {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 8px 8px 2px 36px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.chat-pane__sharing-menu--desktop .chat-pane__sharing-qr .qr-code {
-  width: 152px;
-  flex: none;
-  border: 1px solid var(--border);
-}
-
 .chat-pane__sharing-menu--desktop .chat-pane__sharing-permissions {
   display: flex;
   min-height: 0;

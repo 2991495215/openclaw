@@ -211,8 +211,6 @@ const enChatSession = {
       publicLinkDescription: "Anyone can read without signing in.",
       publicDraftDescription: "The public link stays readable in Draft.",
       linkUnavailable: "Link unavailable",
-      publicLinkQr: "QR code for the public link",
-      scanPublicLink: "Scan to open the public link on another device.",
       permissions: "Permissions",
       creator: "Creator",
       canRead: "Can read",

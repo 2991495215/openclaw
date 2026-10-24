@@ -1,12 +1,11 @@
 import QRCode from "qrcode";
 import { createMemo } from "solid-js";
-import "../../styles/qr-code.css";
 
 /** QR quiet zone in modules; scanners need four on every side. */
 const QUIET_ZONE = 4;
 
 /** Render `value` as a client-side SVG QR code; the encoded text never leaves the browser. */
-export function QrCode(props: { value: string; label: string; class?: string }) {
+export function QrCode(props: { value: string; label: string; size: string }) {
   const symbol = createMemo(() => {
     const { size, data } = QRCode.create(props.value, { errorCorrectionLevel: "M" }).modules;
     let path = "";
@@ -25,15 +24,26 @@ export function QrCode(props: { value: string; label: string; class?: string }) 
     }
     return { extent: size + QUIET_ZONE * 2, path };
   });
+  // Dark-on-white in every theme: inverted codes fail on many scanners.
   return (
     <svg
-      class={["qr-code", props.class]}
+      class="qr-code"
       role="img"
       aria-label={props.label}
       viewBox={`0 0 ${symbol().extent} ${symbol().extent}`}
       shape-rendering="crispEdges"
+      style={{
+        display: "block",
+        flex: "none",
+        width: props.size,
+        "aspect-ratio": "1",
+        "box-sizing": "border-box",
+        border: "1px solid var(--border)",
+        "border-radius": "6px",
+        background: "#fff",
+      }}
     >
-      <path d={symbol().path} />
+      <path fill="#000" d={symbol().path} />
     </svg>
   );
 }
