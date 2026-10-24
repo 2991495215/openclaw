@@ -267,8 +267,11 @@ native-only path. Jobs with a saved inference binding keep using that account.
 Known provider-auth environment variables and the backend's credential exclusions
 are removed after environment overrides, even when the live-test preserve-env
 option is set. Runtime settings, such as the context window, are retained.
-For paired-node runs, the node uses its own provider inventory to remove credentials;
-update the node host if it rejects the native-only invocation parameter.
+For paired-node runs, the Gateway withholds host credentials on every node. Nodes
+advertising native-only auth support also use their own provider inventory to
+remove credentials. Older nodes retain their existing local environment behavior
+and receive no new invocation parameter. Update the node and approve its new
+capability to apply node-side filtering.
 
 Native runtime-owned jobs retain their runtime’s existing authorization checks, and a
 native connection cannot silently replace a job’s recorded host-managed inference account.
