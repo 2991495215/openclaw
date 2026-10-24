@@ -226,11 +226,17 @@ describe("message-normalizer", () => {
     expect([result.replyTarget, result.audioAsVoice]).toEqual([undefined, undefined]);
   });
 
-  it("accepts assistant Responses input blocks but rejects user output blocks", () => {
-    expect(assistant([{ type: "input_text", text: "Answer" }]).content).toEqual([text("Answer")]);
-    expect(user({ content: [{ type: "output_text", text: "Answer" }] }).content).not.toContainEqual(
-      text("Answer"),
-    );
+  it.each([
+    ["assistant", "input_text", "text"],
+    ["assistant", "output_text", "text"],
+    ["user", "input_text", "text"],
+    ["user", "output_text", "output_text"],
+    ["custom", "input_text", "input_text"],
+    ["custom", "output_text", "output_text"],
+  ])("classifies %s %s as %s", (role, type, expectedType) => {
+    expect(normalizeMessage({ role, content: [{ type, text: "Answer" }] }).content).toMatchObject([
+      { type: expectedType, text: "Answer" },
+    ]);
   });
 
   it("does not turn non-assistant structured audio into attachments", () => {
