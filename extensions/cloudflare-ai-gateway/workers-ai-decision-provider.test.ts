@@ -147,7 +147,7 @@ describe("Cloudflare Clef Decision adapter", () => {
     },
   );
 
-  it.each([
+  it.each<DecisionBatchV2>([
     { ...batch, questions: { urgent: { type: "boolean" } } },
     {
       ...batch,
@@ -186,7 +186,7 @@ describe("Cloudflare Clef Decision adapter", () => {
       },
     },
     { ...batch, state: { type: "json", value: null } },
-  ] satisfies DecisionBatchV2[])("rejects unsupported payloads before HTTP", async (input) => {
+  ])("rejects unsupported payloads before HTTP", async (input) => {
     expect(await provider.evaluate(input, context())).toMatchObject({
       reason: "unsupported-input",
     });

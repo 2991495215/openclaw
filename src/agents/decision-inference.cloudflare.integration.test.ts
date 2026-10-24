@@ -52,6 +52,7 @@ it.each([
   );
   const trace: { runtime?: DecisionRuntimeV2 } = {};
   Reflect.set(globalThis, traceKey, trace);
+  let arrivals = 0;
   const received: Array<{
     url?: string;
     authorization?: string;
@@ -60,6 +61,7 @@ it.each([
   }> = [];
   await withServer(
     (request, response) => {
+      arrivals += 1;
       const chunks: Buffer[] = [];
       request.on("data", (chunk: Buffer) => chunks.push(chunk));
       request.on("end", () => {
@@ -186,6 +188,7 @@ it.each([
           if (!provider || provider.contractVersion !== 2) {
             throw new Error("Missing registered Clef Decision provider");
           }
+          const dispatch = provider.evaluate.bind(provider);
           const evaluate = vi.spyOn(provider, "evaluate");
           const runtime = trace.runtime;
           if (!runtime) {
@@ -193,19 +196,21 @@ it.each([
           }
           // Compile the source-only prepared runtime before its operation deadline starts.
           await import("./decision-inference.js");
-          const outcome = await runtime.evaluateV2(
-            {
-              state: { type: "text", text: "Synthetic evidence" },
-              questions: { urgent: { type: "boolean", instructions: "Is it urgent?" } },
-            },
-            {
-              agentId: "main",
-              purpose: "cloudflare-native-fixture",
-              rubricVersion: "1",
-              timeoutMs: 5_000,
-              signal: new AbortController().signal,
-            },
-          );
+          const evaluateFixture = () =>
+            runtime.evaluateV2(
+              {
+                state: { type: "text", text: "Synthetic evidence" },
+                questions: { urgent: { type: "boolean", instructions: "Is it urgent?" } },
+              },
+              {
+                agentId: "main",
+                purpose: "cloudflare-native-fixture",
+                rubricVersion: "1",
+                timeoutMs: 5_000,
+                signal: new AbortController().signal,
+              },
+            );
+          const outcome = await evaluateFixture();
           if (auth === "workers" || auth === "pinned-workers" || auth === "configured-model") {
             expect(outcome, JSON.stringify({ outcome, received })).toMatchObject({
               status: "ok",
@@ -231,12 +236,47 @@ it.each([
                 },
               },
             ]);
+            expect(arrivals).toBe(1);
+
+            const denied = structuredClone(cfg);
+            denied.plugins!.entries![consumerId]!.llm!.allowedCompletionModels = [
+              "cloudflare-workers-ai/unrelated-fixture",
+            ];
+            setRuntimeConfigSnapshot(denied);
+            await expect(evaluateFixture()).rejects.toMatchObject({
+              code: "LLM_COMPLETION_NOT_AUTHORIZED",
+            });
+            expect(evaluate).toHaveBeenCalledOnce();
+            expect(arrivals).toBe(1);
+            setRuntimeConfigSnapshot(cfg);
+
+            let revokedDuringPreparation = false;
+            evaluate.mockImplementationOnce((batch, context) => {
+              // Guarded transport yields before dispatch. Revoke the selected-model
+              // authority before its final physical-dispatch check.
+              queueMicrotask(() => {
+                revokedDuringPreparation = true;
+                setRuntimeConfigSnapshot({
+                  ...cfg,
+                  agents: { defaults: { ...cfg.agents?.defaults, decisionModel: "" } },
+                });
+              });
+              return dispatch(batch, context);
+            });
+            expect(await evaluateFixture()).toMatchObject({
+              status: "unavailable",
+              reason: "retiring",
+            });
+            expect(revokedDuringPreparation).toBe(true);
+            expect(arrivals).toBe(1);
+            expect(received).toHaveLength(1);
           } else {
             expect(outcome).toMatchObject({
               status: "unavailable",
               reason: "credentials-unavailable",
             });
             expect(received).toEqual([]);
+            expect(arrivals).toBe(0);
           }
           expect(cfg.agents?.defaults?.model).toBe("unrelated/not-configured");
           await resetPreparedModelRuntimeSnapshotsForTest();
