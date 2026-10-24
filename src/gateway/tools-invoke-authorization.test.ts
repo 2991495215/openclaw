@@ -67,7 +67,7 @@ afterAll(() => server.close());
 afterEach(() => memorySessionActorOwners.reset());
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   server.resetContext();
   runtime.cfg = { agents: { entries: { main: {} } } };
   runtime.authorize.mockResolvedValue({ ok: true, method: "token" });
@@ -76,7 +76,11 @@ beforeEach(() => {
 const postToolsInvoke = async (body: Record<string, unknown>, scopes = "operator.write") =>
   await fetch(`http://127.0.0.1:${sharedPort}/tools/invoke`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-openclaw-scopes": scopes },
+    headers: {
+      "content-type": "application/json",
+      "x-openclaw-scopes": scopes,
+      connection: "close",
+    },
     body: JSON.stringify(body),
   });
 
