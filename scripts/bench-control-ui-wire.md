@@ -80,7 +80,13 @@ Interpret these as synthetic transport and rendering measurements. The proxy
 does not simulate TLS, TCP handshake latency, packet loss, or Internet routing.
 Decode/hash instrumentation has overhead. Native renderer thread CPU counters
 exclude time descheduled by the host. Every action uses a fresh inspector session
-so counters cannot accumulate across navigations or earlier actions. WebSocket critical-path attribution uses
+so counters cannot accumulate across navigations or earlier actions.
+`gatewayCpuMs` records process user/system CPU from action start through the
+driver's readiness assertion, excluding fixture setup and the post-readiness
+tail. It includes Gateway workers, the benchmark driver/proxy, and instrumentation;
+it excludes Chrome and other child processes. `gatewayRssBytes` is an advisory
+resident-memory snapshot of that same process at readiness, not peak memory.
+WebSocket critical-path attribution uses
 browser timestamps so delayed automation callbacks cannot move the response
 that caused a paint past that paint. Automation-to-assertion time is not INP.
 The bounded post-readiness capture also retains secondary traffic, distinguished

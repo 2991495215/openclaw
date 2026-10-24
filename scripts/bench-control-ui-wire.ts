@@ -800,6 +800,7 @@ async function runWorker() {
             const performanceSession = await context.newCDPSession(page);
             await performanceSession.send("Performance.enable", { timeDomain: "threadTicks" });
             try {
+              const gatewayCpuBefore = process.cpuUsage();
               const startedAtMs = performance.now();
               const decodedStart = decoded.length;
               const result = await action();
@@ -819,6 +820,8 @@ async function runWorker() {
                 { timeout: 60_000 },
               );
               const driverReadyAtMs = performance.now();
+              const gatewayCpu = process.cpuUsage(gatewayCpuBefore);
+              const gatewayRssBytes = process.memoryUsage.rss();
               const readiness = await page.evaluate(() => {
                 const state = Reflect.get(window, "__wireReadiness").state;
                 return { ...state };
@@ -976,6 +979,8 @@ async function runWorker() {
                   wsAllMessages: frames.filter((frame) => frame.opcode === 1 || frame.opcode === 2)
                     .length,
                 },
+                gatewayCpuMs: { user: gatewayCpu.user / 1000, system: gatewayCpu.system / 1000 },
+                gatewayRssBytes,
                 cpuMs: Object.fromEntries(
                   cpuAfter
                     .filter((m) =>
