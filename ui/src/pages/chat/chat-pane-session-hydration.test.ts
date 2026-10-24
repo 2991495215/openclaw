@@ -37,6 +37,10 @@ function createSecondaryHydrationPane(scopes = ["operator.admin"]) {
     ],
     scopes,
   );
+  const syncReactions = vi.spyOn(
+    pane as typeof pane & { syncSessionReactions(): void },
+    "syncSessionReactions",
+  );
   const commitEffects: AfterCommitEffect[] = [];
   const afterCommit = (effect: AfterCommitEffect) => {
     commitEffects.push(effect);
@@ -91,6 +95,7 @@ function createSecondaryHydrationPane(scopes = ["operator.admin"]) {
     patch,
     request,
     listBranches,
+    syncReactions,
     state,
     deferTranscript,
     expectNoSecondaryReads,
@@ -133,6 +138,7 @@ it.each([
   }
   const expectPending = () => {
     expect(f.patch).not.toHaveBeenCalled();
+    expect(f.syncReactions).not.toHaveBeenCalled();
     if (!returning) {
       f.expectNoSecondaryReads();
     }
@@ -150,6 +156,7 @@ it.each([
   expect(complete).not.toHaveBeenCalled();
   await f.paintFrame();
   expect(f.patch).toHaveBeenCalledTimes(Number(returning && committed));
+  expect(f.syncReactions).toHaveBeenCalledOnce();
   if (!returning) {
     expect(f.listBranches).toHaveBeenCalledOnce();
     expect(f.request.mock.calls.map(([method]) => method)).toEqual([
