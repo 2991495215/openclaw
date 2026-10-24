@@ -51,9 +51,7 @@ export function createKimiWebSearchProvider(): WebSearchProviderPlugin {
       parameters: KimiSearchSchema,
       execute: async (args, context) => {
         const { executeKimiWebSearchProviderTool } = await loadKimiWebSearchProviderRuntime();
-        return await executeKimiWebSearchProviderTool(ctx, args, {
-          signal: context?.signal,
-        });
+        return await executeKimiWebSearchProviderTool(ctx, args, context?.signal);
       },
     }),
   };

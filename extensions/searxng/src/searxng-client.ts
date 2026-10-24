@@ -2,11 +2,10 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { ProviderHttpError } from "openclaw/plugin-sdk/provider-http";
 import {
   externalContentStamp,
-  DEFAULT_CACHE_TTL_MINUTES,
   DEFAULT_SEARCH_COUNT,
   readCachedSearchPayload,
   readResponseText,
-  resolveCacheTtlMs,
+  resolveSearchCacheTtlMs,
   resolveSearchCount,
   resolveSiteName,
   resolveTimeoutSeconds,
@@ -180,10 +179,7 @@ export async function runSearxngSearch(params: {
     params.config?.tools?.web?.search?.timeoutSeconds,
     DEFAULT_TIMEOUT_SECONDS,
   );
-  const cacheTtlMs = resolveCacheTtlMs(
-    params.config?.tools?.web?.search?.cacheTtlMinutes,
-    DEFAULT_CACHE_TTL_MINUTES,
-  );
+  const cacheTtlMs = resolveSearchCacheTtlMs(params.config?.tools?.web?.search);
 
   if (!baseUrl) {
     throw new Error(

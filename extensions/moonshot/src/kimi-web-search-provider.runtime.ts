@@ -63,9 +63,9 @@ function resolveKimiBaseUrl(kimi?: KimiConfig, openClawConfig?: OpenClawConfig):
 export async function executeKimiWebSearchProviderTool(
   ctx: { config?: OpenClawConfig; searchConfig?: SearchConfigRecord },
   args: Record<string, unknown>,
-  opts?: { signal?: AbortSignal },
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
-  opts?.signal?.throwIfAborted();
+  signal?.throwIfAborted();
   const searchConfig = mergeScopedSearchConfig(
     ctx.searchConfig,
     "kimi",
@@ -103,7 +103,6 @@ export async function executeKimiWebSearchProviderTool(
 
   const start = Date.now();
   const timeoutSeconds = resolveSearchTimeoutSeconds(searchConfig);
-  const signal = opts?.signal;
   const results = await withTrustedWebSearchEndpoint(
     {
       url: `${baseUrl}/tools/search`,
@@ -144,7 +143,7 @@ export async function executeKimiWebSearchProviderTool(
       });
     },
   );
-  opts?.signal?.throwIfAborted();
+  signal?.throwIfAborted();
   const payload = {
     query,
     provider: "kimi",

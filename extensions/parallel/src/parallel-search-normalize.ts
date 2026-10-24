@@ -66,7 +66,6 @@ export async function executeParallelSearchRequest(params: {
   ) => Promise<ParallelSearchResponse>;
 }): Promise<Record<string, unknown>> {
   const { args } = params;
-  const configuredCount = params.searchConfig?.maxResults;
   const objective =
     truncateUtf16Safe(readStringParam(args, "objective") ?? "", PARALLEL_MAX_OBJECTIVE_CHARS) ||
     undefined;
@@ -89,9 +88,7 @@ export async function executeParallelSearchRequest(params: {
     max: PARALLEL_MAX_SEARCH_COUNT,
     message: `count must be an integer from 1 to ${PARALLEL_MAX_SEARCH_COUNT}.`,
   });
-  const value =
-    requestedCount ??
-    (typeof configuredCount === "number" ? configuredCount : DEFAULT_SEARCH_COUNT);
+  const value = requestedCount ?? params.searchConfig?.maxResults;
   const request: NormalizedParallelSearchRequest = {
     objective,
     searchQueries,
