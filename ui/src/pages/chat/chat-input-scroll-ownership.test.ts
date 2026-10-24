@@ -8,7 +8,11 @@ import { applyChatPendingInputs } from "./chat-pending-inputs.ts";
 import { chatRunPresentation } from "./chat-run-presentation.ts";
 import { handlePageGatewayEvent } from "./chat-state-events.ts";
 import { createComposerQuestions } from "./components/chat-composer-questions.ts";
-import { handleChatScrollTakeover } from "./scroll.ts";
+import {
+  canAutoFollowChat,
+  handleChatScrollTakeover,
+  scheduleCommittedChatScroll,
+} from "./scroll.ts";
 
 const disposals: Array<() => void> = [];
 beforeEach(() => {
@@ -88,6 +92,23 @@ function setup() {
 }
 
 describe("transcript arrival scroll ownership", () => {
+  it.each(["manual", "auto"] as const)(
+    "keeps a pending %s command ahead of geometric follow",
+    (source) => {
+      const { state } = setup();
+      const follow = vi.spyOn(state, "chatScrollToEnd");
+      state.chatHasAutoScrolled = false;
+      state.chatFollowLocked = false;
+      scheduleCommittedChatScroll(state, true, false, { source });
+
+      expect(canAutoFollowChat(state)).toBe(false);
+      expect(follow).not.toHaveBeenCalled();
+      vi.advanceTimersToNextFrame();
+      expect(follow).toHaveBeenCalledExactlyOnceWith({ behavior: "auto", source });
+      expect(state.chatHasAutoScrolled).toBe(true);
+    },
+  );
+
   it("keeps text publications out of the message and run-state projections", () => {
     const { state, runtime } = setup();
     state.chatRunId = "stream-run";

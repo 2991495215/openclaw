@@ -6,11 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { flush } from "../../../test-helpers/solid-settle.ts";
 import { makeChatHost } from "../chat-host.test-support.ts";
 import { createTestTranscript, stubAnimationFrames } from "../chat-view.test-helpers.ts";
-import {
-  handleChatScrollTakeover,
-  saveChatSessionScrollPosition,
-  scheduleCommittedChatScroll,
-} from "../scroll.ts";
+import { handleChatScrollTakeover, saveChatSessionScrollPosition } from "../scroll.ts";
 import { SIDEBAR_GEOMETRY_COMMIT_EVENT } from "../sidebar-layout.ts";
 import {
   render,
@@ -164,14 +160,11 @@ it("keeps fractional observer sizes as the sole skipped-row sizing input", async
   }
 });
 
-it("routes changed row observations through the pane's follow policy", async () => {
+it("recovers a displaced end only while the pane permits following", async () => {
   const flushFrames = stubAnimationFrames();
   const policy = makeChatHost({ chatHasAutoScrolled: true });
-  const resized = vi.fn(() =>
-    scheduleCommittedChatScroll(policy, false, false, { source: "resize" }),
-  );
+  let scrollHeight = 2000;
   const transcript = createChatTranscript(() => "row-resize-policy", {
-    onContentResize: resized,
     canFollowEnd: () => !policy.chatFollowLocked,
   });
   const rows = contentRows(1);
@@ -181,9 +174,6 @@ it("routes changed row observations through the pane's follow policy", async () 
     transcript,
   );
   try {
-    // Registering a row has no observer measurement to report.
-    expect(resized).not.toHaveBeenCalled();
-    let scrollHeight = 2000;
     setTranscriptViewport(container, () => scrollHeight);
     container.scrollTo = (options?: ScrollToOptions | number) => {
       if (typeof options === "object") {
@@ -196,27 +186,23 @@ it("routes changed row observations through the pane's follow policy", async () 
     emitTranscriptResize(row, 800, scrollHeight);
     renderRows(rows);
     flushFrames();
-    resized.mockClear();
 
     // Initial layout can leave an unlocked reader near the end without an exact-edge anchor.
     transcript.cancelScroll();
     container.scrollTop = scrollHeight - container.clientHeight - 53;
     policy.chatLastScrollTop = container.scrollTop;
     emitTranscriptResize(row, 800, scrollHeight);
-    expect(resized).not.toHaveBeenCalled();
     scrollHeight += 100;
     emitTranscriptResize(row, 800, scrollHeight);
     renderRows(rows);
     flushFrames();
-    expect(resized).toHaveBeenCalledOnce();
     expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
 
-    // Once captured, the geometric anchor follows growth without another page command.
+    // Ordinary growth reuses the captured end in the coalesced frame.
     scrollHeight += 100;
     emitTranscriptResize(row, 800, scrollHeight);
     renderRows(rows);
     flushFrames();
-    expect(resized).toHaveBeenCalledOnce();
     expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
 
     // Native layout can displace the viewport before a scroll notification arrives.
@@ -225,7 +211,6 @@ it("routes changed row observations through the pane's follow policy", async () 
     emitTranscriptResize(row, 800, scrollHeight);
     renderRows(rows);
     flushFrames();
-    expect(resized).toHaveBeenCalledOnce();
     expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
 
     container.scrollTop = 800;
@@ -235,9 +220,50 @@ it("routes changed row observations through the pane's follow policy", async () 
     emitTranscriptResize(row, 800, scrollHeight);
     renderRows(rows);
     flushFrames();
-    expect(resized).toHaveBeenCalledTimes(2);
     expect(container.scrollTop).toBe(800);
-    expect(policy.chatNewMessagesBelow).toBe(true);
+  } finally {
+    transcript.dispose();
+  }
+});
+
+it("keeps a displaced smooth end command smooth during row growth", async () => {
+  const flushFrames = stubAnimationFrames();
+  const transcript = createChatTranscript(() => "smooth-end-recovery", {
+    canFollowEnd: () => true,
+  });
+  const rows = contentRows(1);
+  const { container, renderRows } = await mountTestTranscript(
+    "smooth-end-recovery",
+    rows,
+    transcript,
+  );
+  let scrollHeight = 2000;
+  setTranscriptViewport(container, () => scrollHeight);
+  const scrollTo = vi.fn((options?: ScrollToOptions | number) => {
+    if (typeof options === "object" && options.behavior !== "smooth") {
+      container.scrollTop = options.top ?? container.scrollTop;
+    }
+  });
+  container.scrollTo = scrollTo;
+  try {
+    const row = requireElement(container, ".chat-virtual-row");
+    emitTranscriptResize(row, 800, scrollHeight);
+    renderRows(rows);
+    flushFrames();
+    transcript.cancelScroll();
+    container.scrollTop = 800;
+    transcript.scrollToEnd({ source: "manual", behavior: "smooth" });
+    scrollTo.mockClear();
+    scrollHeight += 100;
+    emitTranscriptResize(row, 800, scrollHeight);
+    renderRows(rows);
+    flushFrames();
+    expect(
+      scrollTo.mock.calls.some(
+        ([options]) => typeof options === "object" && options.behavior === "auto",
+      ),
+    ).toBe(false);
+    expect(container.scrollTop).toBe(800);
   } finally {
     transcript.dispose();
   }
