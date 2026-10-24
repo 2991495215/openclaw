@@ -335,7 +335,7 @@ const RUNTIME_TOOL_SUCCESS_ARGS: Record<string, Record<string, unknown>> = {
   memory_recall: { query: "runtime parity memory fixture" },
 };
 
-function buildQaToolSearchArgs(
+export function buildQaToolSearchArgs(
   targetTool: string,
   failureMode: boolean,
   prompt = "",
