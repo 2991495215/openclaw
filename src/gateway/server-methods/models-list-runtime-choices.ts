@@ -3,7 +3,6 @@ import type {
   ModelChoice,
   ModelRuntimeChoice,
 } from "../../../packages/gateway-protocol/src/schema/agents-models-skills.js";
-import { listCliRuntimeModelBackendBindings } from "../../agents/cli-backends.js";
 import type { ModelAuthAvailabilityEvaluation } from "../../agents/model-auth-availability.js";
 import {
   resolveCatalogDecisionRuntime,
@@ -28,7 +27,10 @@ export function prepareModelPickerRuntimeChoices(params: {
   variants: readonly ModelCatalogEntry[];
   requestedRuntimes: readonly string[];
   baseEvaluation: ModelAuthAvailabilityEvaluation;
-  decisions: Pick<CatalogDecisions, "runtimeChoices" | "evaluateEntry" | "pluginRegistry">;
+  decisions: Pick<
+    CatalogDecisions,
+    "runtimeChoices" | "evaluateEntry" | "pluginRegistry" | "cliRuntimeBindings"
+  >;
   evaluateNative: CatalogDecisions["evaluateNative"];
   projectPublic: (
     entry: ModelCatalogEntry,
@@ -78,7 +80,7 @@ export function prepareModelPickerRuntimeChoices(params: {
       const runtimeRegistered =
         runtimeId === "openclaw" ||
         decisions.pluginRegistry?.agentHarnesses.some(({ harness }) => harness.id === runtimeId) ||
-        listCliRuntimeModelBackendBindings().some(
+        decisions.cliRuntimeBindings.some(
           (binding) =>
             binding.runtime === runtimeId &&
             normalizeProviderId(binding.provider) === normalizeProviderId(entry.provider),
