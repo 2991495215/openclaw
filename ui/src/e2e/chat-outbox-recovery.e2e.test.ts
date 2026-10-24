@@ -100,6 +100,7 @@ suite.define(() => {
         methodResponses: {
           "chat.history": {
             messages: [],
+            sessionId: "session:agent:main:main",
             sessionInfo: { hasActiveRun: false, status: "done" },
           },
           "chat.send": { status: "ok", messageSeq: 2 },
@@ -111,7 +112,9 @@ suite.define(() => {
       await composer.fill("first interrupted message");
       await page.getByRole("button", { name: "Send message" }).click();
       const first = await gateway.waitForRequest("chat.send");
-      const runId = requireString(requireRecord(first.params).idempotencyKey, "original key");
+      const firstParams = requireRecord(first.params);
+      expect(firstParams.sessionId).toBe("session:agent:main:main");
+      const runId = requireString(firstParams.idempotencyKey, "original key");
       await gateway.setOnline(false);
       await page.locator('.chat-send-status[data-send-state="waiting-reconnect"]').waitFor();
       // Complete the lost response on the closed socket, before holding the retry ACK.
@@ -125,6 +128,7 @@ suite.define(() => {
       expect(requireRecord(sends[1]!.params)).toMatchObject({
         idempotencyKey: runId,
         message: "first interrupted message",
+        sessionId: "session:agent:main:main",
       });
       await page.getByRole("button", { name: "Sending message...", exact: true }).waitFor();
       expect(await page.locator('.chat-send-status[data-send-state="unconfirmed"]').count()).toBe(
