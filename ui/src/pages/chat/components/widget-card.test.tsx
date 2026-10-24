@@ -718,14 +718,30 @@ describe("widget-card", () => {
   it("releases placement observation while a retained widget is hidden", () => {
     const observers: ResizeObserverStub[] = [];
     class ResizeObserverStub implements ResizeObserver {
-      observe = vi.fn();
-      unobserve = vi.fn();
-      disconnect = vi.fn();
+      private readonly targets = new Set<Element>();
+      observe = vi.fn((target: Element) => {
+        this.targets.add(target);
+      });
+      unobserve = vi.fn((target: Element) => {
+        this.targets.delete(target);
+      });
+      disconnect = vi.fn(() => {
+        this.targets.clear();
+      });
       constructor(private readonly callback: ResizeObserverCallback) {
         observers.push(this);
       }
       deliver() {
-        this.callback([], this);
+        this.callback(
+          [...this.targets].map((target) => ({
+            target,
+            contentRect: new DOMRectReadOnly(),
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          })),
+          this,
+        );
       }
     }
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
