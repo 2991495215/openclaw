@@ -14,9 +14,9 @@ scenario:
       toolSearch: false
   objective: Verify a scheduled run created from a conversation can wake that conversation with automations wake, while a run with no parent conversation stays limited to its own job.
   successCriteria:
-    - A job created for an existing conversation runs, calls automations wake, and the conversation answers the woken event.
-    - A job with no parent conversation runs the same wake call and the automations scope refuses it.
-    - The refused wake reaches no conversation.
+    - A job created for an existing conversation runs, calls automations wake, and the conversation's own turn receives and answers the woken event.
+    - A job with no parent conversation runs the same wake call, which its self-scoped automations tool does not offer.
+    - The refused wake never reaches the conversation.
   docsRefs:
     - docs/automation/cron-jobs.md
   codeRefs:
@@ -39,6 +39,8 @@ scenario:
       readyMarker: QA-CRON-PARENT-WAKE-READY
       promptSnippet: Cron parent wake QA check
       scopeError: Automations tool is restricted to the current automation.
+      # An unbound run's tool schema does not offer wake, so validation refuses the call.
+      unofferedAction: "action: must be equal to one of the allowed values"
 
 flow:
   steps:
@@ -80,9 +82,12 @@ flow:
         - set: unboundMarker
           value:
             expr: "`unbound-${randomUUID().slice(0, 8)}`"
-        - set: acknowledged
+        - set: parentHistory
           value:
-            expr: "(marker) => state.getSnapshot().messages.some((message) => message.direction === 'outbound' && !message.deleted && message.text.includes(`QA-CRON-PARENT-WAKE-ACK ${marker}`))"
+            expr: "async () => JSON.stringify((await env.gateway.call('chat.history', { sessionKey: parentSessionKey, limit: 100 }, { timeoutMs: 30000 })).messages ?? [])"
+        - set: answeredInParent
+          value:
+            expr: "async (marker) => { const history = await parentHistory(); return history.includes(`Cron parent wake QA event: marker=${marker}`) && history.includes(`QA-CRON-PARENT-WAKE-ACK ${marker}`); }"
         - set: runJob
           value:
             expr: |-
@@ -121,26 +126,40 @@ flow:
           value:
             expr: "await runJob({ sessionKey: parentSessionKey }, childMarker)"
         - assert:
-            expr: "child.run.status === 'ok' && !child.toolOutput.includes(config.scopeError)"
+            expr: "child.run.status === 'ok' && !child.toolOutput.includes(config.scopeError) && !child.toolOutput.includes(config.unofferedAction)"
             message:
               expr: "`the bound child's wake did not succeed: ${JSON.stringify(child)}`"
-        - call: waitForCondition
-          args:
-            - lambda:
-                expr: "acknowledged(childMarker) || undefined"
-            - 90000
-            - 200
+        - set: childAnswered
+          value:
+            expr: |-
+              await (async () => {
+                const deadline = Date.now() + 90000;
+                while (Date.now() < deadline) {
+                  if (await answeredInParent(childMarker)) {
+                    return true;
+                  }
+                  await sleep(500);
+                }
+                return false;
+              })()
+        - assert:
+            expr: childAnswered
+            message:
+              expr: "`the parent conversation did not receive and answer the woken event: wakeOutput=${child.toolOutput.slice(0, 300)} history=${(await parentHistory()).slice(-1500)}`"
         - set: unbound
           value:
             expr: "await runJob({ owner: { agentId: 'qa' } }, unboundMarker)"
         - assert:
-            expr: "unbound.run.status === 'ok' && unbound.toolOutput.includes(config.scopeError)"
+            expr: "unbound.run.status === 'ok' && unbound.toolOutput.includes(config.unofferedAction)"
             message:
               expr: "`expected the unbound job's wake to be refused by the automations scope: ${JSON.stringify(unbound)}`"
         - call: sleep
           args:
             - 5000
+        - set: unboundInParent
+          value:
+            expr: "(await parentHistory()).includes(`marker=${unboundMarker}`)"
         - assert:
-            expr: "!acknowledged(unboundMarker)"
-            message: the unbound job's refused wake reached a conversation
-      detailsExpr: "`child=${child.jobId} run=${child.run.status} output=${JSON.stringify(child.toolOutput.slice(0, 200))} acked=true; unbound=${unbound.jobId} run=${unbound.run.status} output=${JSON.stringify(unbound.toolOutput.slice(0, 200))} acked=false`"
+            expr: "!unboundInParent"
+            message: the unbound job's refused wake reached the conversation
+      detailsExpr: "`child=${child.jobId} run=${child.run.status} output=${JSON.stringify(child.toolOutput.slice(0, 200))} parentAnswered=true; unbound=${unbound.jobId} run=${unbound.run.status} output=${JSON.stringify(unbound.toolOutput.slice(0, 200))} inParent=false`"
