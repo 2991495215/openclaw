@@ -4,7 +4,6 @@
  * credentials, resolves SecretRefs, and maintains runtime store snapshots.
  */
 import { isDeepStrictEqual } from "node:util";
-import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { getRuntimeConfig } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { parseSecretRef } from "../../config/types.secrets.js";
@@ -29,6 +28,7 @@ import { createOAuthManager } from "./oauth-manager.js";
 import { refreshOAuthCredential } from "./oauth-provider-operations.js";
 import {
   OAuthManagerRefreshError,
+  isRefreshTokenReusedError,
   isSettledOAuthRefreshFailure,
   markOAuthRefreshFailureSettled,
   OAuthRefreshFailureError,
@@ -96,16 +96,6 @@ function buildApiKeyProfileResult(
   return result as ResolveApiKeyForProfileResult;
 }
 
-/** Detect provider errors caused by single-use OAuth refresh token races. */
-function isRefreshTokenReusedError(error: unknown): boolean {
-  const message = normalizeLowercaseStringOrEmpty(formatErrorMessage(error));
-  return (
-    message.includes("refresh_token_reused") ||
-    message.includes("refresh token has already been used") ||
-    message.includes("already been used to generate a new access token")
-  );
-}
-
 type ResolveApiKeyForProfileParams = {
   cfg?: OpenClawConfig;
   store: AuthProfileStore;
@@ -136,12 +126,6 @@ export async function refreshOAuthCredentialForRuntime(params: {
 }
 
 const oauthManager = createOAuthManager();
-
-if (process.env.VITEST || process.env.NODE_ENV === "test") {
-  (globalThis as Record<PropertyKey, unknown>)[Symbol.for("openclaw.oauthTestApi")] = {
-    isRefreshTokenReusedError,
-  };
-}
 
 async function resolveOAuthProfileAccess(
   params: ResolveApiKeyForProfileParams,

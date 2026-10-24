@@ -18,7 +18,6 @@ import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import { resetGeneratedMediaTaskActivityForTests } from "../media-generation-activity.test-support.js";
-import { resetRecentMediaGenerationDuplicateGuardsForTests } from "../media-generation-task-status-shared.test-support.js";
 import * as taskRuntime from "../media-generation-task-status.js";
 import { prepareWorkspaceBuildGroup } from "../prepared-model-runtime.facts.js";
 import { discardPreparedPluginGeneration } from "../prepared-model-runtime.plugin-lifetime.js";
@@ -278,7 +277,6 @@ async function prepareSnapshot(
 
 afterEach(() => {
   vi.restoreAllMocks();
-  resetRecentMediaGenerationDuplicateGuardsForTests();
   resetGeneratedMediaTaskActivityForTests();
   clearPluginMetadataLifecycleCaches();
   resetPluginLoaderTestStateForTest();
