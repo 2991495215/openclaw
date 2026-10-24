@@ -1,4 +1,4 @@
-import { decisionBatchV2ToV1, decisionResultV1ToV2 } from "openclaw/plugin-sdk/decisions";
+import { decisionBatchV2ToV1 } from "openclaw/plugin-sdk/decisions";
 import type {
   DecisionAnswer,
   DecisionBatch,
@@ -223,20 +223,13 @@ export function createPreparedOnnxProvider(
       if (!v1 || (context.reasoning !== undefined && context.reasoning !== "auto")) {
         return { status: "unavailable", reason: "unsupported-input" };
       }
-      const outcome = await legacy.evaluate(v1, {
+      return legacy.evaluate(v1, {
         model: context.model.id,
         agentId: context.agentId,
         signal: context.signal,
         deadlineMonotonicMs: context.deadlineMonotonicMs,
         isAdmissible: context.isAdmissible,
       });
-      if (outcome.status !== "ok") {
-        return outcome;
-      }
-      const result = decisionResultV1ToV2(v1, outcome.result);
-      return result
-        ? { status: "ok", result }
-        : { status: "unavailable", reason: "invalid-response" };
     },
   };
 }
