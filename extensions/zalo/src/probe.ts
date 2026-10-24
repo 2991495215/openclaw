@@ -1,6 +1,6 @@
 import type { BaseProbeResult } from "openclaw/plugin-sdk/channel-contract";
 import { runChannelProbe } from "openclaw/plugin-sdk/text-utility-runtime";
-import { getMe, ZaloApiError, type ZaloBotInfo, type ZaloFetch } from "./api.js";
+import { getMe, type ZaloBotInfo, type ZaloFetch } from "./api.js";
 
 export type ZaloProbeResult = BaseProbeResult<string> & {
   bot?: ZaloBotInfo;
@@ -8,9 +8,6 @@ export type ZaloProbeResult = BaseProbeResult<string> & {
 };
 
 function formatZaloProbeError(error: unknown, timeoutMs: number): string {
-  if (error instanceof ZaloApiError) {
-    return error.description ?? error.message;
-  }
   if (error instanceof Error) {
     return error.name === "AbortError" ? `Request timed out after ${timeoutMs}ms` : error.message;
   }

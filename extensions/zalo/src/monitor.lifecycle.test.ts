@@ -205,7 +205,7 @@ describe("monitorZaloProvider lifecycle", () => {
   ])("starts polling after %s inspection", async (inspection, log) => {
     const { ZaloApiError } = await import("./api.js");
     if (inspection === "404") {
-      getWebhookInfoMock.mockRejectedValueOnce(new ZaloApiError("Not Found", 404, "Not Found"));
+      getWebhookInfoMock.mockRejectedValueOnce(new ZaloApiError("Not Found", 404));
     } else if (inspection === "existing webhook") {
       getWebhookInfoMock.mockResolvedValueOnce({
         ok: true,

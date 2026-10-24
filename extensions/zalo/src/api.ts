@@ -51,7 +51,6 @@ export class ZaloApiError extends Error {
   constructor(
     message: string,
     public readonly errorCode?: number,
-    public readonly description?: string,
   ) {
     super(message);
     this.name = "ZaloApiError";
@@ -123,11 +122,7 @@ export async function callZaloApi<T = unknown>(
     const data = await readProviderJsonResponse<ZaloApiResponse<T>>(response, `zalo.${method}`);
 
     if (!data.ok) {
-      throw new ZaloApiError(
-        data.description ?? `Zalo API error: ${method}`,
-        data.error_code,
-        data.description,
-      );
+      throw new ZaloApiError(data.description ?? `Zalo API error: ${method}`, data.error_code);
     }
 
     return data;
