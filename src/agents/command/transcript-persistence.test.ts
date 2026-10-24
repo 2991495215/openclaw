@@ -5,12 +5,12 @@ import {
   findTranscriptEvent,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
-import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
+import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db.js";
 import { SessionManager } from "../sessions/session-manager.js";
 import { persistAcpTurnTranscript, persistCliTurnTranscript } from "./transcript-persistence.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterEach(() => closeOpenClawAgentDatabasesForTest());
+afterEach(() => closeOpenClawAgentDatabasesAsync());
 
 it.each(["CLI", "ACP"] as const)(
   "keeps the %s coordination fallback hidden after runtime persistence is unavailable",

@@ -171,20 +171,18 @@ describe("auditGatewayServiceConfig", () => {
     expect(needsNodeRuntimeMigration(audit.issues)).toBe(true);
   });
 
-  it("reports a capable vendor Node as a note without requesting migration", async () => {
-    const note = "Node 24.15.0: unsupported version, capability probe passed.";
+  it("reports a supported Node without a note or migration request", async () => {
     resolveNodeRuntimeInfoMock.mockResolvedValue({
-      version: "24.15.0",
+      version: "26.12.1",
       sqliteVersion: "3.53.4",
       sqliteProbe: { available: true, version: "3.53.4", text: true, blob: true, json: true },
       nodeSharedSqlite: false,
       status: "supported",
-      note,
     });
 
     const audit = await createGatewayAudit();
 
-    expect(audit.runtimeNote).toBe(note);
+    expect(audit.runtimeNote).toBeUndefined();
     expect(hasIssue(audit, SERVICE_AUDIT_CODES.gatewayRuntimeNode)).toBe(false);
     expect(needsNodeRuntimeMigration(audit.issues)).toBe(false);
   });
