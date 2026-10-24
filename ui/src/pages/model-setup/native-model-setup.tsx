@@ -30,6 +30,15 @@ import type { captureModelSetupConnection } from "./first-run-setup.ts";
 import { createModelSetupSaving } from "./model-setup-saving.ts";
 import { formatModelSetupError } from "./model-setup-task-result.ts";
 
+type NativeModelSetupOptions = {
+  getContext: () => ApplicationContext;
+  getConnection: () => ReturnType<typeof captureModelSetupConnection> | null;
+  canUseSetup: (client: GatewayBrowserClient | null) => boolean;
+  blocked: () => boolean;
+  onSelected: () => void;
+  onChange: () => void;
+};
+
 export type NativeModelSetup = ReturnType<typeof createNativeModelSetup>;
 
 type NativeCatalogRequest = {
@@ -38,14 +47,7 @@ type NativeCatalogRequest = {
   result: Promise<ModelCatalogResult>;
 };
 
-export function createNativeModelSetup(options: {
-  getContext: () => ApplicationContext;
-  getConnection: () => ReturnType<typeof captureModelSetupConnection> | null;
-  canUseSetup: (client: GatewayBrowserClient | null) => boolean;
-  blocked: () => boolean;
-  onSelected: () => void;
-  onChange: () => void;
-}) {
+export function createNativeModelSetup(options: NativeModelSetupOptions) {
   const catalog = projectSource<NativeCatalogRequest | null, ReturnType<typeof readModelCatalog>>(
     null,
     {

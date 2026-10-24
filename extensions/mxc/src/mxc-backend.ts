@@ -16,7 +16,7 @@ import type {
 } from "openclaw/plugin-sdk/sandbox";
 import { resolveMxcBinaryPath } from "./binary-resolver.js";
 import type { MxcConfig } from "./config.js";
-import { MxcFsBridge } from "./fs-bridge.js";
+import { createMxcFsBridge } from "./fs-bridge.js";
 import {
   buildMxcContainerConfig,
   resolveCurrentBaselineContext,
@@ -207,7 +207,7 @@ export function createMxcSandboxBackendHandle(params: {
       cleanupLauncherPayloadFile(token);
     },
 
-    createFsBridge: ({ sandbox }) => new MxcFsBridge(sandbox),
+    createFsBridge: ({ sandbox }) => createMxcFsBridge({ sandbox }),
 
     async runShellCommand(
       cmdParams: SandboxBackendCommandParams,

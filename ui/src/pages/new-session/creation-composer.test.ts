@@ -1,20 +1,17 @@
 import { expectDefined } from "@openclaw/normalization-core";
-import { createComponent, createSignal, flush, useContext } from "solid-js";
+import { createComponent, createEffect, createSignal, flush, useContext } from "solid-js";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
-import { createApplicationTheme } from "../../app/bootstrap-theme.ts";
 import { canReloadControlUiDocument } from "../../app/document-reload-guard.ts";
-import { loadSettings } from "../../app/settings.ts";
 import {
   SessionBackgroundLayoutContext,
   SessionBackgroundLayoutScope,
 } from "../../components/session-background-layout-context.tsx";
-import { SessionBackgroundView } from "../../components/session-background-view.tsx";
+import { createBackgroundFadeLayout } from "../../components/session-background-layout.ts";
 import type { SessionCreateOutcome } from "../../lib/sessions/create.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../../test-helpers/solid-application-context.tsx";
-import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import {
   getChatAttachmentDataUrl,
   releaseChatAttachmentPayloads,
@@ -47,23 +44,8 @@ afterEach(() => {
 });
 
 describe("creation-owned follow-up input", () => {
-  it("replaces the input owner and keeps its background fade through replacement and removal", async () => {
+  it("replaces the input owner and keeps its background fade through replacement and removal", () => {
     const { context, composer } = fixture();
-    const theme = createApplicationTheme(
-      {
-        ...loadSettings(),
-        background: {
-          source: { kind: "theme" },
-          presentation: "faded",
-          visibility: 0.5,
-          showOnNewSession: true,
-          showInSessions: true,
-        },
-      },
-      context.gateway,
-    );
-    Object.assign(context, { theme });
-    onTestFinished(() => theme.dispose());
     const next = new CreationComposer(context, "main", false, vi.fn());
     onTestFinished(() => next.dispose());
     composer.setMessage("first creation");
@@ -78,10 +60,13 @@ describe("creation-owned follow-up input", () => {
         ? DOMRect.fromRect({ y: inputTop, height: 100 })
         : DOMRect.fromRect({ height: 1000 });
     });
+    const background = document.createElement("div");
     function Layout() {
       const scope = useContext(SessionBackgroundLayoutContext)!;
       registeredCount = () => scope.targets().length;
-      return createComponent(SessionBackgroundView, { surface: "new-session", context });
+      const layout = createBackgroundFadeLayout(background);
+      createEffect(scope.targets, (targets) => layout.update(true, targets));
+      return background;
     }
     const { container } = mountSolid(
       () =>
@@ -100,15 +85,9 @@ describe("creation-owned follow-up input", () => {
         }),
       { wrapper: createSolidApplicationContextProvider(context).wrapper },
     );
-    const background = expectDefined(
-      container.querySelector<HTMLElement>("openclaw-session-background"),
-      "creation background",
-    );
     const firstInput = container.querySelector("textarea");
     expect(firstInput?.value).toBe("first creation");
-    await waitForSolid(() =>
-      expect(background.style.getPropertyValue("--session-background-fade-end")).toBe("250px"),
-    );
+    expect(background.style.getPropertyValue("--session-background-fade-end")).toBe("250px");
     expect(registeredCount()).toBe(1);
     inputTop = 400;
     setCurrent(next);
@@ -120,15 +99,11 @@ describe("creation-owned follow-up input", () => {
     next.flushInput?.();
     expect(next.message).toBe("edited next creation");
     expect(composer.message).toBe("first creation");
-    await waitForSolid(() =>
-      expect(background.style.getPropertyValue("--session-background-fade-end")).toBe("450px"),
-    );
+    expect(background.style.getPropertyValue("--session-background-fade-end")).toBe("450px");
     expect(registeredCount()).toBe(1);
     setCurrent(undefined);
     flush();
-    await waitForSolid(() =>
-      expect(background.style.getPropertyValue("--session-background-fade-end")).toBe("550px"),
-    );
+    expect(background.style.getPropertyValue("--session-background-fade-end")).toBe("550px");
     expect(registeredCount()).toBe(0);
   });
 

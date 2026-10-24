@@ -72,20 +72,7 @@ export function createDevicePolicyActions(options: {
   return {
     bindNode(nodeId: string | null, agentId?: string) {
       if (options.canEdit()) {
-        const config = options.runtimeConfig();
-        const target =
-          agentId === undefined
-            ? { path: [] }
-            : config.agentEntry(agentId, { ensure: Boolean(nodeId) });
-        if (!target) {
-          return;
-        }
-        const path = [...target.path, "tools", "exec", "node"];
-        if (nodeId) {
-          config.patchForm(path, nodeId);
-        } else {
-          config.removeFormValue(path);
-        }
+        bindDeviceNode(options.runtimeConfig(), nodeId, agentId);
       }
     },
     configSaving: () => presentation().configSaving(),
@@ -106,4 +93,22 @@ export function createDevicePolicyActions(options: {
       return present(view, currentLifetime, pending, kind);
     },
   };
+}
+
+function bindDeviceNode(
+  config: ApplicationContext["runtimeConfig"],
+  nodeId: string | null,
+  agentId?: string,
+) {
+  const target =
+    agentId === undefined ? { path: [] } : config.agentEntry(agentId, { ensure: Boolean(nodeId) });
+  if (!target) {
+    return;
+  }
+  const path = [...target.path, "tools", "exec", "node"];
+  if (nodeId) {
+    config.patchForm(path, nodeId);
+  } else {
+    config.removeFormValue(path);
+  }
 }

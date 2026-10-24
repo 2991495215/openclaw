@@ -31,7 +31,11 @@ type ResolvedMxcPath = SandboxResolvedPath & {
   mount: MxcFsMount;
 };
 
-export class MxcFsBridge implements SandboxFsBridge {
+export function createMxcFsBridge(params: { sandbox: MxcFsBridgeContext }): SandboxFsBridge {
+  return new MxcFsBridge(params.sandbox);
+}
+
+class MxcFsBridge implements SandboxFsBridge {
   // These must be assigned in the constructor body, not as field initializers.
   // Plugin sources load through jiti, which evaluates field initializers before
   // it assigns constructor parameter properties, so `this.sandbox` would still

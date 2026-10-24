@@ -20,13 +20,13 @@ function resolveChannelIconOwner(
   );
 }
 
-export function createChannelPluginPresentation(
-  hooks: ChannelSettingsHooks & {
-    getContext: () => ApplicationContext;
-    getChannelIds: () => readonly string[];
-    isConnected: () => boolean;
-  },
-) {
+type PluginPresentationHooks = ChannelSettingsHooks & {
+  getContext: () => ApplicationContext;
+  getChannelIds: () => readonly string[];
+  isConnected: () => boolean;
+};
+
+export function createChannelPluginPresentation(hooks: PluginPresentationHooks) {
   const details = createChannelSettingsPresentation(hooks);
   let catalog: PluginListResult | null = null;
   let iconUrls: Record<string, string> = {};

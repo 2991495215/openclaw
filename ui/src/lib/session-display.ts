@@ -293,20 +293,25 @@ export function resolveSessionDisplayName(key: string, row?: SessionDisplayRow):
     return prefixPattern.test(name) ? name : `${prefix} ${name}`;
   };
 
-  let name = fallbackName;
-  if (label && label !== key) {
-    name = applyTypedPrefix(label);
-  } else if (displayName && displayName !== key) {
-    name = applyTypedPrefix(displayName);
-  } else {
+  const resolveNamedOrFallback = (): string => {
+    if (label && label !== key) {
+      return applyTypedPrefix(label);
+    }
+    if (displayName && displayName !== key) {
+      return applyTypedPrefix(displayName);
+    }
     // Unnamed work sessions read as their checkout instead of an opaque key.
     const workSubtitle = row ? resolveSessionWorkSubtitle(row) : undefined;
     if (workSubtitle && row?.worktree) {
-      name = applyTypedPrefix(workSubtitle);
-    } else if (derivedTitle && derivedTitle !== key) {
-      name = applyTypedPrefix(derivedTitle);
+      return applyTypedPrefix(workSubtitle);
     }
-  }
+    if (derivedTitle && derivedTitle !== key) {
+      return applyTypedPrefix(derivedTitle);
+    }
+    return fallbackName;
+  };
+
+  const name = resolveNamedOrFallback();
   if (!accountId || accountId === "default") {
     return name;
   }

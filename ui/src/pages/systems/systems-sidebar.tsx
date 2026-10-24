@@ -77,6 +77,7 @@ export function systemPlatform(row: SystemsInventoryRow): string | undefined {
 }
 
 type SystemsSidebarProps = { controller?: Systems };
+type SystemsSidebarElement = SolidBridgeElement<SystemsSidebarProps>;
 function SystemsSidebarContent(props: SystemsSidebarProps) {
   const projection = createMemo(() =>
     props.controller ? projectOwner(props.controller, (value) => value) : null,
@@ -302,6 +303,6 @@ defineSolidBridge<SystemsSidebarProps>("openclaw-systems-sidebar", SystemsSideba
 
 declare global {
   interface HTMLElementTagNameMap {
-    "openclaw-systems-sidebar": SolidBridgeElement<SystemsSidebarProps>;
+    "openclaw-systems-sidebar": SystemsSidebarElement;
   }
 }
