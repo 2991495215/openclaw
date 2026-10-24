@@ -1017,8 +1017,6 @@ printf 'status=%s\\n' "$status"
     expect(result.stderr).toContain("exact-image mode forbids a local rebuild");
   });
 
-
-
   it.each([
     {
       version: "24.22.1",
@@ -1055,14 +1053,13 @@ printf 'status=%s\\n' "$status"
     );
   });
 
-
-
   it.each([
     [DOCKER_SETUP_PATH, "run_docker_pull"],
     [PODMAN_SETUP_PATH, "run_podman_pull"],
     [PODMAN_SETUP_PATH, "run_podman_build"],
     [PODMAN_RUN_PATH, "run_podman_detached"],
-  ])("bounds %s %s through the host timeout owner", (file, helper) => {
+  ])("ships %s %s wired to the host timeout owner (static packaging contract)", (file, helper) => {
+    // This guards packaged adapter ownership; it does not measure timeout enforcement.
     const body = extractScript(file, new RegExp("(" + helper + "\\(\\) \\{[\\s\\S]*?\\n\\})", "u"));
     expect(body).toMatch(/openclaw_host_timeout_cmd "\$[A-Z_]+" (?:docker|podman) /u);
   });
@@ -1132,7 +1129,8 @@ printf 'status=%s\\n' "$status"
     );
   });
 
-  it("only copies frozen candidate artifacts without building or normalizing them", () => {
+  it("ships a frozen-payload branch without local-build dependencies (static packaging contract)", () => {
+    // Dependency/branch wiring only, not proof of execution or filesystem mutation.
     const branch = extractScript(
       SCRIPT_PATH,
       /prepare_update_tarball\(\) \{[\s\S]*?if \[\[ -n "\$FROZEN_PAYLOAD_DIR" \]\]; then([\s\S]*?)elif/u,

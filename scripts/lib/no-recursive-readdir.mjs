@@ -1,8 +1,15 @@
+// Static resource-safety guard, not whole-program dataflow analysis. Const aliases and
+// literal builtin module names are resolved. Reassigned/let aliases, computed module or
+// method names, and filesystem functions hidden behind other modules remain unsupported.
 const FS_MODULES = new Map([
   ["fs", "fs"],
   ["node:fs", "fs"],
   ["fs/promises", "promises"],
   ["node:fs/promises", "promises"],
+  ["module", "module"],
+  ["node:module", "module"],
+  ["process", "process"],
+  ["node:process", "process"],
 ]);
 const WRAPPERS = new Set([
   "ChainExpression",
@@ -35,6 +42,15 @@ function propertyName(node, computed = false) {
   return undefined;
 }
 function member(receiver, key) {
+  if (key === "default") {
+    return receiver;
+  }
+  if (receiver === "module" && key === "createRequire") {
+    return "createRequire";
+  }
+  if (receiver === "process" && key === "getBuiltinModule") {
+    return "getBuiltinModule";
+  }
   if (receiver === "fs" && key === "promises") {
     return "promises";
   }
@@ -58,6 +74,10 @@ export default {
     },
   },
   create(context) {
+    // Avoid materializing JS AST/scope wrappers for the vast majority of source files.
+    if (!context.sourceCode.text.includes("readdir")) {
+      return {};
+    }
     // Resource exhaustion is equally dangerous in tests, QA, UI, packages and tooling.
     // Unlike type/assertion policy, this rule covers every file admitted by oxlint.
     const references = new Map();
@@ -92,19 +112,23 @@ export default {
       if (node.type === "ImportExpression") {
         return FS_MODULES.get(propertyName(node.source, true));
       }
-      if (
-        node.type === "CallExpression" &&
-        node.callee.type === "Identifier" &&
-        node.callee.name === "require" &&
-        !variableFor(node.callee)?.defs.length
-      ) {
-        return FS_MODULES.get(propertyName(node.arguments[0], true));
+      if (node.type === "CallExpression") {
+        const callee = kind(node.callee, visited);
+        if (callee === "createRequire") {
+          return "require";
+        }
+        if (callee === "require" || callee === "getBuiltinModule") {
+          return FS_MODULES.get(propertyName(node.arguments[0], true));
+        }
       }
       if (node.type !== "Identifier") {
         return undefined;
       }
       const variable = variableFor(node);
       const definition = variable?.defs[0];
+      if (!definition && (node.name === "require" || node.name === "process")) {
+        return node.name;
+      }
       if (definition?.type === "ImportBinding") {
         const receiver = FS_MODULES.get(definition.parent.source.value);
         return definition.node.type === "ImportSpecifier"
@@ -148,15 +172,73 @@ export default {
       }
       return UNKNOWN;
     }
-    function recursion(expression, visited = new Set()) {
+    function optionsRemainLocal(variable, use) {
+      if (variable.defs[0]?.parent.parent?.type === "ExportNamedDeclaration") {
+        return false;
+      }
+      return variable.references.every((reference) => {
+        if (reference.init) {
+          return true;
+        }
+        const captured = reference.from.variableScope !== variable.scope.variableScope;
+        let node = reference.identifier;
+        while (WRAPPERS.has(node.parent?.type)) {
+          node = node.parent;
+        }
+        if (node.parent?.type === "MemberExpression" && node.parent.object === node) {
+          while (node.parent?.type === "MemberExpression" && node.parent.object === node) {
+            node = node.parent;
+          }
+          const parent = node.parent;
+          if (
+            (parent?.type === "AssignmentExpression" && parent.left === node) ||
+            parent?.type === "UpdateExpression" ||
+            (parent?.type === "UnaryExpression" && parent.operator === "delete")
+          ) {
+            return false;
+          }
+          // Calling an object's method can mutate it. Reading a field does not hand it out.
+          return (
+            (!captured && reference.identifier.start >= use.start) ||
+            parent?.type !== "CallExpression" ||
+            parent.callee !== node
+          );
+        }
+        if (!captured && reference.identifier.start >= use.start) {
+          return true;
+        }
+        const parent = node.parent;
+        if (
+          parent?.type === "CallExpression" &&
+          parent.arguments[1] === node &&
+          kind(parent.callee) === "read"
+        ) {
+          return true;
+        }
+        // Assignment, publication, return, aliases and unknown calls can retain or mutate it.
+        return parent?.type === "BinaryExpression" || parent?.type === "UnaryExpression";
+      });
+    }
+    function recursion(expression, visited = new Set(), use = expression) {
       const node = unwrap(expression);
       if (!node) {
         return ABSENT;
       }
       if (node.type === "Identifier") {
+        const variable = variableFor(node);
+        if (variable?.defs.some((definition) => definition.type === "FunctionName")) {
+          return ABSENT;
+        }
         const binding = initializer(node, visited);
         if (binding?.id.type === "Identifier") {
-          return recursion(binding.init, visited);
+          const value = unwrap(binding.init);
+          if (value?.type === "ArrowFunctionExpression" || value?.type === "FunctionExpression") {
+            return ABSENT;
+          }
+          if (!optionsRemainLocal(variable, use)) {
+            return UNKNOWN;
+          }
+          return recursion(binding.init, visited, use);
         }
         return node.name === "undefined" && !variableFor(node)?.defs.length ? ABSENT : UNKNOWN;
       }
@@ -174,7 +256,7 @@ export default {
       for (const property of node.properties) {
         if (property.type === "SpreadElement") {
           // An unknown spread may override a previous false; an explicit false after it is safe.
-          const spread = recursion(property.argument, new Set(visited));
+          const spread = recursion(property.argument, new Set(visited), use);
           if (spread !== ABSENT) {
             recursive = spread;
           }
@@ -202,7 +284,7 @@ export default {
         if (kind(node.callee) !== "read") {
           return;
         }
-        const recursive = recursion(node.arguments[1]);
+        const recursive = recursion(node.arguments[1], new Set(), node);
         if (recursive === false || recursive === undefined || recursive === ABSENT) {
           return;
         }

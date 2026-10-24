@@ -1,13 +1,15 @@
 import fs, { type Dirent } from "node:fs";
 import path from "node:path";
 
-// package.json ships this source: packaged lifecycle/generator scripts import it without a build.
+// Listed in package.json for the packaging/generator source closure; published installs skip that source-only generation path.
 
 export type DirectoryWalkOptions = {
   /** Maximum entry depth; immediate children have depth 1. Default: 64. */
   maxDepth?: number;
   /** Maximum number of entries, including directories and symlinks. Default: 100,000. */
   maxEntries?: number;
+  /** Keep the directory entry but omit its descendants from this inventory. */
+  skipDirectory?: (entry: DirectoryWalkEntry) => boolean;
 };
 
 export type DirectoryWalkEntry = { relativePath: string; dirent: Dirent };
@@ -48,8 +50,9 @@ function createWalk(root: string, options: DirectoryWalkOptions) {
         throw new DirectoryWalkLimitError(root, "maxEntries", maxEntries);
       }
       const relativePath = path.join(parent.relativePath, dirent.name);
-      entries.push({ relativePath, dirent });
-      if (dirent.isDirectory()) {
+      const entry = { relativePath, dirent };
+      entries.push(entry);
+      if (dirent.isDirectory() && !options.skipDirectory?.(entry)) {
         pending.push({ relativePath, depth: parent.depth + 1 });
       }
     },

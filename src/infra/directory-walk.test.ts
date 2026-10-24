@@ -116,6 +116,19 @@ describe.each([
     expect(await walk(root, { maxEntries: 128 })).toHaveLength(128);
   });
 
+  it("prunes directory contents before consuming depth or entry budgets", async () => {
+    const root = tempDirs.make("directory-walk-pruned-");
+    fs.mkdirSync(path.join(root, "ignored/deep"), { recursive: true });
+    fs.writeFileSync(path.join(root, "ignored/deep/file"), "ignored");
+    fs.writeFileSync(path.join(root, "kept"), "visible");
+    const entries = await walk(root, {
+      maxDepth: 1,
+      maxEntries: 2,
+      skipDirectory: ({ dirent }) => dirent.name === "ignored",
+    });
+    expect(entries.map((entry) => entry.relativePath)).toEqual(["ignored", "kept"]);
+  });
+
   it("allows an empty root at zero budgets and rejects invalid budgets", async () => {
     const root = tempDirs.make("directory-walk-");
     expect(await walk(root, { maxDepth: 0, maxEntries: 0 })).toEqual([]);

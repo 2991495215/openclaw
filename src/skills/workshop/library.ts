@@ -118,7 +118,10 @@ async function readSkillFile(skillDir: string, filePath: string): Promise<string
 async function listSkillFiles(
   skillDir: string,
 ): Promise<{ files: string[]; sizeBytes: number; updatedAtMs: number }> {
-  const entries = await listDirectoryTreeStrict(skillDir);
+  const entries = await listDirectoryTreeStrict(skillDir, {
+    // Dependencies and hidden metadata are not support files; never spend the inventory budget on them.
+    skipDirectory: ({ dirent }) => dirent.name.startsWith(".") || dirent.name === "node_modules",
+  });
   const files: string[] = [];
   let sizeBytes = 0;
   let updatedAtMs = 0;

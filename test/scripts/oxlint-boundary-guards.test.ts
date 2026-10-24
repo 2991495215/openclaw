@@ -2,11 +2,19 @@ import { spawnSync } from "node:child_process";
 import { posix } from "node:path";
 import { beforeAll, expect, it } from "vitest";
 import noForcedProcessExit from "../../scripts/lib/no-forced-process-exit.mjs";
+import noRecursiveReaddir from "../../scripts/lib/no-recursive-readdir.mjs";
 
 const FIXTURES = "test/fixtures/oxlint-boundary-guards";
 const forcedExit = "no-forced-process-exit";
 const cases = [
-  ["no-recursive-readdir", "recursive-readdir-violation.ts", 6, [3, 4, 5, 6, 7, 8]],
+  [
+    "no-recursive-readdir",
+    "recursive-readdir-violation.ts",
+    18,
+    [3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 19, 21, 23, 25, 27],
+  ],
+  ["no-recursive-readdir", "recursive-readdir-mutation.ts", 9, [4, 7, 10, 14, 17, 20, 36, 38, 41]],
+  ["no-recursive-readdir", "recursive-readdir-builtins.ts", 6, [4, 6, 7, 10, 12, 22]],
   [
     forcedExit,
     "forced-process-exit-violation.ts",
@@ -103,3 +111,16 @@ it.each(cases)(
     }
   },
 );
+
+it("does no scope or listener work when the source cannot mention readdir", () => {
+  expect(
+    noRecursiveReaddir.create({
+      sourceCode: {
+        text: "export const answer = 42;",
+        get scopeManager() {
+          throw new Error("unnecessary scope materialization");
+        },
+      },
+    }),
+  ).toEqual({});
+});

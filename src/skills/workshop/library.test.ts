@@ -422,3 +422,22 @@ describe("archiveUnusedWorkshopSkills", () => {
     },
   );
 });
+
+it("prunes hidden and dependency directories before inventory budgets are consumed", async () => {
+  await seed("deploy", skill("deploy", "Visible procedure"));
+  await fs.mkdir(skillPath("deploy", "references"));
+  await fs.writeFile(skillPath("deploy", "references", "kept.md"), "support");
+  for (const ignored of [".git", ".venv", "node_modules"]) {
+    const tooDeep = skillPath("deploy", ignored, ...Array(65).fill("nested"));
+    await fs.mkdir(tooDeep, { recursive: true });
+    await fs.writeFile(path.join(tooDeep, "ignored.md"), "not skill content");
+  }
+  expect(await listWorkshopSkills({}, "main")).toMatchObject([
+    {
+      name: "deploy",
+      files: ["SKILL.md", "references/kept.md"],
+      sizeBytes: Buffer.byteLength(skill("deploy", "Visible procedure")) + 7,
+    },
+  ]);
+  expect((await view()).files).toEqual(["SKILL.md", "references/kept.md"]);
+});

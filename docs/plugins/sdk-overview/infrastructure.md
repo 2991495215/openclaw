@@ -63,6 +63,9 @@ in lexical relative-path order. They report symlinks without following them and
 reject a symlink root with `ERR_DIRECTORY_WALK_ROOT_SYMLINK`. Missing roots throw `ENOENT`; callers may explicitly treat
 that as an empty inventory. `maxDepth` defaults to 64 (immediate children have
 depth 1), and `maxEntries` defaults to 100,000, counting directories and symlinks.
+An optional `skipDirectory(entry)` predicate retains the directory entry but prunes
+its descendants before they consume depth or entry budgets. Workshop inventories
+use it to exclude hidden metadata and dependency trees.
 Exceeding either throws `DirectoryWalkLimitError` (`ERR_DIRECTORY_WALK_LIMIT`), never a truncated result.
 This strict inventory is distinct from the best-effort `walkDirectory` in
 `@openclaw/fs-safe/walk`, which can return partial results and stop at a requested
