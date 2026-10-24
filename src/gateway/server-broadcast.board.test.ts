@@ -105,12 +105,20 @@ describe("board event scope guards", () => {
     const pairing = makeClient("pairing", "operator", ["operator.pairing"]);
     const node = makeClient("node", "node", ["operator.read"]);
     const read = readPeer("read");
+    const sessionRead = makeClient("session-read", "operator", ["operator.sessions.read"]);
+    const sessionWrite = makeClient("session-write", "operator", ["operator.sessions.write"]);
+    const hidden = makeClient("hidden", "operator", ["operator.sessions.read"]);
     const write = makeClient("write", "operator", ["operator.write"]);
     const admin = makeClient("admin", "operator", ["operator.admin"]);
     const clients = new GatewayClientRegistry(
-      [pairing, node, read, write, admin].map((entry) => entry.client),
+      [pairing, node, read, write, admin, sessionRead, sessionWrite, hidden].map(
+        (entry) => entry.client,
+      ),
     );
-    const { broadcast } = createGatewayBroadcaster({ clients });
+    const { broadcast } = createGatewayBroadcaster({
+      clients,
+      canReceiveSessionEvent: (client) => client !== hidden.client,
+    });
 
     broadcast("board.changed", { sessionKey: "agent:main:main", revision: 1 });
     broadcast("sessions.processes.changed", { sessionKey: "agent:main:main", agentId: "main" });
@@ -125,6 +133,9 @@ describe("board event scope guards", () => {
     expect(read.socket.events).toEqual(events);
     expect(write.socket.events).toEqual(events);
     expect(admin.socket.events).toEqual(events);
+    expect(sessionRead.socket.events).toEqual(events);
+    expect(sessionWrite.socket.events).toEqual(events);
+    expect(hidden.socket.events).toEqual([]);
   });
 });
 
