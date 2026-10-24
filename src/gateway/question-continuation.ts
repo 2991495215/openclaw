@@ -13,14 +13,17 @@ import type { DurableQuestion } from "../config/sessions/session-questions.types
 import { getAgentEventLifecycleGeneration } from "../infra/agent-events.js";
 import { hasSqliteWorkerErrorCodeInEnvelope } from "../infra/sqlite-worker-contract.js";
 import { CommandLane } from "../process/lanes.js";
+import { readGatewayAccessRevision } from "./gateway-access-revision.js";
 import {
   restoreGatewayQuestionOperatorRecovery,
   restoreGatewayQueuedOperatorRecovery,
 } from "./operator-run-recovery.js";
 import type { QuestionAdmissionRetry } from "./question-continuation-work.js";
+import { prepareQuestionSharing } from "./question-session-preparation.js";
 import type { GatewayInstanceRuntime } from "./server-instance-runtime.types.js";
 import type { GatewayRequestContext } from "./server-methods/shared-types.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
+import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
 
 type QuestionCompletionOwed = {
   status: "completion_owed";
@@ -86,6 +89,13 @@ export async function dispatchQuestionContinuation(params: {
   let claimed = false;
   let claimAttempted = false;
   let restored: Awaited<ReturnType<typeof restoreGatewayQueuedOperatorRecovery>> | undefined;
+  let releaseExecutionFacts: (() => void) | undefined;
+  const releaseExecution = () => {
+    releaseExecutionFacts?.();
+    releaseExecutionFacts = undefined;
+    restored?.release();
+    restored = undefined;
+  };
   const isOwnReceipt = (
     current: DurableQuestion | DurableQuestion[] | undefined,
   ): current is DurableQuestion =>
@@ -169,12 +179,82 @@ export async function dispatchQuestionContinuation(params: {
       throw new Error("Durable question original caller authority is unavailable.");
     }
     assertCurrent();
+    const client = createSyntheticPluginRuntimeClient({
+      operatorRoleActor: { kind: "operator", profileId: authority.profileId },
+      operatorRunAuthority: authority,
+      scopes: [...authority.scopes],
+    });
+    const sourceConfig = context.getRuntimeConfig();
+    const binding = fresh.sessionBinding;
+    const facts = await prepareSessionMutationFacts({
+      cfg: sourceConfig,
+      agentId: binding.agentId,
+      sessionKey: binding.sessionKey,
+      preparedSource: {
+        agentId: binding.agentId,
+        canonicalKey: binding.sessionKey,
+        storePath: binding.storePath,
+        path: binding.databasePath,
+        databaseIdentity: binding.databaseIdentity.identity,
+        databaseBirthtime: binding.databaseIdentity.birthtime,
+        assertCurrent,
+      },
+    });
+    let references = 1;
+    const releaseFacts = () => {
+      if (--references === 0) {
+        facts.release();
+      }
+    };
+    releaseExecutionFacts = releaseFacts;
+    const executionAuthority = authority;
+    const assertExecutionCurrent = () => {
+      assertCurrent();
+      executionAuthority.assertCurrent();
+      const cfg = context.getRuntimeConfig();
+      const accessRevision = readGatewayAccessRevision();
+      // Sharing follows the original physical source, while policy stays live.
+      // A configured replacement store cannot supply this question's membership.
+      let current = facts.readCurrent(sourceConfig);
+      const sharing = prepareQuestionSharing(cfg, client, (_target, identityId) =>
+        current.membership.has(identityId),
+      );
+      current = facts.readCurrent(sourceConfig);
+      if (
+        current.target.entry.sessionId !== binding.sessionId ||
+        current.target.entry.lifecycleRevision !== binding.lifecycleRevision ||
+        current.target.entry.incognito ||
+        sharing.authorizeTarget(current.target)
+      ) {
+        throw new Error("Durable question original session access is no longer allowed.");
+      }
+      assertCurrent();
+      executionAuthority.assertCurrent();
+      if (context.getRuntimeConfig() !== cfg || readGatewayAccessRevision() !== accessRevision) {
+        throw new Error("Durable question session policy changed during authorization.");
+      }
+    };
+    const executionSource = Object.assign(assertExecutionCurrent, {
+      retain: () => {
+        assertExecutionCurrent();
+        const releaseAuthority = executionAuthority.retain?.();
+        references++;
+        let retained = true;
+        return () => {
+          if (retained) {
+            retained = false;
+            try {
+              releaseAuthority?.();
+            } finally {
+              releaseFacts();
+            }
+          }
+        };
+      },
+    });
+    executionSource();
     const turns = await runtime.createAgentTurnFacade({
-      client: createSyntheticPluginRuntimeClient({
-        operatorRoleActor: { kind: "operator", profileId: authority.profileId },
-        operatorRunAuthority: authority,
-        scopes: [...authority.scopes],
-      }),
+      client,
       assertContextCurrent: assertCurrent,
     });
     const delivery = question.provenance.delivery;
@@ -200,6 +280,7 @@ ${JSON.stringify({ id: questionId, status: question.record.status, answers: ques
       },
       {
         expectFinal: true,
+        executionSource,
         assertAdmissionCurrent: () => {
           assertCurrent();
           authority.assertCurrent();
@@ -246,8 +327,7 @@ ${JSON.stringify({ id: questionId, status: question.record.status, answers: ques
       throw new Error(`Durable question continuation ended with ${turnResult.status}.`);
     }
     executionCompleted = true;
-    restored?.release();
-    restored = undefined;
+    releaseExecution();
     await finish(false);
     return { status: "settled", questionId, runId };
   } catch (error) {
@@ -326,8 +406,7 @@ ${JSON.stringify({ id: questionId, status: question.record.status, answers: ques
     }
     // Execution has ended (or admission was uncertain). Retain only terminal
     // persistence, never a source grant or permission to repeat the turn.
-    restored?.release();
-    restored = undefined;
+    releaseExecution();
     const interruptedReason =
       "Continuation was interrupted. Start a new user turn to inspect the current state; the previous turn will not automatically repeat.";
     const blockedReason =
@@ -405,6 +484,6 @@ ${JSON.stringify({ id: questionId, status: question.record.status, answers: ques
     }
     throw error;
   } finally {
-    restored?.release();
+    releaseExecution();
   }
 }

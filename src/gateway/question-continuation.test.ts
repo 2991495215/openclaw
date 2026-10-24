@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionQuestionCustodyRetiredError } from "../config/sessions/session-questions-custody-error.js";
 import type { DurableQuestion } from "../config/sessions/session-questions.types.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { SqliteWorkerError } from "../infra/sqlite-worker-contract.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import {
@@ -15,17 +16,29 @@ import { createChannelAutostartRecovery } from "./server-channel-autostart-recov
 import type { GatewayInstanceRuntime } from "./server-instance-runtime.types.js";
 import type { AgentRunRequest } from "./server-methods/agent-request-types.js";
 import type { GatewayRequestContext } from "./server-methods/shared-types.js";
+import type { GatewayClient } from "./server-methods/types.js";
 import { createMockGatewayRecoveryRuntime } from "./server-recovery-runtime.test-support.js";
+import type { SessionSharingTarget } from "./session-sharing-target.types.js";
 
 const state = vi.hoisted(() => ({
   operate: vi.fn(),
   readCustody: vi.fn(),
   restore: vi.fn(),
+  prepareFacts: vi.fn(),
+  prepareSharing: vi.fn(),
 }));
 vi.mock("../config/sessions/session-questions.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../config/sessions/session-questions.js")>()),
   executeSessionQuestionOperation: state.operate,
   readSessionQuestionCustody: state.readCustody,
+}));
+vi.mock("./session-sharing-preparation.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session-sharing-preparation.js")>()),
+  prepareSessionMutationFacts: state.prepareFacts,
+}));
+vi.mock("./question-session-preparation.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./question-session-preparation.js")>()),
+  prepareQuestionSharing: state.prepareSharing,
 }));
 vi.mock("../infra/agent-events.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../infra/agent-events.js")>()),
@@ -102,7 +115,17 @@ function fixture(saved = question()) {
     expect(binding).toBe(saved.sessionBinding);
     return state.operate({ ...binding, assertCurrent }, { kind: "get", id });
   });
+  state.prepareFacts.mockResolvedValue({
+    readCurrent: () => ({
+      target: { entry: { sessionId: saved.sessionId, lifecycleRevision: saved.lifecycleRevision } },
+      membership: new Set(["original-person"]),
+    }),
+    release: vi.fn(),
+  });
+  state.prepareSharing.mockReturnValue({ authorizeTarget: () => null });
+  const releaseAuthority = vi.fn();
   const authority = {
+    retain: vi.fn(() => releaseAuthority),
     profileId: "original-person",
     scopes: ["operator.write"],
     assertCurrent: vi.fn(),
@@ -137,15 +160,17 @@ function fixture(saved = question()) {
     return canonical;
   });
   state.restore.mockResolvedValue({ authority, release: vi.fn() });
+  const config = {};
   return {
     saved,
     authority,
+    releaseAuthority,
     dispatch,
     facade,
     params: {
       question: saved,
       scope: saved.sessionBinding,
-      context: { getRuntimeConfig: () => ({}) } as GatewayRequestContext,
+      context: { getRuntimeConfig: () => config } as GatewayRequestContext,
       runtime: {
         isAvailable: () => true,
         createAgentTurnFacade: facade,
@@ -158,6 +183,83 @@ function fixture(saved = question()) {
 
 describe("durable question continuation custody", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it.each([false, true])(
+    "retains original-store membership through execution (revoked=%s)",
+    async (revoked) => {
+      const f = fixture();
+      const originalConfig = {};
+      let config = originalConfig;
+      let member = true;
+      let releaseRetained: (() => void) | undefined;
+      const release = vi.fn();
+      state.prepareFacts.mockResolvedValue({
+        readCurrent: (cfg: unknown) => {
+          expect(cfg).toBe(originalConfig);
+          return {
+            target: {
+              entry: { sessionId: f.saved.sessionId, lifecycleRevision: f.saved.lifecycleRevision },
+            },
+            membership: new Set(member ? ["original-person"] : []),
+          };
+        },
+        release,
+      });
+      state.prepareSharing.mockImplementation(
+        (
+          _cfg: OpenClawConfig,
+          _client: GatewayClient | null,
+          isMember: (target: SessionSharingTarget, id: string) => boolean,
+        ) => ({
+          authorizeTarget: (target: SessionSharingTarget) =>
+            isMember(target, "original-person") ? null : { message: "not a member" },
+        }),
+      );
+      f.params.context.getRuntimeConfig = () => config;
+      f.dispatch.mockImplementation(async (_request, options) => {
+        expect(state.prepareFacts.mock.calls[0]?.[0].preparedSource).toMatchObject({
+          path: f.saved.sessionBinding.databasePath,
+          storePath: f.saved.sessionBinding.storePath,
+          databaseIdentity: f.saved.sessionBinding.databaseIdentity.identity,
+        });
+        // Native acceptance ends admission checks; effects must keep this source.
+        if (typeof _request.idempotencyKey !== "string") {
+          throw new Error("Continuation must own an execution id");
+        }
+        await options.commitAdmission?.({
+          runId: _request.idempotencyKey,
+          sessionId: f.saved.sessionId,
+          sessionKey: f.saved.sessionKey,
+          storePath: f.saved.sessionBinding.storePath,
+          lifecycleGeneration: "epoch",
+          assertCurrent() {},
+        });
+        options.executionSource?.();
+        config = { session: { store: "/tmp/other.db" } };
+        member = !revoked;
+        options.executionSource?.();
+        expect(release).not.toHaveBeenCalled();
+        releaseRetained = options.executionSource?.retain?.();
+        return { status: "ok" };
+      });
+      const pending = dispatchQuestionContinuation(f.params);
+      if (revoked) {
+        await expect(pending).rejects.toThrow("original session access");
+        expect(
+          state.operate.mock.calls.some(([, op]) => op.kind === "finish" && op.interrupted),
+        ).toBe(true);
+      } else {
+        await expect(pending).resolves.toMatchObject({ status: "settled" });
+      }
+      if (releaseRetained) {
+        expect(release).not.toHaveBeenCalled();
+        expect(f.releaseAuthority).not.toHaveBeenCalled();
+        releaseRetained();
+        expect(f.releaseAuthority).toHaveBeenCalledOnce();
+      }
+      expect(release).toHaveBeenCalledOnce();
+    },
+  );
 
   it("retains the owed answer during native crash-loop quarantine and resumes at its owner deadline", async () => {
     const f = fixture();
