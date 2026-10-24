@@ -92,6 +92,7 @@ it("keeps unchecked any casts at zero and negative type assertions explicit", ()
     [
       "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts:@ts-expect-error JavaScript callers must still fail before reserving a native session.",
       "scripts/lib/managed-cleanup-handoff.mts:@ts-expect-error Bun supports connect({ fd }); Node types only describe path/port connects.",
+      "src/agents/agent-scope-config.test.ts:@ts-expect-error Deliberately malformed raw input has Array.entries, not a roster map.",
       "test/type-contracts/kysely-sync.ts:@ts-expect-error Kysely checks selected column string literals.",
       "test/type-contracts/kysely-sync.ts:@ts-expect-error Kysely checks table string literals.",
       "test/type-contracts/kysely-sync.ts:@ts-expect-error Kysely checks where-reference string literals.",
