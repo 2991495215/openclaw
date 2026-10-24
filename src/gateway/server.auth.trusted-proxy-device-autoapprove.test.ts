@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { availableParallelism, loadavg } from "node:os";
+import path from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
 import { buildDeviceAuthPayloadV3 } from "../../packages/gateway-client/src/device-auth.js";
@@ -7,8 +9,10 @@ import {
   GATEWAY_CLIENT_MODES,
 } from "../../packages/gateway-protocol/src/client-info.js";
 import { PROTOCOL_VERSION, type ConnectParams } from "../../packages/gateway-protocol/src/index.js";
+import { expandSessionRowFacts } from "../../packages/gateway-protocol/src/session-row-fields.js";
 import { confirmGatewayReachable } from "../cli/daemon-cli/restart-health-probe.js";
 import { loadConfig, writeConfigFile } from "../config/config.js";
+import { addSessionMember } from "../config/sessions/session-sharing-store.js";
 import { loadDeviceAuthTokenReadOnly, storeDeviceAuthToken } from "../infra/device-auth-store.js";
 import {
   loadDeviceIdentityIfPresent,
@@ -27,6 +31,7 @@ import {
 import { resetLogger, setLoggerOverride } from "../logging.js";
 import { loggingState } from "../logging/state.js";
 import { resolveGatewayClientPlatformIdentity } from "../shared/gateway-client-platform.js";
+import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { useAuthIdentityFixture } from "./server.auth.identity-fixture.test-support.js";
 import {
@@ -36,6 +41,8 @@ import {
   NODE_CLIENT,
   openWs,
 } from "./server.auth.test-helpers.js";
+import { prepareSessionRowPublicationView } from "./session-row-publication.js";
+import type { SessionsListResult } from "./session-utils.types.js";
 import {
   connectReq,
   createGatewaySuiteHarness,
@@ -44,7 +51,10 @@ import {
   readConnectChallengeNonce,
   testState,
   withGatewayServer,
+  writeSessionStore,
+  rpcReq,
 } from "./test-helpers.js";
+import { settleGatewaySessionStoreFixture } from "./test/server-sessions-resources.test-helpers.js";
 
 installGatewayTestHooks({ scope: "suite" });
 
@@ -580,6 +590,179 @@ describe("trusted-proxy operator device auto-approval", () => {
       expect(await pendingFor(identity.deviceId)).toHaveLength(1);
     },
   );
+
+  test("measures named-reader membership through session-list RPCs", async () => {
+    const previousConfig = loadConfig();
+    const { identityPath } = await prepareAutoApproval(READ);
+    const root = process.env.OPENCLAW_STATE_DIR;
+    if (!root) {
+      throw new Error("Gateway fixture state directory missing");
+    }
+    const storePath = path.join(root, "membership-comparison", "sessions.json");
+    const previousStore = testState.sessionStorePath;
+    testState.sessionStorePath = storePath;
+    try {
+      await withSharedProxyGateway(async ({ port }) => {
+        const setupStarted = performance.now();
+        const reader = ensureProfileForEmail("operator@example.com");
+        const creator = ensureProfileForEmail("membership-creator@example.test");
+        const members = [
+          ...Array.from(
+            { length: 15 },
+            (_, index) => ensureProfileForEmail(`membership-${index}@example.test`).id,
+          ),
+          reader.id,
+        ];
+        const keys = Array.from({ length: 100 }, (_, index) => `agent:main:membership-${index}`);
+        await writeSessionStore({
+          storePath,
+          entries: Object.fromEntries(
+            keys.map((key, index) => [
+              key,
+              {
+                sessionId: `membership-${index}`,
+                updatedAt: 1,
+                label: `Synthetic membership ${index}`,
+                visibility: "shared",
+                createdActor: { type: "human", source: "profile", id: creator.id },
+              },
+            ]),
+          ),
+        });
+        for (const sessionKey of keys) {
+          for (const identityId of members) {
+            await addSessionMember(
+              { agentId: "main", sessionKey, storePath },
+              { identityId, addedBy: creator.id },
+            );
+          }
+        }
+        await withBrowserWs(port, trustedProxyHeaders(), async (ws) => {
+          const connected = await connectReq(ws, {
+            skipDefaultAuth: true,
+            client: CONTROL_UI_CLIENT,
+            scopes: READ,
+            deviceIdentityPath: identityPath,
+          });
+          expect(connected.ok).toBe(true);
+          expect(connected.payload).toMatchObject({ auth: { scopes: READ } });
+          const self = await rpcReq<{ profile: { id: string } }>(ws, "users.self", {});
+          expect(self.payload?.profile.id).toBe(reader.id);
+          expect(reader.id).not.toBe("gateway-owner");
+          const request = async () => {
+            const id = randomUUID();
+            const reply = onceMessage<{
+              type: "res";
+              id: string;
+              ok: boolean;
+              payload: SessionsListResult;
+            }>(ws, (message) => message.type === "res" && message.id === id);
+            ws.send(
+              JSON.stringify({
+                type: "req",
+                id,
+                method: "sessions.list",
+                params: { limit: 100, rowMode: "sidebar", ifRowsRevision: id },
+              }),
+            );
+            return await reply;
+          };
+          const warmup = await request();
+          expect(warmup.ok, JSON.stringify(warmup)).toBe(true);
+          const { projection } = await settleGatewaySessionStoreFixture(root);
+          if (!projection) {
+            throw new Error("Gateway session projection missing");
+          }
+          const candidate = projection.isMember;
+          const collection = projection.readMembership;
+          const publication = prepareSessionRowPublicationView(projection);
+          let variant: "baseline" | "candidate" = "candidate";
+          let counts = { predicateReads: 0, collectionReads: 0 };
+          const predicate = vi
+            .spyOn(projection, "isMember")
+            .mockImplementation((query, identityId) => {
+              counts.predicateReads++;
+              if (variant === "baseline") {
+                counts.collectionReads++;
+                return collection(query)?.has(identityId) ?? false;
+              }
+              return candidate(query, identityId);
+            });
+          const samples = [];
+          try {
+            for (const side of ["baseline", "candidate"] as const) {
+              variant = side;
+              expect((await request()).ok).toBe(true);
+            }
+            const setupMs = performance.now() - setupStarted;
+            for (const cache of ["cold", "warm"] as const) {
+              for (let pair = 0; pair < 6; pair++) {
+                const responses = [];
+                const sides =
+                  pair % 2 === 0
+                    ? (["baseline", "candidate"] as const)
+                    : (["candidate", "baseline"] as const);
+                for (const side of sides) {
+                  variant = side;
+                  if (cache === "cold") {
+                    // Retire only list selection/vectors, outside timing; row facts stay warm.
+                    publication().lists.clear();
+                  }
+                  counts = { predicateReads: 0, collectionReads: 0 };
+                  const cpu = process.threadCpuUsage();
+                  const started = performance.now();
+                  const response = await request();
+                  const rpcMs = performance.now() - started;
+                  const used = process.threadCpuUsage(cpu);
+                  expect(response.ok, JSON.stringify(response)).toBe(true);
+                  expect(counts.predicateReads).toBeGreaterThanOrEqual(keys.length);
+                  expect(counts.collectionReads).toBe(
+                    side === "baseline" ? counts.predicateReads : 0,
+                  );
+                  const { ts: _ts, ...payload } = response.payload;
+                  const rows = expandSessionRowFacts(payload.sessions, payload.sharedFacts);
+                  expect(rows.map((row) => row.key).toSorted()).toEqual(keys.toSorted());
+                  expect(rows.every((row) => row.sharingRole === "member")).toBe(true);
+                  responses.push(payload);
+                  samples.push({
+                    variant,
+                    cache,
+                    ...counts,
+                    rpcMs,
+                    threadCpuUs: used.user + used.system,
+                    payloadBytes: Buffer.byteLength(JSON.stringify(payload)),
+                  });
+                }
+                expect(responses[0]).toEqual(responses[1]);
+              }
+            }
+            console.log(
+              "SESSION_MEMBERSHIP_COMPARISON",
+              JSON.stringify({
+                source: "d355f2fd148dd68486d863aba8b510adfa8005c2",
+                cacheScope: "list selection and vectors; membership and row facts warm",
+                rows: keys.length,
+                members: members.length,
+                setupMs,
+                availableParallelism: availableParallelism(),
+                loadAverage: loadavg(),
+                samples,
+              }),
+            );
+          } finally {
+            predicate.mockRestore();
+          }
+        });
+      });
+    } finally {
+      try {
+        await writeSessionStore({ storePath, entries: {} });
+      } finally {
+        testState.sessionStorePath = previousStore;
+        await writeConfigFile(previousConfig);
+      }
+    }
+  });
 
   test("does not auto-approve token-authenticated browser devices", async () => {
     await closeSharedProxyGateway();

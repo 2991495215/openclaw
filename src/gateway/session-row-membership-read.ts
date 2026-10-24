@@ -167,6 +167,19 @@ export function createSessionRowMembershipReadAccess(params: {
       : null;
   };
   return {
+    isMember(query: records.Lookup, identityId: string) {
+      if (!params.isActive()) {
+        return false;
+      }
+      const row = params.lookup(query);
+      if (row && isIncognitoSessionKey(row.key)) {
+        return params.owner().describe(query)?.membership?.has(identityId) ?? false;
+      }
+      return (
+        (row && membership.membership(row.storeTarget.storePath, row.key)?.includes(identityId)) ??
+        false
+      );
+    },
     readMembership(query: records.Lookup) {
       if (!params.isActive()) {
         return undefined;

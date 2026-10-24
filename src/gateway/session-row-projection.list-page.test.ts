@@ -356,12 +356,16 @@ it("publishes byte-identical group and participant facts without host membership
           expect(JSON.stringify([...projection.sessionGroupTargets()])).toBe(goldenGroups);
           expect(participantsJson()).toBe(goldenParticipants);
           expect(projection.hasMembership(database.path, scope.sessionKey, "viewer")).toBe(true);
+          expect(projection.isMember(query, "viewer")).toBe(true);
+          expect(projection.isMember({ ...query, storePath: database.path }, "viewer")).toBe(true);
+          expect(projection.isMember(query, "missing-viewer")).toBe(false);
         }
         reads.expectNoMembershipSql();
       }
       // Revocation is visible before full-row materialization or another awaited worker read.
       removeSessionMember(scope, "viewer");
       expect(projection.hasMembership(database.path, scope.sessionKey, "viewer")).toBe(false);
+      expect(projection.isMember(query, "viewer")).toBe(false);
       {
         using refreshReads = observeQueries(prototype);
         await projection.ensureMaterialized();

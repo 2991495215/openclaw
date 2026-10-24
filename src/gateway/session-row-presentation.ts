@@ -262,13 +262,14 @@ function prepareSessionRowRecipient(
     cfg: policyConfig,
     client: client ?? null,
     isMember: (value, identityId) =>
-      projection
-        .readMembership({
+      projection.isMember(
+        {
           agentId: value.agentId,
           key: value.storeKey,
           storePath: value.storePath,
-        })
-        ?.has(identityId) ?? false,
+        },
+        identityId,
+      ),
   });
   return { cfg, policyConfig, rowContext, presentFastMode, models, publicationState, sharing };
 }

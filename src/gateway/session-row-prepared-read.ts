@@ -34,6 +34,7 @@ export type SessionRowReadView = {
   ): records.MaterializedRow | undefined;
   readSource(row: records.MaterializedRow): CapturedSessionEntryReadSource | undefined;
   readMembership(query: records.Lookup): ReadonlySet<string> | undefined;
+  isMember(query: records.Lookup, identityId: string): boolean;
   present(
     record: records.MaterializedRow,
     options?: records.SnapshotOptions,
@@ -151,6 +152,17 @@ export function readPreparedSessionRows<T>(
       }
       const row = privateRows.get(key);
       return captured && !records.isCurrentGeneration(captured, row) ? undefined : row;
+    },
+    isMember(query, identityId) {
+      assertActive();
+      const key = privateKey(query);
+      if (key) {
+        if (!privateRows.has(key)) {
+          throw new Error("Incognito session description was not prepared");
+        }
+        return privateRows.get(key)?.membership?.has(identityId) ?? false;
+      }
+      return owner.isMember(query, identityId);
     },
     readMembership(query) {
       assertActive();

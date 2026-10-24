@@ -5,6 +5,7 @@ import { withinTest } from "../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
+import { addSessionMember } from "../config/sessions/session-sharing-store.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -487,6 +488,10 @@ it("consumes an incognito repository description without SQLite or resident priv
         repositoryWorkspaceId: repository.workspaceId,
       },
     );
+    await addSessionMember(
+      { agentId: query.agentId, sessionKey: query.key },
+      { identityId: "viewer", addedBy: "owner" },
+    );
     const placements = createWorkerSessionPlacementStore();
     await placements.startDispatch({
       agentId: query.agentId,
@@ -513,6 +518,7 @@ it("consumes an incognito repository description without SQLite or resident priv
           for (const statement of statements) {
             statement.mockClear();
           }
+          expect(read.isMember(query, "viewer")).toBe(true);
           const result = consume(read);
           for (const statement of statements) {
             expect(statement).not.toHaveBeenCalled();
@@ -554,7 +560,11 @@ it("keeps missing private reads absent and refuses unprepared keys and asynchron
       () => [query],
       (read) => {
         expect(read.describe(query)).toBeUndefined();
+        expect(read.isMember(query, "viewer")).toBe(false);
         expect(() => read.describe({ ...query, key: `${query.key}-other` })).toThrow(
+          "not prepared",
+        );
+        expect(() => read.isMember({ ...query, key: `${query.key}-other` }, "viewer")).toThrow(
           "not prepared",
         );
       },
@@ -569,6 +579,7 @@ it("keeps missing private reads absent and refuses unprepared keys and asynchron
       ),
     ).rejects.toThrow("must remain synchronous");
     expect(() => retained?.selectEntries({ key: query.key })).toThrow("no longer active");
+    expect(() => retained?.isMember(query, "viewer")).toThrow("no longer active");
     expect(projection.capture(query)).toBeUndefined();
     expect(projection.selectEntries()).toEqual([]);
   });

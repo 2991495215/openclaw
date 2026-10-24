@@ -72,13 +72,14 @@ export function prepareFactsRead(
     cfg: policyConfig,
     client: resolved.client,
     isMember: (target, identityId) =>
-      read
-        .readMembership({
+      read.isMember(
+        {
           agentId: target.agentId,
           key: target.storeKey,
           storePath: target.storePath,
-        })
-        ?.has(identityId) ?? false,
+        },
+        identityId,
+      ),
   });
   const active = createVisibleActiveSessionRunProjector(
     rowContext.projectedAgentRuns,
