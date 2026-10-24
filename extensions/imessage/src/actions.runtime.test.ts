@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const createClient = vi.hoisted(() => vi.fn());
 const cli = vi.hoisted(() => vi.fn());
 const remoteFile = vi.hoisted(() => vi.fn());
-const effectGate = await vi.hoisted(async () =>
-  (
-    await import("../../test-support/effect-preparation.test-support.js")
-  ).createEffectPreparationGate(),
-);
+const effectGate = vi.hoisted(() => ({ prepare: undefined as (() => Promise<void>) | undefined }));
 // mock-isolation: gate effect preparation through the export-preserving test helper.
-vi.mock("openclaw/plugin-sdk/fetch-runtime", effectGate.mockRuntime);
+vi.mock("openclaw/plugin-sdk/fetch-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/fetch-runtime")>();
+  const { withEffectPreparation } = await import("./test-support/authority.js");
+  return withEffectPreparation(actual, effectGate);
+});
 // mock-isolation: keep transport effects in test-owned doubles.
 vi.mock("./cli-output.js", () => ({ runIMessageCliJsonCommand: cli }));
 // mock-isolation: keep transport effects in test-owned doubles.

@@ -7,13 +7,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { IMessagePrivateApiStatus } from "./private-api-status.js";
 
 const spawnMock = vi.hoisted(() => vi.fn());
-const effectGate = await vi.hoisted(async () =>
-  (
-    await import("../../test-support/effect-preparation.test-support.js")
-  ).createEffectPreparationGate(),
-);
+const effectGate = vi.hoisted(() => ({ prepare: undefined as (() => Promise<void>) | undefined }));
 // mock-isolation: gate effect preparation through the export-preserving test helper.
-vi.mock("openclaw/plugin-sdk/fetch-runtime", effectGate.mockRuntime);
+vi.mock("openclaw/plugin-sdk/fetch-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/fetch-runtime")>();
+  const { withEffectPreparation } = await import("./test-support/authority.js");
+  return withEffectPreparation(actual, effectGate);
+});
 const runIMessageCliJsonCommandMock = vi.hoisted(() => vi.fn());
 const logVerboseMock = vi.hoisted(() => vi.fn());
 const contactsChangeDiagnostic =

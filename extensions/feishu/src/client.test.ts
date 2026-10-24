@@ -4,12 +4,27 @@ import { FEISHU_HTTP_TIMEOUT_MS } from "./client-timeout.js";
 import { FeishuConfigSchema } from "./config-schema.js";
 import type { ResolvedFeishuAccount } from "./types.js";
 
-const effectGate = await vi.hoisted(async () =>
-  (
-    await import("../../test-support/effect-preparation.test-support.js")
-  ).createEffectPreparationGate(),
-);
-vi.mock("openclaw/plugin-sdk/fetch-runtime", effectGate.mockRuntime);
+const effectGate = vi.hoisted(() => ({ prepare: undefined as (() => Promise<void>) | undefined }));
+vi.mock("openclaw/plugin-sdk/fetch-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/fetch-runtime")>();
+  return {
+    ...actual,
+    captureEffectAuthority: () => {
+      const authority = actual.captureEffectAuthority();
+      const prepare = effectGate.prepare;
+      if (!prepare) {
+        return authority;
+      }
+      return {
+        ...authority,
+        initiate: async <T>(effect: () => T | Promise<T>) => {
+          await prepare();
+          return authority.initiate(effect);
+        },
+      };
+    },
+  };
+});
 
 const FEISHU_HTTP_TIMEOUT_ENV_VAR = "OPENCLAW_FEISHU_HTTP_TIMEOUT_MS";
 const sdkOrigin = "https://open.feishu.cn";
