@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initializePublishedConfigRuntimeEnv } from "../config/config-env-vars.js";
 import * as configIO from "../config/io.factory.js";
-import * as leaseAcquisition from "../state/openclaw-state-lease-acquisition.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
+import * as leaseAcquisition from "../state/openclaw-state-lease-acquisition.js";
 import * as leaseWorkerStorage from "../state/openclaw-state-lease-worker-storage.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import {
@@ -75,33 +75,36 @@ function expectInstalled(rootDir: string, env?: NodeJS.ProcessEnv) {
 
 describe("plugin registry refresh config ownership", () => {
   it("verifies worker custody only at admission, publication, and settlement", async () => {
-    await withOpenClawTestState({ label: "registry-refresh-worker-verifications" }, async (state) => {
-      await seedDisabledState(state);
-      const create = leaseWorkerStorage.createOpenClawStateLeaseWorkerStorage;
-      const verify = vi.fn();
-      vi.spyOn(leaseWorkerStorage, "createOpenClawStateLeaseWorkerStorage").mockImplementation(
-        (...args) => {
-          const storage = create(...args);
-          const verifyOwned = storage.verify;
-          vi.spyOn(storage, "verify").mockImplementation((...verifyArgs) => {
-            verify();
-            return verifyOwned(...verifyArgs);
-          });
-          return storage;
-        },
-      );
-      const warn = vi.fn();
+    await withOpenClawTestState(
+      { label: "registry-refresh-worker-verifications" },
+      async (state) => {
+        await seedDisabledState(state);
+        const create = leaseWorkerStorage.createOpenClawStateLeaseWorkerStorage;
+        const verify = vi.fn();
+        vi.spyOn(leaseWorkerStorage, "createOpenClawStateLeaseWorkerStorage").mockImplementation(
+          (...args) => {
+            const storage = create(...args);
+            const verifyOwned = storage.verify.bind(storage);
+            vi.spyOn(storage, "verify").mockImplementation((...verifyArgs) => {
+              verify();
+              return verifyOwned(...verifyArgs);
+            });
+            return storage;
+          },
+        );
+        const warn = vi.fn();
 
-      await withPluginLifecycleLeaseAsync({ env: state.env, processBound: true }, (lease) =>
-        refresh({ lease, logger: { warn } }),
-      );
+        await withPluginLifecycleLeaseAsync({ env: state.env, processBound: true }, (lease) =>
+          refresh({ lease, logger: { warn } }),
+        );
 
-      expect(verify).toHaveBeenCalledTimes(3);
-      expect(readPersistedInstalledPluginIndexSync({ env: state.env })?.refreshReason).toBe(
-        "source-changed",
-      );
-      expect(warn).not.toHaveBeenCalled();
-    });
+        expect(verify).toHaveBeenCalledTimes(3);
+        expect(readPersistedInstalledPluginIndexSync({ env: state.env })?.refreshReason).toBe(
+          "source-changed",
+        );
+        expect(warn).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it("refuses worker registry publication when custody expires during config preparation", async () => {
