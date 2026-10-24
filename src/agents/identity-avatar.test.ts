@@ -60,8 +60,8 @@ it.each([
   ["data", "data:image/png;base64,aaaaaaaa", "data:image/png;base64,..."],
   ["none", "../secret.png", undefined],
   ["none", "file:///Users/test/private/avatar.png", undefined],
-] as const)("redacts public %s source %s", (kind, source, expected) => {
-  expect(resolvePublicAgentAvatarSource({ kind, source })).toBe(expected);
+] as const)("redacts public %s source %s", (_kind, source, expected) => {
+  expect(resolvePublicAgentAvatarSource({ source })).toBe(expected);
 });
 
 it("rejects local avatars larger than max bytes", async () => {

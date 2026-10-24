@@ -22,7 +22,6 @@ export type AgentAvatarResolution =
   | { kind: "data"; url: string; source: string };
 
 type AgentAvatarPublicSourceInput = {
-  kind: AgentAvatarResolution["kind"];
   source?: string | null;
 };
 

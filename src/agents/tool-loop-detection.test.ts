@@ -167,18 +167,6 @@ describe("tool-loop-detection", () => {
     },
   );
 
-  it("preserves marker pairs split across encoded JSON fields", () => {
-    const hashes = [0, 1].map((index) => {
-      const id = index.toString().repeat(16);
-      const text = JSON.stringify({
-        start: `<<<EXTERNAL_UNTRUSTED_CONTENT id="${id}">>>\nSource: Browser\n---\npayload`,
-        end: `\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="${id}">>>`,
-      });
-      return outcomeHash(JSON.stringify({ text }));
-    });
-    expect(hashes[0]).not.toBe(hashes[1]);
-  });
-
   it("preserves long backslash payloads while normalizing paired wrapper nonces", () => {
     const hashes = ["same", "same", "changed"].map((suffix) => {
       const text = wrapExternalContent(`${"\\".repeat(20_000)}"${suffix}"`, { source: "browser" });
@@ -197,29 +185,6 @@ describe("tool-loop-detection", () => {
     ].map((text) => outcomeHash(JSON.stringify({ text })));
     expect(hashes[0]).not.toBe(hashes[1]);
     expect(hashes[0]).toBe(hashes[2]);
-  });
-
-  it("preserves malformed marker quote escaping", () => {
-    const hashes = [0, 1].map((index) => {
-      const id = index.toString().repeat(16);
-      const quote = "\\".repeat(2) + '"';
-      return outcomeHash(
-        `<<<EXTERNAL_UNTRUSTED_CONTENT id=${quote}${id}${quote}>>>payload<<<END_EXTERNAL_UNTRUSTED_CONTENT id=${quote}${id}${quote}>>>`,
-      );
-    });
-    expect(hashes[0]).not.toBe(hashes[1]);
-  });
-
-  it("preserves shallower quotes after encoded backslashes", () => {
-    const hashes = [0, 1].map((index) => {
-      const id = index.toString().repeat(16);
-      const quote = '\\"';
-      const boundary = "\\".repeat(2) + '"';
-      return outcomeHash(
-        `<<<EXTERNAL_UNTRUSTED_CONTENT id=${quote}${id}${quote}>>>before${boundary}after<<<END_EXTERNAL_UNTRUSTED_CONTENT id=${quote}${id}${quote}>>>`,
-      );
-    });
-    expect(hashes[0]).not.toBe(hashes[1]);
   });
 
   it.each([

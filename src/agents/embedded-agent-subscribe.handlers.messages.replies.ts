@@ -113,14 +113,9 @@ export function readPendingToolMediaReply(state: PendingToolMediaState): BlockRe
   if (state.pendingToolMediaUrls.length === 0 && !state.pendingToolAudioAsVoice) {
     return null;
   }
-  const seen = new Set<string>();
   const mediaUrls: string[] = [];
   const attachments: NonNullable<BlockReplyPayload["attachments"]> = [];
   for (const [index, url] of state.pendingToolMediaUrls.entries()) {
-    if (seen.has(url)) {
-      continue;
-    }
-    seen.add(url);
     mediaUrls.push(url);
     const { trustedLocalMedia: _untrustedInput, ...attachment } =
       state.pendingToolMediaAttachments?.[index] ?? {};

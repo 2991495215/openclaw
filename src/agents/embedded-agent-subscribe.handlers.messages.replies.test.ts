@@ -8,10 +8,9 @@ import {
 describe("consumePendingToolMediaIntoReply", () => {
   it("attaches queued tool media to the next assistant reply", () => {
     const state = {
-      pendingToolMediaUrls: ["/tmp/a.png", "/tmp/a.png", "/tmp/b.png"],
+      pendingToolMediaUrls: ["/tmp/a.png", "/tmp/b.png"],
       pendingToolMediaAttachments: [
         { type: "image" as const, path: "/tmp/a.png", width: 640, height: 480 },
-        { type: "image" as const, path: "/tmp/a.png", width: 1, height: 1 },
         { type: "image" as const, path: "/tmp/b.png", width: 800, height: 600 },
       ],
       pendingToolMediaTrustByUrl: new Map([
@@ -46,10 +45,9 @@ describe("consumePendingToolMediaIntoReply", () => {
 
   it("retains queued metadata for explicitly selected media", () => {
     const state = {
-      pendingToolMediaUrls: ["/tmp/generated.mp3", "/tmp/generated.mp3", "/tmp/unselected.mp3"],
+      pendingToolMediaUrls: ["/tmp/generated.mp3", "/tmp/unselected.mp3"],
       pendingToolMediaAttachments: [
         { type: "audio" as const, path: "/tmp/generated.mp3", durationMs: 2_000 },
-        { type: "audio" as const, path: "/tmp/generated.mp3", durationMs: 9_999 },
         { type: "audio" as const, path: "/tmp/unselected.mp3", durationMs: 3_000 },
       ],
       pendingToolMediaTrustByUrl: new Map([

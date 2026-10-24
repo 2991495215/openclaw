@@ -1,4 +1,5 @@
 import { formatErrorMessage } from "../../../infra/errors.js";
+import type { AssistantMessage } from "../../../llm/types.js";
 import { createAssistantMessageEventStream } from "../../../llm/utils/event-stream.js";
 import type { StreamFn } from "../../runtime/index.js";
 import type { MutableAssistantMessageEventStream } from "../../stream-compat.js";
@@ -25,19 +26,14 @@ function normalizeUnhandledStopReasonError(error: unknown): string {
   return message;
 }
 
-function patchUnhandledStopReasonInAssistantMessage(message: unknown): void {
-  if (!message || typeof message !== "object") {
-    return;
-  }
-
-  const assistant = message as { errorMessage?: unknown; stopReason?: unknown };
-  const normalizedMessage = normalizeUnhandledStopReasonMessage(assistant.errorMessage);
+function patchUnhandledStopReasonInAssistantMessage(message: AssistantMessage): void {
+  const normalizedMessage = normalizeUnhandledStopReasonMessage(message.errorMessage);
   if (!normalizedMessage) {
     return;
   }
 
-  assistant.stopReason = "error";
-  assistant.errorMessage = normalizedMessage;
+  message.stopReason = "error";
+  message.errorMessage = normalizedMessage;
 }
 
 function buildUnhandledStopReasonErrorStream(
