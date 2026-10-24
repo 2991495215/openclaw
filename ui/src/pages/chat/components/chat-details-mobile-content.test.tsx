@@ -109,9 +109,7 @@ it("retains Outputs demand across publications and returns navigation origins wi
     dashboard: null,
     dashboardError: null,
     onOpenArtifact: vi.fn(),
-    renderArtifactIcon: () => null,
     onViewAll: vi.fn(),
-    renderViewAllIcon: () => null,
   };
   const [value, setValue] = createSignal(details({ outputs: output, retainOutputs: retain }));
   const [presented, setPresented] = createSignal(true);

@@ -31,8 +31,6 @@ async function mountOutputs() {
       dashboardError: null,
       onOpenArtifact: vi.fn(),
       onViewAll: navigate,
-      renderArtifactIcon: () => null,
-      renderViewAllIcon: () => null,
     },
   };
   const view = mountSolid(() => <ChatDetailsSession props={value} presented desktop />);

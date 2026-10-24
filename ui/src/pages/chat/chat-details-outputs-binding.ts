@@ -1,7 +1,6 @@
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "../../app/gateway.ts";
 import { t } from "../../i18n/index.ts";
-import { detailsOutputsIcons } from "./chat-details-output-icons.tsx";
 import type { ResolvedBoardView } from "./chat-pane-shared.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import type { ChatDetailsProps } from "./components/chat-details-types.ts";
@@ -150,7 +149,6 @@ export function projectDetailsOutputs(
   return {
     retainOutputs: binding.retain,
     outputs: {
-      ...detailsOutputsIcons,
       artifacts: artifacts?.resolved ? artifacts.items : null,
       artifactRead: artifacts,
       artifactsError: artifacts?.error ?? null,

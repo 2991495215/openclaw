@@ -35,8 +35,6 @@ it.each([false, true])(
       onOpenArtifact() {},
       onRetryArtifacts: retry,
       onViewAll() {},
-      renderArtifactIcon: () => null,
-      renderViewAllIcon: () => null,
     });
     const [outputs, setOutputs] = createSignal(read());
     function draw() {

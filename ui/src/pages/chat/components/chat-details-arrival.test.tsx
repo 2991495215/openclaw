@@ -31,8 +31,6 @@ function mountDetails() {
       dashboardError: null,
       onOpenArtifact() {},
       onViewAll() {},
-      renderArtifactIcon: () => null,
-      renderViewAllIcon: () => null,
     },
     progressCardInitialLoading: true,
   };
