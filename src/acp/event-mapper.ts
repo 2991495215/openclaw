@@ -124,11 +124,7 @@ function addToolLocation(
       locations.delete(existingKey);
     }
   }
-  const locationKey = `${path}:${line ?? ""}`;
-  if (locations.has(locationKey)) {
-    return;
-  }
-  locations.set(locationKey, line ? { path, line } : { path });
+  locations.set(`${path}:${line ?? ""}`, line ? { path, line } : { path });
 }
 
 function collectLocationsFromTextMarkers(
