@@ -1,6 +1,5 @@
 import { gatewayOriginScope } from "@openclaw/gateway-client/browser";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { createChangeListeners } from "../../../src/shared/listeners.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import { isGatewayMethodAdvertised } from "../lib/gateway-methods.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
@@ -68,7 +67,7 @@ function parseEnsureResult(value: unknown): GuestWelcomeEnsureResult | null {
  */
 export class GuestWelcome {
   private current: GuestWelcomePresentation = { kind: "hidden" };
-  private readonly listeners = createChangeListeners();
+  private readonly listeners = new Set<() => void>();
   private scope: string | null = null;
   private client: GatewayBrowserClient | null = null;
   private epoch = 0;
@@ -83,7 +82,10 @@ export class GuestWelcome {
     return this.current;
   }
 
-  readonly subscribe = this.listeners.subscribe;
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
   start(): () => void {
     const stop = this.options.gateway.subscribe(() => this.synchronize());
@@ -114,7 +116,9 @@ export class GuestWelcome {
       return;
     }
     this.current = next;
-    this.listeners.publish();
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   private cancel(): void {
