@@ -78,5 +78,3 @@ export function createLogbookActions(model: LogbookModel, getRetired: () => Prom
       question.trim() ? perform("ask", () => model.ask(question)) : Promise.resolve(),
   };
 }
-
-export type LogbookActions = ReturnType<typeof createLogbookActions>;
