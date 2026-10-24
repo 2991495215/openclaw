@@ -96,7 +96,10 @@ export function registerGatewayCronContextTests({
     await withCronService(
       cfg,
       async (state) => {
-        const available = expectDefined(getCronState(state).deps.isAgentAvailable);
+        const available = expectDefined(
+          getCronState(state).deps.isAgentAvailable,
+          "cron availability",
+        );
         readStateDir.mockClear();
         for (let check = 0; check < 100; check++) {
           expect(available("ops", { deletionBlocked: false })).toBe(true);
