@@ -60,6 +60,64 @@ function drawThread(props: ReturnType<typeof threadProps>) {
 }
 
 describe("transcript projection", () => {
+  it("keeps ordinary rows idle through catch-up while updating changed messages and reactions", () => {
+    const messages = [
+      personMessage("alex", "Alex", 1),
+      msg("assistant", "Original answer", 2, {
+        __openclaw: { id: "answer" },
+      }),
+    ];
+    const props = threadProps("projection-catchup", "agent:main:main", messages, {
+      userId: "alex",
+      messageReactions: new Map(),
+      latestBrowserTabs: new Map(),
+      onReact: () => {},
+      replyMessageAccess: {
+        revision: 1,
+        navigationId: null,
+        read: () => undefined,
+        open: () => {},
+      },
+    });
+    const view = drawThread(props);
+    view.draw();
+    const attributes = vi.spyOn(Element.prototype, "setAttribute");
+    const messageWrites = () =>
+      attributes.mock.calls.filter(
+        ([name]) => name === "data-message-id" || name === "data-message-actions-for",
+      );
+    props.messageReactions = new Map();
+    props.latestBrowserTabs = new Map();
+    props.replyMessageAccess = { ...props.replyMessageAccess!, revision: 2 };
+    getTranscriptState(props.paneId).asyncQuestionRevision += 1;
+    view.draw();
+    expect(messageWrites()).toEqual([]);
+
+    props.messages = [
+      messages[0],
+      msg("assistant", "Edited answer", 2, {
+        __openclaw: { id: "answer" },
+      }),
+    ];
+    view.draw();
+    expect(view.container.textContent).toContain("Edited answer");
+    expect(view.container.textContent).not.toContain("Original answer");
+    props.messageReactions = new Map([
+      ["answer", [{ emoji: "👍", count: 1, identities: [{ id: "alex", label: "Alex" }] }]],
+    ]);
+    view.draw();
+    expect(
+      view.container.querySelector('.chat-message-reactions[data-message-id="answer"]')
+        ?.textContent,
+    ).toContain("👍");
+    props.messages = [messages[0]];
+    view.draw();
+    expect(view.container.textContent).not.toContain("Edited answer");
+    props.messages = [...props.messages, msg("assistant", "New answer", 3)];
+    view.draw();
+    expect(view.container.textContent).toContain("New answer");
+  });
+
   beforeEach(() => {
     stubAnimationFrames();
     vi.useFakeTimers({ toNotFake: ["requestAnimationFrame", "cancelAnimationFrame"] });

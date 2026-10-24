@@ -45,13 +45,14 @@ function itemDependencies(item: ChatRenderItem): readonly unknown[] {
 export function transcriptReplyDependencies(
   item: ChatRenderItem,
   loadedSources: ReadonlyMap<string, LoadedReplySource>,
+  revision?: number,
 ): unknown[] {
   const dependencies: unknown[] = [];
   for (const group of chatItemGroups(item)) {
     for (const source of group.messages) {
       if (source.replyTarget?.kind === "id") {
         const loaded = loadedSources.get(source.replyTarget.id);
-        dependencies.push(source.replyTarget.id, loaded?.message, loaded?.senderLabel);
+        dependencies.push(source.replyTarget.id, loaded?.message, loaded?.senderLabel, revision);
       }
     }
   }

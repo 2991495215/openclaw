@@ -419,12 +419,24 @@ export function projectChatTranscript(
         groups.some((group) => group.messages.some(({ message }) => readAsyncQuestions(message)));
       return [
         liveStatusSignature(item),
-        ...transcriptReplyDependencies(item, loadedReplySources),
+        ...transcriptReplyDependencies(
+          item,
+          loadedReplySources,
+          props.replyMessageAccess?.revision,
+        ),
+        ...groups.flatMap((group) =>
+          group.messages.map(({ message }) =>
+            props.messageReactions?.get(persistedMessageEntryId(message) ?? ""),
+          ),
+        ),
         // Durable drafts can restore the same map under a new callback generation.
         hasQuestions ? asyncQuestions.drafts : undefined,
         hasQuestions ? state.asyncQuestionGeneration : undefined,
+        hasQuestions ? state.asyncQuestionRevision : undefined,
+        hasQuestions ? props.asyncQuestions?.historyKey : undefined,
         // Tool plugins own foreground activity; launch cards also read the child roster.
         hasTools ? presented : undefined,
+        hasTools ? props.latestBrowserTabs : undefined,
         hasTools ? subagents.rowsKey : undefined,
         item.kind === "notice" ? props.onRetryRun : undefined,
         item.kind === "notice" ? props.failureActionsRunId : undefined,
@@ -554,7 +566,6 @@ export function projectChatTranscript(
     getExpansionStateVersion(expandedAssistantMessages),
     // The host minute poll requests an update; this key crosses row guard() memoization.
     Math.floor(Date.now() / 60_000),
-    props.latestBrowserTabs,
     props.sessionKey,
     // Invalidate settled rows when spawn metadata arrives, not on activity/title patches.
     avatarPlacement,
@@ -575,8 +586,6 @@ export function projectChatTranscript(
     props.retryAt,
     Boolean(props.waitingApproval),
     props.questionPrompts,
-    state.asyncQuestionRevision,
-    props.asyncQuestions?.historyKey,
     Boolean(props.autoExpandToolCalls),
     props.assistantName,
     assistantIdentity.avatar,
@@ -604,7 +613,6 @@ export function projectChatTranscript(
     props.pluginToolIcons,
     threadContextWindow,
     Boolean(props.onSetReply),
-    props.messageReactions,
     Boolean(props.onReact),
     Boolean(props.asyncQuestions?.submit),
     Boolean(props.onRetryQueuedMessage),
@@ -613,7 +621,6 @@ export function projectChatTranscript(
     props.queuedMessageAction?.id,
     props.queuedMessageAction?.label,
     props.queuedMessageAction?.onAction,
-    props.replyMessageAccess?.revision ?? 0,
     props.replyMessageAccess?.navigationId ?? "",
     turnRecap === null ? "" : `${turnRecap.runtimeMs}:${turnRecap.outputTokens ?? ""}`,
   ]);
