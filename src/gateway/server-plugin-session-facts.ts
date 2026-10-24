@@ -37,7 +37,14 @@ import { resolveSessionVisibility } from "./session-sharing.js";
 import { prepareProjectedSessionList, selectSessionEntries } from "./session-utils-list.js";
 
 const SESSION_FACTS_LIMIT = 40;
-const selectedPrFacts = new WeakMap<SessionRowProjection, Map<string, SelectedPrFacts>>();
+const selectedPrFacts = new WeakMap<
+  SessionRowProjection,
+  {
+    facts: Map<string, SelectedPrFacts>;
+    activeRosters: Map<object, SelectedRoster>;
+    needsPrune: boolean;
+  }
+>();
 type SelectedRoster = {
   revision: object;
   selected: SessionEntrySelection;
@@ -227,18 +234,19 @@ export async function withTrustedPluginSessionFacts<T>(
       }
       let prFacts = selectedPrFacts.get(projection);
       if (!prFacts) {
-        prFacts = new Map();
+        prFacts = { facts: new Map(), activeRosters: new Map(), needsPrune: false };
         selectedPrFacts.set(projection, prFacts);
-        const current = prFacts;
+        const current = prFacts.facts;
         projection.onSelectionChange((change) => {
           if (change.kind === "row" && !change.row) {
             current.delete(change.key);
           }
         });
       }
-      const currentPrFacts = prFacts;
+      const currentPrFacts = prFacts.facts;
       const cache = authority ?? createReadScope("");
-      const snapshot = await projection.withSelectionPreparation(async () => {
+      const reader = {};
+      const reading = projection.withSelectionPreparation(async () => {
         do {
           await projection.prepareSelection({ yieldForCatalog: true });
           await projection.prepareMembership();
@@ -286,6 +294,8 @@ export async function withTrustedPluginSessionFacts<T>(
           roster = { revision: projectionState.revision, selected, targets, bySessionId };
         }
         const currentRoster = roster;
+        prFacts.activeRosters.set(reader, currentRoster);
+        prFacts.needsPrune ||= currentRoster !== previousRoster;
         const transient = transientSessionKeys(context, projectionState.rowContext, currentRoster);
         const wanted = new Set([...cache.dirty.keys(), ...previousTransient, ...transient]);
         for (const [key, retained] of currentPrFacts) {
@@ -452,6 +462,31 @@ export async function withTrustedPluginSessionFacts<T>(
           }
         }
         return result!;
+      });
+      const snapshot = await reading.finally(() => {
+        prFacts.activeRosters.delete(reader);
+        if (!prFacts.needsPrune) {
+          return;
+        }
+        // Keep shared retry state for every retained scope and acquisition still in flight.
+        const retained = new Set<string>();
+        const rosters = [
+          ...prFacts.activeRosters.values(),
+          ...[...(readScopes.get(projection)?.scopes.values() ?? [])].flatMap((scope) =>
+            scope.roster ? [scope.roster] : [],
+          ),
+        ];
+        for (const roster of rosters) {
+          for (const key of roster.targets.keys()) {
+            retained.add(key);
+          }
+        }
+        for (const key of currentPrFacts.keys()) {
+          if (!retained.has(key)) {
+            currentPrFacts.delete(key);
+          }
+        }
+        prFacts.needsPrune = prFacts.activeRosters.size > 0;
       });
       const result = await run(snapshot);
       assertAuthority();

@@ -32,6 +32,7 @@ import {
   captureRpcTargetForTest,
   registerRpcSourceForTest,
 } from "./server-methods/rpc-source-fixtures.test-support.js";
+import * as sessionFactsRead from "./session-facts-read.js";
 import { retainSessionListForegroundWork } from "./session-projection-work.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 import { publishTranscriptFields } from "./session-row-projection-record.js";
@@ -161,6 +162,65 @@ function fact(snapshot: RuntimeSessionFactsSelectionResult, key = sessionKey) {
 }
 
 describe("trusted plugin selected session facts", () => {
+  it("retains PR facts only for the union of current rosters and recomputes on re-entry", () =>
+    withFixture(async (fixture, { selected, getProjection }) => {
+      using _ = holdForeground();
+      let now = Date.now();
+      using clock = vi.spyOn(Date, "now");
+      clock.mockImplementation(() => now);
+      using reads = vi.spyOn(sessionFactsRead, "prepareFactsRead");
+      const selection = { activeMinutes: 1, involvingProfileId: fixture.profile.id };
+      await fixture.seed(sessionKey, fixture.profile.id, {
+        lastActivityAt: now,
+        worktree: worktree("facts-worktree"),
+      });
+      fixture.load.mockResolvedValue({ pullRequests: [pullRequest()], rateLimited: false });
+      await selected(selection);
+      await fixture.subscriptions.pollNow();
+      expect(fact(await selected(selection))?.pullRequests).toEqual([
+        { number: 12, state: "open" },
+      ]);
+      const retained = reads.mock.calls.at(-1)![3]!;
+      expect(retained.size).toBe(1);
+
+      const peer = "agent:main:other-roster";
+      await fixture.seed(peer, fixture.other.id, { worktree: worktree("peer") });
+      await selected({ involvingProfileId: fixture.other.id });
+      const peerFacts = retained.get(peer);
+      expect(peerFacts).toBeDefined();
+
+      for (let page = 0; page < 3; page++) {
+        now += 60_001;
+        const key = `agent:main:roster-${page}`;
+        await fixture.seed(key, fixture.profile.id, {
+          lastActivityAt: now,
+          worktree: worktree(`roster-${page}`),
+        });
+        expect((await selected(selection)).sessions.map((row) => row.key)).toEqual([key]);
+        expect([...retained.keys()].toSorted()).toEqual([key, peer].toSorted());
+        expect(retained.get(peer)).toBe(peerFacts);
+      }
+
+      now += 60_001;
+      await fixture.seed(sessionKey, fixture.profile.id, {
+        lastActivityAt: now,
+        worktree: worktree("facts-worktree"),
+      });
+      fixture.load.mockResolvedValue({
+        pullRequests: [pullRequest({ number: 13, state: "merged" })],
+        rateLimited: false,
+      });
+      await fixture.subscriptions.replace(fixture.client.connId, [sessionKey]);
+      using acquisition = vi.spyOn(getProjection(), "withPreparedExactRows");
+      expect(fact(await selected(selection))?.pullRequests).toEqual([
+        { number: 13, state: "merged" },
+      ]);
+      expect(acquisition).toHaveBeenCalledTimes(1);
+      await selected(selection);
+      expect(acquisition).toHaveBeenCalledTimes(1);
+      expect([...retained.keys()].toSorted()).toEqual([sessionKey, peer].toSorted());
+    }));
+
   it.each(["config-presentation", "secret registry"] as const)(
     "preserves exact and selected text and PR state after %s changes",
     (change) =>
