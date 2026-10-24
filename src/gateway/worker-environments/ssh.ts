@@ -6,7 +6,7 @@ import { resolvePreferredOpenClawTmpDir } from "../../infra/tmp-openclaw-dir.js"
 import { registerSecretValueForRedaction } from "../../logging/secret-redaction-registry.js";
 import type { WorkerSshEndpoint, WorkerSshIdentity } from "../../plugins/types.js";
 import type { CommandOptions } from "../../process/exec.js";
-import { normalizeOpenSshHostKey } from "./ssh-host-key.js";
+import { normalizeOpenSshHostKey } from "./store-validation.js";
 
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
 

@@ -177,7 +177,13 @@ export function groupSessionRows(params: {
     params.mode === "date"
       ? createDateGroupResolver(Date.now())
       : (row: GatewaySessionRow) => resolveSessionGroupId(row, params.mode);
-  const byId = Map.groupBy(params.rows, groupId);
+  const byId = new Map<string, GatewaySessionRow[]>();
+  for (const row of params.rows) {
+    const id = groupId(row);
+    const bucket = byId.get(id) ?? [];
+    bucket.push(row);
+    byId.set(id, bucket);
+  }
   const ids = orderedGroupIds(params.mode, byId, params.knownCategories ?? []);
   return ids.map((id) => ({ id, rows: byId.get(id) ?? [] }));
 }
