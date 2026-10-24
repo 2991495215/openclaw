@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import { availableParallelism, loadavg } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { waitForGatewayStartup } from "../../test/helpers/gateway-startup.js";
@@ -12,6 +14,7 @@ import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import {
   connectOk,
   installGatewayTestHooks,
+  onceMessage,
   rpcReq,
   startServerWithClient,
 } from "./test-helpers.js";
@@ -22,13 +25,73 @@ type ConnectedGateway = Awaited<ReturnType<typeof startServerWithClient>>;
 
 let gateway: ConnectedGateway;
 let minimalGatewayEnv: ReturnType<typeof captureEnv> | undefined;
+type MetadataRuntime = ReturnType<
+  typeof import("./server-methods/chat-metadata-runtime.js").createGatewayChatMetadataRuntime
+>;
+let comparison: { baseline: MetadataRuntime; candidate: MetadataRuntime };
+let variant: "baseline" | "candidate" = "candidate";
+let sample: { refreshes: number; runtimeMs: number } | undefined;
 
 beforeAll(async () => {
   minimalGatewayEnv = captureEnv(["OPENCLAW_TEST_MINIMAL_GATEWAY"]);
   // Minimal mode hides the production lifecycle's sticky-publication regression.
   setTestEnvValue("OPENCLAW_TEST_MINIMAL_GATEWAY", "0");
   await writeGatewayConfig(boundaryConfig());
+  const runtimeModule = await import("./server-methods/chat-metadata-runtime.js");
+  const { createGatewayChatMetadataRuntime: baselineFactory } =
+    await import("./server-methods/chat-metadata-runtime.baseline.test-support.js");
+  const candidateFactory = runtimeModule.createGatewayChatMetadataRuntime;
+  // Diagnostic only: both real owners share the same published inputs and transport.
+  const factory = vi
+    .spyOn(runtimeModule, "createGatewayChatMetadataRuntime")
+    .mockImplementation((options) => {
+      comparison = {
+        baseline: baselineFactory({ ...options, onChanged: undefined }),
+        candidate: candidateFactory(options),
+      };
+      return {
+        ...comparison.candidate,
+        invalidate() {
+          comparison.baseline.invalidate();
+          comparison.candidate.invalidate();
+        },
+        fail(error) {
+          comparison.baseline.fail(error);
+          comparison.candidate.fail(error);
+        },
+        async refresh(options) {
+          await comparison.baseline.refresh(options);
+          await comparison.candidate.refresh(options);
+        },
+        async stop() {
+          await Promise.all([comparison.baseline.stop(), comparison.candidate.stop()]);
+        },
+        async read(params) {
+          const measured = sample;
+          const started = performance.now();
+          const original = params.withCurrent;
+          try {
+            return await comparison[variant].read({
+              ...params,
+              withCurrent: original
+                ? (consume) => {
+                    if (measured) {
+                      measured.refreshes++;
+                    }
+                    return original(consume);
+                  }
+                : undefined,
+            });
+          } finally {
+            if (measured) {
+              measured.runtimeMs += performance.now() - started;
+            }
+          }
+        },
+      };
+    });
   gateway = await startServerWithClient();
+  factory.mockRestore();
   await gateway.server.startupSettled;
   await waitForGatewayStartup(gateway.port);
   await connectOk(gateway.ws);
@@ -99,6 +162,99 @@ async function writeGatewayConfig(config: Record<string, unknown>, resetRuntime 
     clearRuntimeConfigSnapshot();
   }
 }
+
+test("measures saved-session metadata refreshes through the real RPC", async () => {
+  const sessionKey = "agent:main:metadata-comparison";
+  const created = await rpcReq(gateway.ws, "sessions.create", {
+    key: sessionKey,
+    agentId: "main",
+    label: "Synthetic metadata comparison",
+  });
+  expect(created.ok, JSON.stringify(created)).toBe(true);
+  const request = async (includeModels: boolean) => {
+    const id = randomUUID();
+    const reply = onceMessage(gateway.ws, (message) => message.type === "res" && message.id === id);
+    gateway.ws.send(
+      JSON.stringify({
+        type: "req",
+        id,
+        method: "chat.metadata",
+        params: { sessionKey, includeModels },
+      }),
+    );
+    return await reply;
+  };
+  const results: Array<{
+    variant: typeof variant;
+    cache: "cold" | "warm";
+    includeModels: boolean;
+    refreshes: number;
+    runtimeMs: number;
+    rpcMs: number;
+    threadCpuUs: number;
+  }> = [];
+  try {
+    for (const includeModels of [true, false]) {
+      for (const cache of ["cold", "warm"] as const) {
+        for (const side of ["baseline", "candidate"] as const) {
+          variant = side;
+          expect((await request(includeModels)).ok).toBe(true);
+        }
+        for (let pair = 0; pair < 6; pair++) {
+          if (cache === "cold") {
+            comparison.baseline.invalidate();
+            comparison.candidate.invalidate();
+            await comparison.baseline.refresh();
+            await comparison.candidate.refresh();
+          }
+          const pairResults = [];
+          const sides =
+            pair % 2 === 0
+              ? (["baseline", "candidate"] as const)
+              : (["candidate", "baseline"] as const);
+          for (const side of sides) {
+            variant = side;
+            sample = { refreshes: 0, runtimeMs: 0 };
+            const cpu = process.threadCpuUsage();
+            const start = performance.now();
+            const response = await request(includeModels);
+            const rpcMs = performance.now() - start;
+            const used = process.threadCpuUsage(cpu);
+            expect(response.ok, JSON.stringify(response)).toBe(true);
+            pairResults.push(response.payload);
+            results.push({
+              variant,
+              cache,
+              includeModels,
+              ...sample,
+              rpcMs,
+              threadCpuUs: used.user + used.system,
+            });
+            sample = undefined;
+          }
+          expect(pairResults[0]).toEqual(pairResults[1]);
+          const [first, second] = results.slice(-2);
+          expect(first!.refreshes - second!.refreshes).toBe(
+            includeModels ? (first!.variant === "baseline" ? 1 : -1) : 0,
+          );
+        }
+      }
+    }
+    console.log(
+      "CHAT_METADATA_REFRESH_COMPARISON",
+      JSON.stringify({
+        source: "d355f2fd148dd68486d863aba8b510adfa8005c2",
+        cacheScope: "metadata owner; shared dependencies warm",
+        availableParallelism: availableParallelism(),
+        loadAverage: loadavg(),
+        samples: results,
+      }),
+    );
+  } finally {
+    sample = undefined;
+    variant = "candidate";
+  }
+});
 
 test("metadata RPCs isolate missing owners and preserve deferred admission and publication failures", async () => {
   const publicationEvents = await import("../agents/prepared-model-runtime.publication-events.js");

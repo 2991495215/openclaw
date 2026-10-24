@@ -449,8 +449,8 @@ export function createGatewayChatMetadataRuntime(params: {
           `prepared chat metadata is unavailable for agent "${agentId}"`,
         );
       }
-      await withCurrentReadAuthority(authority, () => {});
       if (readParams.includeModels === false) {
+        await withCurrentReadAuthority(authority, () => {});
         assertPreparedAgentCurrent(agent);
         return {
           isCurrent: agent.owner.isCurrent,
