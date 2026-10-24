@@ -21,6 +21,10 @@ import {
   selectSessionActorMemoryConversations,
   syncSessionActorMemoryConversations,
 } from "./session-actor-memory-conversation.js";
+import type {
+  MemoryOwnerOptions,
+  MemorySessionActorOwner,
+} from "./session-actor-memory-owner-contract.js";
 import { createSessionActorMemoryPending } from "./session-actor-memory-pending.js";
 import { publishSessionActorMemoryChanges } from "./session-actor-memory-publication.js";
 import { validateSessionActorMemoryRecoveryInput } from "./session-actor-memory-recovery.js";
@@ -54,7 +58,9 @@ function errorFacts(error: unknown) {
 }
 
 /** Memory is authoritative until session close; it is never evicted into a database. */
-export function createMemorySessionActorOwner(options: { agentId: string; path: string }) {
+export function createMemorySessionActorOwner(
+  options: MemoryOwnerOptions,
+): MemorySessionActorOwner {
   const identity = Object.freeze({
     kind: "memory" as const,
     handle: randomUUID(),
@@ -293,7 +299,7 @@ export function createMemorySessionActorOwner(options: { agentId: string; path: 
     authority.assertCurrent();
     return hot;
   };
-  const owner = {
+  const owner: MemorySessionActorOwner = {
     ...createSessionActorMemoryConversationOwner({
       conversations: () => conversations,
       installConversations: (value) => {

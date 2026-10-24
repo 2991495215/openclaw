@@ -1,7 +1,5 @@
-import {
-  memorySessionActorRegistry,
-  type MemoryOwnerOptions,
-} from "./session-actor-memory-registry.js";
+import type { MemoryOwnerOptions } from "./session-actor-memory-owner-contract.js";
+import { memorySessionActorRegistry } from "./session-actor-memory-registry.js";
 import { createMemorySessionActorOwner } from "./session-actor-memory.js";
 
 /** Creation registers synchronously before acquisition can yield to owner cleanup. */
