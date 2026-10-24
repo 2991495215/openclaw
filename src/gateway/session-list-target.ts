@@ -18,6 +18,7 @@ export function readSessionListSelectionFacts(
     category?: string;
     heartbeatIsolatedBaseSessionKey?: string;
     createdSurface?: "plugin-dock";
+    chatType?: string;
   } & Omit<Parameters<typeof isSystemCreatedSessionRow>[0], "key" | "classification"> &
     Partial<
       Pick<
@@ -27,7 +28,6 @@ export function readSessionListSelectionFacts(
         | "groupChannel"
         | "space"
         | "delivery"
-        | "chatType"
         | "modelProvider"
         | "model"
       >
