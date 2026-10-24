@@ -115,12 +115,10 @@ export async function resolveStatusGatewayHealthSafe(
     : { error: formatStatusGatewayFailure(result.error, "health check") };
 }
 
-export type StatusGatewayDiagnosticsResult = Result<unknown, string>;
-
 /** Reads gateway diagnostics while preserving whether data or an unavailable outcome was observed. */
 export async function resolveStatusGatewayDiagnosticsSafe(
   params: StatusGatewayQuery & { gatewayReachable: boolean; type?: string },
-): Promise<StatusGatewayDiagnosticsResult> {
+): Promise<Result<unknown, string>> {
   if (!params.gatewayReachable) {
     return { ok: false, error: "gateway unreachable" };
   }

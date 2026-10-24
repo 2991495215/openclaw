@@ -23,11 +23,6 @@ type GatewayHeapLimit = {
   headroomCapMiB: number | null;
 };
 
-export type GatewayHeapLimitReport = GatewayHeapLimit & {
-  nodeOptions: string;
-  execArgv: string[];
-};
-
 function readAvailableMemory(): {
   bytes: number | null;
   source: GatewayHeapMemorySource;
@@ -151,7 +146,7 @@ export function resolveGatewayHeapExecArgv(
 export function inspectGatewayHeapLimit(
   nodeOptions: string | undefined,
   programArguments: readonly string[] = [],
-): GatewayHeapLimitReport {
+) {
   return {
     ...resolveGatewayHeapLimit(),
     nodeOptions: resolveGatewayHeapNodeOptions(nodeOptions),
@@ -159,7 +154,9 @@ export function inspectGatewayHeapLimit(
   };
 }
 
-export function formatGatewayHeapLimitReport(report: GatewayHeapLimitReport): string {
+export function formatGatewayHeapLimitReport(
+  report: ReturnType<typeof inspectGatewayHeapLimit>,
+): string {
   const configured =
     [
       report.nodeOptions ? `service NODE_OPTIONS: ${report.nodeOptions}` : "",
