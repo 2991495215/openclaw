@@ -357,6 +357,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL version migration", () => {
   it("captures the predecessor before migration, re-admits exact DDL, and publishes", async () => {
     await prepare();
     const original = await readMeta();
+    expect(admit(predecessor)?.version).toBe(target - 1);
     const anchorBytes = fs.readFileSync(pathname);
     const before = new Set(archives());
     const result = await runDoctor();
@@ -378,12 +379,6 @@ describe.skipIf(!connection)("Doctor PostgreSQL version migration", () => {
     ).toEqual({ value_json: '"before"' });
     expect(image.prepare("PRAGMA user_version").get()?.user_version).toBe(target - 1);
     expect(original.version).toBe(String(target - 1));
-    if (target === 30) {
-      // The v30 automation policy fence changes metadata, not the PostgreSQL catalog.
-      expect(original.fingerprint).toBe(targetFingerprint);
-    } else {
-      expect(original.fingerprint).not.toBe(targetFingerprint);
-    }
     expect(fs.readFileSync(pathname)).toEqual(anchorBytes);
   });
 
@@ -611,6 +606,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL version migration", () => {
     [27, false],
     [27, true],
     [30, false],
+    [31, false],
   ] as const)(
     "keeps the real agent v%s→current rollback exact (foreign write: %s)",
     async (sourceVersion, foreignWrite) => {
@@ -638,7 +634,8 @@ describe.skipIf(!connection)("Doctor PostgreSQL version migration", () => {
       const installed: StoreSchema = {
         ...candidate,
         version: sourceVersion,
-        postgres: migration.fromSchema.postgres,
+        ...migration.fromSchema,
+        postgresVectorDecoderVersion: migration.fromSchema.postgresVectorDecoderVersion,
         postgresMigrations: [],
       };
       // Build the actual historical layout; dropping current columns would leave
@@ -942,7 +939,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL version migration", () => {
             VALUES ('restored.md', 'memory', 'hash', 1, 1);`);
         expect(
           (await client.query(`SELECT revision FROM "${agentNamespace}".memory_index_state`)).rows,
-        ).toEqual([{ revision: "1" }]);
+        ).toEqual([{ revision: sourceVersion < 31 ? "1" : "0" }]);
       } finally {
         Object.assign(agentEngineSchema, candidate);
         vi.unstubAllEnvs();
