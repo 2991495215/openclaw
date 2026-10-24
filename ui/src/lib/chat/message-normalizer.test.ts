@@ -78,7 +78,7 @@ describe("message-normalizer", () => {
       const notice = {
         type: "text",
         text: "Operational status",
-        openclawStatusNoticeKind: "model-fallback",
+        openclawFallback: true,
       };
       const answer = { type: "text", text: "The work continued." };
       const ordinary = { type: "text", text: "Other status", openclawStatusNotice: true };
@@ -86,8 +86,7 @@ describe("message-normalizer", () => {
       const normalized = normalizeMessage(source);
       expect(
         normalized.content
-          .filter((block) => block.type === "text")
-          .map((block) => block.text)
+          .flatMap((block) => (block.type === "text" ? [block.text] : []))
           .join("\n"),
       ).toBe([...(role === "user" ? [notice.text] : []), answer.text, ordinary.text].join("\n"));
       expect(source.content).toEqual([notice, answer, ordinary]);

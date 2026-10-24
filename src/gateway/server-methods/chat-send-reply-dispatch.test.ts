@@ -348,7 +348,7 @@ describe("buildAssistantReplyContentFromInputs", () => {
     const expectedStatusContent =
       kind === "prepared" && fallback
         ? [
-            { ...statusContent[0], openclawStatusNoticeKind: "model-fallback" },
+            { ...statusContent[0], openclawFallback: true },
             ...(withAnswer ? [statusContent[1]] : []),
           ]
         : statusContent;

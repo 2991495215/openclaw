@@ -512,7 +512,7 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
   } else if (contentItems) {
     content = contentItems.flatMap((value) => {
       const item = asOptionalRecord(value);
-      if (!item || (isAssistantMessage && item.openclawStatusNoticeKind === "model-fallback")) {
+      if (!item) {
         return [];
       }
       const omittedMedia = normalizeOmittedMediaContentBlock(item);
@@ -567,7 +567,9 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
           (role === "user" && type === "input_text") ||
           (role === "assistant" && (type === "input_text" || type === "output_text")))
       ) {
-        return normalizeText(text, true);
+        return isAssistantMessage && item.openclawFallback === true
+          ? []
+          : normalizeText(text, true);
       }
       return [
         {

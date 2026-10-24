@@ -207,7 +207,7 @@ export async function buildAssistantReplyContentFromInputs(
       ? {
           openclawStatusNotice: true,
           ...(getReplyPayloadMetadata(payload)?.modelFallbackNotice
-            ? { openclawStatusNoticeKind: "model-fallback" }
+            ? { openclawFallback: true }
             : {}),
         }
       : {};

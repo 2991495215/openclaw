@@ -33,7 +33,7 @@ describe("model fallback transcript dividers", () => {
           type: "text",
           text: "A transport-specific status notice.",
           openclawStatusNotice: true,
-          openclawStatusNoticeKind: "model-fallback",
+          openclawFallback: true,
         },
         ...(!separateAnswer ? [answer, media] : []),
       ],
