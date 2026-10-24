@@ -348,7 +348,11 @@ describe("board and progress event session ownership", () => {
 });
 
 describe("collaboration event scope guards", () => {
-  it("revalidates an authoritative session-generation creator replacement before socket I/O", async () => {
+  it.each([
+    { event: "sessions.changed", scope: "operator.read" },
+    { event: "board.changed", scope: "operator.sessions.read" },
+    { event: "board.command", scope: "operator.sessions.write" },
+  ])("filters $event after creator replacement ($scope)", async ({ event, scope }) => {
     await withBoardState(async () => {
       const cfg: OpenClawConfig = {};
       setRuntimeConfigSnapshot(cfg);
@@ -366,6 +370,8 @@ describe("collaboration event scope guards", () => {
       );
       const owner = readPeer("owner");
       const successor = readPeer("successor");
+      owner.client.connect.scopes = [scope];
+      successor.client.connect.scopes = [scope];
       for (const [entry, actor] of [
         [owner, ownerActor],
         [successor, successorActor],
@@ -389,8 +395,14 @@ describe("collaboration event scope guards", () => {
         });
         const broadcast = () =>
           broadcastToConnIds(
-            "sessions.changed",
-            { sessionKey, agentId: "main", reason: "updated" },
+            event,
+            {
+              sessionKey,
+              agentId: "main",
+              ...(event === "board.command"
+                ? { command: { kind: "focus_tab", tabId: "main" } }
+                : { reason: "updated" }),
+            },
             new Set([owner.client.connId, successor.client.connId]),
             { agentId: "main", sessionKeys: [sessionKey] },
           );
@@ -403,11 +415,15 @@ describe("collaboration event scope guards", () => {
           owner.socket.send.mock.invocationCallOrder[0] ?? -1,
         );
         expect(JSON.parse(String(owner.socket.send.mock.calls[0]?.[0]))).toMatchObject({
-          event: "sessions.changed",
-          payload: { sessionKey, agentId: "main", reason: "updated" },
+          event,
+          payload: { sessionKey, agentId: "main" },
         });
 
-        const target = await resolveSessionSharingTargetAsync({ cfg, sessionKey, agentId: "main" });
+        const target = await resolveSessionSharingTargetAsync({
+          cfg,
+          sessionKey,
+          agentId: "main",
+        });
         if (!target) {
           throw new Error("expected the persisted draft session target");
         }
@@ -444,8 +460,8 @@ describe("collaboration event scope guards", () => {
           successor.socket.send.mock.invocationCallOrder[0] ?? -1,
         );
         expect(JSON.parse(String(successor.socket.send.mock.calls[0]?.[0]))).toMatchObject({
-          event: "sessions.changed",
-          payload: { sessionKey, agentId: "main", reason: "updated" },
+          event,
+          payload: { sessionKey, agentId: "main" },
         });
       } finally {
         projection.dispose();

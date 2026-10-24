@@ -12,6 +12,7 @@ import {
 } from "../sessions/session-lifecycle-admission.test-support.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
+import { setCanonicalUserProfileRole } from "../state/user-profile-writes.js";
 import {
   withOpenClawTestState,
   type OpenClawTestState,
@@ -191,6 +192,69 @@ describe("invocation-owned session mutations", () => {
       ).toMatchObject([false, undefined, { code: "FORBIDDEN" }]);
     });
   });
+
+  it.each(["current", "revoked", "replaced"] as const)(
+    "fences pending narrow board reads after authority is %s",
+    async (change) => {
+      await withState(async () => {
+        const { client, cfg } = ownerFixture("board-read-owner");
+        cfg.gateway!.roles!.definitions!.none!.scopes = [];
+        const entry = { ...ownedEntry(client, "board-read"), visibility: "draft" as const };
+        await upsertSessionEntryCore(scope, entry);
+        await boardStore.putWidget({
+          ...scope,
+          name: "private-report",
+          content: {
+            kind: "plugin",
+            pluginKind: "session:report",
+            props: { blocks: [{ type: "text", text: "private report" }] },
+          },
+        });
+        const context = await createHistoryReadContext({ getRuntimeConfig: () => cfg });
+        context.resolveGatewayContext = () => context;
+        client.connect.scopes = ["operator.sessions.read"];
+        using gate = createRequestGate();
+        const load = boardStore.getSnapshotWithHtmlViewMetadata.bind(boardStore);
+        const read = vi
+          .spyOn(boardStore, "getSnapshotWithHtmlViewMetadata")
+          .mockImplementation(async (target) => {
+            const result = await load(target);
+            await gate.pause();
+            return result;
+          });
+        const { request, respond } = startExactAuthorizationRequest(
+          "board.get",
+          { sessionKey: key },
+          { client, context, extraHandlers: createBoardHandlers(boardStore) },
+        );
+        const settled = Promise.allSettled([request]);
+        await gate.during(
+          request,
+          async () => {
+            expect(read).toHaveBeenCalledOnce();
+            expect(respond).not.toHaveBeenCalled();
+            if (change === "revoked") {
+              await setCanonicalUserProfileRole(client.authenticatedUserProfile!.profileId, "none");
+            } else if (change === "replaced") {
+              await upsertSessionEntryCore(scope, {
+                ...entry,
+                sessionId: "board-read-replacement",
+              });
+            }
+          },
+          settled,
+        );
+        expect(respond.mock.calls.some(([ok]) => ok)).toBe(change === "current");
+        if (change === "current") {
+          expect(respond.mock.calls[0]?.[1]).toMatchObject({
+            widgets: [expect.objectContaining({ name: "private-report" })],
+          });
+        } else {
+          expect(respond.mock.calls.every(([, payload]) => payload === undefined)).toBe(true);
+        }
+      });
+    },
+  );
 
   it.each([
     { owner: "connection", broad: false, rebind: true },
