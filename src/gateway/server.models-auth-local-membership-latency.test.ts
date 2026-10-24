@@ -1,6 +1,6 @@
 import os from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
-import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
+import type { AuthProfileStore, RuntimeAuthProfileStore } from "../agents/auth-profiles/types.js";
 import { prepareModelRuntimeSnapshot } from "../agents/prepared-model-runtime.js";
 import { getRuntimeConfig } from "../config/config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -63,7 +63,8 @@ vi.mock("./server-model-catalog-auth.js", async (importOriginal) => {
     ...actual,
     readPreparedCatalog: async (...args: Parameters<typeof actual.readPreparedCatalog>) => {
       const snapshot = await actual.readPreparedCatalog(...args);
-      observation.localIds = snapshot?.authStore.runtimeLocalProfileIds;
+      const store: RuntimeAuthProfileStore | undefined = snapshot?.authStore;
+      observation.localIds = store?.runtimeLocalProfileIds;
       return snapshot;
     },
   };
@@ -137,6 +138,14 @@ function distribution(values: number[]) {
   };
 }
 
+function measuredTiming(): Omit<Timing, "rpcMs"> {
+  const timing = observation.timing;
+  if (!timing) {
+    throw new Error("The registered handler did not report a timing");
+  }
+  return timing;
+}
+
 it("measures request-local profile membership through the registered Gateway method", async () => {
   const loadStart = os.loadavg();
   const setupStart = performance.now();
@@ -158,7 +167,7 @@ it("measures request-local profile membership through the registered Gateway met
     }
   }
   const token = "synthetic-local-membership-token";
-  const cfg = modelsTestConfig(state, token, { agents: { entries } });
+  const cfg = modelsTestConfig(state, token, { agents: { ownership: "explicit", entries } });
   await state.writeConfig(cfg);
   await using gateway = await startModelsGateway(state, cfg, token);
   await gateway.server.startupSettled;
@@ -175,10 +184,11 @@ it("measures request-local profile membership through the registered Gateway met
     const owner = await readPreparedGatewayModelCatalogOwnerSnapshot({ agentId: fixture.agentId });
     expect(owner).toBeDefined();
     expect(owner!.isCurrent()).toBe(true);
+    const store: RuntimeAuthProfileStore = owner!.authStore;
     expect(Object.keys(owner!.authStore.profiles)).toHaveLength(
       fixture.shape.providers * fixture.shape.profilesPerProvider,
     );
-    expect(owner!.authStore.runtimeLocalProfileIds).toHaveLength(
+    expect(store.runtimeLocalProfileIds).toHaveLength(
       fixture.shape.providers * fixture.shape.profilesPerProvider,
     );
   }
@@ -200,13 +210,11 @@ it("measures request-local profile membership through the registered Gateway met
     });
     const rpcMs = performance.now() - start;
     observation.measure = false;
-    const timing = observation.timing;
     assertResponse(result, fixture.shape);
     if (!measure) {
       return undefined;
     }
-    expect(timing).toBeDefined();
-    return { ...timing!, rpcMs };
+    return { ...measuredTiming(), rpcMs };
   };
   // Every cold sample has a distinct prepared agent and untouched status-facts cache.
   // Warm samples follow that same agent, retaining the single usage-runtime snapshot.
@@ -284,7 +292,7 @@ it("measures request-local profile membership through the registered Gateway met
       acceptance:
         "many-provider warm wall median improves >=10%; all shapes/cold/warm wall+CPU median/p95 regressions <20%",
       setupMs,
-      runtime: process.version,
+      runtime: { node: process.version, bun: process.versions.bun },
       platform: process.platform,
       cpus: os.cpus().length,
       loadStart,
