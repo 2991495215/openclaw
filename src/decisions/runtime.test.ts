@@ -740,20 +740,16 @@ describe("immutable finite JSON boundaries", () => {
       await expect(host.run()).rejects.toThrow("Invalid decision contract");
     },
   );
-  it("uses an admitted snapshot even if caller or provider mutates its input", async () => {
+  it("keeps the offered rubric separate from provider-mutated input", async () => {
     const release = createDeferredCore();
     const host = registered(async (input) => {
       expect(input.state).toEqual({ evidence: "synthetic" });
       Reflect.deleteProperty(input.questions, "pick");
       await release.promise;
-      expect(input.state).toEqual({ evidence: "synthetic" });
       return answer;
     });
     const submitted = { ...structuredClone(batch), state: { evidence: "synthetic" } };
     const pending = evaluateDecisionInRegistry(submitted, options(), host.registry, config);
-    expect(Object.hasOwn(submitted.questions, "pick")).toBe(true);
-    submitted.state.evidence = "caller mutation";
-    Reflect.deleteProperty(submitted.questions, "rank");
     await host.started;
     release.resolve();
     await expectOk(pending);

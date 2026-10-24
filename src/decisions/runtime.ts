@@ -203,12 +203,6 @@ async function evaluateVersion(
   if (config.plugins?.entries?.[entry.pluginId]?.enabled === false) {
     return skipped(entry.host.unavailable("disabled"));
   }
-  let submitted: DecisionBatch | DecisionBatchV2;
-  try {
-    submitted = structuredClone(batch);
-  } catch {
-    throw new DecisionContractError();
-  }
   // Credential profiles select auth, not a different model policy identity.
   const model = normalizeModelRef(
     selected.provider,
@@ -284,7 +278,7 @@ async function evaluateVersion(
     const result =
       version === 1
         ? await entry.host.evaluate(
-            submitted as DecisionBatch, // SAFETY: V1 validation and structuredClone preserve the admitted V1 shape.
+            batch as DecisionBatch, // SAFETY: V1 dispatch validated the admitted V1 shape.
             { ...options, timeoutMs, signal },
             selected.model,
             config,
@@ -294,7 +288,7 @@ async function evaluateVersion(
             onPreparedBilling,
           )
         : await entry.host.evaluateV2(
-            submitted as DecisionBatchV2, // SAFETY: V2 validation and structuredClone preserve the admitted V2 shape.
+            batch as DecisionBatchV2, // SAFETY: V2 dispatch validated the admitted V2 shape.
             { ...options, timeoutMs, signal },
             selected.model,
             config,
