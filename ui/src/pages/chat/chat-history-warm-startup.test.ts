@@ -40,6 +40,7 @@ import {
   observeChatCache,
   cacheChatSessionSnapshot,
   readChatSessionSnapshot,
+  setChatHistoryCursor,
   type ChatMessageCache,
   type ChatSessionSnapshot,
 } from "./session-message-cache.ts";
@@ -434,19 +435,20 @@ describe("first chat startup snapshot ordering", () => {
     },
   );
 
-  it("uses a fresh history read when storage changes the subscribed request's cursor", async () => {
+  it("uses the subscribed full page when storage restores a cursor while it is pending", async () => {
     const h = mountPane();
     const network = h.pendingResponse();
     connectSessionOwner(h);
     const subscription = syncSelectedSessionMessageSubscription(h.state, { initialHistory: true });
     const loading = h.start();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(h.request).toHaveBeenCalledExactlyOnceWith(
-      "sessions.messages.subscribe",
-      expect.objectContaining({
-        initialHistory: expect.not.objectContaining({ cursor: expect.anything() }),
-      }),
-      expect.anything(),
+    await vi.waitFor(() =>
+      expect(h.request).toHaveBeenCalledExactlyOnceWith(
+        "sessions.messages.subscribe",
+        expect.objectContaining({
+          initialHistory: expect.not.objectContaining({ cursor: expect.anything() }),
+        }),
+        expect.anything(),
+      ),
     );
     const historyState = {
       stateRevision: startupRevision(),
@@ -458,13 +460,34 @@ describe("first chat startup snapshot ordering", () => {
     network.resolve({ key: sessionKey, initialHistory: { ok: true, payload: h.liveResult } });
     await subscription;
     await loading;
+    expect(h.request).toHaveBeenCalledOnce();
+    expect(h.state.chatMessages).toEqual(liveMessages);
+  });
+
+  it("requests the current cursor when a subscribed delta's cached cursor changes", async () => {
+    const h = mountPane();
+    await h.hydrate();
+    const network = h.pendingResponse();
+    connectSessionOwner(h);
+    const subscription = syncSelectedSessionMessageSubscription(h.state, { initialHistory: true });
+    const loading = h.start();
+    await vi.waitFor(() =>
+      expect(h.request).toHaveBeenCalledExactlyOnceWith(
+        "sessions.messages.subscribe",
+        expect.objectContaining({
+          initialHistory: expect.objectContaining({ cursor: stored.deltaCursor }),
+        }),
+        expect.anything(),
+      ),
+    );
+    setChatHistoryCursor(h.state, "newer-cache-cursor");
+    network.resolve({ key: sessionKey, initialHistory: { ok: true, payload: h.liveResult } });
+    await subscription;
+    await loading;
     expect(h.request).toHaveBeenCalledTimes(2);
     expect(h.request).toHaveBeenLastCalledWith(
       "chat.startup",
-      expect.objectContaining({
-        cursor: stored.deltaCursor,
-        knownState: historyState.stateRevision,
-      }),
+      expect.objectContaining({ cursor: "newer-cache-cursor" }),
       expect.anything(),
     );
     expect(h.state.chatMessages).toEqual(liveMessages);

@@ -10,7 +10,11 @@ import {
   isMissingOperatorReadScopeError,
 } from "../../lib/gateway-errors.ts";
 import { isSessionRunStateActive } from "../../lib/session-run-state.ts";
-import { captureChatHistoryRun, requestSharedHistory } from "./chat-history-request.ts";
+import {
+  captureChatHistoryRun,
+  chatHistoryRequestParams,
+  requestSharedHistory,
+} from "./chat-history-request.ts";
 import { formatChatHistoryLoadError, isRetryableChatReadError } from "./chat-history-retry.ts";
 import {
   type ObservedChatHistoryResult,
@@ -88,6 +92,18 @@ export async function hydrateChatHistory(
   const request = (cursor?: string) => {
     const initialHistory = requests.initialHistory;
     delete requests.initialHistory;
+    // A full page already covers a cache restored while its subscription was pending.
+    // Keep the exact request check: changed input-run receipts still need a fresh read.
+    if (
+      method === "chat.startup" &&
+      initialHistory?.isCurrent() &&
+      initialHistory.paramsKey ===
+        JSON.stringify(
+          chatHistoryRequestParams(method, sessionKey, requestAgentId, undefined, inputRunIds),
+        )
+    ) {
+      cursor = undefined;
+    }
     const historyState = readChatHistoryState(state, cursor);
     const key = `${requestKeyPrefix}${cursor === undefined ? "page" : `cursor:${cursor}`}${JSON.stringify(historyState?.stateRevision ?? null)}`;
     const load = requests.historyLoad;
