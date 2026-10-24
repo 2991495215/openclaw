@@ -1739,10 +1739,11 @@ try {
       if (cpuProfile) {
         await cdp.send("Profiler.start");
       }
-      if (traced) {
+      if (captureTrace) {
         await cdp.send("Tracing.start", {
-          categories:
-            "toplevel,blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline.stack,v8",
+          categories: values["filmstrip-only"]
+            ? "blink.user_timing,disabled-by-default-devtools.screenshot"
+            : "toplevel,blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline.stack,v8,disabled-by-default-devtools.screenshot",
           transferMode: "ReportEvents",
         });
       }
@@ -1756,6 +1757,7 @@ try {
       await page.evaluate((input) => Reflect.get(window, "__streamingReply").start(input), {
         ...streamingReply,
         burstSize: streamingBurstSize,
+        observeTextVisibility: captureTrace,
         sessionKey: fixture.selectedSessionKey,
         runId: fixture.scenario.inFlightRun!.runId,
       });
@@ -1825,7 +1827,7 @@ try {
       if (cpuProfile) {
         await recordCpu("streaming", (await cdp.send("Profiler.stop")).profile);
       }
-      if (traced) {
+      if (captureTrace) {
         const complete = new Promise<void>((resolve) => {
           cdp.once("Tracing.tracingComplete", () => resolve());
         });
@@ -1835,6 +1837,17 @@ try {
           path.join(artifactDir, `run-${run + 1}.streaming.trace.json`),
           JSON.stringify({ traceEvents: streamingTrace }),
         );
+        const frames = streamingTrace
+          .map(prepareColdLoadTraceEvent)
+          .filter((event) => event.name === "Screenshot" && event.args?.snapshot);
+        const directory = path.join(artifactDir, `run-${run + 1}.streaming.filmstrip`);
+        await mkdir(directory);
+        for (const [index, frame] of frames.entries()) {
+          await writeFile(
+            path.join(directory, `${index}-${frame.ts}.jpg`),
+            Buffer.from(frame.args!.snapshot!, "base64"),
+          );
+        }
       }
       streaming = {
         ...(await page.evaluate(() => Reflect.get(window, "__streamingReply").finish())),

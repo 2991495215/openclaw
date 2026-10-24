@@ -362,6 +362,10 @@ Use `--streaming-burst-size 5` to enqueue five snapshots every 166.7 ms
 while retaining the average 30 deltas/s. The mock transport still applies
 `--frame-gap-ms`; set it to zero to remove intentional spacing, and inspect
 delivery timestamps before treating a group as one-frame delivery.
+`--filmstrip-only --streaming-reply` retains the stream's screenshot frames in
+`run-N.streaming.filmstrip/`. Traced/filmstrip runs also check plain-paragraph
+suffix visibility on the next rendering frame (`streaming.textVisibility`);
+keep these instrumented captures separate from timing comparisons.
 Streaming reports count synchronous
 stream assignments, frame publications, pane render calls/time, forced rail
 observations, and row ResizeObserver deliveries. These are separate boundaries:

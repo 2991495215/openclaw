@@ -260,6 +260,7 @@ export class MarkdownDomReconciler {
   private messageKey?: string;
   private source = "";
   private stableHtml = "";
+  private previewText?: { node: Text; original: string };
   private connected = true;
   private readonly mediaSlots = new Map<
     number,
@@ -281,6 +282,61 @@ export class MarkdownDomReconciler {
     }
   }
 
+  canPreview(messageKey: string, source: string): boolean {
+    if (
+      messageKey !== this.messageKey ||
+      source.length <= this.source.length ||
+      !source.startsWith(this.source) ||
+      !this.tail
+    ) {
+      return false;
+    }
+    // Structural boundaries and control syntax must use the full renderer immediately.
+    if (/[\n\r<>&]/u.test(source.slice(this.source.length)) || /[\uE000-\uF8FF]/u.test(source)) {
+      return false;
+    }
+    return Boolean(this.previewText || this.findPreviewText(this.tail.children));
+  }
+
+  private findPreviewRange(nodes: RenderedNode[]): RenderedNode | undefined {
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const node = nodes[i]!;
+      const nested = this.findPreviewRange(node.children);
+      if (nested) {
+        return nested;
+      }
+      if (
+        node.canonical?.startsWith("3:") &&
+        node.start.parentElement?.closest("p,li,code,td,th,h1,h2,h3,h4,h5,h6")
+      ) {
+        return node;
+      }
+    }
+    return undefined;
+  }
+
+  private findPreviewText(nodes: RenderedNode[]): Text | undefined {
+    const range = this.findPreviewRange(nodes);
+    const text = range?.start.nextSibling;
+    return text instanceof Text && text.nextSibling === range?.end ? text : undefined;
+  }
+
+  /** Show safe text now; formatting still owns the canonical tree and the next update. */
+  preview(source: string): void {
+    if (!this.previewText) {
+      const node = this.findPreviewText(this.tail!.children)!;
+      this.previewText = { node, original: node.data };
+    }
+    this.previewText.node.data = this.previewText.original + source.slice(this.source.length);
+  }
+
+  private clearPreview(): void {
+    if (this.previewText) {
+      this.previewText.node.data = this.previewText.original;
+      this.previewText = undefined;
+    }
+  }
+
   /** The caller must supply sanitized HTML and a collision-free media prefix. */
   update(
     messageKey: string,
@@ -288,6 +344,7 @@ export class MarkdownDomReconciler {
     [stableHtml, tailHtml]: readonly [string, string],
     media?: MarkdownDomMedia,
   ): void {
+    this.clearPreview();
     if (this.messageKey !== messageKey) {
       this.releaseMedia();
     }
@@ -329,6 +386,7 @@ export class MarkdownDomReconciler {
 
   /** A standalone fragment uses the same canonical-tree and media ownership. */
   updateHtml(html: string, media?: MarkdownDomMedia, incremental = false): void {
+    this.clearPreview();
     let fragment = this.fragments[0];
     if (!fragment || fragment.incremental !== incremental) {
       this.reset();
@@ -346,6 +404,7 @@ export class MarkdownDomReconciler {
   }
 
   private reset(): void {
+    this.clearPreview();
     for (const fragment of this.fragments) {
       releaseSessionTitles(fragment);
     }

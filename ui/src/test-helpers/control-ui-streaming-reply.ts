@@ -38,6 +38,8 @@ function installStreamingReplyProbe() {
   let finalReceived = false;
   let initialScrollHeight = 0;
   let paneProbeAttached = false;
+  let observeTextVisibility = false;
+  const textVisibility: Array<{ index: number; visible: boolean; nextFrameMs: number }> = [];
   const pipeline = {
     streamWrites: 0,
     streamWriteMs: 0,
@@ -160,6 +162,28 @@ function installStreamingReplyProbe() {
           ...emptyCounters,
         };
         deltas.push(current);
+        if (observeTextVisibility) {
+          const source: string = payload.message.content[0].text;
+          const boundary = source.lastIndexOf("\n\n");
+          const tail = source.slice(boundary < 0 ? 0 : boundary + 2);
+          // Plain paragraphs have no hidden destinations or formatting delimiters.
+          if (/^[A-Za-z][A-Za-z\d .,;:'!-]{8,}$/u.test(tail)) {
+            const expected = tail.slice(-24);
+            const sample = current;
+            queueMicrotask(() =>
+              requestAnimationFrame(() => {
+                textVisibility.push({
+                  index: sample.index,
+                  visible:
+                    document
+                      .querySelector(".chat-bubble.streaming .chat-text")
+                      ?.textContent?.includes(expected) ?? false,
+                  nextFrameMs: performance.now() - startedAt - sample.at,
+                });
+              }),
+            );
+          }
+        }
         taskEnds.push({ delta: current, at: performance.now() });
         channel.port2.postMessage(null);
       });
@@ -252,7 +276,9 @@ function installStreamingReplyProbe() {
       deltas: string[];
       deltasPerSecond: number;
       burstSize: number;
+      observeTextVisibility?: boolean;
     }) {
+      observeTextVisibility = input.observeTextVisibility ?? false;
       if (window.WeakMap === ProbeWeakMap) {
         window.WeakMap = OriginalWeakMap;
       }
@@ -358,6 +384,7 @@ function installStreamingReplyProbe() {
         longFrames,
         longFrameBlockingMs: longFrames.reduce((sum, item) => sum + item.blocking, 0),
         inputs,
+        textVisibility,
         inputDelayMs: distribution(inputs.map((sample) => sample.delayMs)),
         inputToNextFrameMs: optionalDistribution(inputs.map((sample) => sample.nextFrameMs)),
         finalHtml: document.querySelector(".chat-bubble.streaming .chat-text")?.innerHTML ?? null,

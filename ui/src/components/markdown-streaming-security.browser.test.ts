@@ -232,6 +232,10 @@ describe("streaming Markdown sanitization at the live DOM boundary", () => {
       try {
         for (const end of schedule.ends) {
           const source = sample.source.slice(0, end);
+          if (reconciler.canPreview(key, source)) {
+            reconciler.preview(source);
+            expect(unsafeDom(container), `${key}, plain preview ${end}`).toEqual([]);
+          }
           reconciler.update(key, source, toStreamingMarkdownParts(source, sample.options, key));
           expect(unsafeDom(container), `${key}, offset ${end}`).toEqual([]);
         }
@@ -243,7 +247,7 @@ describe("streaming Markdown sanitization at the live DOM boundary", () => {
           { role: "assistant", isStreaming: false },
           sample.options ?? {},
         );
-        reconciler.update(completed.messageKey, completed.source, completed.parts);
+        reconciler.update(completed.messageKey, completed.source, completed.parts());
         expect(unsafeDom(container), `${key}, completion`).toEqual([]);
         expect(serializedContent(container), `${key}, completion`).toBe(expected);
       } finally {

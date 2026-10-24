@@ -55,7 +55,7 @@ function setup() {
   let height = 2000;
   Object.defineProperties(scrollport, {
     clientHeight: { value: 500 },
-    scrollHeight: { get: () => height },
+    scrollHeight: { configurable: true, get: () => height },
   });
   scrollport.scrollTop = 1500;
   state.chatLastScrollTop = scrollport.scrollTop;
@@ -230,6 +230,47 @@ describe("transcript arrival scroll ownership", () => {
     vi.advanceTimersToNextFrame();
     expect(follow).toHaveBeenCalledOnce();
     expect(state.chatStreamRenderFrame).toBeNull();
+  });
+
+  it("leaves continuing text to measured row growth without reading the viewport", () => {
+    const { controller, state, scrollport } = setup();
+    const follow = vi.spyOn(state, "chatScrollToEnd");
+    const readHeight = vi.spyOn(scrollport, "scrollHeight", "get");
+    const commit = () => {
+      controller.captureRenderChanges();
+      controller.commitRender();
+      vi.advanceTimersToNextFrame();
+    };
+    state.chatStream = "First text";
+    commit();
+    expect(follow).toHaveBeenCalledOnce();
+    follow.mockClear();
+    readHeight.mockClear();
+
+    for (const text of ["First text grows", "First text grows again", "First text grows again."]) {
+      state.chatStream = text;
+      commit();
+    }
+    expect(follow).not.toHaveBeenCalled();
+    expect(readHeight).not.toHaveBeenCalled();
+    expect(state.chatNewMessagesBelow).toBe(false);
+
+    scrollport.scrollTop = 800;
+    handleChatScrollTakeover(state);
+    state.chatNewMessagesBelow = false;
+    readHeight.mockClear();
+    state.chatStream = "Text also arrives while reading history";
+    commit();
+    expect(follow).not.toHaveBeenCalled();
+    expect(readHeight).not.toHaveBeenCalled();
+    expect(state.chatNewMessagesBelow).toBe(true);
+    expect(scrollport.scrollTop).toBe(800);
+
+    scrollport.scrollTop = 1500;
+    state.chatFollowLocked = false;
+    state.chatStream = null;
+    commit();
+    expect(follow).toHaveBeenCalledOnce();
   });
 
   it.each(["message", "pending input", "resumed stream", "speech"] as const)(

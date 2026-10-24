@@ -1,4 +1,7 @@
-import type { MarkdownRenderOptions } from "../../../components/markdown-render-options.ts";
+import {
+  MARKDOWN_PARSE_LIMIT,
+  type MarkdownRenderOptions,
+} from "../../../components/markdown-render-options.ts";
 import {
   partitionMarkdownHtml,
   toSanitizedMarkdownHtml,
@@ -45,24 +48,36 @@ export function prepareMessageMarkdown(
   const options: MarkdownRenderOptions = recovered
     ? { ...markdownRenderOptions, mode: "document" }
     : markdownRenderOptions;
-  const parts: [string, string] = opts.isStreaming
-    ? toStreamingMarkdownParts(source, options, isAssistant ? messageKey : undefined)
-    : partitionMarkdownHtml(toSanitizedMarkdownHtml(source, options), messageKey);
-  if (duplicateSuffix) {
-    const terminalPart = parts[1].trim() ? 1 : 0;
-    const template = document.createElement("template");
-    template.innerHTML = parts[terminalPart];
-    const terminalBlock = template.content.lastElementChild;
-    const target = terminalBlock ? duplicateSuffixTextOwner(terminalBlock) : null;
+  const streaming = opts.isStreaming;
+  const prepare = () => {
+    const parts: [string, string] = streaming
+      ? toStreamingMarkdownParts(source, options, isAssistant ? messageKey : undefined)
+      : partitionMarkdownHtml(toSanitizedMarkdownHtml(source, options), messageKey);
+    if (duplicateSuffix) {
+      const terminalPart = parts[1].trim() ? 1 : 0;
+      const template = document.createElement("template");
+      template.innerHTML = parts[terminalPart];
+      const terminalBlock = template.content.lastElementChild;
+      const target = terminalBlock ? duplicateSuffixTextOwner(terminalBlock) : null;
 
-    const badge = document.createElement("span");
-    badge.className = "chat-duplicate-count";
-    badge.setAttribute("aria-label", duplicateSuffix.label);
-    badge.textContent = `×${duplicateSuffix.count}`;
-    (target ?? template.content).append(document.createTextNode("\u00a0"), badge);
-    parts[terminalPart] = template.innerHTML;
-  }
-  return { messageKey, source, parts, recoverFullMessage };
+      const badge = document.createElement("span");
+      badge.className = "chat-duplicate-count";
+      badge.setAttribute("aria-label", duplicateSuffix.label);
+      badge.textContent = `×${duplicateSuffix.count}`;
+      (target ?? template.content).append(document.createTextNode("\u00a0"), badge);
+      parts[terminalPart] = template.innerHTML;
+    }
+    return parts;
+  };
+  return {
+    messageKey,
+    source,
+    parts: prepare,
+    // Truncation and recovered/status content keep their full render contract.
+    deferFormatting:
+      streaming && !recovered && !duplicateSuffix && source.length <= MARKDOWN_PARSE_LIMIT,
+    recoverFullMessage,
+  };
 }
 
 function duplicateSuffixTextOwner(block: Element): Element | null {

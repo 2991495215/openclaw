@@ -107,6 +107,33 @@ function drawContent(content: RawContent["content"], media?: MarkdownMedia) {
 }
 
 describe("streaming Markdown DOM", () => {
+  it("shows appended text before bounded formatting and flushes completion without a stale timer", async () => {
+    vi.useFakeTimers();
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
+    try {
+      draw("A growing reply");
+      const paragraph = container.querySelector("p");
+      const parsed = parse.mock.calls.length;
+      draw("A growing reply with **bold** tail");
+      expect(paragraph?.textContent).toBe("A growing reply with **bold** tail");
+      expect(parse.mock.calls.length).toBe(parsed);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(container.querySelector("p")).toBe(paragraph);
+      expect(container.querySelector("strong")?.textContent).toBe("bold");
+      expect(parse.mock.calls.length).toBeGreaterThan(parsed);
+
+      draw("A growing reply with **bold** tail and *final*");
+      draw("A growing reply with **bold** tail and *final*", { streaming: false });
+      expect(container.querySelector("em")?.textContent).toBe("final");
+      draw("Replacement", { key: "replacement", streaming: false });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(container.textContent).toBe("Replacement\n");
+    } finally {
+      parse.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     { label: "paragraph", initial: "A growing reply", suffix: " with more text", selector: "p" },
     {

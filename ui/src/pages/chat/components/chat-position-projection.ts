@@ -17,6 +17,8 @@ export type ChatPositionIndex = Readonly<{
   markerIdsByMessageId: ReadonlyMap<string, string>;
   /** Current tail previews over the immutable marker membership. */
   liveMarkers?: readonly Readonly<ChatPositionMarker>[];
+  /** A mounted preview reads current text without invalidating marker membership. */
+  resolveLiveMessage?: (message: unknown) => unknown;
 }>;
 
 type RenderItem = SystemEventRenderItem;
