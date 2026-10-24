@@ -30,11 +30,12 @@ import { SettingsWorkspace } from "../../components/solid/settings-workspace.tsx
 import { GitHubConnections } from "../../features/github-connections/github-connections.tsx";
 import { registerModelAccountsEnglish } from "../../i18n/locales/en-model-accounts.ts";
 import { registerProfileEnglish } from "../../i18n/locales/en-profile.ts";
+import { registerRouteSubtitlesEnglish } from "../../i18n/locales/en-route-subtitles.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { useApplication } from "../../lib/reactive/context.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
-import { projectOwner } from "../../lib/reactive/projection.ts";
 import "../../styles/profile.css";
+import { projectOwner } from "../../lib/reactive/projection.ts";
 import { PROFILE_SETTINGS_TARGET_IDS } from "../config/settings-targets.ts";
 import { IdentitySection } from "./identity-section.tsx";
 import { ModelAccounts } from "./model-accounts.tsx";
@@ -42,6 +43,8 @@ import { PersonalInstructions } from "./personal-instructions.tsx";
 import { userProfileAvatarUrl } from "./profile-avatar-url.ts";
 import { ProfileHero } from "./profile-hero.tsx";
 import { type IdentityChange, ProfileState } from "./profile-state.ts";
+
+registerRouteSubtitlesEnglish();
 
 registerEnglishCatalog(registerModelAccountsEnglish);
 registerEnglishCatalog(registerProfileEnglish);
@@ -182,10 +185,6 @@ export function ProfilePage() {
 
   const identityReceipt = createMemo(() => view().identityReceipt);
   const identityRead = createMemo(() => identityReceipt().result);
-  const readIdentity = () => {
-    latest(identityRead);
-    return null;
-  };
   const IdentityContent = (props: { pending: boolean }) => (
     <Show
       when={view().selfUser && view().ownProfile}
@@ -338,7 +337,7 @@ export function ProfilePage() {
               )}
             >
               <Loading on={latest(identityScope)} fallback={<IdentityContent pending={true} />}>
-                {readIdentity()}
+                {(latest(identityRead), null)}
                 <IdentityContent pending={isPending(identityRead)} />
               </Loading>
             </Errored>

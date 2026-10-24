@@ -347,6 +347,10 @@ when the last bridge progress looked terminal (for example a raw response
 item or response-completion event) but the Gateway still considers the
 embedded run active.
 
+A stalled-session warning is an observation, not permission to stop a run.
+Recovery events follow the captured session controller's decision; diagnostic
+thresholds cannot shorten its provider, tool, retry, backend, or cleanup allowances.
+
 Inspect the live recorder:
 
 ```bash
@@ -776,6 +780,13 @@ transport. If a worker cannot handle port messages, native V8 interrupts still
 refresh its heap and external counters; ArrayBuffer coverage remains unavailable
 until the worker responds. Memory pressure warnings include these counters and the external-memory
 limit caveat; Node does not provide a worker limit for external/native allocations.
+
+`postgresBridgeCount` separately counts live PostgreSQL bridge isolates, including
+bridges inside registered worker parents. The count updates when a bridge exits,
+without waiting for a heap sample, and drops the parent's bridges when that parent
+exits. It includes direct bridges already present in `workerCount`; do not add the
+two counts together. Worker heap totals and coverage still describe the registered
+workers, so this count does not imply heap coverage for nested bridges.
 
 Linux samples add anonymous-page counters asynchronously. Worker sample ages
 include that delay; coverage and heap counters describe acquisition. These fields
