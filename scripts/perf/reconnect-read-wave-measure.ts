@@ -1,17 +1,19 @@
+// Build the Gateway first (pnpm build); this measures dist/entry.js, never a dev server.
 // Synthetic state only. Run with node --enable-source-maps --import ./scripts/tsx.mjs.
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { channel } from "node:diagnostics_channel";
-import { createWriteStream, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { Profiler } from "node:inspector";
 import { findSourceMap } from "node:module";
 import { availableParallelism, loadavg, totalmem } from "node:os";
 import path from "node:path";
-import { monitorEventLoopDelay } from "node:perf_hooks";
-import { fileURLToPath } from "node:url";
+import { monitorEventLoopDelay, performance } from "node:perf_hooks";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { buildDeviceAuthPayloadV3 } from "../../packages/gateway-client/src/device-auth.ts";
+import { resolveModelCatalogConnect } from "../../packages/gateway-client/src/model-catalog-connect.ts";
 import { PROTOCOL_VERSION } from "../../packages/gateway-protocol/src/version.ts";
 import { isRecord } from "../../packages/normalization-core/src/record-coerce.ts";
 import type { OpenClawConfig } from "../../src/config/types.openclaw.ts";
@@ -19,25 +21,41 @@ import {
   publicKeyRawBase64UrlFromEd25519Pem,
   signEd25519Payload,
 } from "../../src/infra/ed25519-signature.ts";
-import { stopChild } from "../lib/gateway-bench-child.ts";
+import { readBuildIdFromBuildInfoForModuleUrl } from "../../src/version.ts";
+import { toErrorObject } from "../lib/error-format.mts";
+import { stopChild, stopGatewayGracefully } from "../lib/gateway-bench-child.ts";
 import { controlGatewayProfile } from "../lib/gateway-bench-profile.ts";
-import { createGatewayBenchEnv, summarizeNumbers } from "../lib/gateway-bench-runtime.ts";
+import {
+  createGatewayBenchEnv,
+  buildGatewayBenchChildArgs,
+  summarizeNumbers,
+  waitForInitialProbe,
+} from "../lib/gateway-bench-runtime.ts";
 import { createGatewayWsClient } from "../lib/gateway-ws-client.ts";
 import { parseStrictIntegerOption } from "../lib/strict-integer-option.ts";
 
+const observerArgs: unknown = JSON.parse(
+  new URL(import.meta.url).searchParams.get("args") ?? "null",
+);
+assert(
+  observerArgs === null ||
+    (Array.isArray(observerArgs) && observerArgs.every((value) => typeof value === "string")),
+);
 const { values } = parseArgs({
+  ...(observerArgs === null ? {} : { args: observerArgs }),
   options: {
     root: { type: "string" },
     output: { type: "string" },
     clients: { type: "string", default: "65" },
     port: { type: "string", default: "19693" },
     profile: { type: "boolean", default: false },
-    gateway: { type: "boolean", default: false },
+    entry: { type: "string", default: "dist/entry.js" },
   },
 });
 assert(values.root && values.output, "--root (generated team-shape fixture) and --output required");
 const root = path.resolve(values.root);
 const output = path.resolve(values.output);
+const entry = path.resolve(values.entry);
 const integer = (raw: string, label: string, min: number) =>
   parseStrictIntegerOption({ raw, label, min, fallback: min });
 const port = integer(values.port, "--port", 19600);
@@ -64,13 +82,13 @@ const wireSamples: Array<{
 }> = [];
 type Peer = ReturnType<typeof createGatewayWsClient>;
 
-if (values.gateway) {
-  await runGateway();
+if (observerArgs !== null) {
+  await observeGateway();
 } else {
   await runController();
 }
 
-async function runGateway() {
+async function observeGateway() {
   assert(
     process.send && process.env.OPENCLAW_STATE_DIR === root,
     "private benchmark child required",
@@ -82,7 +100,6 @@ async function runGateway() {
     await import("../../src/infra/diagnostic-events.ts");
   const { getTrackedWorkerPoolSnapshot, sampleTrackedWorkerMemory } =
     await import("../../src/infra/worker-cpu.ts");
-  const { startGatewayServer } = await import("../../src/gateway/server.js");
   const started = performance.now();
   let window = "startup";
   let dropped = 0;
@@ -132,6 +149,8 @@ async function runGateway() {
       "queueDepth",
       "activeTasks",
       "workers",
+      "maxWorkers",
+      "workersCreated",
     ]) {
       const value = raw[key];
       if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
@@ -169,7 +188,6 @@ async function runGateway() {
   const sampler = setInterval(sample, 100);
   sampler.unref();
   sample();
-  const server = await startGatewayServer(port, { bind: "loopback", controlUiEnabled: false });
   const host = {
     pid: process.pid,
     availableParallelism: availableParallelism(),
@@ -178,24 +196,23 @@ async function runGateway() {
     loadavg: loadavg(),
     node: process.version,
   };
-  process.send?.({ channel: "reconnect-wave", id: "ready", host });
   let queue = Promise.resolve();
   process.on("message", (raw: unknown) => {
     if (!isRecord(raw) || raw.channel !== "reconnect-wave" || typeof raw.id !== "string") {
       return;
     }
-    const command = raw;
+    const control = raw;
     queue = queue
       .then(async () => {
-        if (command.action === "begin") {
-          window = String(command.window);
+        if (control.action === "begin") {
+          window = String(control.window);
           loop.reset();
           loop.enable();
           beforeCpu = process.threadCpuUsage();
           beforeProcessCpu = process.cpuUsage();
           beforeElu = performance.eventLoopUtilization();
           sample();
-        } else if (command.action === "end") {
+        } else if (control.action === "end") {
           await waitForDiagnosticEventsDrained();
           sample();
           loop.disable();
@@ -225,14 +242,14 @@ async function runGateway() {
             const profile: Profiler.Profile = JSON.parse(readFileSync(profilePath, "utf8"));
             let mapped = 0;
             for (const { callFrame } of profile.nodes) {
-              const entry = findSourceMap(callFrame.url)?.findEntry(
+              const mapping = findSourceMap(callFrame.url)?.findEntry(
                 callFrame.lineNumber,
                 callFrame.columnNumber,
               );
-              if (entry && "originalSource" in entry && entry.originalSource) {
-                callFrame.url = entry.originalSource;
-                callFrame.lineNumber = entry.originalLine;
-                callFrame.columnNumber = entry.originalColumn;
+              if (mapping && "originalSource" in mapping && mapping.originalSource) {
+                callFrame.url = mapping.originalSource;
+                callFrame.lineNumber = mapping.originalLine;
+                callFrame.columnNumber = mapping.originalColumn;
                 mapped++;
               }
             }
@@ -245,25 +262,54 @@ async function runGateway() {
               JSON.stringify({ mapped, nodes: profile.nodes.length }),
             );
           }
+          if (window === "wave") {
+            for (const source of [
+              "openclaw.gateway.rpc",
+              "openclaw.worker.task",
+              "worker.request",
+            ]) {
+              assert(
+                events.some((event) => event.window === window && event.source === source),
+                `${source} diagnostics were not captured`,
+              );
+            }
+          }
           window = "idle";
-        } else if (command.action === "stop") {
+        } else if (control.action === "stop") {
           clearInterval(sampler);
           loop.disable();
           unsubscribe();
           for (const unsubscribeChannel of channels) {
             unsubscribeChannel();
           }
-          await server.close({ reason: "synthetic reconnect wave complete" });
         }
-        process.send?.({ channel: "reconnect-wave", id: command.id });
-        if (command.action === "stop") {
-          process.disconnect?.();
-        }
+        process.send?.({ channel: "reconnect-wave", id: control.id });
       })
       .catch((error: unknown) => {
-        process.send?.({ channel: "reconnect-wave", id: command.id, error: String(error) });
+        process.send?.({ channel: "reconnect-wave", id: control.id, error: String(error) });
       });
   });
+  // An awaited probe in a preload would prevent the CLI entry from starting.
+  void waitForInitialProbe({
+    port,
+    path: "/readyz",
+    startAt: started,
+    deadlineAt: performance.now() + timeoutMs,
+  }).then(
+    (ready) => {
+      process.send?.({
+        channel: "reconnect-wave",
+        id: "ready",
+        host,
+        ...(ready.status === 200
+          ? {}
+          : { error: "Gateway recovery admission did not become ready" }),
+      });
+    },
+    (error: unknown) => {
+      process.send?.({ channel: "reconnect-wave", id: "ready", error: String(error) });
+    },
+  );
 }
 
 async function rpc(peer: Peer, method: string, params: unknown, window: string) {
@@ -296,6 +342,9 @@ async function rpc(peer: Peer, method: string, params: unknown, window: string) 
 }
 
 async function runController() {
+  assert(existsSync(entry), `Build the Gateway CLI before measuring: ${entry}`);
+  const buildId = readBuildIdFromBuildInfoForModuleUrl(pathToFileURL(entry).href);
+  assert(buildId, "Compiled Gateway build identity required");
   mkdirSync(output, { recursive: false });
   const cfg: OpenClawConfig = JSON.parse(readFileSync(path.join(root, "openclaw.json"), "utf8"));
   cfg.gateway = {
@@ -305,6 +354,10 @@ async function runController() {
     controlUi: { enabled: false, allowedOrigins: [`http://127.0.0.1:${port}`] },
   };
   cfg.diagnostics = { ...cfg.diagnostics, enabled: true };
+  cfg.agents = {
+    ...cfg.agents,
+    defaults: { ...cfg.agents?.defaults, model: "openai/gpt-4.1" },
+  };
   writeFileSync(configPath, JSON.stringify(cfg));
   const devices = Array.from({ length: clientCount }, () => {
     const pair = generateKeyPairSync("ed25519");
@@ -318,14 +371,14 @@ async function runController() {
     };
   });
   const peers = new Set<Peer>();
+  const catalogs = new WeakMap<Peer, Promise<void>>();
   let child: ChildProcess | undefined;
   const launch = async (label: string) => {
     const log = createWriteStream(path.join(output, `${label}.log`));
-    child = spawn(
-      process.execPath,
-      [
-        ...process.execArgv,
-        fileURLToPath(import.meta.url),
+    const observer = new URL(import.meta.url);
+    observer.searchParams.set(
+      "args",
+      JSON.stringify([
         "--root",
         root,
         "--output",
@@ -334,9 +387,22 @@ async function runController() {
         String(port),
         "--clients",
         String(clientCount),
-        "--gateway",
+        "--entry",
+        entry,
         ...(values.profile ? ["--profile"] : []),
-      ],
+      ]),
+    );
+    const stopPreload = new URL("../lib/gateway-bench-stop-preload.mjs", import.meta.url);
+    stopPreload.searchParams.set("parentPid", String(process.pid));
+    stopPreload.searchParams.set("entry", entry);
+    child = spawn(
+      process.execPath,
+      buildGatewayBenchChildArgs(
+        entry,
+        port,
+        [...process.execArgv, "--import", observer.href, "--import", stopPreload.href],
+        "token",
+      ),
       {
         env: createGatewayBenchEnv(path.join(root, "home"), configPath, {
           startupTrace: false,
@@ -346,6 +412,7 @@ async function runController() {
             OPENCLAW_SKIP_CHANNELS: "1",
           },
         }),
+        detached: true,
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       },
     );
@@ -356,7 +423,12 @@ async function runController() {
     return child;
   };
   const connect = async (index: number, window: string) => {
-    const challenge = Promise.withResolvers<{ nonce: string; ts: number }>();
+    const challenge = Promise.withResolvers<{
+      nonce: string;
+      ts: number;
+      capabilities: string[];
+    }>();
+    const catalog = Promise.withResolvers<void>();
     const peer = createGatewayWsClient({
       url: `ws://127.0.0.1:${port}`,
       origin: `http://127.0.0.1:${port}`,
@@ -369,7 +441,17 @@ async function runController() {
           typeof event.payload.nonce === "string" &&
           typeof event.payload.ts === "number"
         ) {
-          challenge.resolve({ nonce: event.payload.nonce, ts: event.payload.ts });
+          challenge.resolve({
+            nonce: event.payload.nonce,
+            ts: event.payload.ts,
+            capabilities: Array.isArray(event.payload.capabilities)
+              ? event.payload.capabilities.filter(
+                  (value): value is string => typeof value === "string",
+                )
+              : [],
+          });
+        } else if (event.event === "models.snapshot") {
+          catalog.resolve();
         }
       },
     });
@@ -379,17 +461,25 @@ async function runController() {
       () => challenge.reject(new Error("connect challenge timeout")),
       timeoutMs,
     );
-    let signed: { nonce: string; ts: number };
+    let signed: Awaited<typeof challenge.promise>;
     try {
       signed = await challenge.promise;
     } finally {
       clearTimeout(challengeTimer);
     }
     const device = devices[index]!;
-    const scopes = ["operator.admin", "operator.read", "operator.write", "operator.approvals"];
+    const scopes = [
+      "operator.admin",
+      "operator.read",
+      "operator.write",
+      "operator.approvals",
+      "operator.questions",
+      "operator.pairing",
+    ];
     const client = {
       id: "openclaw-control-ui",
       version: "synthetic",
+      buildId,
       platform: "web",
       mode: "webchat",
       instanceId: `synthetic-reconnect-${index}`,
@@ -405,6 +495,37 @@ async function runController() {
       token,
       nonce: signed.nonce,
     });
+    const modelCatalogConnect = resolveModelCatalogConnect({
+      serverCapabilities: signed.capabilities,
+      modelCatalog: { agentId: "main", sessionKey: `agent:main:team-shape-session-${index}` },
+      caps: [
+        "agent-kind",
+        "approvals",
+        "task-suggestions",
+        "terminal-offset-seq",
+        "terminal-session-metadata",
+        "terminal-upload-path-style",
+        "tool-events",
+        "chat-only-assistant-text",
+        "hello-health-on-demand",
+        "health-summary",
+        "hello-presence-self",
+        "session-scoped-events",
+        "presence-deltas",
+        "session-row-deltas",
+        "session-event-field-refs",
+        "roster-message-bodies-optional",
+        "inline-widgets",
+        "model-selection-policy",
+        "model-wait-status",
+        "ui-commands",
+        "ultrafast",
+        "usage-refreshing",
+      ],
+    });
+    if (modelCatalogConnect.modelCatalog) {
+      catalogs.set(peer, catalog.promise);
+    }
     const hello = await rpc(
       peer,
       "connect",
@@ -415,7 +536,7 @@ async function runController() {
         role: "operator",
         scopes,
         auth: { token },
-        caps: [],
+        ...modelCatalogConnect,
         device: {
           id: device.id,
           publicKey: device.publicKey,
@@ -439,13 +560,17 @@ async function runController() {
   };
   const boot = async (peer: Peer, index: number, window: string) => {
     const key = `agent:main:team-shape-session-${index}`;
-    const roster = rpc(
+    const roster = rpc(peer, "sessions.subscribe", {}, window);
+    const list = rpc(
       peer,
-      "sessions.subscribe",
+      "sessions.list",
       {
         agentId: "main",
-        limit: 100,
+        limit: 200,
         rowMode: "sidebar",
+        source: "sidebar",
+        configuredAgentsOnly: true,
+        excludeDock: true,
         includeGlobal: true,
         includeUnknown: true,
         includeDerivedTitles: true,
@@ -456,16 +581,32 @@ async function runController() {
     const subscribed = rpc(
       peer,
       "sessions.messages.subscribe",
-      { key, includeApprovals: true },
+      { key, includeApprovals: true, subscriptionId: randomUUID() },
       window,
     );
+    const catalog = catalogs.get(peer);
+    let catalogTimer: ReturnType<typeof setTimeout> | undefined;
+    const modelReady = catalog
+      ? Promise.race([
+          catalog,
+          new Promise<never>((_, reject) => {
+            catalogTimer = setTimeout(
+              () => reject(new Error("models.snapshot timeout")),
+              timeoutMs,
+            );
+          }),
+        ]).finally(() => clearTimeout(catalogTimer))
+      : rpc(peer, "models.list", { agentId: "main", sessionKey: key, view: "configured" }, window);
     const results = await Promise.allSettled([
       roster,
+      list,
       subscribed,
+      rpc(peer, "sessions.observer.visibility", { visible: true }, window),
       rpc(peer, "sessions.resolve", { key, agentId: "main" }, window),
       rpc(peer, "board.get", { sessionKey: key, agentId: "main" }, window),
       rpc(peer, "agents.list", {}, window),
       rpc(peer, "users.list", {}, window),
+      modelReady,
       subscribed.then(() => rpc(peer, "chat.startup", { sessionKey: key, limit: 80 }, window)),
     ]);
     return results.every((result) => result.status === "fulfilled");
@@ -513,12 +654,14 @@ async function runController() {
       peers.delete(peer);
     }
     await command(child!, { action: "stop" });
-    await stopChild(child!);
+    await stopGatewayGracefully(child!, timeoutMs);
     child = undefined;
     const gateway = await launch("measured");
     await command(gateway, { action: "begin", window: "wave" });
     if (values.profile) {
-      await controlGatewayProfile(gateway, "cpu", "start", path.join(output, "wave.cpuprofile"));
+      await controlGatewayProfile(gateway, "cpu", "start", path.join(output, "wave.cpuprofile"), {
+        includeWorkers: true,
+      });
     }
     const waveStarted = performance.now();
     const connections = await Promise.allSettled(
@@ -533,11 +676,13 @@ async function runController() {
     }
     await command(gateway, { action: "end" });
     await closePeers();
-    const warm = await connect(0, "warm-connect");
     await command(gateway, { action: "begin", window: "steady" });
+    const warm = await connect(0, "steady");
     const steadyComplete = await boot(warm, 0, "steady");
     await command(gateway, { action: "end" });
     const report = {
+      entry,
+      buildId,
       fixture,
       clientCount,
       waveElapsedMs,
@@ -586,6 +731,8 @@ async function runController() {
     console.log(JSON.stringify({ ...report, wireSamples: undefined }, null, 2));
     await closePeers();
     await command(gateway, { action: "stop" });
+    await stopGatewayGracefully(gateway, timeoutMs);
+    child = undefined;
   } catch (error) {
     writeFileSync(
       path.join(output, "failure.json"),
@@ -616,7 +763,7 @@ function waitReply(child: ChildProcess, id: string): Promise<void> {
     };
     const onMessage = (raw: unknown) => {
       if (isRecord(raw) && raw.channel === "reconnect-wave" && raw.id === id) {
-        finish(raw.error ? new Error(String(raw.error)) : undefined);
+        finish(raw.error ? toErrorObject(raw.error, "Gateway observer failed") : undefined);
       }
     };
     const onExit = () => finish(new Error(`Gateway exited waiting for ${id}`));
