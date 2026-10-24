@@ -534,7 +534,9 @@ export function buildOpenAICompletionsRequest(
   }
   const nativeEffort = compat.thinkingFormat === "openrouter" ? undefined : effort;
   const enabled = thinkingEnabled ?? false;
-  const useBinaryThinking = direct || (nativeEffort === undefined && thinkingEnabled === false);
+  const useBinaryThinking =
+    direct ||
+    (thinkingEnabled === false && (nativeEffort === undefined || !compat.supportsReasoningEffort));
   if (
     model.reasoning &&
     (!compat.thinkingOffControlUndeclared || thinkingEnabled === true || !thinkingExplicit)

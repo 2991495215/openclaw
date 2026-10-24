@@ -317,7 +317,10 @@ function resolveSessionAffinity(
 
 /** Applies explicit model overrides once on top of the canonical transport defaults. */
 export function resolveOpenAICompletionsCompat(
-  model: Pick<Model<"openai-completions">, "id" | "provider" | "baseUrl" | "compat" | "reasoning">,
+  model: Pick<
+    Model<"openai-completions">,
+    "id" | "provider" | "baseUrl" | "compat" | "reasoning" | "thinkingLevelMap"
+  >,
   resolveCapabilities?: (input: AiProviderRequestPolicyInput) => AiProviderRequestCapabilities,
 ): ResolvedOpenAICompletionsCompat {
   const { defaults, capabilities } = detectOpenAICompletionsCompat(model, resolveCapabilities);
@@ -329,7 +332,8 @@ export function resolveOpenAICompletionsCompat(
     configured?.thinkingFormat === undefined &&
     !supportsOpenAIReasoningEffort({ compat: configured }, "none") &&
     !supportsOpenAIReasoningEffort({ compat: configured }, "off") &&
-    resolveOpenAIReasoningEffortMapping("off", configured?.reasoningEffortMap) === undefined;
+    resolveOpenAIReasoningEffortMapping("off", configured?.reasoningEffortMap) === undefined &&
+    typeof model.thinkingLevelMap?.off !== "string";
   return {
     supportsStore: configured?.supportsStore ?? defaults.supportsStore,
     supportsDeveloperRole: configured?.supportsDeveloperRole ?? defaults.supportsDeveloperRole,

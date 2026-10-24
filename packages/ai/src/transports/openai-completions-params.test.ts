@@ -264,6 +264,40 @@ describe("OpenAI completions output budgets", () => {
 
 describe("OpenAI completions reasoning", () => {
   it.each(["direct", "managed"] as const)(
+    "honors model off mappings on configured Z.AI routes (%s)",
+    (mode) => {
+      const scalarSupport: (boolean | undefined)[] = [undefined, false, true];
+      for (const supportsReasoningEffort of scalarSupport) {
+        const model = makeCompletionsModel({
+          provider: "custom",
+          baseUrl: "https://api.z.ai/api/paas/v4",
+          thinkingLevelMap: { off: "none" },
+          compat: { supportsReasoningEffort },
+        });
+        const params = requestMode(mode, model, { reasoningEffort: "off" });
+        expectField(
+          params,
+          "thinking",
+          mode === "direct" || supportsReasoningEffort !== true ? { type: "disabled" } : undefined,
+        );
+        expectField(
+          params,
+          "reasoning_effort",
+          mode === "managed" && supportsReasoningEffort ? "none" : undefined,
+        );
+        for (const off of [undefined, null]) {
+          const unsupported = requestMode(
+            mode,
+            { ...model, thinkingLevelMap: { off } },
+            { reasoningEffort: "off" },
+          );
+          expect(unsupported).not.toHaveProperty("thinking");
+          expect(unsupported).not.toHaveProperty("reasoning_effort");
+        }
+      }
+    },
+  );
+  it.each(["direct", "managed"] as const)(
     "honors declared off efforts for inferred custom Z.AI (%s)",
     (mode) => {
       const cases: [NonNullable<CompletionsModel["compat"]>, string][] = [
