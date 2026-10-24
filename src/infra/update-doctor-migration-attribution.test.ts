@@ -16,6 +16,7 @@ import {
   repairOpenClawStateDatabaseReadabilityForDoctor,
 } from "../state/openclaw-state-db.js";
 import { addPreCutoverClientCredentialTablesForTest } from "../state/openclaw-state-schema.test-support.js";
+import { openNodeSqliteDatabase } from "./node-sqlite.js";
 import {
   runUpdateStateInspectionWorker,
   parseUpdateStateInspectionWorker,
@@ -195,20 +196,16 @@ it.each([false, true])(
     }
     const migration = vi.fn();
     const { receipt, warnings } = await withCapture(env, generations, async () => {
-      const db = new DatabaseSync(pathname);
-      try {
-        const run = () =>
-          runUpdateSqliteMigration(db, pathname, () => {
-            migration();
-            db.exec("ALTER TABLE retained ADD COLUMN migrated;");
-          });
-        if (changed) {
-          expect(run).toThrow("SQLite migration source changed after update capture.");
-        } else {
-          run();
-        }
-      } finally {
-        db.close();
+      using db = openNodeSqliteDatabase(pathname);
+      const run = () =>
+        runUpdateSqliteMigration(db, pathname, () => {
+          migration();
+          db.exec("ALTER TABLE retained ADD COLUMN migrated;");
+        });
+      if (changed) {
+        expect(run).toThrow("SQLite migration source changed after update capture.");
+      } else {
+        run();
       }
     });
     expect(migration).toHaveBeenCalledTimes(changed ? 0 : 1);
