@@ -1,8 +1,4 @@
 import { createHash } from "node:crypto";
-import {
-  asDateTimestampMs,
-  resolveExpiresAtMsFromDurationMs,
-} from "@openclaw/normalization-core/number-coercion";
 import { hasNonEmptyString as isNonEmptyString } from "@openclaw/normalization-core/string-coerce";
 import { listAgentRoles } from "../agents/agent-roles.js";
 import { resolveAgentEntry } from "../agents/agent-scope-config.js";
@@ -313,18 +309,6 @@ export async function runSystemAgentRescueMessage(
   }
   if (isPersistentSystemAgentOperation(operation)) {
     // Persistent remote operations are two-step: store the parsed operation, then require approval.
-    const now = new Date();
-    const nowMs = asDateTimestampMs(now.getTime());
-    const expiresAtMs =
-      nowMs === undefined
-        ? undefined
-        : resolveExpiresAtMsFromDurationMs(RESCUE_PENDING_TTL_MS, { nowMs });
-    if (nowMs === undefined || expiresAtMs === undefined) {
-      await pendingStore.delete(pendingKey);
-      assertCurrent();
-      return "OpenClaw rescue could not create a pending approval because the expiry clock is invalid.";
-    }
-    const ttlMs = expiresAtMs - nowMs;
     await replaceCorePluginStateEntry(
       options,
       pendingKey,
@@ -332,7 +316,7 @@ export async function runSystemAgentRescueMessage(
         version: 1,
         operation,
       } satisfies RescuePendingOperation,
-      { ttlMs, assertCurrent },
+      { ttlMs: RESCUE_PENDING_TTL_MS, assertCurrent },
     );
     assertCurrent();
     return formatSystemAgentPersistentPlan(operation).replace(

@@ -477,20 +477,6 @@ describe("OpenClaw rescue message", () => {
     },
   );
 
-  it("does not queue persistent rescue approval when expiry would exceed the Date range", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(8_640_000_000_000_000));
-    try {
-      await expectReply("/openclaw restart gateway", "expiry clock is invalid");
-
-      await expect(fs.readdir(path.join(stateDir, "openclaw", "rescue-pending"))).rejects.toThrow(
-        /ENOENT/,
-      );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("expires pending approvals through the SQLite row TTL", async () => {
     await runRescue("/openclaw restart gateway", {});
     const store = openRescuePendingTestStore();
