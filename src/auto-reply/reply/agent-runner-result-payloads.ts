@@ -488,7 +488,10 @@ export async function prepareReplyAgentPayloads(state: {
             text: fallbackNoticeText,
             isFallbackNotice: true,
           }),
-          providerPolicyRetrySucceeded ? {} : { modelFallbackNotice: true },
+          !providerPolicyRetrySucceeded &&
+            runResult.meta.modelFallbackTranscriptToModel === fallbackTransition.activeModelRef
+            ? { modelFallbackNotice: true }
+            : {},
         ),
       ]
     : [];

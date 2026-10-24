@@ -144,7 +144,9 @@ describe("run entry durable fallback notices", () => {
 
   it("persists a real transition once, preserving callbacks and source-session binding", async () => {
     using f = await fixture();
-    expect((await f.run()).provider).toBe("anthropic");
+    const result = await f.run();
+    expect(result.provider).toBe("anthropic");
+    expect(result.result.meta.modelFallbackTranscriptToModel).toBe("anthropic/claude-haiku-3-5");
     expect((await f.run()).provider).toBe("anthropic");
     expect(f.steps.map((step) => step.fallbackStepFinalOutcome)).toEqual([
       "next_fallback",
@@ -179,7 +181,9 @@ describe("run entry durable fallback notices", () => {
     const append = vi
       .spyOn(transcript, "appendAssistantMessageToSessionTranscript")
       .mockRejectedValue(new Error("synthetic storage failure"));
-    expect((await f.run()).provider).toBe("anthropic");
+    const result = await f.run();
+    expect(result.provider).toBe("anthropic");
+    expect(result.result.meta.modelFallbackTranscriptToModel).toBeUndefined();
     expect(append).toHaveBeenCalledTimes(1);
     expect(f.candidates).toEqual(["openai/gpt-4.1-mini", "anthropic/claude-haiku-3-5"]);
   });

@@ -236,6 +236,7 @@ async function runEmbeddedAgentEntryInternal<T extends EmbeddedAgentRunResult>(
         }
       : undefined;
   const hasCommittedSideEffect = canFallback ? () => !canFallback() : undefined;
+  const recordedFallbackTargets = new Set<string>();
   try {
     let capturedCyberRefusal: { provider: string; model: string } | undefined;
     const runFallbackSearch = async (
@@ -297,7 +298,14 @@ async function runEmbeddedAgentEntryInternal<T extends EmbeddedAgentRunResult>(
           try {
             await params.onFallbackStep?.(step);
           } finally {
-            await persistModelFallbackTranscriptNotice(params, step, assertCurrent);
+            const recorded = await persistModelFallbackTranscriptNotice(
+              params,
+              step,
+              assertCurrent,
+            );
+            if (recorded && step.fallbackStepToModel) {
+              recordedFallbackTargets.add(step.fallbackStepToModel);
+            }
           }
         },
         ...(params.behavior.kind === "maintenance"
@@ -563,6 +571,10 @@ async function runEmbeddedAgentEntryInternal<T extends EmbeddedAgentRunResult>(
             },
           } as T)
         : fallbackResult.result.result;
+    const winnerRef = modelKey(fallbackResult.provider, fallbackResult.model);
+    candidateResult.meta.modelFallbackTranscriptToModel = recordedFallbackTargets.has(winnerRef)
+      ? winnerRef
+      : undefined;
     if (completedCandidates.length > 1 && candidateResult.meta.agentMeta) {
       const usage = createUsageAccumulator();
       const diagnosticUsage = createUsageAccumulator();

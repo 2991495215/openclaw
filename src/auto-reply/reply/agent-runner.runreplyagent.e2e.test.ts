@@ -4575,7 +4575,7 @@ describe("runReplyAgent typing", () => {
         for (const result of [first, second]) {
           const payload = Array.isArray(result) ? result[0] : result;
           expect(getReplyPayloadMetadata(payload ?? {})?.modelFallbackNotice).toBe(
-            noticeVisible ? true : undefined,
+            noticeVisible && result === second ? true : undefined,
           );
         }
         expect((Array.isArray(repeated) ? repeated[0] : repeated)?.text).not.toContain(
