@@ -4,6 +4,7 @@ import { createSignal, flush, onSettled } from "solid-js";
 import { afterEach, assert, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
+import { restorePropertyDescriptor } from "../../../test-helpers/property-descriptor.ts";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import {
   createGatewayBrowserClientFixture,
@@ -540,11 +541,7 @@ function setupDesktopLayout() {
     value: Object.assign(new EventTarget(), { ready: Promise.resolve() }),
   });
   onTestFinished(() => {
-    if (previousFonts) {
-      Object.defineProperty(document, "fonts", previousFonts);
-    } else {
-      Reflect.deleteProperty(document, "fonts");
-    }
+    restorePropertyDescriptor(document, "fonts", previousFonts);
   });
 }
 
