@@ -30,7 +30,8 @@ type MetadataRuntime = ReturnType<
 >;
 let comparison: { baseline: MetadataRuntime; candidate: MetadataRuntime };
 let variant: "baseline" | "candidate" = "candidate";
-let sample: { refreshes: number; runtimeMs: number } | undefined;
+let sample: { refreshes: number; runtimeMs: number; runtimeReads: number } | undefined;
+let invalidateResponse: () => void;
 
 beforeAll(async () => {
   minimalGatewayEnv = captureEnv(["OPENCLAW_TEST_MINIMAL_GATEWAY"]);
@@ -49,6 +50,12 @@ beforeAll(async () => {
         baseline: baselineFactory({ ...options, onChanged: undefined }),
         candidate: candidateFactory(options),
       };
+      invalidateResponse = () =>
+        options.onChanged?.({
+          modelCatalogChanged: false,
+          authChanged: false,
+          commandsChanged: false,
+        });
       return {
         ...comparison.candidate,
         invalidate() {
@@ -59,15 +66,18 @@ beforeAll(async () => {
           comparison.baseline.fail(error);
           comparison.candidate.fail(error);
         },
-        async refresh(options) {
-          await comparison.baseline.refresh(options);
-          await comparison.candidate.refresh(options);
+        async refresh(refreshOptions) {
+          await comparison.baseline.refresh(refreshOptions);
+          await comparison.candidate.refresh(refreshOptions);
         },
         async stop() {
           await Promise.all([comparison.baseline.stop(), comparison.candidate.stop()]);
         },
         async read(params) {
           const measured = sample;
+          if (measured) {
+            measured.runtimeReads++;
+          }
           const started = performance.now();
           const original = params.withCurrent;
           try {
@@ -90,8 +100,11 @@ beforeAll(async () => {
         },
       };
     });
-  gateway = await startServerWithClient();
-  factory.mockRestore();
+  try {
+    gateway = await startServerWithClient();
+  } finally {
+    factory.mockRestore();
+  }
   await gateway.server.startupSettled;
   await waitForGatewayStartup(gateway.port);
   await connectOk(gateway.ws);
@@ -190,6 +203,7 @@ test("measures saved-session metadata refreshes through the real RPC", async () 
     includeModels: boolean;
     refreshes: number;
     runtimeMs: number;
+    runtimeReads: number;
     rpcMs: number;
     threadCpuUs: number;
   }> = [];
@@ -198,6 +212,7 @@ test("measures saved-session metadata refreshes through the real RPC", async () 
       for (const cache of ["cold", "warm"] as const) {
         for (const side of ["baseline", "candidate"] as const) {
           variant = side;
+          invalidateResponse();
           expect((await request(includeModels)).ok).toBe(true);
         }
         for (let pair = 0; pair < 6; pair++) {
@@ -214,13 +229,19 @@ test("measures saved-session metadata refreshes through the real RPC", async () 
               : (["candidate", "baseline"] as const);
           for (const side of sides) {
             variant = side;
-            sample = { refreshes: 0, runtimeMs: 0 };
+            // Exercise the metadata owner, not the dispatcher's one-second response reuse.
+            invalidateResponse();
+            sample = { refreshes: 0, runtimeMs: 0, runtimeReads: 0 };
             const cpu = process.threadCpuUsage();
             const start = performance.now();
             const response = await request(includeModels);
             const rpcMs = performance.now() - start;
             const used = process.threadCpuUsage(cpu);
             expect(response.ok, JSON.stringify(response)).toBe(true);
+            expect(
+              sample.runtimeReads,
+              JSON.stringify({ side, cache, includeModels, sample }),
+            ).toBe(1);
             pairResults.push(response.payload);
             results.push({
               variant,
