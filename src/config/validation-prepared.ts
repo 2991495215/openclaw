@@ -63,7 +63,7 @@ export function validatePreparedPluginSchemaValue(
   const input = structuredClone(params.value);
   const result = validatePluginSchemaValue(params);
   prepared.next.set(params.cacheKey, {
-    schema: structuredClone(params.schema),
+    schema: params.schema,
     origin: params.origin,
     input,
     applyDefaults: Boolean(params.applyDefaults),

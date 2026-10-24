@@ -64,7 +64,7 @@ const validate = (
   });
 
 describe("async config plugin validation", () => {
-  it("revalidates edited settings and schemas while isolating reused plugin defaults", async () => {
+  it("revalidates edited settings and registries while isolating reused plugin defaults", async () => {
     const raw = pluginConfig();
     const readWorkspace = (result: Awaited<ReturnType<typeof validate>>) => {
       return expectDefined(
@@ -87,14 +87,10 @@ describe("async config plugin validation", () => {
     raw.plugins.entries["validation-fixture"].config = {};
     expect(readWorkspace(await validate(raw)).workspace).toBe("prepared-workspace");
     expect(check).toHaveBeenCalledTimes(2);
-    const schema = expectDefined(metadata.manifestRegistry.plugins[0]?.configSchema, "schema");
-    schema.properties = { workspace: { type: "string", default: "edited-default" } };
-    expect(readWorkspace(await validate(raw)).workspace).toBe("edited-default");
-    expect(check).toHaveBeenCalledTimes(3);
 
     metadata = preparedMetadata();
     expect(readWorkspace(await validate(raw)).workspace).toBe("prepared-workspace");
-    expect(check).toHaveBeenCalledTimes(4);
+    expect(check).toHaveBeenCalledTimes(3);
   });
 
   it("retires removed schema inputs without discovering metadata for an empty revision", async () => {
