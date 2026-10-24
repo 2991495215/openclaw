@@ -273,7 +273,7 @@ export function extractToolSearchTarget(text: string): string | null {
   return match?.[1] ?? null;
 }
 
-export function toolSearchOutputHasCandidate(output: unknown, targetTool: string): boolean {
+function toolSearchOutputHasCandidate(output: unknown, targetTool: string): boolean {
   if (!isRecord(output) || !Array.isArray(output.results)) {
     return false;
   }
@@ -335,7 +335,7 @@ const RUNTIME_TOOL_SUCCESS_ARGS: Record<string, Record<string, unknown>> = {
   memory_recall: { query: "runtime parity memory fixture" },
 };
 
-export function buildQaToolSearchArgs(
+function buildQaToolSearchArgs(
   targetTool: string,
   failureMode: boolean,
   prompt = "",
