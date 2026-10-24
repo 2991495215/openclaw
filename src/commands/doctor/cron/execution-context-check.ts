@@ -288,7 +288,13 @@ export async function noteScheduledContextReport(params: {
   cfg: OpenClawConfig;
   env?: NodeJS.ProcessEnv;
 }): Promise<void> {
-  const text = formatScheduledContextReport(await collectScheduledContextReport(params));
+  let text: string | null;
+  try {
+    text = formatScheduledContextReport(await collectScheduledContextReport(params));
+  } catch (error) {
+    // An advisory review never stops the rest of Doctor.
+    text = `Scheduled-run access review could not read stored automations: ${formatErrorMessage(error)}`;
+  }
   if (text) {
     note(text, "Cron");
   }
