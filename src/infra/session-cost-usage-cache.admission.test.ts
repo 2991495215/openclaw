@@ -746,6 +746,23 @@ it.each(["replacement", "revocation"] as const)(
   },
 );
 
+it("refuses a missing usage store whose directory alias changes before acquisition", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const original = state.statePath("original");
+    const replacement = state.statePath("replacement");
+    const alias = state.statePath("alias");
+    fs.mkdirSync(original);
+    fs.mkdirSync(replacement);
+    fs.symlinkSync(original, alias, "junction");
+    await using lock = disposableLock("main", path.join(alias, "usage.sqlite"), { env: state.env });
+    fs.renameSync(alias, state.statePath("old-alias"));
+    fs.symlinkSync(replacement, alias, "junction");
+    await expect(lock.acquire()).rejects.toThrow("changed its originally observed target");
+    expect(fs.existsSync(path.join(original, "usage.sqlite"))).toBe(false);
+    expect(fs.existsSync(path.join(replacement, "usage.sqlite"))).toBe(false);
+  });
+});
+
 it("allows first session creation while a fresh usage refresh awaits acquisition", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
     const agentId = "main";
@@ -789,5 +806,39 @@ it("rolls back the entire rollup batch when a later row fails", async () => {
     db.exec("DROP TRIGGER refuse_rollup_batch");
     expect(await owner.writeRollup(rows)).toBe(true);
     expect(readRows(agentId).map((row) => row.key)).toEqual(["first", "second"]);
+  });
+});
+
+it("waits for refresh release without persisting lock or status writes", async () => {
+  const stateDir = tempDirs.make("openclaw-usage-cache-exclusion-");
+  await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+    const agentId = "worker-1";
+    const database = openOpenClawAgentDatabase({ agentId });
+    const owner = prepareLock(agentId, database.path);
+    const contender = prepareLock(agentId, database.path);
+    const canceled = prepareLock(agentId, database.path);
+    const work = new AsyncWorkScope();
+    try {
+      expect(await isRefreshing(agentId, database.path)).toBe(false);
+      expect(await owner.acquire()).toBe(true);
+      expect(await contender.acquire()).toBe(false);
+      const reason = new Error("Usage detail caller canceled");
+      const canceling = work.track(() => canceled.acquire(true));
+      work.beginClose(reason);
+      await expect(canceling).rejects.toBe(reason);
+      expect(await isRefreshing(agentId, database.path)).toBe(true);
+      expect(database.db.prepare("SELECT * FROM cache_entries").all()).toEqual([]);
+      const waiting = contender.acquire(true);
+      await owner.release();
+      expect(await waiting).toBe(true);
+    } finally {
+      work.beginClose();
+      await work.drain();
+      await canceled.release();
+      await owner.release();
+      await contender.release();
+    }
+    expect(await isRefreshing(agentId, database.path)).toBe(false);
+    expect(database.db.prepare("SELECT * FROM cache_entries").all()).toEqual([]);
   });
 });
