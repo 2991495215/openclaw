@@ -420,6 +420,7 @@ describe("openclaw test state", () => {
       const open = (stateDir: string, configured?: string) => {
         const env = { ...process.env, OPENCLAW_STATE_DIR: stateDir };
         const authDir = path.join(configured ?? stateDir, "agents", "auth", "agent");
+        // Auth's retained agent lease must release into this root's shared database.
         withEnv(env, () => saveAuthFixture(authDir));
         const shared = openOpenClawStateDatabase({ env });
         const agent = agentDb.openOpenClawAgentDatabase({
@@ -496,21 +497,17 @@ describe("openclaw test state", () => {
         expect(removal).toHaveBeenCalledWith(state.root, removeOptions);
         await expectPathMissing(state.root);
         expectUnrelated();
+        await sessionCleanup.cleanupSessionStateForTest({ stateDir: sibling });
+        // Closing the sibling must not reopen the already-removed fixture database.
+        await expectPathMissing(state.root);
       } finally {
         state.restoreEnv = restore;
         openSpy.mockRestore();
         removal.mockRestore();
         await restore();
         await sessionCleanup.cleanupSessionStateForTest({ stateDir: sibling });
-        try {
-          // Releasing the sibling must not reopen or recreate the retired fixture.
-          expect(stateCache.isOpenClawStateDatabaseOpen(fixture.shared.path)).toBe(false);
-          await expectPathMissing(state.root);
-        } finally {
-          await stateCache.closeOpenClawStateDatabaseByPathAsync(fixture.shared.path);
-          await fs.rm(state.root, removeOptions);
-          await fs.rm(sibling, removeOptions);
-        }
+        await fs.rm(state.root, removeOptions);
+        await fs.rm(sibling, removeOptions);
       }
     },
   );

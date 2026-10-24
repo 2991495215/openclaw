@@ -48,7 +48,8 @@ const writeSession = (sessionKey: string, entry: Parameters<typeof upsertSession
   upsertSessionEntryCore({ agentId: "main", sessionKey }, entry);
 const group = { groupId: "retained-group", done: 1 };
 const childLinks = {
-  childSessions: ["agent:main:subagent:child"],
+  // Terminal controller records retain swarm totals, but do not confer child ownership.
+  childSessions: undefined,
   swarm: { groups: [{ ...group, failed: 0 }] },
 };
 const controllerRow = { key: controller, ...childLinks };
@@ -96,7 +97,6 @@ it.each(["replaced", "made private"])(
         sessionId: "child-session",
         updatedAt: Date.now(),
         visibility: "shared",
-        parentSessionKey: controller,
       });
       persistRegistryFixture(new Map([child, collector].map((entry) => [entry.runId, entry])));
       clearSubagentRunsReadCacheForTest();
@@ -144,7 +144,7 @@ it.each(["replaced", "made private"])(
   },
 );
 
-it("lists off-page child lineage and deleted-collector totals while a sibling worker write settles", async () => {
+it("keeps deleted-collector totals without terminal controller links while a sibling worker write settles", async () => {
   await withRunState(async () => {
     clearSubagentRunsReadCacheForTest();
     const cfg = {
@@ -160,14 +160,7 @@ it("lists off-page child lineage and deleted-collector totals while a sibling wo
       [child.childSessionKey, 200, requester],
       [controller, 300, undefined],
     ] as const) {
-      await writeSession(key, {
-        sessionId: key,
-        updatedAt,
-        visibility: "shared",
-        spawnedBy,
-        // Retained terminal runs summarize work; durable lineage owns navigation.
-        parentSessionKey: key === child.childSessionKey ? controller : undefined,
-      });
+      await writeSession(key, { sessionId: key, updatedAt, visibility: "shared", spawnedBy });
     }
     persistRegistryFixture(new Map([child, collector].map((entry) => [entry.runId, entry])));
     const key = { pluginId: "session-list-proof", namespace: "mixed-progress", key: "written" };
