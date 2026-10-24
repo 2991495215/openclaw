@@ -1811,6 +1811,13 @@ try {
           previousCpu = nextCpu;
           previousDelivered = delivered;
         }
+      } catch (error) {
+        const progress = await page.evaluate(() => Reflect.get(window, "__streamingReply").read());
+        await writeFile(
+          path.join(artifactDir, `run-${run + 1}.streaming-error.json`),
+          JSON.stringify({ progress, errors, consoleErrors }, null, 2),
+        );
+        throw error;
       } finally {
         streamingInput.abort();
         await nativeInput;
