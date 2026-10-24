@@ -38,10 +38,12 @@ import {
   type SetupHandoff,
 } from "../../device-pair-setup-completion.js";
 import { canReadDetailedUpdateMetadata } from "../../events.js";
+import { projectHealthSummary } from "../../health/presentation.js";
 import { getRemoteControlUiIngressContext } from "../../ingress-attribution.js";
 import { ADMIN_SCOPE } from "../../method-scopes.js";
 import { scheduleNodeConnectionNotification } from "../../node-connection-notifications.js";
 import { operatorSessionCap } from "../../operator-role-policy.js";
+import { broadcastRejectedNodePairing } from "../../pairing-events.js";
 import { MAX_PAYLOAD_BYTES } from "../../payload-limits.js";
 import { resolveBrowserAuthOrigin } from "../../provider-browser-auth.js";
 import {
@@ -135,7 +137,9 @@ export async function sendGatewayHello(
   });
   const cachedHealth = getHealthCache();
   if (cachedHealth && !connectParams.caps?.includes(GATEWAY_CLIENT_CAPS.HELLO_HEALTH_ON_DEMAND)) {
-    snapshot.health = cachedHealth;
+    snapshot.health = connectParams.caps?.includes(GATEWAY_CLIENT_CAPS.HEALTH_SUMMARY)
+      ? projectHealthSummary(cachedHealth)
+      : cachedHealth;
     snapshot.stateVersion.health = getHealthVersion();
   }
   context.recordAttachTiming?.("snapshotMs", snapshotStartedAt);
@@ -177,7 +181,7 @@ export async function sendGatewayHello(
       connId,
     },
     features: {
-      methods: resolveBrowserAuthOrigin(context.browserOrigin, new AbortController().signal)
+      methods: resolveBrowserAuthOrigin(context.browserOrigin)
         ? gatewayMethods
         : gatewayMethods.filter((method) => method !== "mcp.authLogin"),
       events,
@@ -199,6 +203,7 @@ export async function sendGatewayHello(
         GATEWAY_SERVER_CAPS.CHANNELS_PAIRING_APPROVE_OWNER,
         GATEWAY_SERVER_CAPS.EXEC_APPROVALS_GET_OWNER,
         GATEWAY_SERVER_CAPS.EXEC_APPROVALS_SET_OWNER,
+        GATEWAY_SERVER_CAPS.EXEC_APPROVALS_NATIVE_COMMIT,
         GATEWAY_SERVER_CAPS.WORKTREES_REMOVE_OWNER,
         GATEWAY_SERVER_CAPS.WORKTREES_RESTORE_OWNER,
         GATEWAY_SERVER_CAPS.WORKTREES_GC_OWNER,
@@ -482,16 +487,7 @@ export async function sendGatewayHello(
         : await finalizeNodePairingCleanupClaim(cleanupClaim);
       const resolvedAt = Date.now();
       for (const resolved of resolvedPairings) {
-        requestContext.broadcast(
-          "node.pair.resolved",
-          {
-            requestId: resolved.requestId,
-            nodeId: resolved.nodeId,
-            decision: "rejected",
-            ts: resolvedAt,
-          },
-          { dropIfSlow: true },
-        );
+        broadcastRejectedNodePairing(requestContext.broadcast, resolved, resolvedAt);
       }
     } catch (error) {
       logGateway.warn(

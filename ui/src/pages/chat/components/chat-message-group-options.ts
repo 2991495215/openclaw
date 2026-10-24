@@ -36,7 +36,6 @@ export type RenderMessageGroupOptions = Omit<
       messageId: string,
     ) => AssistantMessageExpansionState | undefined;
     onToggleAssistantMessageExpanded?: (messageId: string) => void;
-    userId?: string | null;
     userName?: string | null;
     showOwnSenderName?: boolean;
     /** Routing for peer sender names; absent leaves them plain text. */
@@ -55,6 +54,7 @@ export type RenderMessageGroupOptions = Omit<
     activityRunId?: string | null;
     activityGroupKey?: string;
     turnRecap?: TurnRecap;
+    hideTurnRecapDuration?: boolean;
     /** Frame bodies are pre-rendered by the frame owner; ordinary groups omit them. */
     frameContent?: readonly unknown[];
     frameActionOwner?: MessageGroup["messages"][number] | null;

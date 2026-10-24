@@ -34,7 +34,7 @@
           "clawhubSpec": "clawhub:@openclaw/liquid-provider",
           "npmSpec": "@openclaw/liquid-provider",
           "defaultChoice": "npm",
-          "minHostVersion": ">=2026.10.5"
+          "minHostVersion": ">=2026.10.6"
         }
       }
     },
