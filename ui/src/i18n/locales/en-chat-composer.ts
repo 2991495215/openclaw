@@ -54,6 +54,7 @@ const catalog = {
       attach: "Attach…",
       attachPhoto: "Photo",
       attachFileOption: "File",
+      attachFilesOption: "Files",
       menu: {
         back: "Back",
         skills: "Skills",

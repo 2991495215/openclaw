@@ -21,7 +21,7 @@ export function ChatAttachmentInputs(
       {(_enabled) => {
         const inputs: Partial<Record<"file" | "photo" | "camera", HTMLInputElement>> = {};
         let camera: OpenClawChatCameraCapture | undefined;
-        onSettled(() => props.inputHandle.bindInputs({ inputs, camera }));
+        onSettled(() => props.inputHandle.bindInputs({ inputs, camera, props }));
         return (
           <>
             <ChatCameraCapture

@@ -17,7 +17,10 @@ import {
 } from "../../../lib/sessions/tool-overrides.ts";
 import { uploadsEnabled } from "../../../lib/uploads.ts";
 import { resolveComposerSkills } from "../composer-capability-catalog.ts";
-import { useSingleAttachmentPicker } from "./chat-attachment-picker-policy.ts";
+import {
+  getDirectAttachmentFilePicker,
+  useSingleAttachmentPicker,
+} from "./chat-attachment-picker-policy.ts";
 import {
   handleComposerLibrarySelection,
   composerLibraryMenuItems,
@@ -53,7 +56,17 @@ function rootItems(menu: ChatComposerPlusMenuContentProps): MenuEntry[] {
           // Image-only composers keep the single picker's file input, filtered to images.
           ...(menu.attachments.imagesOnly
             ? []
-            : ([["file", "paperclip", t("chat.composer.attachFileOption")]] as const)),
+            : ([
+                [
+                  "file",
+                  "paperclip",
+                  t(
+                    getDirectAttachmentFilePicker()
+                      ? "chat.composer.attachFilesOption"
+                      : "chat.composer.attachFileOption",
+                  ),
+                ],
+              ] as const)),
         ] as const)) {
       entries.push({
         id,
