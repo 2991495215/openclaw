@@ -1,11 +1,11 @@
 import type { VaultAccess } from "./access.js";
-import type { StorageOperations } from "./storage-host.js";
 
-// Messages between the main thread (StorageClient) and the storage worker.
-export type HostMessage = {
+// Messages between the main thread (StorageClient) and the storage worker; `Op` is
+// the storage operation name, narrowed by the host's operation table.
+export type HostMessage<Op extends string = string> = {
   type: "call";
   id: number;
-  op: keyof StorageOperations;
+  op: Op;
   input: unknown;
   scope: VaultAccess["scope"];
   agentId: string;

@@ -74,7 +74,7 @@ export class StorageClient {
           scope: access.scope,
           agentId: access.agentId,
           activity: access.activity,
-        } satisfies HostMessage,
+        } satisfies HostMessage<keyof StorageOperations>,
         [],
       );
     });

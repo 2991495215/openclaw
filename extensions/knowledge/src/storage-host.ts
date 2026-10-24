@@ -186,7 +186,7 @@ export function serve(port: MessagePort, init: { config: StoreConfig; signal: Sh
   const storage = new KnowledgeStorage(init.config),
     signal = new Int32Array(init.signal);
   let queue: Promise<void> = Promise.resolve();
-  port.on("message", (message: HostMessage) => {
+  port.on("message", (message: HostMessage<keyof StorageOperations>) => {
     if (message.type !== "call") {
       return;
     }

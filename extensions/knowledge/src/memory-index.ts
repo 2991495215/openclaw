@@ -39,7 +39,7 @@ const MARKUP = /<\/?[a-z!]|`|\[\[|\]\(|\{\{/iu;
  * null when it reads like an instruction or carries markup. Shared label owner for
  * prompt-facing Knowledge record labels. */
 export function promptLabel(value: unknown, max: number): string | null {
-  const flat = String(value ?? "")
+  const flat = (typeof value === "string" ? value : "")
     .replace(/[\p{Cc}\u2028\u2029]/gu, " ")
     .replace(/\s+/gu, " ")
     .trim();

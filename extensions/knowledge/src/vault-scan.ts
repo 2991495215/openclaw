@@ -23,6 +23,7 @@ import {
 import { sampleVaultRoot } from "./plugin-files.js";
 import { eligible } from "./retrieval.js";
 import { digest, MAX_ENTRIES } from "./scan-primitives.js";
+import type { ScanResult } from "./scan-result.js";
 import {
   hydrateMetadata,
   readSourceDescriptor,
@@ -42,13 +43,7 @@ function sameScope(a: unknown, b: Scope): boolean {
   );
 }
 
-export type ScanResult = {
-  records: LoadedRecord[];
-  ontology: ReturnType<typeof resolveOntology>;
-  sources: OntologySource[];
-  issues: Issue[];
-  checkedAt: string;
-};
+export type { ScanResult };
 /** One record file's parse, valid while the file keeps `stamp`. */
 type ParsedFile = {
   stamp: string;

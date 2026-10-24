@@ -28,6 +28,6 @@ export const buildKnowledgeLearnGuidance: NonNullable<Capability["learnGuidanceB
     ? " When someone explicitly replaces an earlier standing statement, supersede the old claim with `knowledge_correct`."
     : "";
   return [
-    `Memory (Knowledge): follow the \`knowledge-ingest\` skill's \"Learning from a set of sources\" section. Organise lessons by subject: one page per person, organization, project, tool or other durable subject, with its current understanding in a State section. Save facts, decisions, preferences and commitments as claims attached to those pages, quoting retained originals. Mark a conclusion drawn from several passages as \`agent_inference\`.${supersede}`,
+    `Memory (Knowledge): follow the \`knowledge-ingest\` skill's "Learning from a set of sources" section. Organise lessons by subject: one page per person, organization, project, tool or other durable subject, with its current understanding in a State section. Save facts, decisions, preferences and commitments as claims attached to those pages, quoting retained originals. Mark a conclusion drawn from several passages as \`agent_inference\`.${supersede}`,
   ];
 };

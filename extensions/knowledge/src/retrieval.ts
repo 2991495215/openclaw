@@ -21,12 +21,12 @@ import {
   type LookupOutput,
 } from "./retrieval-contract.js";
 import { digest } from "./scan-primitives.js";
+import type { ScanResult } from "./scan-result.js";
 import type { StorageTables } from "./storage-tables.js";
 import { temporalPredicate } from "./temporal-query.js";
 import { activeNow } from "./temporal.js";
-import type { SampleVault } from "./vault.js";
 
-type Snapshot = Awaited<ReturnType<SampleVault["scan"]>>;
+type Snapshot = ScanResult;
 type Hit = SearchOutput["hits"][number];
 const normalize = (value: string) =>
   value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
