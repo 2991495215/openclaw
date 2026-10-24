@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   claimCodexAppServerLiveThread,
-  ensureCodexAppServerClientRuntime,
   retainCodexAppServerLiveThread,
   protectCodexAppServerLiveThread,
 } from "./client-runtime.js";
@@ -22,12 +22,13 @@ import {
   type StoredCodexAppServerBinding,
 } from "./session-binding.js";
 import { createCodexTestBindingStateStore } from "./session-binding.test-helpers.js";
+import { retireSharedCodexAppServerClientIfCurrent } from "./shared-client.js";
 import { useAutoCleanupTempDirTracker } from "./test-support.js";
 import { startOrResumeThread } from "./thread-lifecycle-run.js";
 import type { CodexStartOrResumeThreadParams } from "./thread-lifecycle-types.js";
 import {
   createAppServerOptions,
-  createCodexLifecycleHarness,
+  createLeasedCodexLifecycleHarness,
   createParams,
   resetThreadLifecycleTestFixtures,
   threadStartResult,
@@ -37,7 +38,7 @@ setupRunAttemptTestHooks();
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(resetThreadLifecycleTestFixtures);
 
-async function fixture(withProjection = false) {
+async function fixture(withProjection = false, pluginFingerprint?: () => string) {
   const cwd = tempDirs.make("codex-assignment-rotation-");
   const params = createParams(path.join(cwd, "session.jsonl"), cwd);
   params.disableTools = false;
@@ -60,7 +61,8 @@ async function fixture(withProjection = false) {
   const store = createCodexAppServerBindingStore(createCodexTestBindingStateStore(values));
   let starts = 0;
   let successor: (() => Promise<ReturnType<typeof threadStartResult>>) | undefined;
-  const wire = createCodexLifecycleHarness({
+  const wire = await createLeasedCodexLifecycleHarness({
+    agentDir: cwd,
     respond: async (method) => {
       if (method === "config/read") {
         return { config: {}, origins: {}, layers: [] };
@@ -78,10 +80,6 @@ async function fixture(withProjection = false) {
       throw new Error(`Unexpected native lifecycle request: ${method}`);
     },
   });
-  ensureCodexAppServerClientRuntime(wire.client, { agentDir: cwd });
-  onTestFinished(async () => {
-    await wire.client.closeAndWait();
-  });
   const options = {
     client: wire.client,
     bindingStore: store,
@@ -97,6 +95,23 @@ async function fixture(withProjection = false) {
             mode: "thread_bootstrap" as const,
             epoch: "before",
             fingerprint: "before",
+          },
+        }
+      : {}),
+    ...(pluginFingerprint
+      ? {
+          pluginThreadConfig: {
+            enabled: true,
+            requiresCurrentPolicyCheck: true,
+            inputFingerprint: "stable-input",
+            build: async () => ({
+              enabled: true,
+              fingerprint: pluginFingerprint(),
+              inputFingerprint: "stable-input",
+              configPatch: {},
+              diagnostics: [],
+              policyContext: { fingerprint: "empty", apps: {}, pluginAppIds: {} },
+            }),
           },
         }
       : {}),
@@ -328,6 +343,8 @@ describe("native assignment custody across ordinary parent rotation", () => {
 
   it("refreshes context while background cleanup retains the predecessor", async () => {
     const f = await fixture(true);
+    const debug = vi.spyOn(embeddedAgentLog, "debug").mockImplementation(() => {});
+    onTestFinished(() => debug.mockRestore());
     const claim = await claimCodexAppServerLiveThread(f.client, f.parent.threadId);
     assert(claim);
     const releaseProtection = protectCodexAppServerLiveThread(f.client, f.parent.threadId);
@@ -342,6 +359,10 @@ describe("native assignment custody across ordinary parent rotation", () => {
       assert(stored?.state === "active");
       expect(stored.binding.threadId).toBe(next.threadId);
       expect(next.contextEngine?.projection?.epoch).toBe("after");
+      expect(debug).toHaveBeenCalledWith(
+        "codex app-server context-engine binding changed; starting a new thread",
+        expect.objectContaining({ backgroundRetentionReason: "retained" }),
+      );
       expect(f.releasePredecessor).not.toHaveBeenCalled();
       expect(await f.readAssignments(next.threadId)).toEqual(f.assignments);
     } finally {
@@ -349,6 +370,95 @@ describe("native assignment custody across ordinary parent rotation", () => {
     }
     await vi.waitFor(() => expect(f.releasePredecessor).toHaveBeenCalledTimes(1));
   });
+
+  it.each([
+    "client-mismatch",
+    "engine-policy-mismatch",
+    "tool-mismatch",
+    "not-background-only",
+    "plugin-policy-mismatch",
+    "immutable-config-mismatch",
+  ] as const)(
+    "explains %s without releasing protected work or changing the binding",
+    async (reason) => {
+      let pluginFingerprint = "original-policy";
+      const f = await fixture(
+        true,
+        reason === "plugin-policy-mismatch" ? () => pluginFingerprint : undefined,
+      );
+      const before = f.readState();
+      const debug = vi.spyOn(embeddedAgentLog, "debug").mockImplementation(() => {});
+      onTestFinished(() => debug.mockRestore());
+      const claim = await claimCodexAppServerLiveThread(f.client, f.parent.threadId);
+      assert(claim);
+      const releaseProtection = protectCodexAppServerLiveThread(f.client, f.parent.threadId);
+      if (reason !== "not-background-only") {
+        await claim.release(f.parent.threadId);
+      }
+      const patch: Partial<CodexStartOrResumeThreadParams> = {
+        mcpServersFingerprint: "mcp-before",
+        contextEngineProjection: { mode: "thread_bootstrap", epoch: "after", fingerprint: "after" },
+      };
+      if (reason === "client-mismatch") {
+        retireSharedCodexAppServerClientIfCurrent(f.client);
+        const replacement = await createLeasedCodexLifecycleHarness({
+          agentDir: f.options.cwd,
+          respond: (method) => {
+            if (method === "config/read") {
+              return { config: {}, origins: {}, layers: [] };
+            }
+            if (method === "configRequirements/read") {
+              return { requirements: null };
+            }
+            throw new Error("Unexpected replacement request: " + method);
+          },
+        });
+        expect(replacement.client.getInstanceId()).not.toBe(f.client.getInstanceId());
+        patch.client = replacement.client;
+      } else if (reason === "engine-policy-mismatch") {
+        patch.params = { ...f.options.params, contextTokenBudget: 12_345 };
+      } else if (reason === "tool-mismatch") {
+        patch.dynamicTools = [
+          {
+            name: "changed_tool",
+            description: "Changed tool",
+            inputSchema: { type: "object", properties: {} },
+          },
+        ];
+      } else if (reason === "plugin-policy-mismatch") {
+        pluginFingerprint = "changed-policy";
+      } else if (reason === "immutable-config-mismatch") {
+        patch.developerInstructions = "Private policy sentinel: never include in diagnostics";
+      }
+      try {
+        await expect(f.rotate(patch)).rejects.toThrow("claimed by active work; stop it first");
+        expect(f.readState()).toEqual(before);
+        expect(f.releasePredecessor).not.toHaveBeenCalled();
+        expect(f.request.mock.calls.filter(([method]) => method === "thread/start")).toHaveLength(
+          1,
+        );
+        expect(debug).toHaveBeenCalledWith(
+          "codex app-server context-engine binding changed; starting a new thread",
+          expect.objectContaining({ backgroundRetentionReason: reason }),
+        );
+        expect(debug).toHaveBeenCalledWith("codex app-server retained thread release blocked", {
+          threadId: f.parent.threadId,
+          changedClient: reason === "client-mismatch",
+          claimed: true,
+          protected: true,
+          backgroundOnly: reason !== "not-background-only",
+        });
+        const diagnostic = debug.mock.calls.find(
+          ([message]) =>
+            message === "codex app-server context-engine binding changed; starting a new thread",
+        );
+        expect(JSON.stringify(diagnostic)).not.toContain("Private policy sentinel");
+      } finally {
+        releaseProtection();
+        await claim.release(f.parent.threadId);
+      }
+    },
+  );
 
   it("refuses a claimed predecessor before starting or committing a successor", async () => {
     const f = await fixture();
