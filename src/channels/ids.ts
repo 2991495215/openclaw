@@ -47,14 +47,6 @@ export function findChatChannelLabel(raw?: string | null): string | undefined {
   return BUNDLED_CHAT_CHANNEL_ENTRIES.find((entry) => entry.id === resolved)?.label;
 }
 
-function normalizeRuntimeBundledChatChannelId(normalized: string): ChatChannelId | null {
-  return (
-    listBundledChannelCatalogEntries().find(
-      (entry) => entry.id === normalized || entry.aliases.includes(normalized),
-    )?.id ?? null
-  );
-}
-
 export function normalizeChatChannelId(raw?: string | null): ChatChannelId | null {
   const normalized = normalizeOptionalLowercaseString(raw);
   if (!normalized) {
@@ -63,5 +55,7 @@ export function normalizeChatChannelId(raw?: string | null): ChatChannelId | nul
   const resolved = CHAT_CHANNEL_ALIASES[normalized] ?? normalized;
   return CHAT_CHANNEL_ID_SET.has(resolved)
     ? resolved
-    : normalizeRuntimeBundledChatChannelId(normalized);
+    : (listBundledChannelCatalogEntries().find(
+        (entry) => entry.id === normalized || entry.aliases.includes(normalized),
+      )?.id ?? null);
 }
