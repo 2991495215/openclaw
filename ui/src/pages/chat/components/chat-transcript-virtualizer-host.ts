@@ -617,13 +617,7 @@ export class ChatSessionVirtualizerHost implements ChatTranscriptSession {
     }
     // The smooth journey may already be automatic when its skipped sizes settle.
     if (measureSkippedRows) {
-      const adjustScroll = this.virtualizer.shouldAdjustScrollPositionOnItemSizeChange;
-      this.virtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
-      try {
-        this.presentation.measureRows();
-      } finally {
-        this.virtualizer.shouldAdjustScrollPositionOnItemSizeChange = adjustScroll;
-      }
+      this.presentation.measureRowsWithoutScrollAdjustment();
     }
     const element = this.scrollElement;
     if (element) {
