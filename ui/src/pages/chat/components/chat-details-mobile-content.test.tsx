@@ -25,18 +25,6 @@ function details(overrides: Partial<ChatDetailsProps> = {}): ChatDetailsProps {
 function rootContent(): Extract<ChatDetailsMobilePage, { kind: "root" }>["content"] {
   return {
     entries: {
-      labels: {
-        people: "People",
-        taskProgress: "Task progress",
-        subagents: "Subagents",
-        processes: "Processes",
-        environment: "Environment",
-        context: "Context",
-        pullRequests: "Pull requests",
-        automations: "Automations",
-        generatedFiles: "Generated files",
-        session: "Session",
-      },
       people: { label: "People" },
       versions: { label: "Versions", metadata: 1 },
       onNavigate: vi.fn(),

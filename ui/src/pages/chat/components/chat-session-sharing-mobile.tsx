@@ -29,6 +29,8 @@ import "../../../styles/settings.css";
 import "../../../styles/chat/sharing-mobile.css";
 import {
   ChatSessionSharingError,
+  CHAT_SESSION_SHARING_DESCRIPTION_KEYS,
+  ChatSessionSharingModeIcon,
   chatSessionPermissionLabel,
   type ChatSessionSharingRosterRow,
 } from "./chat-session-sharing-shared.tsx";
@@ -37,24 +39,8 @@ registerEnglishCatalog(registerChatSessionEnglish);
 
 registerEnglishCatalog(registerSessionPeopleEnglish);
 
-export type ChatSessionSharingMobileLabels = {
-  sessionAccess: string;
-  linkSharing: string;
-  anyoneWithLink: string;
-  permissions: string;
-  showSearch: string;
-  hideSearch: string;
-};
-
-export type ChatSessionSharingModePresentation = Record<
-  SessionVisibility,
-  { description: string; icon: () => JSX.Element }
->;
-
 export type ChatSessionSharingMobileProps = {
   visibility: SessionVisibility;
-  modes: ChatSessionSharingModePresentation;
-  labels: ChatSessionSharingMobileLabels;
   accessDisabledReason?: string;
   onOpenAccess: () => void;
   error?: string;
@@ -83,9 +69,7 @@ export type ChatSessionSharingMobileProps = {
 
 export type ChatSessionAccessMobileProps = {
   visibility: SessionVisibility;
-  modes: ChatSessionSharingModePresentation;
   allowedVisibilities: readonly SessionVisibility[];
-  label: string;
   pending: boolean;
   disabledReason?: string;
   error?: string;
@@ -122,7 +106,7 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
   return (
     <div class="chat-sharing-mobile">
       <section>
-        <h3 class="chat-sharing-mobile__heading">{props.labels.sessionAccess}</h3>
+        <h3 class="chat-sharing-mobile__heading">{t("chat.sessionSharing.sessionAccess")}</h3>
         <button
           type="button"
           class="chat-sharing-mobile__mode chat-sharing-mobile__group"
@@ -135,11 +119,11 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
           }}
         >
           <span class="chat-sharing-mobile__mode-icon" aria-hidden="true">
-            {props.modes[props.visibility].icon()}
+            <ChatSessionSharingModeIcon visibility={props.visibility} />
           </span>
           <span class="chat-sharing-mobile__mode-copy">
             <span>{sharingVisibilityLabel(props.visibility)}</span>
-            <small>{props.modes[props.visibility].description}</small>
+            <small>{t(CHAT_SESSION_SHARING_DESCRIPTION_KEYS[props.visibility])}</small>
           </span>
           <Icon name="chevronRight" class="chat-sharing-mobile__trailing-icon" />
         </button>
@@ -147,14 +131,14 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
       <Show when={props.publicLink}>
         {(link) => (
           <section>
-            <h3 class="chat-sharing-mobile__heading">{props.labels.linkSharing}</h3>
+            <h3 class="chat-sharing-mobile__heading">{t("chat.sessionSharing.linkSharing")}</h3>
             <div
               class="chat-sharing-mobile__group chat-sharing-mobile__public"
               aria-description={link().disabledReason}
             >
               <SettingsToggleRow
                 icon={<Icon name="globe" class="chat-sharing-mobile__mode-icon" />}
-                title={props.labels.anyoneWithLink}
+                title={t("chat.sessionSharing.anyoneWithLink")}
                 checked={link().enabled}
                 disabled={Boolean(link().disabledReason)}
                 onChange={(enabled) => {
@@ -195,7 +179,7 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
         {renderSharingError}
       </ChatSessionSharingError>
       <Show when={props.permissions}>
-        {(permissions) => <SharingPermissions data={permissions()} labels={props.labels} />}
+        {(permissions) => <SharingPermissions data={permissions()} />}
       </Show>
     </div>
   );
@@ -203,7 +187,6 @@ export function ChatSessionSharingMobile(props: ChatSessionSharingMobileProps) {
 
 function SharingPermissions(props: {
   data: NonNullable<ChatSessionSharingMobileProps["permissions"]>;
-  labels: ChatSessionSharingMobileLabels;
 }) {
   const searchId = createUniqueId();
   const [searching, setSearching] = createSignal(false);
@@ -226,14 +209,18 @@ function SharingPermissions(props: {
   return (
     <section>
       <div class="chat-sharing-mobile__permissions-heading">
-        <h3 class="chat-sharing-mobile__heading">{props.labels.permissions}</h3>
+        <h3 class="chat-sharing-mobile__heading">{t("chat.sessionSharing.permissions")}</h3>
         <button
           ref={(element) => {
             trigger = element;
           }}
           type="button"
           class="chat-sharing-mobile__search-toggle"
-          aria-label={searching() ? props.labels.hideSearch : props.labels.showSearch}
+          aria-label={
+            searching()
+              ? t("chat.sessionSharing.closeSearch")
+              : t("chat.sessionSharing.searchPeople")
+          }
           aria-expanded={searching() ? "true" : "false"}
           aria-controls={searchId}
           onClick={() => {
@@ -382,7 +369,7 @@ export function ChatSessionAccessMobile(props: ChatSessionAccessMobileProps) {
       <div
         class="chat-sharing-mobile__group"
         role="group"
-        aria-label={props.label}
+        aria-label={t("chat.sessionSharing.sessionAccess")}
         aria-busy={props.pending ? "true" : "false"}
       >
         <For each={SESSION_VISIBILITY_VALUES}>
@@ -402,11 +389,11 @@ export function ChatSessionAccessMobile(props: ChatSessionAccessMobileProps) {
               }}
             >
               <span class="chat-sharing-mobile__mode-icon" aria-hidden="true">
-                {props.modes[visibility].icon()}
+                <ChatSessionSharingModeIcon visibility={visibility} />
               </span>
               <span class="chat-sharing-mobile__mode-copy">
                 <span>{sharingVisibilityLabel(visibility)}</span>
-                <small>{props.modes[visibility].description}</small>
+                <small>{t(CHAT_SESSION_SHARING_DESCRIPTION_KEYS[visibility])}</small>
               </span>
               <span class="chat-sharing-mobile__check" aria-hidden="true">
                 <Show when={props.visibility === visibility}>

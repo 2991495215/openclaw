@@ -187,13 +187,7 @@ function resolveLeadingShellSegmentExecutable(rawSegment: string): string | unde
   );
 }
 
-function analyzeInterpreterHeuristicsFromUnquoted(raw: string): {
-  hasPython: boolean;
-  hasNode: boolean;
-  hasComplexSyntax: boolean;
-  hasProcessSubstitution: boolean;
-  hasScriptHint: boolean;
-} {
+function analyzeInterpreterHeuristicsFromUnquoted(raw: string) {
   const executables = splitShellSegmentsOutsideQuotes(raw, { splitPipes: true }).map(
     resolveLeadingShellSegmentExecutable,
   );

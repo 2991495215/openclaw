@@ -1,13 +1,12 @@
 import { For, Show } from "solid-js";
 import type { ChatMobilePeople } from "../chat-mobile-people.ts";
 import { ChatAuthorAvatar } from "./chat-author-avatar-view.tsx";
-import type { ChatMobilePeopleBodyProps } from "./chat-mobile-people.tsx";
 import "./chat-mobile-people-grid.css";
 
 export type ChatMobilePeopleGridProps = {
   people: ChatMobilePeople;
   label: string;
-  morePeople: ChatMobilePeopleBodyProps["labels"]["morePeople"];
+  morePeople: (count: number) => string;
   expanded: boolean;
   controls: string;
   onOpen: (source: HTMLButtonElement) => void;

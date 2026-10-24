@@ -176,28 +176,6 @@ export function ChatPaneMobileComposition(props: {
   };
   const actionSource = () => actionsMenu?.readTrigger();
   const peopleId = () => `${props.header.paneId}-mobile-people`;
-  const labels = {
-    get people() {
-      return t("chat.sessionHeader.people");
-    },
-    get viewingNow() {
-      return t("activityFeed.viewingNow");
-    },
-    get creator() {
-      return t("chat.sessionSharing.creator");
-    },
-    get owner() {
-      return t("chat.sessionSharing.owner");
-    },
-    get participants() {
-      return t("chat.sessionHeader.peopleParticipants");
-    },
-    get mention() {
-      return t("chat.sessionHeader.mention");
-    },
-    mentionPerson: (name: string) => t("chat.sessionHeader.mentionPerson", { name }),
-    morePeople: (count: number) => t("chat.sessionHeader.morePeople", { count: String(count) }),
-  };
   const adapter = createChatSessionSharingMobileAdapter(sharing, {
     onOpenSharing: () => {
       const current = host();
@@ -220,7 +198,7 @@ export function ChatPaneMobileComposition(props: {
     page: {
       key: "people",
       get title() {
-        return labels.people;
+        return t("chat.sessionHeader.people");
       },
       render: retainPage(() => (
         <div id={peopleId()}>
@@ -254,7 +232,7 @@ export function ChatPaneMobileComposition(props: {
             {(data) => (
               <ChatMobilePeopleBody
                 people={data()}
-                labels={labels}
+                viewingNow={t("activityFeed.viewingNow")}
                 onMention={(person) => {
                   if (props.header.mobilePeopleMentions?.insert(person.profileId)) {
                     // Native close restores its source synchronously; the queued
@@ -631,8 +609,10 @@ export function ChatPaneMobileComposition(props: {
               <Loading>
                 <ChatMobilePeopleGrid
                   people={props.header.mobilePeople!}
-                  label={labels.people}
-                  morePeople={labels.morePeople}
+                  label={t("chat.sessionHeader.people")}
+                  morePeople={(count) =>
+                    t("chat.sessionHeader.morePeople", { count: String(count) })
+                  }
                   controls={peopleId()}
                   expanded={Boolean(
                     host()?.open && !host()?.suspended && host()?.destination === people,

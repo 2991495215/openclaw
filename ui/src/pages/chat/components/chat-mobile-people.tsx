@@ -2,6 +2,8 @@ import type { JSX } from "@solidjs/web";
 import { For, Show } from "solid-js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
+import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import type {
   ChatMobilePeople,
   ChatMobilePeopleMention,
@@ -10,20 +12,11 @@ import type {
 import { ChatAuthorAvatar } from "./chat-author-avatar-view.tsx";
 import "../../../styles/chat/mobile-people.css";
 
-type ChatMobilePeopleLabels = {
-  people: string;
-  viewingNow: string;
-  creator: string;
-  owner: string;
-  participants: string;
-  mention: string;
-  mentionPerson: (fullName: string) => string;
-  morePeople: (count: number) => string;
-};
+registerEnglishCatalog(registerChatSessionEnglish);
 
 export type ChatMobilePeopleBodyProps = {
   people: ChatMobilePeople;
-  labels: ChatMobilePeopleLabels;
+  viewingNow: string;
   /** Parent-owned ChatSessionSharingOptions, including its permission gates. */
   sharingOptions: JSX.Element;
   /** Insert a typed recipient, close People and focus the composer; never send. */
@@ -46,7 +39,6 @@ function PersonName(props: { person: ChatMobilePerson }) {
 function PeopleSection(props: {
   title: string;
   people: readonly ChatMobilePerson[];
-  labels: ChatMobilePeopleLabels;
   showCount?: boolean;
   partial?: boolean;
   onMention?: ChatMobilePeopleBodyProps["onMention"];
@@ -70,11 +62,11 @@ function PeopleSection(props: {
                   <button
                     type="button"
                     class="chat-mobile-people__mention"
-                    aria-label={props.labels.mentionPerson(person().label)}
+                    aria-label={t("chat.sessionHeader.mentionPerson", { name: person().label })}
                     onClick={() => props.onMention?.(mention())}
                   >
                     <span aria-hidden="true">@</span>
-                    <span>{props.labels.mention}</span>
+                    <span>{t("chat.sessionHeader.mention")}</span>
                     <Icon name="chevronRight" />
                   </button>
                 )}
@@ -90,10 +82,10 @@ function PeopleSection(props: {
 /** Body only: The mobile host owns route, expansion, scroll, close and focus restoration. */
 export function ChatMobilePeopleBody(props: ChatMobilePeopleBodyProps) {
   return (
-    <div class="chat-mobile-people" role="group" aria-label={props.labels.people}>
+    <div class="chat-mobile-people" role="group" aria-label={t("chat.sessionHeader.people")}>
       <Show when={props.people.viewers.length > 0}>
-        <section class="chat-mobile-people__section" aria-label={props.labels.viewingNow}>
-          <h3>{props.labels.viewingNow}</h3>
+        <section class="chat-mobile-people__section" aria-label={props.viewingNow}>
+          <h3>{props.viewingNow}</h3>
           <ul class="chat-mobile-people__viewers">
             <For each={props.people.viewers} keyed={(person) => person.key}>
               {(person) => (
@@ -111,7 +103,7 @@ export function ChatMobilePeopleBody(props: ChatMobilePeopleBodyProps) {
                       <button
                         type="button"
                         class="chat-mobile-people__viewer"
-                        aria-label={props.labels.mentionPerson(person().label)}
+                        aria-label={t("chat.sessionHeader.mentionPerson", { name: person().label })}
                         onClick={() => props.onMention?.(mention())}
                       >
                         <ChatAuthorAvatar sender={person().sender} hideTooltip />
@@ -129,9 +121,8 @@ export function ChatMobilePeopleBody(props: ChatMobilePeopleBodyProps) {
       <Show when={props.people.creator}>
         {(creator) => (
           <PeopleSection
-            title={props.labels.creator}
+            title={t("chat.sessionSharing.creator")}
             people={[creator()]}
-            labels={props.labels}
             onMention={props.onMention}
           />
         )}
@@ -139,18 +130,16 @@ export function ChatMobilePeopleBody(props: ChatMobilePeopleBodyProps) {
       <Show when={props.people.owner}>
         {(owner) => (
           <PeopleSection
-            title={props.labels.owner}
+            title={t("chat.sessionSharing.owner")}
             people={[owner()]}
-            labels={props.labels}
             onMention={props.onMention}
           />
         )}
       </Show>
       <Show when={props.people.participants.length > 0}>
         <PeopleSection
-          title={props.labels.participants}
+          title={t("chat.sessionHeader.peopleParticipants")}
           people={props.people.participants}
-          labels={props.labels}
           showCount
           partial={!props.people.participantsComplete}
           onMention={props.onMention}
@@ -158,7 +147,9 @@ export function ChatMobilePeopleBody(props: ChatMobilePeopleBodyProps) {
       </Show>
       <Show when={props.people.unlistedParticipantCount > 0}>
         <p class="chat-mobile-people__unlisted">
-          {props.labels.morePeople(props.people.unlistedParticipantCount)}
+          {t("chat.sessionHeader.morePeople", {
+            count: String(props.people.unlistedParticipantCount),
+          })}
         </p>
       </Show>
     </div>
