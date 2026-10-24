@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   ErrorCodes,
-  errorShape,
   validateSkillsFileGetParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveToCwd } from "../../agents/sessions/tools/path-utils.js";
@@ -12,6 +11,7 @@ import { resolveSkillDiscoveryLimits } from "../../skills/loading/skill-root-dis
 import { resolveSkillTelemetrySourceValue } from "../../skills/loading/source.js";
 import { prepareWorkspaceSkillEntries } from "../../skills/loading/workspace-skill-loader.js";
 import { resolveSkillFileHost } from "../../skills/skill-file-host.js";
+import { respondError } from "./response.js";
 import { resolveSkillsAgentWorkspace } from "./skills-workspace-handler.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -76,13 +76,10 @@ export const skillsFilesHandlers: GatewayRequestHandlers = {
         content: read.buffer.toString("utf8"),
       });
     } catch {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          ErrorCodes.INVALID_REQUEST,
-          "Skill file is unavailable locally, outside its skill directory, or exceeds the skill file size limit",
-        ),
+      respondError(
+        respond,
+        ErrorCodes.INVALID_REQUEST,
+        "Skill file is unavailable locally, outside its skill directory, or exceeds the skill file size limit",
       );
     }
   },

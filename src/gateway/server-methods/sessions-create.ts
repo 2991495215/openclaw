@@ -133,10 +133,10 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     const parentSessionKey = normalizeOptionalString(p.parentSessionKey);
     const creation = resolveOperatorSessionCreation(client, { allowTrustedHint: true });
     if (p.surface && creation.via !== "operator") {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "Dock conversations require operator creation"),
+      respondError(
+        respond,
+        ErrorCodes.INVALID_REQUEST,
+        "Dock conversations require operator creation",
       );
       return;
     }
@@ -239,13 +239,10 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
         ? resolveRegisteredCatalogCreateTarget(catalogId, catalogAgentId, cfg)
         : undefined;
     if (catalogTarget && !catalogTarget.ok) {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          catalogTarget.unknownCatalog ? ErrorCodes.INVALID_REQUEST : ErrorCodes.UNAVAILABLE,
-          catalogTarget.message,
-        ),
+      respondError(
+        respond,
+        catalogTarget.unknownCatalog ? ErrorCodes.INVALID_REQUEST : ErrorCodes.UNAVAILABLE,
+        catalogTarget.message,
       );
       return;
     }

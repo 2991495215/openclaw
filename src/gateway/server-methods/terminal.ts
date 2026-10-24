@@ -10,7 +10,6 @@ import {
 // re-checks that the feature is enabled and that isolation permits a host shell.
 import {
   ErrorCodes,
-  errorShape,
   type TerminalUploadResult,
   validateTerminalAttachParams,
   validateTerminalCloseParams,
@@ -39,6 +38,7 @@ import {
   waitForTerminalOpenDeadline,
 } from "../terminal/open-deadline.js";
 import type { AgentTerminalOwner } from "../terminal/session-manager.types.js";
+import { respondError } from "./response.js";
 import { resolveSessionCatalogProvider } from "./session-catalog.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import {
@@ -50,7 +50,7 @@ import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./typ
 import { assertValidParams, defineValidatedGatewayHandler, type Validator } from "./validation.js";
 
 function invalid(respond: GatewayRequestHandlerOptions["respond"], detail: string): void {
-  respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, detail));
+  respondError(respond, ErrorCodes.INVALID_REQUEST, detail);
 }
 
 function requireConnId(opts: GatewayRequestHandlerOptions): string | null {
@@ -73,11 +73,7 @@ function respondTerminalUnavailable(
   message: string,
   hint?: string,
 ): void {
-  respond(
-    false,
-    undefined,
-    errorShape(ErrorCodes.UNAVAILABLE, terminalFailureMessage(message, hint)),
-  );
+  respondError(respond, ErrorCodes.UNAVAILABLE, terminalFailureMessage(message, hint));
 }
 
 async function stageNodeTerminalUpload(
@@ -507,11 +503,7 @@ async function openTerminalSessionWithSource(
   }
   if (!outcome.ok) {
     const code = outcome.code === "limit" ? ErrorCodes.INVALID_REQUEST : ErrorCodes.UNAVAILABLE;
-    respond(
-      false,
-      undefined,
-      errorShape(code, terminalFailureMessage(outcome.message, request.failureHint)),
-    );
+    respondError(respond, code, terminalFailureMessage(outcome.message, request.failureHint));
     return;
   }
   try {

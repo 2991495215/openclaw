@@ -1,7 +1,6 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
   ErrorCodes,
-  errorShape,
   validateExecApprovalGetParams,
   validateExecApprovalGrantsListParams,
   validateExecApprovalGrantsRevokeParams,
@@ -56,6 +55,7 @@ import {
   respondPendingApprovalLookupError,
   resolvePendingApprovalRecord,
 } from "./approval-shared.js";
+import { respondError } from "./response.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { assertValidParams, defineValidatedGatewayHandler } from "./validation.js";
 
@@ -128,7 +128,7 @@ export function createExecApprovalHandlers(
       validateExecApprovalRequestParams,
       async ({ params, respond, context, client }) => {
         const rejectRequest = (message: string) => {
-          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+          respondError(respond, ErrorCodes.INVALID_REQUEST, message);
         };
         const p = params;
         const twoPhase = p.twoPhase === true;
@@ -198,14 +198,15 @@ export function createExecApprovalHandlers(
         const sanitizedCommandDisplay =
           sanitizeExecApprovalDisplayTextWithStatus(effectiveCommandText);
         if (sanitizedCommandDisplay.truncated || sanitizedCommandDisplay.oversized) {
-          respond(
-            false,
-            undefined,
-            errorShape(ErrorCodes.INVALID_REQUEST, "command exceeds exec approval display limit", {
+          respondError(
+            respond,
+            ErrorCodes.INVALID_REQUEST,
+            "command exceeds exec approval display limit",
+            {
               details: {
                 reason: "EXEC_APPROVAL_COMMAND_DISPLAY_LIMIT",
               },
-            }),
+            },
           );
           return;
         }
@@ -339,13 +340,9 @@ export function createExecApprovalHandlers(
         // This check is adjacent to manager creation with no await between them.
         // The abort owner records the tombstone before sweeping pending approvals.
         if (requestRunId && context.chatRunState.hasAbortMarker(requestRunId)) {
-          respond(
-            false,
-            undefined,
-            errorShape(ErrorCodes.INVALID_REQUEST, "approval run already aborted", {
-              details: { reason: "EXEC_APPROVAL_RUN_ABORTED" },
-            }),
-          );
+          respondError(respond, ErrorCodes.INVALID_REQUEST, "approval run already aborted", {
+            details: { reason: "EXEC_APPROVAL_RUN_ABORTED" },
+          });
           return;
         }
         let record: ReturnType<typeof manager.create>;
@@ -353,13 +350,9 @@ export function createExecApprovalHandlers(
           record = manager.create(request, timeoutMs, explicitId);
         } catch (error) {
           if (error instanceof InvalidApprovalIdError) {
-            respond(
-              false,
-              undefined,
-              errorShape(ErrorCodes.INVALID_REQUEST, error.message, {
-                details: { code: error.code, reason: error.reason },
-              }),
-            );
+            respondError(respond, ErrorCodes.INVALID_REQUEST, error.message, {
+              details: { code: error.code, reason: error.reason },
+            });
             return;
           }
           throw error;

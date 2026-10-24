@@ -1,4 +1,4 @@
-import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveActiveEmbeddedRunOwnerForOperation } from "../../agents/embedded-agent-runner/runs.js";
 import { getRpcSourceForGateway } from "../../sessions/session-controller.rpc-sources.js";
 import {
@@ -13,6 +13,7 @@ import {
   captureSessionStoreScopeMatcher,
   type SessionRuntimeScope,
 } from "../session-runtime-scope.js";
+import { respondError } from "./response.js";
 import type { RespondFn } from "./types.js";
 
 export function resolveEmbeddedAgentRunRecoverySnapshot(
@@ -93,13 +94,9 @@ export function respondChatHistoryUnavailable(
   respond: RespondFn,
   message: string,
 ): void {
-  respond(
-    false,
-    undefined,
-    errorShape(ErrorCodes.UNAVAILABLE, message, {
-      details: { method },
-      retryable: true,
-      retryAfterMs: 250,
-    }),
-  );
+  respondError(respond, ErrorCodes.UNAVAILABLE, message, {
+    details: { method },
+    retryable: true,
+    retryAfterMs: 250,
+  });
 }

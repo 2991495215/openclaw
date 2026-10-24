@@ -16,6 +16,7 @@ import { SkillUploadRequestError } from "../../skills/lifecycle/upload-store-err
 import { defaultSkillUploadStore } from "../../skills/lifecycle/upload-store.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
 import { captureGatewayClientUploadCommitGuard } from "../upload-policy.js";
+import { respondError } from "./response.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
@@ -54,11 +55,7 @@ function makeUploadHandler<P, R>(
 ): GatewayRequestHandlers[string] {
   return async ({ params, respond, context, client }) => {
     if (!areUploadedSkillArchivesEnabled(context.getRuntimeConfig())) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.UNAVAILABLE, UPLOADED_SKILL_ARCHIVES_DISABLED_MESSAGE),
-      );
+      respondError(respond, ErrorCodes.UNAVAILABLE, UPLOADED_SKILL_ARCHIVES_DISABLED_MESSAGE);
       return;
     }
     if (!assertValidParams(params, validator, name, respond)) {

@@ -1,13 +1,12 @@
 import {
   ErrorCodes,
-  errorShape,
   validateEnvironmentsAdoptSuggestedProfileParams,
   type SuggestedWorkerProfileSummary,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { readConfigFileSnapshotForWrite, resolveConfigSnapshotHash } from "../../config/io.js";
 import { resolveSuggestedWorkerProfile } from "../../plugins/worker-profile-suggestions.js";
 import { listWorkerProfilesWithMachines } from "./environments.profiles.js";
-import { respondUnavailableOnThrow } from "./response.js";
+import { respondError, respondUnavailableOnThrow } from "./response.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestContext } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
@@ -63,10 +62,10 @@ export const adoptSuggestedWorkerProfile = defineValidatedGatewayHandler(
       });
       authority.assertCurrent();
       if (!suggestion || suggestion.id !== "cloud") {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, "No cloud worker profile is available to configure"),
+        respondError(
+          respond,
+          ErrorCodes.UNAVAILABLE,
+          "No cloud worker profile is available to configure",
         );
         return;
       }

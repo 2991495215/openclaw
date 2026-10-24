@@ -1,5 +1,5 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
 import { SessionGoalOperationError } from "../../config/sessions/goals-operations.js";
 import { getRpcSourceForGateway } from "../../sessions/session-controller.rpc-sources.js";
 import { resolveChatRunExpiresAtMs } from "../chat-abort.js";
@@ -9,6 +9,7 @@ import type { prepareGoalChatSendRetry } from "./chat-send-goal-retry.js";
 import type { ChatSendPreAdmissionParams } from "./chat-send-pre-admission.types.js";
 import type { NormalizedChatSendRequest } from "./chat-send-request.js";
 import type { PreparedChatSendSession } from "./chat-send-session.js";
+import { respondError } from "./response.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
 /** Bind pending reservation and acceptance updates to one captured chat-send attempt. */
@@ -156,12 +157,13 @@ export function inspectGoalChatSendRetry({
           !durableClaimAccepted &&
           getRpcSourceForGateway(clientRunId, context.resolveGatewayContext)))
     ) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.UNAVAILABLE, "Goal is being admitted; retry the same request.", {
+      respondError(
+        respond,
+        ErrorCodes.UNAVAILABLE,
+        "Goal is being admitted; retry the same request.",
+        {
           retryable: true,
-        }),
+        },
       );
       return { kind: "settled" } as const;
     }
@@ -183,13 +185,9 @@ export function inspectGoalChatSendRetry({
     if (!(error instanceof SessionGoalOperationError)) {
       throw error;
     }
-    respond(
-      false,
-      undefined,
-      errorShape(ErrorCodes.INVALID_REQUEST, error.message, {
-        details: { reason: `goal-${error.code}` },
-      }),
-    );
+    respondError(respond, ErrorCodes.INVALID_REQUEST, error.message, {
+      details: { reason: `goal-${error.code}` },
+    });
     return { kind: "settled" } as const;
   }
 }

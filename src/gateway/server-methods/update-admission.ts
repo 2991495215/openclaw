@@ -1,6 +1,5 @@
 import {
   ErrorCodes,
-  errorShape,
   validateUpdateRunParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { PreparedCommandOwnerAuthority } from "../../auto-reply/command-auth.js";
@@ -37,6 +36,7 @@ import {
   SystemPackageOwnershipError,
 } from "../../infra/update-system-package-ownership.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
+import { respondError } from "./response.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -55,25 +55,17 @@ export async function admitGatewayUpdateRequest(request: GatewayRequestHandlerOp
   });
   const installOwner = await readInstallOwner(root);
   if (installOwner) {
-    respond(
-      false,
-      undefined,
-      errorShape(ErrorCodes.UNAVAILABLE, formatInstallOwnerMessage(installOwner), {
-        details: { reason: "host-owned-install", installOwner },
-        retryable: false,
-      }),
-    );
+    respondError(respond, ErrorCodes.UNAVAILABLE, formatInstallOwnerMessage(installOwner), {
+      details: { reason: "host-owned-install", installOwner },
+      retryable: false,
+    });
     return null;
   }
   if (root && (await inspectImmutableInstall(root))) {
-    respond(
-      false,
-      undefined,
-      errorShape(ErrorCodes.UNAVAILABLE, IMMUTABLE_UPDATE_GUIDANCE, {
-        details: { reason: "immutable-native-updater-required" },
-        retryable: false,
-      }),
-    );
+    respondError(respond, ErrorCodes.UNAVAILABLE, IMMUTABLE_UPDATE_GUIDANCE, {
+      details: { reason: "immutable-native-updater-required" },
+      retryable: false,
+    });
     return null;
   }
   const channel = params.requester?.channel;
@@ -83,13 +75,10 @@ export async function admitGatewayUpdateRequest(request: GatewayRequestHandlerOp
     return params;
   }
   if (params.target) {
-    respond(
-      false,
-      undefined,
-      errorShape(
-        ErrorCodes.INVALID_REQUEST,
-        "This OCM version does not support an explicit Git update target.",
-      ),
+    respondError(
+      respond,
+      ErrorCodes.INVALID_REQUEST,
+      "This OCM version does not support an explicit Git update target.",
     );
     return null;
   }

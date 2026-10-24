@@ -16,6 +16,7 @@ import {
   getActiveMcpLoopbackRuntime,
 } from "../mcp-http.loopback-runtime.js";
 import { resolveRequestedSessionStoreTarget } from "../session-store-key.js";
+import { respondError } from "./response.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 export const attachHandlers: GatewayRequestHandlers = {
@@ -44,20 +45,12 @@ export const attachHandlers: GatewayRequestHandlers = {
       isAgentHarnessSessionKey(storageSessionKey) &&
       (!harnessEntry || isAgentHarnessSessionStoreEntryProtected(storageSessionKey, harnessEntry))
     ) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, AGENT_HARNESS_SESSION_KEY_RESERVED_MESSAGE),
-      );
+      respondError(respond, ErrorCodes.INVALID_REQUEST, AGENT_HARNESS_SESSION_KEY_RESERVED_MESSAGE);
       return;
     }
     const runtime = getActiveMcpLoopbackRuntime();
     if (!runtime) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.UNAVAILABLE, "mcp loopback server unavailable"),
-      );
+      respondError(respond, ErrorCodes.UNAVAILABLE, "mcp loopback server unavailable");
       return;
     }
     const grant = mintAttachGrant({

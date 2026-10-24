@@ -8,6 +8,7 @@ import {
 } from "../../agents/agent-scope.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
+import { respondError } from "./response.js";
 import type { RespondFn } from "./types.js";
 
 export function resolveConfiguredAgentIdOrRespondError(
@@ -19,11 +20,7 @@ export function resolveConfiguredAgentIdOrRespondError(
   if (normalized.ok && listAgentIds(cfg).includes(normalized.value)) {
     return normalized.value;
   }
-  respond(
-    false,
-    undefined,
-    errorShape(ErrorCodes.INVALID_REQUEST, `agent "${rawAgentId}" not found`),
-  );
+  respondError(respond, ErrorCodes.INVALID_REQUEST, `agent "${rawAgentId}" not found`);
   return null;
 }
 

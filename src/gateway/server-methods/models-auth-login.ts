@@ -1,6 +1,5 @@
 import {
   ErrorCodes,
-  errorShape,
   validateSystemAgentSetupAuthStartParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import {
@@ -26,6 +25,7 @@ import {
   captureLocalStateMutationGuard,
   localStateOwnerChangedError,
 } from "./local-state-owner.js";
+import { respondError } from "./response.js";
 import { resolveSystemAgentSessionOwnerKey } from "./system-agent-session-owner.js";
 import {
   rejectExistingSetupWizardSession,
@@ -42,13 +42,10 @@ export const modelsAuthLoginHandlers: GatewayRequestHandlers = {
     async (options) => {
       const { params, respond, context, client } = options;
       if (!client || !client.connect.scopes?.includes("operator.admin")) {
-        respond(
-          false,
-          undefined,
-          errorShape(
-            ErrorCodes.INVALID_REQUEST,
-            "Provider login requires an administrator connection.",
-          ),
+        respondError(
+          respond,
+          ErrorCodes.INVALID_REQUEST,
+          "Provider login requires an administrator connection.",
         );
         return;
       }
@@ -81,13 +78,10 @@ export const modelsAuthLoginHandlers: GatewayRequestHandlers = {
         : isProviderLoginChoiceStartable;
       const choice = resolveChoice();
       if (!choice || !isStartable(choice)) {
-        respond(
-          false,
-          undefined,
-          errorShape(
-            ErrorCodes.INVALID_REQUEST,
-            "That provider login is no longer available. Refresh Models and choose an available sign-in option.",
-          ),
+        respondError(
+          respond,
+          ErrorCodes.INVALID_REQUEST,
+          "That provider login is no longer available. Refresh Models and choose an available sign-in option.",
         );
         return;
       }

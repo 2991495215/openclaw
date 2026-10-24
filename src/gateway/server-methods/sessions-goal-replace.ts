@@ -2,7 +2,6 @@ import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   ErrorCodes,
-  errorShape,
   type SessionsGoalUpdateParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { lookupSessionGoalOperation } from "../../config/sessions/goals-operations-read.js";
@@ -38,6 +37,7 @@ import { handleChatAbortRequestWithLifecycle } from "./chat-abort-handler.js";
 import { isDirectChatGoalSession } from "./chat-restart-recovery.js";
 import { handleSessionGoalResumeChat } from "./chat-send-handler.js";
 import { gatewayClientSessionCreator } from "./gateway-client-identity.js";
+import { respondError } from "./response.js";
 import { publishCommittedSessionGoalChange } from "./session-goal-change.js";
 import { bindGatewayRequestHandlerMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
@@ -149,16 +149,13 @@ export async function replaceExecutingSessionGoal(params: {
           if (ok && payload && typeof payload === "object") {
             respond(true, { ...payload, action: "replace" }, undefined, meta);
           } else {
-            respond(
-              false,
-              undefined,
-              errorShape(
-                ErrorCodes.UNAVAILABLE,
-                "Goal replacement stopped at resume. " +
-                  (error?.message ??
-                    "Check the saved request before retrying; continuation admission was not confirmed."),
-                { details: { stage: "resume" } },
-              ),
+            respondError(
+              respond,
+              ErrorCodes.UNAVAILABLE,
+              "Goal replacement stopped at resume. " +
+                (error?.message ??
+                  "Check the saved request before retrying; continuation admission was not confirmed."),
+              { details: { stage: "resume" } },
             );
           }
         },
@@ -441,18 +438,15 @@ export async function replaceExecutingSessionGoal(params: {
       );
     }
     context.logGateway.warn("Goal replacement stopped at " + stage);
-    respond(
-      false,
-      undefined,
-      errorShape(
-        ErrorCodes.UNAVAILABLE,
-        "Goal replacement stopped at " +
-          stage +
-          ". " +
-          (interruptionWarning ? interruptionWarning + " " : "") +
-          "The objective was not resumed. Review the current goal and check the saved request before continuing.",
-        { details: { stage } },
-      ),
+    respondError(
+      respond,
+      ErrorCodes.UNAVAILABLE,
+      "Goal replacement stopped at " +
+        stage +
+        ". " +
+        (interruptionWarning ? interruptionWarning + " " : "") +
+        "The objective was not resumed. Review the current goal and check the saved request before continuing.",
+      { details: { stage } },
     );
   } finally {
     resumeGuard?.release();

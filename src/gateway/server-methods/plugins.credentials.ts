@@ -1,12 +1,12 @@
 import {
   ErrorCodes,
-  errorShape,
   validatePluginsCredentialsInspectParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { readConfigFileSnapshot } from "../../config/config.js";
 import { resolvePluginCredentialDescriptors } from "../../plugins/credential-descriptors.js";
 import { inspectPluginCredentialValue } from "../../plugins/credential-inspection.js";
 import { resolveManagedPluginMetadata } from "../../plugins/management-service.js";
+import { respondError } from "./response.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
 
@@ -26,7 +26,7 @@ export const pluginCredentialHandlers: GatewayRequestHandlers = {
         );
       const denied = (
         message = "Current administrator access is required to inspect plugin credentials.",
-      ) => respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+      ) => respondError(respond, ErrorCodes.INVALID_REQUEST, message);
       if (!authorized()) {
         denied();
         return;
@@ -72,13 +72,10 @@ export const pluginCredentialHandlers: GatewayRequestHandlers = {
         );
       } catch {
         // Config loader failures can contain authored data; keep the public error bounded.
-        respond(
-          false,
-          undefined,
-          errorShape(
-            ErrorCodes.UNAVAILABLE,
-            "Credential metadata is unavailable. Reload Settings and try again.",
-          ),
+        respondError(
+          respond,
+          ErrorCodes.UNAVAILABLE,
+          "Credential metadata is unavailable. Reload Settings and try again.",
         );
       }
     },

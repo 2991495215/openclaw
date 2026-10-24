@@ -47,6 +47,7 @@ import {
 } from "./chat-send-retry-comparison.js";
 import { captureAdmittedChatSendSessionSettings } from "./chat-send-session-settings.js";
 import type { LoadedChatSendSession } from "./chat-send-session.js";
+import { respondError } from "./response.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
 type ChatSendRetryParams = Pick<
@@ -327,11 +328,7 @@ export async function runChatSendPreAdmission(
       chatType: entry?.chatType,
     });
     if (sendPolicy === "deny") {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "send blocked by session policy"),
-      );
+      respondError(respond, ErrorCodes.INVALID_REQUEST, "send blocked by session policy");
       return false;
     }
     if (!stopCommand && !request.goalOperation) {
@@ -393,13 +390,9 @@ export async function runChatSendPreAdmission(
       const claim = await resolveClaim(entry, (message) => context.logGateway.warn(message));
       await consumeChatSendCurrent(params, () => {
         if (claim.kind === "pending" || claim.kind === "rejected") {
-          respond(
-            false,
-            undefined,
-            errorShape(ErrorCodes.UNAVAILABLE, claim.message, {
-              retryable: claim.kind === "pending",
-            }),
-          );
+          respondError(respond, ErrorCodes.UNAVAILABLE, claim.message, {
+            retryable: claim.kind === "pending",
+          });
         } else {
           respond(true, { ...retry.receipt, replayed: true }, undefined, {
             cached: true,
@@ -658,16 +651,13 @@ export async function runChatSendPreAdmission(
       return false;
     }
     if (durableClaim.kind === "pending" || durableClaim.kind === "rejected") {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          durableClaim.kind === "pending" || durableClaim.unavailable
-            ? ErrorCodes.UNAVAILABLE
-            : ErrorCodes.INVALID_REQUEST,
-          durableClaim.message,
-          { retryable: durableClaim.kind === "pending" },
-        ),
+      respondError(
+        respond,
+        durableClaim.kind === "pending" || durableClaim.unavailable
+          ? ErrorCodes.UNAVAILABLE
+          : ErrorCodes.INVALID_REQUEST,
+        durableClaim.message,
+        { retryable: durableClaim.kind === "pending" },
       );
       return false;
     }

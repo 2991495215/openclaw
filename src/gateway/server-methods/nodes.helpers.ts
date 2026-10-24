@@ -1,8 +1,6 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import {
-  ErrorCodes,
-  errorShape,
-} from "../../../packages/gateway-protocol/src/schema/error-codes.js";
+import { ErrorCodes } from "../../../packages/gateway-protocol/src/schema/error-codes.js";
+import { respondError } from "./response.js";
 import type { RespondFn } from "./types.js";
 export { parseGatewayPayload } from "../server-json.js";
 
@@ -33,12 +31,8 @@ export function respondUnavailableOnNodeInvokeErrorWithProvenance<
     ...(provenance ? { nodeCommandDispatched: provenance.nodeCommandDispatched } : {}),
     ...(provenance?.permissionMissing ? { permissionMissing: provenance.permissionMissing } : {}),
   };
-  respond(
-    false,
-    undefined,
-    errorShape(ErrorCodes.UNAVAILABLE, message, {
-      details,
-    }),
-  );
+  respondError(respond, ErrorCodes.UNAVAILABLE, message, {
+    details,
+  });
   return false;
 }

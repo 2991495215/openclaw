@@ -2,7 +2,6 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { GATEWAY_CLIENT_IDS } from "../../../packages/gateway-protocol/src/client-info.js";
 import {
   ErrorCodes,
-  errorShape,
   validateAgentIdentityParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolvePublicAgentAvatarSource } from "../../agents/identity-avatar.js";
@@ -10,6 +9,7 @@ import { classifySessionKeyShape, normalizeAgentId } from "../../routing/session
 import { resolveGatewayAssistantAvatar } from "../assistant-avatar.js";
 import { resolveAssistantIdentity } from "../assistant-identity.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
+import { respondError } from "./response.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -26,13 +26,10 @@ export const agentIdentityGetHandler: GatewayRequestHandlers["agent.identity.get
   const cfg = context.getRuntimeConfig();
   let agentId = agentIdRaw ? normalizeAgentId(agentIdRaw) : undefined;
   if (sessionKeyRaw && classifySessionKeyShape(sessionKeyRaw) === "malformed_agent") {
-    respond(
-      false,
-      undefined,
-      errorShape(
-        ErrorCodes.INVALID_REQUEST,
-        `invalid agent.identity.get params: malformed session key "${sessionKeyRaw}"`,
-      ),
+    respondError(
+      respond,
+      ErrorCodes.INVALID_REQUEST,
+      `invalid agent.identity.get params: malformed session key "${sessionKeyRaw}"`,
     );
     return;
   }

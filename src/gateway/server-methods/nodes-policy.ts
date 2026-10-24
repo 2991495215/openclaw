@@ -1,6 +1,7 @@
-import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
 import { NODE_AGENT_CLI_CLAUDE_RUN_COMMAND } from "../../infra/node-commands.js";
 import { ADMIN_SCOPE, PAIRING_SCOPE } from "../operator-scopes.js";
+import { respondError } from "./response.js";
 import type { GatewayClient, RespondFn } from "./shared-types.js";
 
 export const nodeInvokePolicy = {
@@ -16,14 +17,11 @@ export const nodeInvokePolicy = {
     if (command !== NODE_AGENT_CLI_CLAUDE_RUN_COMMAND) {
       return false;
     }
-    respond(
-      false,
-      undefined,
-      errorShape(
-        ErrorCodes.INVALID_REQUEST,
-        "node.invoke does not allow Claude agent runs; use sessions.catalog.continue",
-        { details: { command } },
-      ),
+    respondError(
+      respond,
+      ErrorCodes.INVALID_REQUEST,
+      "node.invoke does not allow Claude agent runs; use sessions.catalog.continue",
+      { details: { command } },
     );
     return true;
   },

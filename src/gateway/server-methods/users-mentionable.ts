@@ -1,8 +1,8 @@
 import {
   ErrorCodes,
-  errorShape,
   validateUsersMentionableParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { respondError } from "./response.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
@@ -12,13 +12,10 @@ export const usersMentionableHandlers: GatewayRequestHandlers = {
       return;
     }
     if (!context.mentionInbox) {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          ErrorCodes.UNAVAILABLE,
-          "The mention directory is unavailable. Reconnect to retry.",
-        ),
+      respondError(
+        respond,
+        ErrorCodes.UNAVAILABLE,
+        "The mention directory is unavailable. Reconnect to retry.",
       );
       return;
     }
