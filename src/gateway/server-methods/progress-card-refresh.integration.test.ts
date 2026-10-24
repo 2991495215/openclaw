@@ -426,9 +426,10 @@ describe("registered progress refresh admission", () => {
         expect(claim).not.toHaveBeenCalled();
         expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
         expect(getAgentRunContext("original-work")).toMatchObject(visibleProjection);
+        await vi.waitFor(() => expect(queueMessage).toHaveBeenCalledOnce());
         await f.finishDispatch();
         const retry = await refreshCard(f, "active-refresh", undefined, { id: "retry-steer" });
-        expect(retry).toHaveBeenCalledWith(...acceptedResponse());
+        expect(retry).toHaveBeenCalledWith(...terminalResponse());
         expect(queueMessage).toHaveBeenCalledOnce();
         expect(cancel).not.toHaveBeenCalled();
         expectNoChat(f);
