@@ -11,6 +11,7 @@ import {
 } from "../../api/gateway-socket.test-support.ts";
 import { GatewayBrowserClient } from "../../api/gateway.ts";
 import { createConnectionBootstrapCoordinator } from "../../app/connection-bootstrap.ts";
+import { listStoredChatOutboxes } from "../../lib/chat/outbox-store-projection.ts";
 import { createSessionCapability } from "../../lib/sessions/index.ts";
 import { createGatewayHarness } from "../../lib/sessions/session-capability.test-support.ts";
 import {
@@ -28,7 +29,6 @@ import { resumeStoredChatOutboxes } from "./chat-send-actions.ts";
 import { handleSendChat } from "./chat-send-submit.ts";
 import { switchChatModel } from "./chat-session.ts";
 import { getPendingChatPickerPatch } from "./chat-settings-patches.ts";
-import { listStoredChatOutboxes } from "./composer-persistence.ts";
 import { useChatSendBrowserFixture } from "./outbox-browser.test-support.ts";
 import { prepareOutboxPayload } from "./outbox-payloads.ts";
 
