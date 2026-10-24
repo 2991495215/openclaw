@@ -27,13 +27,11 @@ export function createMarkdownRef(
   });
   let current: MarkdownDomReconciler | undefined;
   const [tick, setTick] = createSignal(0);
-  let frame: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let pendingPreview = false;
   const cancel = () => {
-    if (frame !== undefined) {
-      cancelAnimationFrame(frame);
-      frame = undefined;
-    }
+    clearTimeout(timer);
+    timer = undefined;
     pendingPreview = false;
   };
   createEffect(
@@ -47,7 +45,7 @@ export function createMarkdownRef(
         typeof content !== "string" &&
         content.deferFormatting &&
         !value.media &&
-        frame !== undefined &&
+        timer !== undefined &&
         reconciler.canPreview(content.messageKey, content.source),
       );
       // Formatting stays in the tracked phase: late code highlighting must still invalidate it.
@@ -77,14 +75,14 @@ export function createMarkdownRef(
         reconciler.update(content.messageKey, content.source, parts!, value.media);
       }
       if (typeof content !== "string" && content.deferFormatting && !value.media) {
-        // Sparse deltas render directly; only arrivals sharing this frame need a catch-up.
-        frame = requestAnimationFrame(() => {
-          frame = undefined;
+        // Text stays immediate; a burst shares one bounded formatting window.
+        timer = setTimeout(() => {
+          timer = undefined;
           if (pendingPreview) {
             pendingPreview = false;
             setTick((previous) => previous + 1);
           }
-        });
+        }, 50);
       }
       value.onUpdate?.();
     },
