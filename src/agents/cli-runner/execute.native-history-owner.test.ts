@@ -104,11 +104,13 @@ describe("native login history owner at execution", () => {
       };
       context.preparedBackend.secretInput = {
         fd: 3,
+        fingerprint: "synthetic-credential-fingerprint",
         createData: () => Buffer.from("synthetic-descriptor-credential"),
       };
 
       await expect(executePreparedCliRun(context)).resolves.toMatchObject({ text: "done" });
-      const childEnv = supervisorSpawnMock.mock.lastCall?.[0].env;
+      const spawned = supervisorSpawnMock.mock.lastCall?.[0];
+      const childEnv = spawned?.env;
       const [historyEnv] = vi.mocked(writer.bindExecutionEnv).mock.calls[0] ?? [];
       for (const env of [childEnv, historyEnv]) {
         for (const name of Object.keys(credentials)) {
@@ -119,7 +121,7 @@ describe("native login history owner at execution", () => {
         expect(env?.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING).toBe("1");
         expect(env?.MAX_THINKING_TOKENS).toBe("16384");
       }
-      expect(supervisorSpawnMock.mock.lastCall?.[0].secretInput === undefined).toBe(true);
+      expect(spawned?.mode === "child" && spawned.secretInput === undefined).toBe(true);
     },
   );
 
