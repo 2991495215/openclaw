@@ -129,14 +129,6 @@ export function installControlUiResourceCounts() {
     clearTimeout(timer);
   };
 
-  const mediaQueries = new WeakSet<EventTarget>();
-  const matchMedia = window.matchMedia.bind(window);
-  window.matchMedia = (query) => {
-    const media = matchMedia(query);
-    mediaQueries.add(media);
-    counts.mediaQueries++;
-    return media;
-  };
   type Listener = EventListenerOrEventListenerObject;
   type Registration = {
     type: string;
@@ -145,82 +137,78 @@ export function installControlUiResourceCounts() {
     wrapped: EventListener;
     remove: () => void;
   };
-  const registrations = new WeakMap<EventTarget, Registration[]>();
-  const add = EventTarget.prototype.addEventListener.call.bind(
-    EventTarget.prototype.addEventListener,
-  );
-  const remove = EventTarget.prototype.removeEventListener.call.bind(
-    EventTarget.prototype.removeEventListener,
-  );
-  EventTarget.prototype.addEventListener = function (type, listener, options) {
-    const kind =
-      this === window
-        ? "window"
-        : this === document
-          ? "document"
-          : mediaQueries.has(this) && type === "change"
-            ? "mediaQuery"
-            : undefined;
-    if (!kind || !listener || (typeof options === "object" && options.signal?.aborted)) {
-      return add(this, type, listener, options);
-    }
-    const capture = typeof options === "boolean" ? options : (options?.capture ?? false);
-    const entries = registrations.get(this) ?? [];
-    const existing = entries.find(
-      (entry) => entry.type === type && entry.listener === listener && entry.capture === capture,
-    );
-    if (existing) {
-      return add(this, type, existing.wrapped, options);
-    }
-    const signal = typeof options === "object" ? options.signal : undefined;
-    const once = typeof options === "object" && options.once;
-    const entry: Registration = {
-      type,
-      listener,
-      capture,
-      wrapped(event) {
-        if (once) {
-          entry.remove();
-        }
-        if (typeof listener === "function") {
-          listener.call(this, event);
-        } else {
-          listener.handleEvent(event);
-        }
-      },
-      remove: () => {
-        const index = entries.indexOf(entry);
-        if (index >= 0) {
-          entries.splice(index, 1);
-          counts.listeners[kind]--;
-          if (signal) {
-            remove(signal, "abort", entry.remove);
+  const trackListeners = (
+    target: EventTarget,
+    kind: keyof ControlUiResourceCounts["listeners"],
+  ) => {
+    const entries: Registration[] = [];
+    const add = target.addEventListener.bind(target);
+    const remove = target.removeEventListener.bind(target);
+    target.addEventListener = (type, listener, options) => {
+      if (
+        (kind === "mediaQuery" && type !== "change") ||
+        !listener ||
+        (typeof options === "object" && options.signal?.aborted)
+      ) {
+        return add(type, listener, options);
+      }
+      const capture = typeof options === "boolean" ? options : (options?.capture ?? false);
+      const existing = entries.find(
+        (entry) => entry.type === type && entry.listener === listener && entry.capture === capture,
+      );
+      if (existing) {
+        return add(type, existing.wrapped, options);
+      }
+      const signal = typeof options === "object" ? options.signal : undefined;
+      const once = typeof options === "object" && options.once;
+      const entry: Registration = {
+        type,
+        listener,
+        capture,
+        wrapped(event) {
+          if (once) {
+            entry.remove();
           }
-        }
-      },
+          if (typeof listener === "function") {
+            listener.call(this, event);
+          } else {
+            listener.handleEvent(event);
+          }
+        },
+        remove: () => {
+          const index = entries.indexOf(entry);
+          if (index >= 0) {
+            entries.splice(index, 1);
+            counts.listeners[kind]--;
+            signal?.removeEventListener("abort", entry.remove);
+          }
+        },
+      };
+      add(type, entry.wrapped, options);
+      entries.push(entry);
+      counts.listeners[kind]++;
+      signal?.addEventListener("abort", entry.remove, { once: true });
     };
-    add(this, type, entry.wrapped, options);
-    entries.push(entry);
-    registrations.set(this, entries);
-    counts.listeners[kind]++;
-    if (signal) {
-      add(signal, "abort", entry.remove, { once: true });
-    }
-  };
-  EventTarget.prototype.removeEventListener = function (type, listener, options) {
-    const capture = typeof options === "boolean" ? options : (options?.capture ?? false);
-    const entry = registrations
-      .get(this)
-      ?.find(
+    target.removeEventListener = (type, listener, options) => {
+      const capture = typeof options === "boolean" ? options : (options?.capture ?? false);
+      const entry = entries.find(
         (candidate) =>
           candidate.type === type &&
           candidate.listener === listener &&
           candidate.capture === capture,
       );
-    if (entry) {
-      entry.remove();
-    }
-    remove(this, type, entry?.wrapped ?? listener, options);
+      entry?.remove();
+      remove(type, entry?.wrapped ?? listener, options);
+    };
+  };
+  trackListeners(window, "window");
+  trackListeners(document, "document");
+  const matchMedia = window.matchMedia.bind(window);
+  window.matchMedia = (query) => {
+    const media = matchMedia(query);
+    trackListeners(media, "mediaQuery");
+    counts.mediaQueries++;
+    return media;
   };
 }
 

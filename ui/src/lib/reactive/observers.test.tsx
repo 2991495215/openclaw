@@ -107,7 +107,7 @@ it("waits for rendered refs before reading observer targets", () => {
 
 it("shares resize delivery without mixing subscribers or retaining retired targets", async () => {
   let deliver!: ResizeObserverCallback;
-  let native!: ResizeObserver;
+  const nativeObservers: ResizeObserver[] = [];
   const observed = new Set<Element>();
   const create = vi.fn();
   vi.stubGlobal(
@@ -116,7 +116,7 @@ it("shares resize delivery without mixing subscribers or retaining retired targe
       constructor(callback: ResizeObserverCallback) {
         create();
         deliver = callback;
-        native = this;
+        nativeObservers.push(this);
       }
       observe(target: Element) {
         observed.add(target);
@@ -142,7 +142,7 @@ it("shares resize delivery without mixing subscribers or retaining retired targe
   onTestFinished(releaseFirst);
   onTestFinished(releaseSecond);
   expect(create).toHaveBeenCalledOnce();
-  deliver([resizeEntry(first), resizeEntry(second)], native);
+  deliver([resizeEntry(first), resizeEntry(second)], nativeObservers[0]!);
   expect(batches).toEqual([[first, second]]);
   expect(secondCallback).not.toHaveBeenCalled();
   expect(observed).toEqual(new Set([first, second]));
@@ -161,7 +161,7 @@ it("shares resize delivery without mixing subscribers or retaining retired targe
 
 it("reports subscriber errors without starving independent observation", () => {
   let deliver!: ResizeObserverCallback;
-  let native!: ResizeObserver;
+  const nativeObservers: ResizeObserver[] = [];
   const report = vi.fn();
   vi.stubGlobal("reportError", report);
   vi.stubGlobal(
@@ -169,7 +169,7 @@ it("reports subscriber errors without starving independent observation", () => {
     class {
       constructor(callback: ResizeObserverCallback) {
         deliver = callback;
-        native = this;
+        nativeObservers.push(this);
       }
       observe() {}
       unobserve() {}
@@ -185,7 +185,7 @@ it("reports subscriber errors without starving independent observation", () => {
   );
   const receive = vi.fn();
   onTestFinished(observeResize([target], receive));
-  deliver([resizeEntry(target)], native);
+  deliver([resizeEntry(target)], nativeObservers[0]!);
   expect(report).toHaveBeenCalledExactlyOnceWith(failure);
   expect(receive).toHaveBeenCalledOnce();
 });
