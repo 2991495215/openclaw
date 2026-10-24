@@ -628,6 +628,7 @@ export function readSessionRowLineage(
 
 export function acquireSessionRowEntry(params: {
   row: Row;
+  rows: ReadonlyMap<string, Row>;
   storedEntry: SessionEntry | undefined;
   cfg: Inputs["cfg"];
   context: SessionListRowContext;
@@ -652,6 +653,9 @@ export function acquireSessionRowEntry(params: {
     !isDeepStrictEqual(storedEntry, row.storedEntry) ||
     entryChanged;
   if (!changed && row.sharingEntry === row.storedEntry && !row.entryAcquisitionPending) {
+    if (params.rows.get(identity(row)) !== row) {
+      put(row);
+    }
     return row;
   }
   // Archive custody can retain new stored metadata before its lineage is acquired.

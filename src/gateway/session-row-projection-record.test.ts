@@ -4,7 +4,6 @@ import { projectGatewaySessionEntry } from "../config/sessions/combined-store-ga
 import type { InternalSessionEntry as SessionEntry } from "../config/sessions/types.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { filterSessionEntries } from "./session-list-filters.js";
-import { createSessionRowEntryAcquirer } from "./session-row-projection-acquisition.js";
 import * as records from "./session-row-projection-record.js";
 import { createSessionRowProjectionRevisions } from "./session-row-projection-revisions.js";
 import * as display from "./session-utils-display.js";
@@ -46,6 +45,7 @@ it("reuses search fields across equal reads and timestamp changes, but refreshes
     const acquire = (entry: SessionEntry) => {
       row = records.acquireSessionRowEntry({
         row,
+        rows: new Map([[records.identity(row), row]]),
         storedEntry: structuredClone(entry),
         cfg,
         context,
@@ -107,14 +107,17 @@ it("keeps accepted facts and sharing revisions when database reads return equal 
       rows.set(records.identity(next), next);
       revisions.replace(row, next);
     });
-    const acquire = createSessionRowEntryAcquirer({
+    const acquisition = {
       rows,
-      prepare: () => ({ cfg, context }),
+      cfg,
+      context,
       remove: noop,
       put,
       markRelated: noop,
       archive,
-    });
+    };
+    const acquire = (row: records.Row, storedEntry: SessionEntry) =>
+      records.acquireSessionRowEntry({ ...acquisition, row, storedEntry });
     const next = acquire(row, structuredClone(original));
     expect(next).toBe(row);
     expect(put).not.toHaveBeenCalled();
@@ -168,6 +171,7 @@ it("preserves deep change detection for entry metadata and unordered parent memb
           const next = records.acquireSessionRowEntry({
             ...acquisition,
             row,
+            rows: new Map([[records.identity(row), row]]),
             storedEntry,
             markRelated: (related) => marked.push(related),
           });

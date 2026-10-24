@@ -19,19 +19,14 @@ export function readSessionListSelectionFacts(
     heartbeatIsolatedBaseSessionKey?: string;
     createdSurface?: "plugin-dock";
     chatType?: string;
-  } & Omit<Parameters<typeof isSystemCreatedSessionRow>[0], "key" | "classification"> &
-    Partial<
-      Pick<
-        SessionEntry,
-        | "autoLabel"
-        | "topicName"
-        | "groupChannel"
-        | "space"
-        | "delivery"
-        | "modelProvider"
-        | "model"
-      >
-    >,
+    autoLabel?: string;
+    topicName?: string;
+    groupChannel?: string;
+    space?: string;
+    delivery?: SessionEntry["delivery"];
+    modelProvider?: string;
+    model?: string;
+  } & Omit<Parameters<typeof isSystemCreatedSessionRow>[0], "key" | "classification">,
 ) {
   const parsed = parseAgentSessionKey(key);
   return {
