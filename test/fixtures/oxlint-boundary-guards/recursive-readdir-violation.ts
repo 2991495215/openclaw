@@ -42,9 +42,9 @@ fs.readdirSync("root", "utf8");
 fs.readdir("root", () => {});
 fs.mkdirSync("root", { recursive: true });
 const local = { readdirSync(_root: string, _options: unknown) {} };
-local.readdirSync("root", options);
+local.readdirSync("root", { recursive: true });
 function shadowed(fs: typeof local) {
-  fs.readdirSync("root", options);
+  fs.readdirSync("root", { recursive: true });
 }
 {
   const recursive = false;

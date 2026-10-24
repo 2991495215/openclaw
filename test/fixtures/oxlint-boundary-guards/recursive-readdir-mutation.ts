@@ -42,3 +42,43 @@ fs.readdirSync("root", captured);
 function mutateCaptured() {
   change(captured);
 }
+
+const loopAssigned = { recursive: false };
+for (let i = 0; i < 2; i++) {
+  fs.readdirSync("root", loopAssigned);
+  Object.assign(loopAssigned, { recursive: true });
+}
+const loopAliased = { recursive: false };
+for (const directory of ["one", "two"]) {
+  fs.readdirSync(directory, loopAliased);
+  const alias = loopAliased;
+  alias.recursive = true;
+}
+const moduleOptions = { recursive: false };
+export function readLater() {
+  fs.readdirSync("root", moduleOptions);
+}
+Object.assign(moduleOptions, { recursive: true });
+const whileOptions = { recursive: false };
+while (condition()) {
+  fs.readdirSync("root", whileOptions);
+  change(whileOptions);
+}
+const doOptions = { recursive: false };
+do {
+  fs.readdirSync("root", doOptions);
+  change(doOptions);
+} while (condition());
+const forInOptions = { recursive: false };
+for (const directory in { one: 1, two: 2 }) {
+  fs.readdirSync(directory, forInOptions);
+  change(forInOptions);
+}
+// A later escape in the same straight-line function cannot affect this call.
+function readBeforeEscape() {
+  const local = { recursive: false };
+  fs.readdirSync("root", local);
+  change(local);
+}
+declare function condition(): boolean;
+void readBeforeEscape;

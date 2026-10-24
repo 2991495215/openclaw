@@ -1,6 +1,7 @@
 // Static resource-safety guard, not whole-program dataflow analysis. Const aliases and
 // literal builtin module names are resolved. Reassigned/let aliases, computed module or
 // method names, and filesystem functions hidden behind other modules remain unsupported.
+// Escape-sequence names (fs["read\x64ir"]) bypass the prefilter; deliberate obfuscation is out of scope.
 const FS_MODULES = new Map([
   ["fs", "fs"],
   ["node:fs", "fs"],
@@ -18,6 +19,13 @@ const WRAPPERS = new Set([
   "TSNonNullExpression",
   "TSSatisfiesExpression",
   "TSTypeAssertion",
+]);
+const LOOPS = new Set([
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "WhileStatement",
+  "DoWhileStatement",
 ]);
 const UNKNOWN = Symbol("unknown");
 const ABSENT = Symbol("absent");
@@ -130,7 +138,14 @@ export default {
         return node.name;
       }
       if (definition?.type === "ImportBinding") {
-        const receiver = FS_MODULES.get(definition.parent.source.value);
+        const declaration = definition.parent;
+        const source =
+          declaration.type === "TSImportEqualsDeclaration"
+            ? declaration.moduleReference.type === "TSExternalModuleReference"
+              ? declaration.moduleReference.expression
+              : undefined
+            : declaration.source;
+        const receiver = FS_MODULES.get(propertyName(source, true));
         return definition.node.type === "ImportSpecifier"
           ? member(receiver, propertyName(definition.node.imported))
           : receiver;
@@ -176,11 +191,26 @@ export default {
       if (variable.defs[0]?.parent.parent?.type === "ExportNamedDeclaration") {
         return false;
       }
+      const useScope = context.sourceCode.getScope(use).variableScope;
+      let insideLoop = false;
+      for (let parent = use.parent; parent && parent !== useScope.block; parent = parent.parent) {
+        if (LOOPS.has(parent.type)) {
+          insideLoop = true;
+          break;
+        }
+      }
       return variable.references.every((reference) => {
         if (reference.init) {
           return true;
         }
         const captured = reference.from.variableScope !== variable.scope.variableScope;
+        // Source order is execution order only within one non-looping scope. A later
+        // escape can affect the next iteration or a function invoked after module setup.
+        const laterInSameRun =
+          !captured &&
+          !insideLoop &&
+          reference.from.variableScope === useScope &&
+          reference.identifier.start >= use.start;
         let node = reference.identifier;
         while (WRAPPERS.has(node.parent?.type)) {
           node = node.parent;
@@ -198,13 +228,9 @@ export default {
             return false;
           }
           // Calling an object's method can mutate it. Reading a field does not hand it out.
-          return (
-            (!captured && reference.identifier.start >= use.start) ||
-            parent?.type !== "CallExpression" ||
-            parent.callee !== node
-          );
+          return laterInSameRun || parent?.type !== "CallExpression" || parent.callee !== node;
         }
-        if (!captured && reference.identifier.start >= use.start) {
+        if (laterInSameRun) {
           return true;
         }
         const parent = node.parent;

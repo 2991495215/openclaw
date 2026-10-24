@@ -194,6 +194,11 @@ function validateSkillFile(
   filePath: string,
   content: string,
 ): string | undefined {
+  if (filePath.split("/").includes("node_modules")) {
+    throw new WorkshopWriteError(
+      "node_modules is not a skill support directory. Put authored files in scripts/ or references/ instead.",
+    );
+  }
   if (filePath !== SKILL_FILE && scanSupportFilePath(filePath).length > 0) {
     throw new WorkshopWriteError(
       `Refused: a file path in "${name}" looks like it contains a credential. Name the file after its topic (e.g. "references/api.md"); never store real secrets in skills.`,

@@ -210,6 +210,18 @@ it("refuses invalid or unsafe writes with actionable errors and leaves files unt
   expect(await versions()).toEqual([]);
 });
 
+it("refuses support writes into dependency directories before creating files or versions", async () => {
+  await create("Visible procedure");
+  for (const file of ["scripts/node_modules/x.js", "references/cache/node_modules/x.md"]) {
+    await refuses(write(file, "hidden content"), /node_modules.*not a skill support directory/);
+    await expect(fs.stat(skillPath("deploy", ...file.split("/")))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  }
+  expect((await view()).files).toEqual(["SKILL.md"]);
+  expect(await versions()).toEqual([]);
+});
+
 it("rejects a patch whose old text matches overlapping places", async () => {
   await create("run\nrun\nrun");
   await refuses(patch("run\nrun", "go"), /matches 2 places/);
