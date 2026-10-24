@@ -154,6 +154,7 @@ try {
         pairedByDeviceId: Object.fromEntries(devices.map((device) => [device.deviceId, device])),
       },
       stateDir,
+      "both",
     );
     writeFileSync(preparedPath, JSON.stringify({ fixtureHash, deviceCount }));
     writeFileSync(values.output, JSON.stringify({ mode, fixtureHash, deviceCount }));
