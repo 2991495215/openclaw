@@ -596,6 +596,8 @@ export const gatewayMethodsTestExclude = [
 
 // Gateway server tests that need private process state or a private module graph.
 export const gatewayServerIsolatedTestFiles = [
+  // Temporary tree-event comparison retains its own reconciler module graph.
+  "src/gateway/server.session-tree-sort-latency.test.ts",
   // Real provider and subagent lifecycle registrations must survive the whole scenario.
   "src/gateway/gateway.prompt-cache.test.ts",
   // Native provider imports must not retain a previous file's retired shared-state owner.

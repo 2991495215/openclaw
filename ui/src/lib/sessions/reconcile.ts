@@ -59,11 +59,14 @@ function replaceSessionResultRow(
   result: SessionsListResult,
   key: string,
   row: GatewaySessionRow | undefined,
+  sort = true,
 ): SessionsListResult {
   const sessions = result.sessions.filter((candidate) => candidate.key !== key);
   if (row) {
     sessions.push(row);
-    sessions.sort(compareSessionRowsByUpdatedAt);
+    if (sort) {
+      sessions.sort(compareSessionRowsByUpdatedAt);
+    }
   }
   return { ...result, count: sessions.length, sessions };
 }
@@ -140,6 +143,7 @@ export function preserveCurrentSessionRow(
 function reconcileSessionChangedSnapshot(
   result: SessionsListResult | null,
   parsed: ParsedSessionChangedEvent | null,
+  order: { pending: boolean },
   options: SessionReconcileOptions = {},
   project?: SessionChangedRowProjection,
 ): SessionChangedResult {
@@ -148,11 +152,22 @@ function reconcileSessionChangedSnapshot(
   }
   const [info] = parsed;
   const selectedGlobalAgentId = info?.agentId ?? options.selectedGlobalAgentId ?? null;
-  const existing = info
-    ? result?.sessions.find((candidate) =>
-        matchesExistingSession(candidate, info.key, selectedGlobalAgentId),
-      )
-    : undefined;
+  let existing: GatewaySessionRow | undefined;
+  if (info) {
+    for (const candidate of result?.sessions ?? []) {
+      if (!matchesExistingSession(candidate, info.key, selectedGlobalAgentId)) {
+        continue;
+      }
+      // After a replacement the baseline list is sorted. Preserve its first
+      // matching alias without sorting unrelated rows between tree snapshots.
+      if (!existing || compareSessionRowsByUpdatedAt(candidate, existing) < 0) {
+        existing = candidate;
+      }
+      if (!order.pending) {
+        break;
+      }
+    }
+  }
   const { row, admittedRow, reconciled, eventTs, ownershipChanged, disposition, ...eventResult } =
     reconcileParsedSessionChangedRow(existing, parsed, options, project);
   if (disposition === "outside-scope") {
@@ -173,7 +188,9 @@ function reconcileSessionChangedSnapshot(
   if (!result || !existing) {
     return { applied: false, result };
   }
-  const next = row === existing ? result : replaceSessionResultRow(result, existing.key, row);
+  const next =
+    row === existing ? result : replaceSessionResultRow(result, existing.key, row, false);
+  order.pending ||= row !== undefined && row !== existing;
   const timestamped = eventTs !== undefined && eventTs > next.ts ? { ...next, ts: eventTs } : next;
   // Facets describe the whole query, so the list adapter owns their invalidation.
   const published = ownershipChanged ? { ...timestamped, owners: undefined } : timestamped;
@@ -190,6 +207,7 @@ export function reconcileSessionChanged(
   let nextResult = result;
   let primary: SessionChangedResult | undefined;
   const admittedRows: GatewaySessionRow[] = [];
+  const order = { pending: false };
   for (const snapshot of sessionChangedSnapshots(payload)) {
     const parsed = parseSessionChangedEvent(snapshot);
     const info = parsed?.[0];
@@ -205,12 +223,17 @@ export function reconcileSessionChanged(
     ) {
       continue;
     }
-    const changed = reconcileSessionChangedSnapshot(nextResult, parsed, options, project);
+    const changed = reconcileSessionChangedSnapshot(nextResult, parsed, order, options, project);
     primary ??= changed;
     nextResult = changed.result;
     if (changed.admittedRow) {
       admittedRows.push(changed.admittedRow);
     }
+  }
+  if (order.pending && nextResult) {
+    // A retained replacement owns a new array. Deletions and unchanged events
+    // keep their original ordering and identity when no replacement occurred.
+    nextResult.sessions.sort(compareSessionRowsByUpdatedAt);
   }
   return {
     ...(primary ?? { applied: false }),
