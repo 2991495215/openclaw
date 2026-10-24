@@ -1,4 +1,9 @@
 import {
+  freezeJsonSnapshot,
+  freezeTrustedJsonSnapshot,
+  isDeeplyFrozenPlainData,
+} from "../shared/immutable-data.js";
+import {
   isInternalDiagnosticEventInterested,
   type InternalDiagnosticEventInterest,
 } from "./diagnostic-event-listener-presence.js";
@@ -20,29 +25,20 @@ export type DiagnosticEventMetadata = Readonly<{
   trusted: boolean;
 }>;
 
-// Only proven immutable graphs enter this set; their lifetime follows the snapshot.
-const immutableSnapshots = new WeakSet<object>();
-
-export function createDiagnosticMetadataForListener<T extends object>(metadata: T): Readonly<T> {
-  return Object.freeze({ ...metadata });
-}
-
 /** Owned envelopes contain data properties; their nested values still belong to producers. */
 export function cloneDiagnosticValueForListener<T extends object>(value: T, owned = false): T {
+  if (isDeeplyFrozenPlainData(value)) {
+    return value;
+  }
   if (
-    immutableSnapshots.has(value) ||
-    (owned &&
-      Object.getOwnPropertySymbols(value).length === 0 &&
-      Object.values(value).every((nested) => isImmutableDiagnosticValue(nested)))
+    owned &&
+    Object.getOwnPropertySymbols(value).length === 0 &&
+    Object.values(value).every(isDeeplyFrozenPlainData)
   ) {
-    immutableSnapshots.add(value);
-    return Object.freeze(value);
+    return freezeTrustedJsonSnapshot(value);
   }
-  const snapshot = structuredClone(value);
-  if (freezeDiagnosticValue(snapshot, new WeakSet())) {
-    immutableSnapshots.add(snapshot);
-  }
-  return snapshot;
+  // Opaque values stay listener-local; the shared owner only admits plain graphs.
+  return freezeJsonSnapshot(structuredClone(value));
 }
 
 /** Capture lazily so filtered listeners never read the producer's payload. */
@@ -52,70 +48,12 @@ export function createDiagnosticValueForListeners<T extends object>(
 ): () => T {
   let shared: T | undefined;
   return () => {
-    if (shared) {
-      return shared;
-    }
-    const snapshot = cloneDiagnosticValueForListener(value, owned);
-    if (immutableSnapshots.has(snapshot)) {
+    const snapshot = shared ?? cloneDiagnosticValueForListener(value, owned);
+    if (isDeeplyFrozenPlainData(snapshot)) {
       shared = snapshot;
     }
     return snapshot;
   };
-}
-
-function isImmutableDiagnosticValue(value: unknown, seen?: WeakSet<object>): boolean {
-  if (!value || typeof value !== "object") {
-    return typeof value !== "function" && typeof value !== "symbol";
-  }
-  if (immutableSnapshots.has(value) || seen?.has(value)) {
-    return true;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (
-    !Object.isFrozen(value) ||
-    (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null)
-  ) {
-    return false;
-  }
-  const visited = seen ?? new WeakSet();
-  visited.add(value);
-  return Reflect.ownKeys(value).every((key) => {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-    // Frozen getters can still return mutable data; only plain data is shareable.
-    return (
-      typeof key !== "symbol" &&
-      "value" in descriptor &&
-      isImmutableDiagnosticValue(descriptor.value, visited)
-    );
-  });
-}
-
-export function deepFreezeDiagnosticValue<T>(value: T): T {
-  freezeDiagnosticValue(value, new WeakSet());
-  return value;
-}
-
-function freezeDiagnosticValue(value: unknown, seen: WeakSet<object>): boolean {
-  if (!value || typeof value !== "object" || seen.has(value)) {
-    return true;
-  }
-  // Nonempty typed arrays cannot be frozen; keep buffer views listener-local.
-  if (ArrayBuffer.isView(value)) {
-    return false;
-  }
-  seen.add(value);
-  // Cloned plain graphs are immutable after freezing; Map/Date/etc. retain
-  // mutable internals and must keep their individual listener copies.
-  const prototype = Object.getPrototypeOf(value);
-  let shareable =
-    prototype === Object.prototype || prototype === Array.prototype || prototype === null;
-  for (const nested of Object.values(value)) {
-    if (!freezeDiagnosticValue(nested, seen)) {
-      shareable = false;
-    }
-  }
-  Object.freeze(value);
-  return shareable;
 }
 
 export function enrichDiagnosticEvent<const T extends object>(
@@ -123,20 +61,17 @@ export function enrichDiagnosticEvent<const T extends object>(
   event: T,
   captureActiveTrace = true,
 ): T & DiagnosticBaseEvent {
-  // SAFETY: The owned envelope receives producer fields and required metadata before it escapes.
-  const enriched = {} as DiagnosticBaseEvent & Record<string, unknown>;
-  // SAFETY: Dispatcher inputs are event records; blocked keys are excluded during the copy.
-  for (const [key, value] of Object.entries(event as Record<string, unknown>)) {
+  const enriched: Record<string, unknown> = {};
+  for (const key of Object.keys(event)) {
     if (isBlockedObjectKey(key)) {
       continue;
     }
-    enriched[key] = value;
+    enriched[key] = Reflect.get(event, key);
   }
   if (captureActiveTrace) {
     enriched.trace ??= getActiveDiagnosticTraceContext();
   }
-  state.seq += 1;
-  enriched.seq = state.seq;
+  enriched.seq = ++state.seq;
   enriched.ts = Date.now();
   // SAFETY: The producer fields have been copied and the dispatcher metadata is now populated.
   return enriched as T & DiagnosticBaseEvent;
@@ -195,10 +130,6 @@ export function captureQueuedDiagnosticEvent(
     );
     return false;
   }
-}
-
-export function createInternalDiagnosticMetadata(trusted: boolean): DiagnosticEventMetadata {
-  return { internal: true, trusted };
 }
 
 /** Returns whether listener metadata marks dispatcher-internal provenance. */

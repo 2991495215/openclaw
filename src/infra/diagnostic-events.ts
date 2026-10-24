@@ -26,8 +26,6 @@ import {
   captureQueuedDiagnosticEvent,
   enrichDiagnosticEvent,
   cloneDiagnosticValueForListener,
-  createDiagnosticMetadataForListener,
-  createInternalDiagnosticMetadata,
   createDiagnosticValueForListeners,
 } from "./diagnostic-event-snapshot.js";
 import {
@@ -984,10 +982,7 @@ function dispatchDiagnosticEvent(
           continue;
         }
         try {
-          listener(
-            eventForListener(),
-            (metadataForListener ??= createDiagnosticMetadataForListener(metadata)),
-          );
+          listener(eventForListener(), (metadataForListener ??= Object.freeze({ ...metadata })));
         } catch (err) {
           const errorMessage =
             err instanceof Error ? formatErrorStackWithMessage(err) : String(err);
@@ -1003,7 +998,7 @@ function dispatchDiagnosticEvent(
       }
       try {
         const event = eventForListener();
-        metadataForListener ??= createDiagnosticMetadataForListener(metadata);
+        metadataForListener ??= Object.freeze({ ...metadata });
         const otel = isTrustedOtelDiagnosticListener(listener);
         let privateValue = EMPTY_DIAGNOSTIC_PRIVATE_DATA;
         if (interest?.includePrivateData !== false) {
@@ -1102,7 +1097,7 @@ function dispatchAsyncDiagnosticDropSummary(state: DiagnosticEventsGlobalState):
     maxQueueLength: MAX_ASYNC_DIAGNOSTIC_EVENTS,
     drainBatchSize: MAX_ASYNC_DIAGNOSTIC_EVENTS_PER_TURN,
   });
-  dispatchDiagnosticEvent(state, event, createInternalDiagnosticMetadata(false));
+  dispatchDiagnosticEvent(state, event, { internal: true, trusted: false });
 }
 
 /** Waits until async diagnostic events queued when called are no longer pending. */
@@ -1201,7 +1196,8 @@ function emitDiagnosticEventWithTrust(
   const { hostPluginId, internal = false, privateData } = options;
   const trustedTraceContext = options.trustedTraceContext === true;
   const metadata: InternalDiagnosticEventMetadata = {
-    ...(internal ? createInternalDiagnosticMetadata(trusted) : { trusted }),
+    trusted,
+    ...(internal ? { internal: true } : {}),
     ...(options.toolExecutionLiveness
       ? { [TOOL_EXECUTION_LIVENESS_METADATA_KEY]: options.toolExecutionLiveness }
       : {}),
@@ -1243,7 +1239,7 @@ function emitDiagnosticEventWithTrust(
     }
     prepareDiagnosticTracePropagation(
       cloneDiagnosticValueForListener(enriched),
-      createDiagnosticMetadataForListener(metadata),
+      Object.freeze({ ...metadata }),
     );
   }
   if (queued) {
@@ -1526,7 +1522,7 @@ export function hasPendingInternalDiagnosticEvent(
     } catch {
       continue;
     }
-    if (predicate(event, createDiagnosticMetadataForListener(entry.metadata))) {
+    if (predicate(event, Object.freeze({ ...entry.metadata }))) {
       return true;
     }
   }
