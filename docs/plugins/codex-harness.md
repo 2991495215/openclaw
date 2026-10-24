@@ -24,7 +24,9 @@ Managed inference proxy restarts do not replace an otherwise reusable native
 thread. Thread identity uses the proxy's upstream provider and routing policy, not
 its temporary loopback address. Upstream, authentication-profile, and creation-time
 policy changes still invalidate thread reuse; live requests continue through the
-current owned proxy.
+current owned proxy. Context-only projection refreshes use that same logical
+inference identity when background work retains its predecessor, rather than
+comparing the private relay URL with the logical route fingerprint.
 
 If active work still claims a native thread, OpenClaw rejects configuration
 changes that would release it without trying fallback models. Wait for that work

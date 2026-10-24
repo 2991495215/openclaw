@@ -9,9 +9,10 @@ import {
   protectCodexAppServerLiveThread,
 } from "./client-runtime.js";
 import type { RetainedLiveThread } from "./client-thread-owner.js";
+import { getCodexInferenceThread, ownCodexInferenceClient } from "./inference-routing.js";
 import { createCodexNativeSubagentHistoryOwner } from "./native-subagent-history-owner.js";
 import type { CodexNativeSubagentPendingAssignment } from "./native-subagent-pending-assignments.js";
-import type { RpcRequest } from "./protocol.js";
+import type { JsonObject, RpcRequest } from "./protocol.js";
 import {
   bindProductionHarnessHostCapabilitiesForTest,
   setupRunAttemptTestHooks,
@@ -23,7 +24,7 @@ import {
 } from "./session-binding.js";
 import { createCodexTestBindingStateStore } from "./session-binding.test-helpers.js";
 import { retireSharedCodexAppServerClientIfCurrent } from "./shared-client.js";
-import { useAutoCleanupTempDirTracker } from "./test-support.js";
+import { stubCodexInferenceTransportEnv, useAutoCleanupTempDirTracker } from "./test-support.js";
 import { startOrResumeThread } from "./thread-lifecycle-run.js";
 import type { CodexStartOrResumeThreadParams } from "./thread-lifecycle-types.js";
 import {
@@ -38,7 +39,15 @@ setupRunAttemptTestHooks();
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(resetThreadLifecycleTestFixtures);
 
-async function fixture(withProjection = false, pluginFingerprint?: () => string) {
+async function fixture(
+  withProjection = false,
+  pluginFingerprint?: () => string,
+  inferenceConfig?: JsonObject,
+) {
+  if (inferenceConfig) {
+    stubCodexInferenceTransportEnv();
+    onTestFinished(() => vi.unstubAllEnvs());
+  }
   const cwd = tempDirs.make("codex-assignment-rotation-");
   const params = createParams(path.join(cwd, "session.jsonl"), cwd);
   params.disableTools = false;
@@ -70,6 +79,9 @@ async function fixture(withProjection = false, pluginFingerprint?: () => string)
       if (method === "configRequirements/read") {
         return { requirements: null };
       }
+      if (method === "account/read") {
+        return { account: { type: "apiKey" } };
+      }
       if (method === "thread/start") {
         starts += 1;
         return starts > 1 && successor ? await successor() : threadStartResult(`parent-${starts}`);
@@ -80,7 +92,11 @@ async function fixture(withProjection = false, pluginFingerprint?: () => string)
       throw new Error(`Unexpected native lifecycle request: ${method}`);
     },
   });
+  if (inferenceConfig) {
+    ownCodexInferenceClient(wire.client);
+  }
   const options = {
+    ...(inferenceConfig ? { config: inferenceConfig } : {}),
     client: wire.client,
     bindingStore: store,
     params,
@@ -120,6 +136,11 @@ async function fixture(withProjection = false, pluginFingerprint?: () => string)
     appServerRuntimeFingerprint: "connection-A",
   } satisfies CodexStartOrResumeThreadParams;
   const parent = await startOrResumeThread(options);
+  if (inferenceConfig) {
+    const route = getCodexInferenceThread(wire.client, parent.threadId);
+    assert(route);
+    onTestFinished(() => route.close());
+  }
   const releasePredecessor = vi.fn<RetainedLiveThread["release"]>(
     async (threadId, assertCurrent, withCurrent) => {
       await wire.client.request("thread/unsubscribe", { threadId }, { assertCurrent, withCurrent });
@@ -453,6 +474,92 @@ describe("native assignment custody across ordinary parent rotation", () => {
             message === "codex app-server context-engine binding changed; starting a new thread",
         );
         expect(JSON.stringify(diagnostic)).not.toContain("Private policy sentinel");
+      } finally {
+        releaseProtection();
+        await claim.release(f.parent.threadId);
+      }
+    },
+  );
+
+  it("refreshes an owned inference projection without releasing its background predecessor", async () => {
+    const f = await fixture(true, undefined, { openai_base_url: "https://api.example.com/v1" });
+    const route = getCodexInferenceThread(f.client, f.parent.threadId);
+    assert(route);
+    const claim = await claimCodexAppServerLiveThread(f.client, f.parent.threadId);
+    assert(claim);
+    const releaseProtection = protectCodexAppServerLiveThread(f.client, f.parent.threadId);
+    await claim.release(f.parent.threadId);
+    try {
+      const next = await f.rotate({
+        mcpServersFingerprint: "mcp-before",
+        contextEngineProjection: { mode: "thread_bootstrap", epoch: "after", fingerprint: "after" },
+      });
+      expect(next.threadId).toBe("parent-2");
+      expect(f.store.read(f.identity)?.threadId).toBe(next.threadId);
+      expect(next.contextEngine?.projection?.epoch).toBe("after");
+      expect(getCodexInferenceThread(f.client, next.threadId)).toBe(route);
+      expect(f.releasePredecessor).not.toHaveBeenCalled();
+      expect(await f.readAssignments(next.threadId, next)).toEqual(f.assignments);
+    } finally {
+      releaseProtection();
+    }
+    await vi.waitFor(() => expect(f.releasePredecessor).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    "upstream",
+    "auth profile",
+    "persistent instructions",
+    "permission policy",
+    "other config",
+    "foreground",
+  ] as const)(
+    "keeps owned inference background custody when %s disallows projection retention",
+    async (changed) => {
+      const config = { openai_base_url: "https://api.example.com/v1" };
+      const f = await fixture(true, undefined, config);
+      const before = f.readState();
+      const route = getCodexInferenceThread(f.client, f.parent.threadId);
+      assert(route);
+      const claim = await claimCodexAppServerLiveThread(f.client, f.parent.threadId);
+      assert(claim);
+      const releaseProtection = protectCodexAppServerLiveThread(f.client, f.parent.threadId);
+      if (changed !== "foreground") {
+        await claim.release(f.parent.threadId);
+      }
+      const patch: Partial<CodexStartOrResumeThreadParams> = {
+        mcpServersFingerprint: "mcp-before",
+        contextEngineProjection: { mode: "thread_bootstrap", epoch: "after", fingerprint: "after" },
+      };
+      if (changed === "upstream") {
+        patch.config = { ...config, openai_base_url: "https://other.example.com/v1" };
+      } else if (changed === "auth profile") {
+        patch.params = {
+          ...f.options.params,
+          authProfileId: "openai:work",
+          authProfileStore: {
+            version: 1,
+            profiles: {
+              "openai:work": { type: "api_key", provider: "openai", key: "synthetic-work-key" },
+            },
+          },
+        };
+      } else if (changed === "persistent instructions") {
+        patch.developerInstructions = "Changed persistent policy";
+      } else if (changed === "permission policy") {
+        patch.config = { ...config, sandbox_mode: "read-only" };
+      } else if (changed === "other config") {
+        patch.config = { ...config, model_context_window: 100_000 };
+      }
+      try {
+        await expect(f.rotate(patch)).rejects.toThrow("claimed by active work; stop it first");
+        expect(f.readState()).toEqual(before);
+        expect(getCodexInferenceThread(f.client, f.parent.threadId)).toBe(route);
+        expect(f.releasePredecessor).not.toHaveBeenCalled();
+        expect(f.request.mock.calls.filter(([method]) => method === "thread/start")).toHaveLength(
+          1,
+        );
+        expect(await f.readAssignments(f.parent.threadId)).toEqual(f.assignments);
       } finally {
         releaseProtection();
         await claim.release(f.parent.threadId);

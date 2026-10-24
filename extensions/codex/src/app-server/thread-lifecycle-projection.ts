@@ -98,6 +98,7 @@ export async function qualifyCodexProjectionBackgroundWork(
       authProfileId,
       context.dynamicToolsFingerprint,
       binding,
+      params,
     ),
   )
     ? "retained"
