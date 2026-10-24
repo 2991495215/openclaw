@@ -147,6 +147,8 @@ export function createSessionShareNodeCommands(
     isAvailable: ({ config }) => sessionShareGroups(config).length > 0,
     async handle(paramsJSON) {
       const config = api.runtime.config.current();
+      // Routing takes a mutable config view; retain the published snapshot for generation checks.
+      const routingConfig = includeLinks ? api.runtime.config.current({ clone: true }) : undefined;
       const params = sessionCatalogPaging.parseListParams(parseNodeParams(paramsJSON), {
         searchMaxLength: 500,
         messages: parameterMessages,
@@ -210,10 +212,14 @@ export function createSessionShareNodeCommands(
         ...source,
         actors: selected.map(({ entry }) => entry.createdActor),
       });
-      const originalPaths = includeLinks
+      const originalPaths = routingConfig
         ? await Promise.all(
             selected.map(({ agentId, threadId }) =>
-              resolveStoredSessionControlUiPath({ config, agentId, sessionKey: threadId }),
+              resolveStoredSessionControlUiPath({
+                config: routingConfig,
+                agentId,
+                sessionKey: threadId,
+              }),
             ),
           )
         : [];
