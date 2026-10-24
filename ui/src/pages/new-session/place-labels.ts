@@ -3,11 +3,7 @@ export function disambiguate<T>(
   label: (item: T) => string,
   candidates: ReadonlyArray<(item: T) => string | undefined>,
 ): Array<string | undefined> {
-  const groups = new Map<string, number[]>();
-  for (const [index, item] of items.entries()) {
-    const key = label(item);
-    groups.set(key, [...(groups.get(key) ?? []), index]);
-  }
+  const groups = Map.groupBy(items.keys(), (index) => label(items[index]!));
 
   const suffixes: Array<string | undefined> = items.map(() => undefined);
   for (const indices of groups.values()) {

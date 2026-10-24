@@ -13,6 +13,7 @@ import { parseModelPolicyWildcardRef } from "../../../../src/config/model-policy
 import type { AgentConfig } from "../../../../src/config/types.agents.js";
 import type { GitHubToolIdentityConfig, ToolsConfig } from "../../../../src/config/types.tools.js";
 import { formatAgentRuntimeLabel } from "../../../../src/shared/agent-runtime-display.js";
+import { indexFirstByKey } from "../../../../src/shared/dedupe-by-key.js";
 import type {
   AgentIdentityResult,
   AgentsFilesListResult,
@@ -363,18 +364,8 @@ export function buildModelOptions(
   catalog?: ModelCatalogEntry[],
   agentId?: string,
 ) {
-  const seen = new Set<string>();
-  const options: ConfiguredModelOption[] = [];
   const catalogOptions = new Map<string, ConfiguredModelOption>();
   const configuredOptions = resolveConfiguredModels(configForm, agentId);
-  const addOption = (option: ConfiguredModelOption) => {
-    const key = normalizeAgentModelRefForConfig(option.value);
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    options.push(option);
-  };
 
   if (catalog) {
     const configuredAliases = new Map(
@@ -402,18 +393,20 @@ export function buildModelOptions(
     }
   }
 
-  for (const opt of configuredOptions) {
-    // Raw config supplies rows the Gateway catalog lacks and explicit alias edits;
-    // catalog identity and tags remain authoritative for matching rows.
-    const catalogOption = catalogOptions.get(normalizeAgentModelRefForConfig(opt.value));
-    addOption(catalogOption ?? opt);
-  }
+  // Raw config supplies rows the Gateway catalog lacks and explicit alias edits;
+  // catalog identity and tags remain authoritative for matching rows.
+  const byKey = indexFirstByKey(
+    [
+      ...configuredOptions.map(
+        (option) => catalogOptions.get(normalizeAgentModelRefForConfig(option.value)) ?? option,
+      ),
+      ...catalogOptions.values(),
+    ],
+    (option) => normalizeAgentModelRefForConfig(option.value),
+  );
+  const options = [...byKey.values()];
 
-  for (const option of catalogOptions.values()) {
-    addOption(option);
-  }
-
-  if (current && !seen.has(normalizeAgentModelRefForConfig(current))) {
+  if (current && !byKey.has(normalizeAgentModelRefForConfig(current))) {
     const separator = current.indexOf("/");
     options.unshift({
       value: current,
