@@ -93,9 +93,6 @@ suite.define(() => {
               const iconStyle = getComputedStyle(icon);
               const iconHeight = Number.parseFloat(iconStyle.height);
               const iconTop = markerBounds.top + (markerBounds.height - iconHeight) / 2;
-              const range = document.createRange();
-              range.selectNodeContents(text);
-              const firstLine = range.getClientRects()[0]!;
               const rail = getComputedStyle(row, "::after");
               return {
                 geometry: [bounds, markerBounds, textBounds].map(({ x, y, width, height }) => ({
@@ -107,12 +104,15 @@ suite.define(() => {
                 fontSize: style.fontSize,
                 lineHeight: style.lineHeight,
                 color: style.color,
-                markerColor: getComputedStyle(marker).color,
+                markerColor:
+                  icon instanceof SVGSVGElement ? iconStyle.color : iconStyle.borderTopColor,
                 iconSize: [iconStyle.width, iconStyle.height],
                 iconTop,
                 iconBottom: iconTop + iconHeight,
                 firstLineCenterOffset:
-                  iconTop + iconHeight / 2 - (firstLine.top + firstLine.height / 2),
+                  iconTop +
+                  iconHeight / 2 -
+                  (textBounds.top + Number.parseFloat(style.lineHeight) / 2),
                 animation: iconStyle.animationName,
                 animationDuration: iconStyle.animationDuration,
                 firstLineOffset: markerBounds.top - textBounds.top,
@@ -158,9 +158,9 @@ suite.define(() => {
           }),
         ).toEqual({ fontSize: "12px", gap: 8 });
         for (const [index, row] of initial.entries()) {
-          expect(row.fontSize).toBe("14px");
+          expect(row.fontSize).toBe("12px");
           expect(row.lineHeight).toBe("20px");
-          expect(row.iconSize).toEqual(index === 0 ? ["13px", "13px"] : ["16px", "16px"]);
+          expect(row.iconSize).toEqual(["13px", "13px"]);
           expect(row.firstLineCenterOffset).toBe(0);
           expect(row.geometry[1]!.height).toBe(20);
           expect(row.geometry[1]!.width).toBe(16);
@@ -267,15 +267,68 @@ suite.define(() => {
                 const text = row.querySelector(".session-progress-card__step-text")!;
                 const icon = marker.getBoundingClientRect();
                 const bounds = text.getBoundingClientRect();
-                const line = Number.parseFloat(getComputedStyle(text).lineHeight);
+                const textStyle = getComputedStyle(text);
+                const line = Number.parseFloat(textStyle.lineHeight);
+                const iconStyle = getComputedStyle(marker);
+                const rowStyle = getComputedStyle(row);
+                const rail = getComputedStyle(row, "::after");
+                let paintedWidth = Number.parseFloat(iconStyle.width);
+                let paintedHeight = Number.parseFloat(iconStyle.height);
+                if (marker instanceof SVGSVGElement) {
+                  const ink = marker.getBBox();
+                  const stroke = Number.parseFloat(iconStyle.strokeWidth);
+                  paintedWidth = ((ink.width + stroke) * icon.width) / marker.viewBox.baseVal.width;
+                  paintedHeight =
+                    ((ink.height + stroke) * icon.height) / marker.viewBox.baseVal.height;
+                }
                 return {
+                  status: marker.parentElement!.getAttribute("data-status"),
                   delta: Math.abs(icon.top + icon.height / 2 - (bounds.top + line / 2)),
                   lines: bounds.height / line,
+                  fontSize: textStyle.fontSize,
+                  fontWeight: textStyle.fontWeight,
+                  paintedWidth,
+                  paintedHeight,
+                  opacity: getComputedStyle(marker.parentElement!).opacity,
+                  padding: rowStyle.padding,
+                  minHeight: rowStyle.minHeight,
+                  railCenterOffset:
+                    rail.content === "none"
+                      ? null
+                      : row.getBoundingClientRect().left +
+                        Number.parseFloat(rail.left) +
+                        Number.parseFloat(rail.width) / 2 -
+                        (icon.left + icon.width / 2),
                 };
               }),
             );
           expect(measurements).toHaveLength(steps.length);
           expect(measurements.some(({ lines }) => lines > 1.5)).toBe(true);
+          if (placement === "details") {
+            const current = measurements.find((row) => row.status === "in_progress")!;
+            const pending = measurements.find((row) => row.status === "pending")!;
+            const diameter = width === 390 ? 12 : 13;
+            // Compare painted contours: the dashed SVG compensates for its viewBox inset.
+            expect(current.paintedWidth).toBeCloseTo(diameter, 2);
+            expect(current.paintedHeight).toBeCloseTo(diameter, 2);
+            expect(pending.paintedWidth).toBeCloseTo(current.paintedWidth, 2);
+            expect(pending.paintedHeight).toBeCloseTo(current.paintedHeight, 2);
+            expect(pending.opacity).toBe("0.9");
+            expect(
+              await disclosure
+                .locator(".session-progress-card__steps")
+                .evaluate((list) => getComputedStyle(list).rowGap),
+            ).toBe(width === 390 ? "8px" : "0px");
+            for (const row of measurements) {
+              expect(row.fontSize).toBe(width === 390 ? "14px" : "12px");
+              expect(row.fontWeight).toBe("400");
+              expect(row.padding).toBe(width === 390 ? "0px" : "2px 4px");
+              expect(row.minHeight).toBe(width === 390 ? "auto" : "24px");
+              if (row.railCenterOffset !== null) {
+                expect(row.railCenterOffset).toBeCloseTo(0, 2);
+              }
+            }
+          }
           for (const { delta } of measurements) {
             expect(delta).toBeLessThanOrEqual(1);
           }

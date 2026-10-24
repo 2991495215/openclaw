@@ -266,31 +266,22 @@
   padding-block-start: 6px;
 }
 
-/* This checklist owns its metrics independently from interactive Details rows. */
-.chat-details
-  .chat-details-desktop-body
-  .task-progress-details--desktop[data-desktop-details]
-  .task-progress-details__plan {
-  --details-row-font-size: 14px;
-  --details-row-line-height: 20px;
-  --details-row-height: 20px;
-  --details-row-padding: 0px;
-  --details-row-padding-block: 0px;
-  --details-row-gap: 10px;
-  --details-row-list-gap: 8px;
-  --task-progress-spinner-size: 13px;
+/* Compact only this non-interactive checklist, without changing shared Details rows. */
+.task-progress-details--desktop[data-desktop-details] .task-progress-details__plan {
+  --details-row-font-size: var(--control-ui-text-sm);
+  --details-row-height: 24px;
+  --details-row-padding-block: 2px;
+  --details-row-list-gap: 2px;
 }
 
 .task-progress-details--desktop[data-desktop-details]
   .task-progress-details__plan
   .session-progress-card__markdown
   + .session-progress-card__steps {
-  margin-block-start: 8px;
+  margin-block-start: 6px;
 }
 
 .task-progress-details__plan .session-progress-card__markdown {
-  --details-row-font-size: var(--control-ui-text-sm);
-
   margin: 0;
   font-family: var(--font-body);
   font-size: 14px;
@@ -309,75 +300,79 @@
   margin-block-start: 12px;
 }
 
-.task-progress-details__plan {
-  --session-progress-marker-size: 16px;
-  --task-progress-step-gap: 8px;
-  --task-progress-spinner-size: 12px;
-}
-
 .task-progress-details__plan .session-progress-card__markdown a {
   font-weight: 500;
 }
 
 .task-progress-details__plan .session-progress-card__steps {
-  gap: var(--task-progress-step-gap);
+  gap: 8px;
 }
 
 .task-progress-details__plan .session-progress-card__step {
   position: relative;
   grid-template-columns: 16px minmax(0, 1fr);
-  align-items: start;
   gap: 10px;
-  color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 20px;
 }
 
-.task-progress-details__plan .session-progress-card__step--in_progress {
-  color: var(--text);
-}
-
-.task-progress-details__plan .session-progress-card__step-text,
-.task-progress-details__plan .session-progress-card__step-marker:not([data-status="completed"]) {
+.task-progress-details__plan .session-progress-card__step-text {
   color: inherit;
 }
 
 .task-progress-details__plan .session-progress-card__step-marker {
   width: 16px;
   height: 20px;
-  opacity: 1;
 }
 
-.task-progress-details__plan .session-progress-card__step-marker svg {
-  width: 16px;
-  height: 16px;
-  scale: none;
-}
-
-/* The SVG starts 2px into its 20px slot; leave 4px clear at both ends. */
+/* Preserve the row rhythm and leave space around each original marker. */
 .task-progress-details__plan .session-progress-card__step:not(:last-child)::after {
   position: absolute;
-  top: 22px;
-  left: 7.5px;
+  top: calc(var(--details-row-padding-block, 0px) + 14px + var(--session-progress-marker-size) / 2);
+  left: calc(var(--details-row-padding, 0px) + 7.5px);
   width: 1px;
-  height: calc(100% + var(--task-progress-step-gap) - 24px);
+  height: calc(100% + var(--details-row-list-gap, 8px) - var(--session-progress-marker-size) - 8px);
   background: var(--border-strong);
   opacity: 0.4;
   content: "";
 }
 
-.task-progress-details__plan .session-progress-card__step-marker > .session-run-spinner {
-  width: var(--task-progress-spinner-size);
-  height: var(--task-progress-spinner-size);
-  border-width: 1px;
-}
-
-/* The collapsed summary retains its existing inset spinner. */
-.task-progress-details .session-progress-card__current-marker > .session-run-spinner {
+/* Keep the spinner and pending circle aligned with the other inset glyphs. */
+.task-progress-details
+  :is(.session-progress-card__current-marker, .session-progress-card__step-marker)
+  > .session-run-spinner,
+.task-progress-details .session-progress-card__step-marker[data-status="pending"] > svg {
   width: calc(var(--session-progress-marker-size) - 2px);
   height: calc(var(--session-progress-marker-size) - 2px);
   border-width: 1px;
+}
+
+/* Keep the checklist's smaller type while sharing the desktop row geometry. */
+.chat-details-desktop-body
+  .task-progress-details--desktop[data-desktop-details]
+  .session-progress-card__steps {
+  row-gap: var(--details-row-list-gap, 4px);
+}
+
+.chat-details-desktop-body
+  .task-progress-details--desktop[data-desktop-details]
+  .session-progress-card__step {
+  --details-row-font-size: var(--control-ui-text-sm);
+  --details-row-line-height: 20px;
+  --session-progress-marker-size: var(--details-row-icon-size, 15px);
+
+  grid-template-columns: var(--details-row-icon-slot, 16px) minmax(0, 1fr);
+  align-items: start;
+  min-height: var(--details-row-height, 32px);
+  padding: var(--details-row-padding-block, 4px) var(--details-row-padding);
+  gap: 10px;
+}
+
+.chat-details-desktop-body
+  .task-progress-details--desktop[data-desktop-details]
+  .session-progress-card__step-marker {
+  width: var(--details-row-icon-slot, 16px);
 }
 
 .task-progress-details--desktop[data-desktop-details] .task-progress-details__current-marker {
