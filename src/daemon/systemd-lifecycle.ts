@@ -5,7 +5,6 @@ import { formatLine } from "./output.js";
 import { createGatewayLifecycleMutationReporter } from "./service-mutation.js";
 import type {
   GatewayServiceControlArgs,
-  GatewayServiceEnv,
   GatewayServiceManageArgs,
   GatewayServiceRestartResult,
   SystemdServiceReadTarget,
@@ -128,9 +127,12 @@ type LegacySystemdUnit = {
   unitPath: string;
 };
 
-async function findLegacySystemdUnits(env: GatewayServiceEnv): Promise<LegacySystemdUnit[]> {
-  const results: LegacySystemdUnit[] = [];
-  const systemctlAvailable = await isSystemctlAvailable(env);
+export async function uninstallLegacySystemdUnits({
+  env,
+  stdout,
+}: GatewayServiceManageArgs): Promise<LegacySystemdUnit[]> {
+  const units: LegacySystemdUnit[] = [];
+  const discoverySystemctlAvailable = await isSystemctlAvailable(env);
   for (const name of LEGACY_GATEWAY_SYSTEMD_SERVICE_NAMES) {
     const unitPath = resolveSystemdUnitPathForName(env, name);
     const exists = Boolean(await fs.access(unitPath).then(() => true, ignoreMissingPath));
@@ -138,22 +140,14 @@ async function findLegacySystemdUnits(env: GatewayServiceEnv): Promise<LegacySys
       await fs.access(`${unitPath}.bak`).then(() => true, ignoreMissingPath),
     );
     let enabled = false;
-    if (systemctlAvailable) {
+    if (discoverySystemctlAvailable) {
       const res = await execSystemctlUser(env, ["is-enabled", `${name}.service`]);
       enabled = res.code === 0;
     }
     if (exists || backupExists || enabled) {
-      results.push({ name, unitPath });
+      units.push({ name, unitPath });
     }
   }
-  return results;
-}
-
-export async function uninstallLegacySystemdUnits({
-  env,
-  stdout,
-}: GatewayServiceManageArgs): Promise<LegacySystemdUnit[]> {
-  const units = await findLegacySystemdUnits(env);
   if (units.length === 0) {
     return units;
   }

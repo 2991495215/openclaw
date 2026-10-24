@@ -20,4 +20,3 @@ export { prepareChatHistoryResponsePage } from "../../gateway/chat-history-respo
 export { listProjectedSessions } from "../../gateway/session-utils-list.js";
 export { loadGatewaySessionEntryReadOnlyInWorker } from "../../gateway/session-utils-store-worker.js";
 export { withPreparedSessionResolve } from "../../gateway/sessions-resolve.js";
-export type { SessionsListResult } from "../../gateway/session-utils.types.js";
