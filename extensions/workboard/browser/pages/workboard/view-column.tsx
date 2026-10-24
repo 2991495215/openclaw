@@ -40,6 +40,7 @@ export function WorkboardColumn(input: {
   workboard: WorkboardProps;
   status: WorkboardStatus;
   cards: WorkboardCard[];
+  cardRef?: (readId: () => string) => (element: HTMLElement) => void;
   options?: {
     surface?: WorkboardCardSurface;
     boardFilter?: string;
@@ -380,6 +381,7 @@ export function WorkboardColumn(input: {
                       <WorkboardCardView
                         workboard={input.workboard}
                         card={card()}
+                        cardRef={input.cardRef}
                         surface={surface()}
                       />
                     </div>

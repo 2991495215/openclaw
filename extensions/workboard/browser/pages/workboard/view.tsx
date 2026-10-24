@@ -5,6 +5,7 @@ import { icons } from "../../components/icons.tsx";
 import { WorkboardToast } from "../../components/toast.tsx";
 import { t } from "../../i18n/index.ts";
 import { listSelectableAgents } from "../../lib/agents/display.ts";
+import { createElementRefs } from "../../lib/element-refs.ts";
 import {
   filterWorkboardCards,
   groupWorkboardCardsByStatus,
@@ -82,6 +83,7 @@ function WorkboardColumns(props: {
   workboard: WorkboardProps;
   statuses: WorkboardStatus[];
   byStatus: Map<WorkboardStatus, WorkboardCard[]>;
+  cardRef: (readId: () => string) => (element: HTMLElement) => void;
 }) {
   const state = workboardViewState(() => props.workboard);
   const boardEdges = boardScrollEdgesRef();
@@ -118,6 +120,7 @@ function WorkboardColumns(props: {
               workboard={props.workboard}
               status={status()}
               cards={props.byStatus.get(status()) ?? []}
+              cardRef={props.cardRef}
               options={{ surface: state().viewMode === "list" ? "list" : "page" }}
             />
           )}
@@ -131,6 +134,7 @@ export function WorkboardView(
   props: WorkboardProps & { onRefresh: () => void; onFocusTarget?: (element: HTMLElement) => void },
 ) {
   let filterTrigger: HTMLButtonElement | undefined;
+  const cardElements = createElementRefs<HTMLElement>();
   const state = workboardViewState(() => props);
   const view = createMemo(() => {
     const current = state();
@@ -314,6 +318,18 @@ export function WorkboardView(
         Boolean(getVisibleDetailCard(current)),
     };
   });
+  const focusSelection = () => {
+    const current = view();
+    for (const status of current.visibleStatuses) {
+      for (const card of current.byStatus.get(status) ?? []) {
+        const element = cardElements.get(card.id);
+        if (state().selectedCardIds.has(card.id) && element) {
+          element.focus({ preventScroll: true });
+          return;
+        }
+      }
+    }
+  };
   const clearFilters = () => {
     const current = state();
     current.query = "";
@@ -411,7 +427,7 @@ export function WorkboardView(
           ]}
         >
           {view().selectedCards.length ? (
-            <SelectionActions workboard={props} />
+            <SelectionActions workboard={props} onFocusSelection={focusSelection} />
           ) : (
             <div class="workboard-toolbar__filters">
               <div class="workboard-toolbar__navigation">
@@ -590,6 +606,7 @@ export function WorkboardView(
             workboard={props}
             statuses={view().visibleStatuses}
             byStatus={view().byStatus}
+            cardRef={cardElements.ref}
           />
         )}
       </div>

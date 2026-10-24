@@ -36,6 +36,7 @@ export function WorkboardCardView(input: {
   workboard: WorkboardProps;
   card: WorkboardCard;
   surface: WorkboardCardSurface;
+  cardRef?: (readId: () => string) => (element: HTMLElement) => void;
 }) {
   const action = createMemo(() => {
     void input.workboard.revision;
@@ -262,6 +263,7 @@ export function WorkboardCardView(input: {
   );
   return (
     <article
+      ref={input.cardRef?.(() => input.card.id)}
       class={[
         "workboard-card",
         input.surface === "list" ? "workboard-card--list" : "",
