@@ -90,6 +90,12 @@ suite.define(() => {
               const markerBounds = marker.getBoundingClientRect();
               const textBounds = text.getBoundingClientRect();
               const style = getComputedStyle(text);
+              const iconStyle = getComputedStyle(icon);
+              const iconHeight = Number.parseFloat(iconStyle.height);
+              const iconTop = markerBounds.top + (markerBounds.height - iconHeight) / 2;
+              const range = document.createRange();
+              range.selectNodeContents(text);
+              const firstLine = range.getClientRects()[0]!;
               const rail = getComputedStyle(row, "::after");
               return {
                 geometry: [bounds, markerBounds, textBounds].map(({ x, y, width, height }) => ({
@@ -102,8 +108,13 @@ suite.define(() => {
                 lineHeight: style.lineHeight,
                 color: style.color,
                 markerColor: getComputedStyle(marker).color,
-                iconSize: [getComputedStyle(icon).width, getComputedStyle(icon).height],
-                animation: getComputedStyle(icon).animationName,
+                iconSize: [iconStyle.width, iconStyle.height],
+                iconTop,
+                iconBottom: iconTop + iconHeight,
+                firstLineCenterOffset:
+                  iconTop + iconHeight / 2 - (firstLine.top + firstLine.height / 2),
+                animation: iconStyle.animationName,
+                animationDuration: iconStyle.animationDuration,
                 firstLineOffset: markerBounds.top - textBounds.top,
                 textGap: textBounds.left - markerBounds.right,
                 rail: {
@@ -134,11 +145,23 @@ suite.define(() => {
         const links = await details
           .locator(".session-progress-card__markdown a")
           .evaluateAll((elements) => elements.map((link) => getComputedStyle(link).fontWeight));
-        expect(links).toEqual(["600", "600"]);
+        expect(links).toEqual(["500", "500"]);
+        expect(
+          await details.locator(".session-progress-card__markdown").evaluate((markdown) => {
+            const text = markdown.parentElement!.querySelector(
+              ".session-progress-card__step-text",
+            )!;
+            return {
+              fontSize: getComputedStyle(markdown).fontSize,
+              gap: text.getBoundingClientRect().top - markdown.getBoundingClientRect().bottom,
+            };
+          }),
+        ).toEqual({ fontSize: "12px", gap: 8 });
         for (const [index, row] of initial.entries()) {
           expect(row.fontSize).toBe("14px");
           expect(row.lineHeight).toBe("20px");
-          expect(row.iconSize).toEqual(["16px", "16px"]);
+          expect(row.iconSize).toEqual(index === 0 ? ["13px", "13px"] : ["16px", "16px"]);
+          expect(row.firstLineCenterOffset).toBe(0);
           expect(row.geometry[1]!.height).toBe(20);
           expect(row.geometry[1]!.width).toBe(16);
           expect(row.firstLineOffset).toBe(0);
@@ -148,10 +171,10 @@ suite.define(() => {
           } else {
             const next = initial[index + 1]!;
             expect(row.rail.width).toBe("1px");
-            expect(row.rail.opacity).toBe("0.5");
+            expect(row.rail.opacity).toBe("0.4");
             expect(row.rail.x + 0.5).toBe(row.geometry[1]!.x + 8);
-            expect(row.rail.top - (row.geometry[1]!.y + 18)).toBe(4);
-            expect(next.geometry[1]!.y + 2 - (row.rail.top + row.rail.height)).toBe(4);
+            expect(row.rail.top - row.iconBottom).toBeGreaterThanOrEqual(4);
+            expect(next.iconTop - (row.rail.top + row.rail.height)).toBeGreaterThanOrEqual(4);
           }
         }
         for (let completed = 0; completed <= labels.length; completed += 1) {
@@ -190,6 +213,10 @@ suite.define(() => {
             expect(row.animation).toBe(
               active && reducedMotion === "no-preference" ? "btn-spinner-spin" : "none",
             );
+            if (active && reducedMotion === "no-preference") {
+              expect(row.animationDuration).toBe("1.6s");
+            }
+            expect(row.firstLineCenterOffset).toBe(0);
           }
         }
       } finally {

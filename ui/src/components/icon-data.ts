@@ -488,7 +488,6 @@ export const iconData = {
     "M19.967 17.484A4 4 0 0 1 18 18",
   ),
   book: strokePathData("M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"),
-  loaderCircle: strokePathData("M21 12a9 9 0 1 1-6.219-8.56"),
   loader: strokePathData(
     "M12 2v4",
     "m16.2 7.8 2.9-2.9",
