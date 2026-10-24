@@ -440,7 +440,7 @@ describe.skipIf(!connection)("PostgreSQL memory search worker", () => {
     }
   });
 
-  it("does not recompute normalized body scores while ordering retained keyword hits", async () => {
+  it("ranks each body match once and projects only retained keyword snippets", async () => {
     const fixture = admitted(() => createFixture(root, "rank-work", connection!));
     const db = fixture.pg();
     try {
@@ -452,31 +452,45 @@ describe.skipIf(!connection)("PostgreSQL memory search worker", () => {
           CREATE FUNCTION pg_temp.pglive_rank(tsvector, tsquery, integer) RETURNS real
           LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE COST 1 AS $$
           BEGIN RETURN pg_catalog.ts_rank_cd($1, $2, $3); END $$;
+          CREATE FUNCTION pg_temp.pglive_prefix(text, integer) RETURNS text
+          LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE COST 1 AS $$
+          BEGIN RETURN pg_catalog.left($1, $2); END $$;
         `);
       });
       const allCalls: number[] = [];
+      const snippetCalls: number[] = [];
       for (const queryText of ["rankprobe launch", "rankprobe absentword"]) {
         const query = keywordQuery(queryText, { limit: 3 });
         const observed = admitted(() =>
           db.runTransaction(() => {
             db.exec("SET LOCAL track_functions = 'all'");
-            const countRankCalls = () =>
+            const countCalls = (name: "pglive_rank" | "pglive_prefix") =>
               Number(
                 db
                   .prepare(`
-              SELECT calls FROM pg_stat_xact_user_functions
-              WHERE funcid = 'pg_temp.pglive_rank(tsvector,tsquery,integer)'::regprocedure
+              SELECT coalesce(sum(calls), 0) AS calls FROM pg_stat_xact_user_functions
+              WHERE funcname = ?
             `)
-                  .get()?.calls ?? 0,
+                  .get(name)?.calls ?? 0,
               );
-            const before = countRankCalls();
+            const before = countCalls("pglive_rank");
+            const beforeSnippets = countCalls("pglive_prefix");
             const execute = db.query.bind(db);
             const capture = vi.spyOn(db, "query").mockImplementation((statement, bindings) => {
-              return execute(statement.replaceAll("ts_rank_cd(", "pg_temp.pglive_rank("), bindings);
+              return execute(
+                statement
+                  .replaceAll("ts_rank_cd(", "pg_temp.pglive_rank(")
+                  .replaceAll("left(", "pg_temp.pglive_prefix("),
+                bindings,
+              );
             });
             try {
               const pending = fixture.keyword(query);
-              return { pending, calls: countRankCalls() - before };
+              return {
+                pending,
+                calls: countCalls("pglive_rank") - before,
+                snippets: countCalls("pglive_prefix") - beforeSnippets,
+              };
             } finally {
               capture.mockRestore();
             }
@@ -500,8 +514,10 @@ describe.skipIf(!connection)("PostgreSQL memory search worker", () => {
         );
         expect(result.body.rows.map(({ id, score }) => ({ id, score }))).toEqual(expected);
         allCalls.push(observed.calls);
+        snippetCalls.push(observed.snippets);
       }
-      expect(allCalls).toEqual([24, 24]);
+      expect(allCalls).toEqual([12, 12]);
+      expect(snippetCalls).toEqual([3, 3]);
     } finally {
       admitted(() => fixture.close());
     }
