@@ -782,11 +782,17 @@ install -d -m 0750 "$payload_dir"
     assertText(binding.run).contains(`verify-upload "Candidate payload"
 expected_artifact_name="install-smoke-candidate-payload-\${TARGET_SHA}-\${ARTIFACT_RUN_ID}-\${ARTIFACT_RUN_ATTEMPT}"`);
     const verify = step(consumer, "Verify candidate payload contents");
-    expect(verify.env).toMatchObject(
-      references(candidateScope, "manifest_sha256 package_version source_archive_sha256", true),
-    );
-    assertText(verify.run).contains(`--manifest-sha256
+    expect(verify.env).toMatchObject({
+      ...references(candidateScope, "manifest_sha256 package_version source_archive_sha256", true),
+      PRODUCER_RUN_ATTEMPT: reference(candidateScope, "artifact_run_attempt"),
+      PRODUCER_RUN_ID: reference(candidateScope, "artifact_run_id"),
+    });
+    assertText(verify.run).contains(`--run-id "$PRODUCER_RUN_ID"
+--run-attempt "$PRODUCER_RUN_ATTEMPT"
+--manifest-sha256
 --source-archive-sha256`);
+    assertText(verify.run).excludes(`--run-id "$GITHUB_RUN_ID"
+--run-attempt "$GITHUB_RUN_ATTEMPT"`);
   }
 });
 
