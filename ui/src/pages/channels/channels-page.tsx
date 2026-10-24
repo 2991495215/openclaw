@@ -1,12 +1,12 @@
-import { createMemo, createSignal, onSettled } from "solid-js";
+import { action, createMemo, createOptimisticStore, createSignal, onSettled } from "solid-js";
 import type { ChannelsPairingListResult, ChannelsPairingRequest } from "../../api/types.ts";
-import type { ApplicationContext } from "../../app/context.ts";
 import { hasOperatorAdminAccess, hasOperatorPairingAccess } from "../../app/operator-access.ts";
 import { loadSettings, patchSettings } from "../../app/settings.ts";
 import { LearnMoreLink, SettingsPageHeader } from "../../components/solid/settings-ui.tsx";
 import { SettingsWorkspace } from "../../components/solid/settings-workspace.tsx";
 import { registerRouteSubtitlesEnglish } from "../../i18n/locales/en-route-subtitles.ts";
 import { resolveChannelPairingAuthSignature } from "../../lib/channels/index.ts";
+import { formatUiError } from "../../lib/format-error.ts";
 import { GatewayPageBinding, type GatewayPageChange } from "../../lib/gateway-page-binding.ts";
 import { projectGateway } from "../../lib/reactive/application.ts";
 import { useApplication } from "../../lib/reactive/context.ts";
@@ -15,7 +15,7 @@ import { t } from "../../lib/reactive/i18n.ts";
 import { projectMutableSource, projectSource } from "../../lib/reactive/projection.ts";
 import { useVisiblePoll } from "../../lib/reactive/visible-poll.ts";
 import { resolveScrollBehavior } from "../../lib/scroll-behavior.ts";
-import { createChannelMutations } from "./mutation-presentation.ts";
+import { showToast } from "../../lib/toast.ts";
 import { createChannelPluginPresentation } from "./plugin-presentation-loader.ts";
 import { ChannelsView, resolveChannelOrder } from "./view.tsx";
 import type { ChannelPairingPrompt, ChannelsProps } from "./view.types.ts";
@@ -26,7 +26,8 @@ registerRouteSubtitlesEnglish();
 const CHANNEL_PAIRING_POLL_INTERVAL_MS = 30_000;
 const CHANNELS_DOCS_URL = "https://docs.openclaw.ai/channels";
 
-function createChannelsPage(context: ApplicationContext) {
+export function ChannelsPage() {
+  const context = useApplication();
   const [selectedChannel, setSelectedChannel] = createSignal<string | null>(null);
   const [pairingChannelFilter, setPairingChannelFilter] = createSignal<string | null>(null);
   const [pairingAccountFilter, setPairingAccountFilter] = createSignal<string | null>(null);
@@ -417,12 +418,7 @@ function createChannelsPage(context: ApplicationContext) {
       connection.dispose();
     };
   });
-  return { viewProps, mutations };
-}
-
-export function ChannelsPage() {
-  const page = createChannelsPage(useApplication());
-  const viewProps = createMemo(page.viewProps);
+  const presentedProps = createMemo(viewProps);
   return (
     <openclaw-channels-page>
       <SettingsPageHeader
@@ -434,8 +430,75 @@ export function ChannelsPage() {
         }
       />
       <SettingsWorkspace>
-        <ChannelsView {...viewProps()} mutationBusy={page.mutations.busy()} />
+        <ChannelsView {...presentedProps()} mutationBusy={mutations.busy()} />
       </SettingsWorkspace>
     </openclaw-channels-page>
   );
+}
+
+type ChannelMutation = keyof NonNullable<ChannelsProps["mutationBusy"]>;
+
+/** Presents admitted work without changing its owner's write or settlement policy. */
+function createChannelMutations(deps: {
+  readEpoch: () => number;
+  currentEpoch: () => number;
+  isActive: () => boolean;
+}) {
+  const epoch = createMemo(deps.readEpoch);
+  const presentation = createMemo(() => {
+    const currentEpoch = epoch();
+    const [busy, setBusy] = createOptimisticStore({
+      config: false,
+      pairing: false,
+      whatsapp: false,
+      wizard: false,
+    });
+    return { epoch: currentEpoch, busy, setBusy };
+  });
+  const lifetimes = {
+    config: Promise.withResolvers<void>(),
+    pairing: Promise.withResolvers<void>(),
+    whatsapp: Promise.withResolvers<void>(),
+    wizard: Promise.withResolvers<void>(),
+  };
+  const isCurrent = (view: ReturnType<typeof presentation>) =>
+    deps.isActive() && view.epoch === deps.currentEpoch();
+  const present = action(function* (
+    view: ReturnType<typeof presentation>,
+    kind: ChannelMutation,
+    pending: Promise<unknown>,
+    retired: Promise<void>,
+  ) {
+    try {
+      if (isCurrent(view)) {
+        view.setBusy((busy) => {
+          busy[kind] = true;
+        });
+      }
+      // Leaving the presentation never cancels an already admitted write.
+      yield Promise.race([pending, retired]);
+    } catch (error) {
+      if (isCurrent(view)) {
+        showToast({ message: formatUiError(error) });
+      }
+    }
+  });
+  return {
+    busy: () => presentation().busy,
+    retire(kind?: ChannelMutation) {
+      for (const key of kind ? [kind] : (["config", "pairing", "whatsapp", "wizard"] as const)) {
+        lifetimes[key].resolve();
+        lifetimes[key] = Promise.withResolvers<void>();
+      }
+    },
+    async run(kind: ChannelMutation, pending: Promise<unknown>) {
+      const view = presentation();
+      const retired = lifetimes[kind].promise;
+      // Let owner publication and any newly opened modal mount before joining the action.
+      await new Promise<void>((resolve) => {
+        onSettled(resolve);
+      });
+      return present(view, kind, pending, retired);
+    },
+  };
 }
