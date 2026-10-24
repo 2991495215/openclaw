@@ -225,7 +225,7 @@ export async function authorizeTranscriptSource(params: {
     action: params.action,
     caller,
     cfg: params.ctx.config,
-    source: params.source,
+    source: { ...params.source },
   });
   params.ctx.assertCallerActive?.();
   if (!authorization.ok) {

@@ -1,11 +1,7 @@
 import type { SessionsDiffResult } from "../../packages/gateway-protocol/src/index.js";
 import { runGit } from "../agents/worktrees/git.js";
 
-type GitOutput = (
-  cwd: string,
-  args: string[],
-  okCodes?: readonly number[],
-) => Promise<string | null>;
+type GitOutput = (cwd: string, args: string[]) => Promise<string | null>;
 
 /** Picks the merge base used for branch-relative session diffs. */
 export async function resolveSessionDiffBase(params: {

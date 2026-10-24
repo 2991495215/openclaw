@@ -14,7 +14,6 @@ import type { ConfigFileSnapshot } from "../config/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { withConfigSourceLocks } from "../config/write-lock.js";
 import {
-  DeferredPluginMigrationConflictError,
   formatDeferredPluginMigration,
   mergeDeferredPluginMigration,
   readDeferredPluginMigrations,
@@ -66,7 +65,6 @@ export function createDoctorPluginMigrationPreparation(params: {
     [...previousById.values()].find((pending) => matchesOwner(pending.pluginId, pluginId));
   let deferred: readonly DeferredPluginMigration[] = [];
   let expectedPending: readonly DeferredPluginMigration[] = [];
-  let refreshSnapshot = false;
   let previousLoaded = false;
   const loadPrevious = async (snapshot?: ConfigFileSnapshot) => {
     if (previousLoaded) {
@@ -185,38 +183,15 @@ export function createDoctorPluginMigrationPreparation(params: {
     resolvedPluginIds?: readonly string[],
     settlements?: DeferredPluginMigrationRecordInput["settlements"],
   ) => {
-    try {
-      const committed = await recordDeferredPluginMigrations({
-        env: params.env(),
-        pending,
-        ...(resolvedPluginIds ? { resolvedPluginIds } : {}),
-        ...(settlements ? { settlements } : {}),
-        expectedPending,
-      });
-      if (committed) {
-        expectedPending = structuredClone(committed);
-      }
-      return true;
-    } catch (error) {
-      if (!(error instanceof DeferredPluginMigrationConflictError)) {
-        throw error;
-      }
-      expectedPending = structuredClone(error.pending);
-      previousById.clear();
-      deferred = error.pending;
-      completedIds.clear();
-      statelessPlugins.clear();
-      runtimePluginAliases.clear();
-      unavailablePluginIds.clear();
-      discoveryBlockedPluginIds.clear();
-      replacementPluginIds = {};
-      inspectedStatelessPluginIds.clear();
-      refreshSnapshot = true;
-      for (const plugin of deferred) {
-        previousById.set(plugin.pluginId, plugin);
-        reportPending(plugin);
-      }
-      return false;
+    const committed = await recordDeferredPluginMigrations({
+      env: params.env(),
+      pending,
+      ...(resolvedPluginIds ? { resolvedPluginIds } : {}),
+      ...(settlements ? { settlements } : {}),
+      expectedPending,
+    });
+    if (committed) {
+      expectedPending = structuredClone(committed);
     }
   };
 
@@ -271,9 +246,7 @@ export function createDoctorPluginMigrationPreparation(params: {
         ),
       );
       remember();
-      if (!(await persistPending([...previousById.values()]))) {
-        return;
-      }
+      await persistPending([...previousById.values()]);
       for (const plugin of deferred) {
         reportPending(plugin);
       }
@@ -391,10 +364,9 @@ export function createDoctorPluginMigrationPreparation(params: {
                 }),
         );
       if (resolvedPluginIds.length === 0 && pending.length === 0) {
-        return refreshSnapshot;
+        return false;
       }
       const persist = () => persistPending(pending, resolvedPluginIds, settlements);
-      let committed: boolean;
       if (settlements.length > 0 && sourceSnapshot) {
         const env = cloneEnvWithPlatformSemantics(params.env());
         const { snapshot, writeOptions } = await createConfigIO({
@@ -423,7 +395,7 @@ export function createDoctorPluginMigrationPreparation(params: {
           assertBaseSnapshotStillCurrent(snapshot, resolveConfigPath(env), fs, includeGraph);
         // The existing source and lifecycle owners fence config edits and package replacement
         // through the worker's lease grants; the ledger also compares its pending generation.
-        committed = await withPluginLifecycleLease({ env, assertCurrent }, () =>
+        await withPluginLifecycleLease({ env, assertCurrent }, () =>
           withConfigSourceLocks(
             [snapshot.path, ...Object.entries(includeGraph.targets).flat()],
             persist,
@@ -432,10 +404,7 @@ export function createDoctorPluginMigrationPreparation(params: {
           ),
         );
       } else {
-        committed = await persist();
-      }
-      if (!committed) {
-        return true;
+        await persist();
       }
       for (const pluginId of resolvedPluginIds) {
         previousById.delete(pluginId);
@@ -463,7 +432,7 @@ export function createDoctorPluginMigrationPreparation(params: {
         previousById.set(plugin.pluginId, plugin);
         reportPending(plugin);
       }
-      return refreshSnapshot || resolvedPluginIds.length > 0;
+      return resolvedPluginIds.length > 0;
     },
   };
 }

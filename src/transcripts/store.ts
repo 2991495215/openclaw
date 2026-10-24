@@ -334,12 +334,12 @@ export class TranscriptsStore {
       transcriptListCache?.writeToken === writeToken &&
       transcriptListCache.key === key
     ) {
-      return structuredClone(transcriptListCache.page);
+      return transcriptListCache.page;
     }
     const page = await operation.read("transcripts.readEntries", { params: options });
     if (writeToken) {
       // A write during the read invalidates this pre-read token on the next lookup.
-      transcriptListCache = { key, writeToken, page: structuredClone(page) };
+      transcriptListCache = { key, writeToken, page };
     }
     return page;
   }

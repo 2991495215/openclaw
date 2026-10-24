@@ -199,7 +199,6 @@ export async function stageClawAddHostRequirementsStateless(
   let packages: PersistedClawPackageRef[] = [];
   let mcpServers: PersistedClawMcpServerRef[] = [];
   let cronJobs: PersistedClawCronRef[] = [];
-  let continued = false;
   const result = (
     status: StatelessClawAddResult["status"],
     error?: StatelessClawAddResult["error"],
@@ -342,10 +341,6 @@ export async function stageClawAddHostRequirementsStateless(
     return { kind: "partial", result: await fail(error, "package_install_failed") };
   }
   const stageAgent = async (agentOptions = options): Promise<StatelessClawAddAgentStage> => {
-    if (continued) {
-      throw new Error("Claw Add was already continued");
-    }
-    continued = true;
     options = agentOptions;
     try {
       assertForwardCurrent();
@@ -413,18 +408,10 @@ export async function stageClawAddHostRequirementsStateless(
           `Agent ${JSON.stringify(plan.agent.finalId)} deletion changed during Add.`,
         );
       }
-      let finished = false;
-      const finishOnce = (nextOptions: StatelessClawAddOptions) => {
-        if (finished) {
-          throw new Error("Claw Add was already finished");
-        }
-        finished = true;
-        options = nextOptions;
-      };
       return {
         kind: "ready",
         finish: async (nextOptions = options) => {
-          finishOnce(nextOptions);
+          options = nextOptions;
           try {
             assertForwardCurrent("after-agent-commit");
             cronJobs = await installClawCronJobsStateless(plan, {
@@ -450,7 +437,7 @@ export async function stageClawAddHostRequirementsStateless(
           }
         },
         fail: async (error, code, nextOptions = options) => {
-          finishOnce(nextOptions);
+          options = nextOptions;
           return await fail(error, code);
         },
       };
@@ -506,10 +493,6 @@ export async function stageClawAddHostRequirementsStateless(
       return staged.kind === "partial" ? staged.result : await staged.finish();
     },
     failBeforeContinue: async (error, code) => {
-      if (continued) {
-        throw new Error("Claw Add was already continued");
-      }
-      continued = true;
       return await fail(error, code);
     },
   };

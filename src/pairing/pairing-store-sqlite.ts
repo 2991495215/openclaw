@@ -7,6 +7,7 @@ import { normalizeUniqueStringEntries } from "@openclaw/normalization-core/strin
 import type { Selectable } from "kysely";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
+import { normalizeOptionalTrimmedStringRecord } from "../shared/collection-input.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
 import {
   runOpenClawStateWriteTransaction,
@@ -36,17 +37,7 @@ type ChannelPairingState = {
 };
 
 function normalizePersistedPairingMeta(value: unknown): Record<string, string> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const out: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    const normalized = normalizeOptionalString(entry);
-    if (normalized) {
-      out[key] = normalized;
-    }
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return isRecord(value) ? normalizeOptionalTrimmedStringRecord(value) : undefined;
 }
 
 export function normalizePersistedPairingRequest(value: unknown): PairingRequest | undefined {

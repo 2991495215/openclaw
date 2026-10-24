@@ -173,14 +173,13 @@ async function installMigrationFixture(params: {
   source: string;
   migrated: string;
   stale?: boolean;
-  phase?: "after-session-repair";
 }) {
   await installFixture(params.root, "@example/deferred-fixture", {
     id: params.pluginId,
     configSchema: objectSchema(),
     doctorContract: {
       configRepair: true,
-      stateMigrations: [{ id: "legacy-binding", ...(params.phase ? { phase: params.phase } : {}) }],
+      stateMigrations: [{ id: "legacy-binding" }],
     },
     configContracts: { compatibilityMigrationPaths: ["legacyFixture"] },
   });
@@ -209,7 +208,6 @@ async function installMigrationFixture(params: {
       },
       stateMigrations: [{
       id: "legacy-binding", label: "Fixture legacy binding",
-      ${params.phase ? `phase: ${JSON.stringify(params.phase)},` : ""}
       detectLegacyState: () => {
         ${params.stale ? 'throw new Error("Stale detector executed before convergence");' : `return fs.existsSync(${JSON.stringify(params.source)}) ? { preview: ["Import binding"] } : null;`}
       },
@@ -341,52 +339,33 @@ describe("configured plugin migration deferral", () => {
       ),
   );
 
-  it.each([false, true])("preserves same-Doctor migration obligations (newer: %s)", (newer) =>
+  it("retires same-Doctor deferral inputs with prepared metadata", () =>
     withFixture(async (f) => {
-      const config = f.config({ legacyBinding: f.source }, newer ? undefined : [f.root]);
+      const config = f.config({ legacyBinding: f.source }, [f.root]);
       await f.write(config);
       await fs.writeFile(f.source, binding);
-      if (newer) {
-        await doctor();
-        expectPending(f.pluginId);
-        await f.stateless();
-        await f.load(config, [f.root]);
-      }
       let installed = false;
       const result = await doctor({
-        ...(!newer ? prepared : {}),
+        ...prepared,
         measure: async (name, run) => {
           const measured = await run();
-          const phase = newer ? "legacy-state-migrations" : "config-snapshot";
-          if (name === `doctor.config-preflight.${phase}` && !installed) {
+          if (name === "doctor.config-preflight.config-snapshot" && !installed) {
             installed = true;
-            await f.install(newer ? { phase: "after-session-repair" } : {});
-            if (newer) {
-              await doctor();
-              expectPending(f.pluginId, { requiresStateMigration: true });
-            }
+            await f.install();
           }
           return measured;
         },
       });
       expect(installed).toBe(true);
       expect(result.snapshot.valid).toBe(true);
-      await expectBinding(newer ? f.source : f.migrated);
+      await expectBinding(f.migrated);
       const persisted = expect(await f.read());
       const legacyKey = `plugins.entries.${f.pluginId}.config.legacyBinding`;
-      if (newer) {
-        expectPending(f.pluginId, { requiresStateMigration: true });
-        expectDeferred(result, f.pluginId);
-        persisted.toHaveProperty(legacyKey, f.source);
-        await expectMissing(f.migrated);
-      } else {
-        expect(result.snapshot.issues).toEqual([]);
-        expect(readDeferredPluginMigrations()).toEqual([]);
-        persisted.not.toHaveProperty(legacyKey);
-        expect((await readConfigFileSnapshot()).valid).toBe(true);
-      }
-    }),
-  );
+      expect(result.snapshot.issues).toEqual([]);
+      expect(readDeferredPluginMigrations()).toEqual([]);
+      persisted.not.toHaveProperty(legacyKey);
+      expect((await readConfigFileSnapshot()).valid).toBe(true);
+    }));
 
   it.each([false, true])(
     "honors the allowlist for ambient channel credentials (Discord allowed: %s)",

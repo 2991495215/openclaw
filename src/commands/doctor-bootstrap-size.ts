@@ -1,9 +1,5 @@
 import { note } from "../../packages/terminal-core/src/note.js";
-import {
-  listAgentIds,
-  resolveAgentWorkspaceDir,
-  tryResolveDefaultAgentId,
-} from "../agents/agent-scope.js";
+import { listAgentIds, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import {
   buildBootstrapInjectionStats,
   analyzeBootstrapBudget,
@@ -77,18 +73,13 @@ export async function collectBootstrapFileSize(
 }
 
 export async function noteBootstrapFileSize(cfg: OpenClawConfig) {
-  const defaultAgentId = tryResolveDefaultAgentId(cfg);
   const agentIds = listAgentIds(cfg);
-  let defaultAnalysis: ReturnType<typeof analyzeBootstrapBudget> | undefined;
   for (const agentId of agentIds) {
     const { analysis, bootstrapTotalMaxChars } = await collectBootstrapFileSize(
       cfg,
       resolveAgentWorkspaceDir(cfg, agentId),
       agentId,
     );
-    if (agentId === defaultAgentId) {
-      defaultAnalysis = analysis;
-    }
     if (
       !analysis.hasTruncation &&
       analysis.nearLimitFiles.length === 0 &&
@@ -151,5 +142,4 @@ export async function noteBootstrapFileSize(cfg: OpenClawConfig) {
 
     note(lines.join("\n"), "Bootstrap file size");
   }
-  return defaultAnalysis;
 }

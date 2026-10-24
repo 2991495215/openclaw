@@ -141,7 +141,7 @@ export async function acquireTtsRequest(
   const queries = await acquirePluginCapabilityProviders({ key: "speechProviders", cfg });
   try {
     const setup = await queries.run(async () => {
-      const catalog = queries.providers;
+      const providers = queries.providers;
       const preferred = normalizeSpeechProviderId(prefs.tts?.provider);
       let preferredProvider = preferred;
       if (preferred) {
@@ -158,12 +158,11 @@ export async function acquireTtsRequest(
         !overrideProvider ? preferredProvider : undefined,
         !preferredProvider ? persona?.provider : undefined,
         !overrideProvider && !preferredProvider ? config.provider : undefined,
-        ...catalog.map((provider) => provider.id),
+        ...providers.map((provider) => provider.id),
       ];
-      const providers = await queries.resolveProviders({ cfg });
       const lookups = new Map<string, SpeechProviderPlugin | undefined>();
       const requested = new Set(
-        [...requestedInputs, ...providers.map((provider) => provider.id)].flatMap((id) => {
+        requestedInputs.flatMap((id) => {
           const normalized = normalizeSpeechProviderId(id);
           return normalized ? [normalized] : [];
         }),

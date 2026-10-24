@@ -435,8 +435,8 @@ export function createDeferredTuiFinish(): {
 
 type DrainableTui = {
   stop: () => void;
-  terminal?: {
-    drainInput?: (maxMs?: number, idleMs?: number) => Promise<void>;
+  terminal: {
+    drainInput: (maxMs?: number, idleMs?: number) => Promise<void>;
   };
 };
 
@@ -444,12 +444,10 @@ const TUI_SHUTDOWN_DRAIN_MAX_MS = 500;
 const TUI_SHUTDOWN_DRAIN_IDLE_MS = 100;
 
 export async function drainAndStopTuiSafely(tui: DrainableTui): Promise<void> {
-  if (typeof tui.terminal?.drainInput === "function") {
-    try {
-      await tui.terminal.drainInput(TUI_SHUTDOWN_DRAIN_MAX_MS, TUI_SHUTDOWN_DRAIN_IDLE_MS);
-    } catch {
-      // Best-effort only. A failed drain should not skip terminal shutdown.
-    }
+  try {
+    await tui.terminal.drainInput(TUI_SHUTDOWN_DRAIN_MAX_MS, TUI_SHUTDOWN_DRAIN_IDLE_MS);
+  } catch {
+    // Best-effort only. A failed drain should not skip terminal shutdown.
   }
   stopTuiSafely(() => tui.stop());
 }

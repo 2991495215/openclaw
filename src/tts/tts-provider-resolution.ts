@@ -209,15 +209,13 @@ function resolveLazyProviderConfig(
   const applyVoiceModelToProviderConfig = (
     providerConfig: SpeechProviderConfig,
   ): SpeechProviderConfig => {
-    const selectedProvider =
-      resolvedProvider ?? registry.getSpeechProvider(canonical, effectiveCfg);
     const selectedVoiceModel = voiceModel
-      ? voiceProviderSupportsModel(selectedProvider, voiceModel.model)
+      ? voiceProviderSupportsModel(resolvedProvider, voiceModel.model)
         ? voiceModel
         : undefined
       : resolveSupportedVoiceModelRefs({
           config: effectiveCfg?.agents?.defaults?.voiceModel,
-          providers: selectedProvider ? [selectedProvider] : [],
+          providers: resolvedProvider ? [resolvedProvider] : [],
           providerId: canonical,
         })[0];
     if (!selectedVoiceModel) {

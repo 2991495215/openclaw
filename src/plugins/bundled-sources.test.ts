@@ -1,10 +1,6 @@
 import { bundledPluginRootAt } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  findBundledPluginSource,
-  getProcessBundledPluginSources,
-  resolveBundledPluginSources,
-} from "./bundled-sources.js";
+import { findBundledPluginSource, resolveBundledPluginSources } from "./bundled-sources.js";
 import { setCurrentPluginMetadataSnapshotState } from "./current-plugin-metadata-state.js";
 import { resetPluginCache } from "./plugin-cache.js";
 import { createPluginMetadataSnapshotFixture } from "./plugin-metadata.test-support.js";
@@ -104,8 +100,8 @@ describe("bundled plugin sources", () => {
     snapshot.bundledManifestRegistry = snapshot.manifestRegistry;
     setCurrentPluginMetadataSnapshotState(snapshot, undefined, undefined, undefined, "gateway");
 
-    const first = getProcessBundledPluginSources();
-    const second = getProcessBundledPluginSources();
+    const first = resolveBundledPluginSources({});
+    const second = resolveBundledPluginSources({});
 
     expect([...first.values()]).toEqual([
       { pluginId: "feishu", localPath: appBundledPluginRoot("feishu"), requiresConfig: false },

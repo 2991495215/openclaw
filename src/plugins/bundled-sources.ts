@@ -137,11 +137,6 @@ export function resolveBundledPluginSources(params: {
   return bundled;
 }
 
-/** Projects bundled sources from the current generation's shared discovery facts. */
-export function getProcessBundledPluginSources(): ReadonlyMap<string, BundledPluginSource> {
-  return resolveBundledPluginSources({});
-}
-
 function pluginConfigSchemaHasRequiredFields(schema: unknown): boolean {
   if (!isRecord(schema)) {
     return false;

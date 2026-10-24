@@ -277,42 +277,120 @@ export async function collectProviderCatalogProjectionFindings(
     ];
   }
 
-  const findings: HealthFinding[] = [];
   const grouped = groupProviderCatalogsForDoctor(providers);
-  findings.push(...grouped.findings);
+  const findings = [...grouped.findings];
   for (const order of PROVIDER_CATALOG_ORDERS) {
     for (const provider of grouped.byOrder[order]) {
-      let staticCatalog: unknown;
-      let staticCatalogRun: unknown;
-      try {
-        staticCatalog = provider.staticCatalog;
-        staticCatalogRun = isReadableRecord(staticCatalog) ? staticCatalog.run : undefined;
-      } catch (error) {
-        findings.push(
-          providerCatalogProjectionFinding(
-            { providerId: provider.id, pluginId: provider.pluginId },
-            `Provider catalog ${provider.id} static catalog hook cannot be read during doctor validation.`,
-            error,
-          ),
+      const finding = (message: string, reason: string, providerId = provider.id) =>
+        providerCatalogProjectionFinding(
+          { providerId, pluginId: provider.pluginId },
+          `Provider catalog ${providerId} ${message}.`,
+          new Error(reason),
         );
-        continue;
-      }
-      if (staticCatalog === undefined) {
-        continue;
-      }
-      if (typeof staticCatalogRun !== "function") {
-        findings.push(
-          providerCatalogProjectionFinding(
-            { providerId: provider.id, pluginId: provider.pluginId },
-            `Provider catalog ${provider.id} static catalog hook is invalid during doctor validation.`,
-            new Error("static catalog run must be a function"),
-          ),
-        );
-        continue;
-      }
-      let result: Awaited<ReturnType<typeof runProviderStaticCatalog>>;
+      const collectModels = (value: Record<string, unknown>, providerId = provider.id) => {
+        const models = value.models;
+        if (!Array.isArray(models)) {
+          findings.push(
+            finding(
+              "models value is invalid during doctor validation",
+              "models must be an array",
+              providerId,
+            ),
+          );
+          return;
+        }
+        for (const [index, model] of models.entries()) {
+          const modelId = isReadableRecord(model) ? model.id : undefined;
+          if (!isTrimmedNonEmptyString(modelId)) {
+            findings.push(
+              finding(
+                `model row ${index} has an invalid model id`,
+                "model id must be a non-empty trimmed string",
+                providerId,
+              ),
+            );
+          }
+          const modelName = isReadableRecord(model) ? model.name : undefined;
+          if (modelName !== undefined && typeof modelName !== "string") {
+            findings.push(
+              finding(
+                `model row ${index} has an invalid model name`,
+                "model name must be a string when present",
+                providerId,
+              ),
+            );
+          }
+        }
+      };
       try {
-        result = await runProviderStaticCatalog({ provider });
+        const staticCatalog = provider.staticCatalog;
+        if (staticCatalog === undefined) {
+          continue;
+        }
+        if (!isReadableRecord(staticCatalog) || typeof staticCatalog.run !== "function") {
+          findings.push(
+            finding(
+              "static catalog hook is invalid during doctor validation",
+              "static catalog run must be a function",
+            ),
+          );
+          continue;
+        }
+        const result: unknown = await runProviderStaticCatalog({ provider });
+        if (result == null) {
+          continue;
+        }
+        if (!isReadableRecord(result)) {
+          findings.push(
+            finding("result is invalid during doctor validation", "result must be an object"),
+          );
+          continue;
+        }
+        if ("provider" in result) {
+          if (isReadableRecord(result.provider)) {
+            collectModels(result.provider);
+          } else {
+            findings.push(
+              finding(
+                "provider value is invalid during doctor validation",
+                "provider must be an object",
+              ),
+            );
+          }
+          continue;
+        }
+        if (!isReadableRecord(result.providers)) {
+          findings.push(
+            finding(
+              "result is invalid during doctor validation",
+              "result must include provider or providers object",
+            ),
+          );
+          continue;
+        }
+        for (const providerId of Object.keys(result.providers)) {
+          if (!isTrimmedNonEmptyString(providerId)) {
+            findings.push(
+              finding(
+                "provider key is invalid during doctor validation",
+                "provider key must be a non-empty trimmed string",
+              ),
+            );
+            continue;
+          }
+          const config = result.providers[providerId];
+          if (!isReadableRecord(config)) {
+            findings.push(
+              finding(
+                "provider entry is invalid during doctor validation",
+                "provider entry must be an object",
+                providerId,
+              ),
+            );
+            continue;
+          }
+          collectModels(config, providerId);
+        }
       } catch (error) {
         findings.push(
           providerCatalogProjectionFinding(
@@ -321,207 +399,7 @@ export async function collectProviderCatalogProjectionFindings(
             error,
           ),
         );
-        continue;
       }
-      const { id: catalogProviderId, pluginId: catalogPluginId } = provider;
-      findings.push(
-        ...((): HealthFinding[] => {
-          const readValue = (
-            value: unknown,
-            key: string,
-            providerId = catalogProviderId,
-          ): { ok: true; value: unknown } | { ok: false; finding: HealthFinding } => {
-            if (!isReadableRecord(value)) {
-              return { ok: true, value: undefined };
-            }
-            try {
-              return { ok: true, value: value[key] };
-            } catch (error) {
-              return {
-                ok: false,
-                finding: providerCatalogProjectionFinding(
-                  { providerId, pluginId: catalogPluginId },
-                  `Provider catalog ${providerId} entry cannot be read during doctor validation.`,
-                  error,
-                ),
-              };
-            }
-          };
-          const collectModels = (
-            value: unknown,
-            providerId = catalogProviderId,
-          ): HealthFinding[] => {
-            const readModels = readValue(value, "models", providerId);
-            if (!readModels.ok) {
-              return [readModels.finding];
-            }
-            const rawModels = readModels.value;
-            const modelFindings: HealthFinding[] = [];
-            let models: unknown[];
-            try {
-              if (!Array.isArray(rawModels)) {
-                return [
-                  providerCatalogProjectionFinding(
-                    { providerId, pluginId: catalogPluginId },
-                    `Provider catalog ${providerId} models value is invalid during doctor validation.`,
-                    new Error("models must be an array"),
-                  ),
-                ];
-              }
-              models = rawModels;
-            } catch (error) {
-              return [
-                providerCatalogProjectionFinding(
-                  { providerId, pluginId: catalogPluginId },
-                  `Provider catalog ${providerId} models value cannot be checked during doctor validation.`,
-                  error,
-                ),
-              ];
-            }
-            let modelEntries: unknown[];
-            try {
-              modelEntries = [...models];
-            } catch (error) {
-              return [
-                providerCatalogProjectionFinding(
-                  { providerId, pluginId: catalogPluginId },
-                  `Provider catalog ${providerId} model rows cannot be enumerated during doctor validation.`,
-                  error,
-                ),
-              ];
-            }
-            for (const [index, model] of modelEntries.entries()) {
-              try {
-                const modelId = isReadableRecord(model) ? model.id : undefined;
-                if (!isTrimmedNonEmptyString(modelId)) {
-                  modelFindings.push(
-                    providerCatalogProjectionFinding(
-                      { providerId, pluginId: catalogPluginId },
-                      `Provider catalog ${providerId} model row ${index} has an invalid model id.`,
-                      new Error("model id must be a non-empty trimmed string"),
-                    ),
-                  );
-                }
-                const modelName = isReadableRecord(model) ? model.name : undefined;
-                if (modelName !== undefined && typeof modelName !== "string") {
-                  modelFindings.push(
-                    providerCatalogProjectionFinding(
-                      { providerId, pluginId: catalogPluginId },
-                      `Provider catalog ${providerId} model row ${index} has an invalid model name.`,
-                      new Error("model name must be a string when present"),
-                    ),
-                  );
-                }
-              } catch (error) {
-                modelFindings.push(
-                  providerCatalogProjectionFinding(
-                    { providerId, pluginId: catalogPluginId },
-                    `Provider catalog ${providerId} entry cannot be read during doctor validation.`,
-                    error,
-                  ),
-                );
-              }
-            }
-            return modelFindings;
-          };
-          if (result == null) {
-            return [];
-          }
-          if (!isReadableRecord(result)) {
-            return [
-              providerCatalogProjectionFinding(
-                { providerId: catalogProviderId, pluginId: catalogPluginId },
-                `Provider catalog ${catalogProviderId} result is invalid during doctor validation.`,
-                new Error("result must be an object"),
-              ),
-            ];
-          }
-          let hasProvider: boolean;
-          try {
-            hasProvider = "provider" in result;
-          } catch (error) {
-            return [
-              providerCatalogProjectionFinding(
-                { providerId: catalogProviderId, pluginId: catalogPluginId },
-                `Provider catalog ${catalogProviderId} result keys cannot be checked during doctor validation.`,
-                error,
-              ),
-            ];
-          }
-          const projectedProvider = readValue(result, "provider");
-          if (!projectedProvider.ok) {
-            return [projectedProvider.finding];
-          }
-          if (hasProvider && !isReadableRecord(projectedProvider.value)) {
-            return [
-              providerCatalogProjectionFinding(
-                { providerId: catalogProviderId, pluginId: catalogPluginId },
-                `Provider catalog ${catalogProviderId} provider value is invalid during doctor validation.`,
-                new Error("provider must be an object"),
-              ),
-            ];
-          }
-          if (isReadableRecord(projectedProvider.value)) {
-            return collectModels(projectedProvider.value);
-          }
-
-          const projectedProviders = readValue(result, "providers");
-          if (!projectedProviders.ok) {
-            return [projectedProviders.finding];
-          }
-          if (!isReadableRecord(projectedProviders.value)) {
-            return [
-              providerCatalogProjectionFinding(
-                { providerId: catalogProviderId, pluginId: catalogPluginId },
-                `Provider catalog ${catalogProviderId} result is invalid during doctor validation.`,
-                new Error("result must include provider or providers object"),
-              ),
-            ];
-          }
-          let providerIds: string[];
-          try {
-            providerIds = Object.keys(projectedProviders.value);
-          } catch (error) {
-            return [
-              providerCatalogProjectionFinding(
-                { providerId: catalogProviderId, pluginId: catalogPluginId },
-                `Provider catalog ${catalogProviderId} provider entries cannot be enumerated during doctor validation.`,
-                error,
-              ),
-            ];
-          }
-          const catalogFindings: HealthFinding[] = [];
-          for (const providerId of providerIds) {
-            if (!isTrimmedNonEmptyString(providerId)) {
-              catalogFindings.push(
-                providerCatalogProjectionFinding(
-                  { providerId: catalogProviderId, pluginId: catalogPluginId },
-                  `Provider catalog ${catalogProviderId} provider key is invalid during doctor validation.`,
-                  new Error("provider key must be a non-empty trimmed string"),
-                ),
-              );
-              continue;
-            }
-            const providerConfig = readValue(projectedProviders.value, providerId, providerId);
-            if (!providerConfig.ok) {
-              catalogFindings.push(providerConfig.finding);
-              continue;
-            }
-            if (!isReadableRecord(providerConfig.value)) {
-              catalogFindings.push(
-                providerCatalogProjectionFinding(
-                  { providerId, pluginId: catalogPluginId },
-                  `Provider catalog ${providerId} provider entry is invalid during doctor validation.`,
-                  new Error("provider entry must be an object"),
-                ),
-              );
-              continue;
-            }
-            catalogFindings.push(...collectModels(providerConfig.value, providerId));
-          }
-          return catalogFindings;
-        })(),
-      );
     }
   }
   return findings;

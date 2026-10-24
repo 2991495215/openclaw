@@ -824,26 +824,37 @@ describe("doctor provider catalog projection checks", () => {
     expectCatalogFinding(await inspectCatalog({}), requirement);
   });
 
-  it("reports an unreadable provider beside a healthy provider", async () => {
-    const providers = {
-      healthy: { models: [{ id: "healthy-model", name: "Healthy Model" }] },
-      get broken() {
-        throw new Error("provider catalog entry read failed");
+  it("continues catalog diagnostics after a registered hook fails", async () => {
+    mocks.providers.mockReturnValueOnce([
+      {
+        id: "mockplugin",
+        pluginId: "mockplugin",
+        label: "First",
+        auth: [],
+        staticCatalog: {
+          order: "simple",
+          run: async () => {
+            throw new Error("provider catalog failed");
+          },
+        },
       },
-    };
-    mockProviderCatalog({ order: "simple", run: async () => ({ providers }) });
-    expectCatalogFinding(await inspectCatalog({}), "provider catalog entry read failed", "broken");
-  });
-
-  it("reports model lists with invalid iterators", async () => {
-    const models = [{ id: "mock-model" }];
-    Object.defineProperty(models, Symbol.iterator, {
-      value: () => {
-        throw new Error("model iterator failed");
+      {
+        id: "later",
+        pluginId: "later",
+        label: "Later",
+        auth: [],
+        staticCatalog: { order: "simple", run: async () => ({ provider: { models: {} } }) },
       },
-    });
-    mockProviderCatalog({ order: "simple", run: async () => ({ provider: { models } }) });
-    expectCatalogFinding(await inspectCatalog({}), "model iterator failed");
+    ]);
+    const findings = await inspectCatalog({});
+    expectCatalogFinding(findings, "provider catalog failed");
+    expect(findings).toContainEqual(
+      findingMatching("provider-catalog-projection", "error", {
+        path: "plugins.entries.later",
+        target: "later",
+        requirement: "models must be an array",
+      }),
+    );
   });
 
   it("validates model rows after an invalid order through the registered catalog check", async () => {

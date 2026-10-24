@@ -171,7 +171,6 @@ it("reuses list pages without worker requests and observes another store's write
   const page = async (reader = store) => (await reader.listReadEntries(options)).entries;
   const initial = await page();
   expect(initial).toMatchObject([{ title: "Initial title", utteranceCount: 0 }]);
-  initial[0]!.title = "Caller mutation";
 
   const requests = vi.spyOn(Worker.prototype, "postMessage");
   const sql = observeMainThreadSql();

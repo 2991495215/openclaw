@@ -46,18 +46,11 @@ export function resolveLegacyHeartbeatSessionKey(
   }
 
   const heartbeatSession = heartbeat?.session;
-  const mainSessionKey =
-    cfg.session?.scope === "global"
-      ? "global"
-      : resolveAgentMainSessionKey({ cfg, agentId: resolvedAgentId });
+  const mainSessionKey = resolveAgentMainSessionKey({ cfg, agentId: resolvedAgentId });
   const selectSession = (sessionKey = mainSessionKey) => ({
     sessionKey,
     storePath,
   });
-  if (cfg.session?.scope === "global") {
-    return selectSession();
-  }
-
   const resolveCandidate = (requestKey: string) => {
     const candidate = toAgentStoreSessionKey({
       agentId: resolvedAgentId,
