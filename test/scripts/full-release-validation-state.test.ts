@@ -330,6 +330,39 @@ describe("full release execution plan", () => {
     ).toThrow("knownFlakyJobs must be empty");
   });
 
+  it("preserves legacy embedded-manifest reuse bytes across repeated validation", () => {
+    const candidate = candidateBinding();
+    const version = candidate.package.version;
+    const retained = executionPlan(
+      { childPhaseVersion: 3, rerunGroup: "ci", targetVersion: version },
+      {
+        attemptEvidenceVersion: 3,
+        candidateRequest: canonicalCandidateRequest(),
+        candidate,
+        evidenceReuse: {
+          changedPaths: [`CHANGELOG/${version}.md`, `CHANGELOG/records/${version}.md`],
+          evidenceSha: TARGET_SHA,
+          policy: "split-changelog-release-v1",
+          requested: true,
+          rootRunId: "99",
+          runUrl: "https://example.invalid/runs/99",
+          selectedRunId: "99",
+          sourceManifest: {
+            ...evidenceManifest(),
+            validationInputs: { targetVersion: version },
+          },
+        },
+      },
+    );
+    delete retained.targetVersion;
+    retained.sha256 = releaseExecutionPlanSha256(retained);
+
+    const first = validateReleaseExecutionPlanArtifact(retained);
+    expect(Object.hasOwn(first.evidenceReuse, "sourceArtifact")).toBe(false);
+    const second = validateReleaseExecutionPlanArtifact(first);
+    expect(second).toEqual(first);
+  });
+
   it("retains B observations and post-upload binding through completed plan sealing", () => {
     const record = registryRecord();
     const directory = tempDirs.make("publication-plan-");
@@ -2630,6 +2663,8 @@ console.log(JSON.stringify({
           sourceAdmissionContract: "1",
           sourceAdmission: rootSource,
           trustedWorkflow: TRUSTED_MAIN,
+          workflowRef: "release-ci/tooling",
+          workflowSha: SHA,
           validationInputs: {
             ...publicationIntentInputs(rootSource),
             targetContextRef: "release/2026.9.9",
@@ -2639,6 +2674,8 @@ console.log(JSON.stringify({
       : {
           ...evidenceManifest(),
           retainedDiagnostic: "x".repeat(50_000),
+          workflowRef: "release-ci/tooling",
+          workflowSha: SHA,
         };
     const planInputs = planInput({
       ...(sourceAdmission ? { sourceAdmissionContract: "1", sourceAdmission } : {}),
@@ -2722,6 +2759,7 @@ console.log(JSON.stringify({
           runAttempt: 1,
           sizeInBytes: 4096,
         },
+        sourceWorkflow: { ref: "release-ci/tooling", sha: SHA },
       },
       trustedWorkflow: reuse.trustedWorkflow,
     });
@@ -2805,6 +2843,7 @@ console.log(JSON.stringify({
           runUrl: "https://example.invalid/runs/99",
           selectedRunId: "99",
           sourceArtifact,
+          sourceWorkflow: { ref: "release-ci/tooling", sha: SHA },
         },
       },
     );
