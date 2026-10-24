@@ -125,7 +125,7 @@ async function readSystemdManagerCommand(
   opts?: GatewayServiceReadOptions,
   locationOnly = false,
   expectedServiceAccount?: string,
-): Promise<GatewayServiceCommandConfig | null | "not-loaded"> {
+): Promise<GatewayServiceCommandConfig | null> {
   const manager = "org.freedesktop.systemd1";
   const target = opts?.systemdReadTarget;
   const unitName = target?.unitName ?? `${resolveSystemdServiceName(env)}.service`;
@@ -171,7 +171,7 @@ async function readSystemdManagerCommand(
       // GetUnit absence proves there is no loaded runtime, not that its saved definition is absent.
       if (locationOnly && opts?.requireLoaded) {
         await binding?.verify();
-        return "not-loaded";
+        return null;
       }
       return opts?.requireLoaded ? await assertAbsentWithoutLoading() : null;
     }
@@ -488,11 +488,7 @@ export async function readSystemdServiceExecStart(
   env: GatewayServiceEnv,
   options?: GatewayServiceReadOptions,
 ): Promise<GatewayServiceCommandConfig | null> {
-  const command = await readSystemdServiceCommand(env, options);
-  if (command === "not-loaded") {
-    throw new Error("Full service inspection cannot use a location-only observation.");
-  }
-  return command;
+  return await readSystemdServiceCommand(env, options);
 }
 
 /** Root may inspect an explicitly selected service account; this grants no lifecycle authority. */
@@ -511,16 +507,12 @@ export async function readSystemdServiceExecStartAsRoot(
   ) {
     throw new ServiceOwnershipRefusalError("systemd-account-refused");
   }
-  const command = await readSystemdServiceCommand(
+  return await readSystemdServiceCommand(
     env,
     { systemdReadTarget: target, requireEffective: true, requireLoaded: true, loadForInspection },
     false,
     expectedServiceAccount,
   );
-  if (command === "not-loaded") {
-    throw new Error("Full service inspection cannot use a location-only observation.");
-  }
-  return command;
 }
 
 /** Loaded artifact location only; never an environment or service-mutation grant. */
@@ -575,7 +567,7 @@ export async function readSystemdServiceCommandLocation(
         deadline,
       );
     }
-    return command === "not-loaded" || command === null
+    return command === null
       ? { kind: "not-loaded" as const }
       : { kind: "command" as const, command };
   });
@@ -586,7 +578,7 @@ async function readSystemdServiceCommand(
   options?: GatewayServiceReadOptions,
   locationOnly = false,
   expectedServiceAccount?: string,
-): Promise<GatewayServiceCommandConfig | null | "not-loaded"> {
+): Promise<GatewayServiceCommandConfig | null> {
   try {
     const target =
       options?.systemdReadTarget ??

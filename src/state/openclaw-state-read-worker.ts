@@ -301,7 +301,7 @@ function createReadTransport(
         expectedIdentity,
         snapshotRoot,
         postgresSnapshot,
-        command: { ...readCommand },
+        command: readCommand,
       };
       const pool = readPool(state, ownsAdmission(), awaitedOnly);
       // Maintenance reuses this reader; standalone inspection releases it before metadata loads.
