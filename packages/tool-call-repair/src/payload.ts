@@ -15,7 +15,7 @@ import {
   isPlainTextToolNameChar,
   scanJsonObject,
   type JsonObjectScanState,
-  scanToolCallNameEnd,
+  scanToolCallName,
   scanXmlishToolCall,
   skipHorizontalWhitespace,
   skipLineIndentation,
@@ -132,20 +132,18 @@ function scanBracketOpening(
   } else if (isLiteralPrefixAt(text, cursor, "tool:")) {
     return { kind: "prefix" };
   }
-  const nameStart = cursor;
-  const nameEnd = scanToolCallNameEnd(text, nameStart, isPlainTextToolNameChar);
-  if (nameEnd - nameStart > MAX_PLAIN_TEXT_TOOL_NAME_CHARS) {
-    return { kind: "invalid", at: nameStart + MAX_PLAIN_TEXT_TOOL_NAME_CHARS };
+  const name = scanToolCallName(text, cursor, isPlainTextToolNameChar);
+  if (name.end - name.start > MAX_PLAIN_TEXT_TOOL_NAME_CHARS) {
+    return { kind: "invalid", at: name.start + MAX_PLAIN_TEXT_TOOL_NAME_CHARS };
   }
-  const name = { start: nameStart, end: nameEnd };
-  cursor = nameEnd;
+  cursor = name.end;
   if (cursor === text.length) {
     return {
       kind: "prefix",
-      ...(nameStart === nameEnd ? {} : { candidate: candidate(syntax, name, false) }),
+      ...(name.start === name.end ? {} : { candidate: candidate(syntax, name, false) }),
     };
   }
-  if (nameStart === nameEnd || text[cursor] !== "]") {
+  if (name.start === name.end || text[cursor] !== "]") {
     return { kind: "invalid", at: cursor };
   }
   cursor += 1;
@@ -199,20 +197,18 @@ function scanHarmonyOpening(text: string, start: number): PlainTextJsonToolCallO
   }
   cursor += "to=".length;
 
-  const nameStart = cursor;
-  const nameEnd = scanToolCallNameEnd(text, nameStart, isPlainTextToolNameChar);
-  if (nameEnd - nameStart > MAX_PLAIN_TEXT_TOOL_NAME_CHARS) {
-    return { kind: "invalid", at: nameStart + MAX_PLAIN_TEXT_TOOL_NAME_CHARS };
+  const name = scanToolCallName(text, cursor, isPlainTextToolNameChar);
+  if (name.end - name.start > MAX_PLAIN_TEXT_TOOL_NAME_CHARS) {
+    return { kind: "invalid", at: name.start + MAX_PLAIN_TEXT_TOOL_NAME_CHARS };
   }
-  const name = { start: nameStart, end: nameEnd };
-  cursor = nameEnd;
+  cursor = name.end;
   if (cursor === text.length) {
     return {
       kind: "prefix",
-      ...(nameStart === nameEnd ? {} : { candidate: candidate("harmony", name, false) }),
+      ...(name.start === name.end ? {} : { candidate: candidate("harmony", name, false) }),
     };
   }
-  if (nameStart === nameEnd || (text[cursor] !== " " && text[cursor] !== "\t")) {
+  if (name.start === name.end || (text[cursor] !== " " && text[cursor] !== "\t")) {
     return { kind: "invalid", at: cursor };
   }
   cursor = skipHorizontalWhitespace(text, cursor);
