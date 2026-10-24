@@ -1,6 +1,8 @@
+import { createHook } from "node:async_hooks";
 import { once } from "node:events";
 import net from "node:net";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   createPluginStateKeyedStoreV2ForTests,
@@ -12,6 +14,10 @@ import { HelperClient, type Payload } from "./helper-wire.test-support.js";
 
 const isolation = vi.hoisted(() => ({
   port: 0,
+  onHelperConnect: undefined as (() => void) | undefined,
+  nativeCommand: vi.fn(async () => {
+    throw new Error("native command forbidden in FaceTime Gateway proof");
+  }),
   spawn: vi.fn((_command: string, ..._args: unknown[]) => {
     throw new Error("isolated capture effect reached");
   }),
@@ -23,7 +29,8 @@ vi.mock("node:child_process", async (original) => ({
   ...(await original<typeof import("node:child_process")>()),
   spawn: isolation.spawn,
 }));
-vi.mock("../src/plugin-paths.js", () => ({
+vi.mock("../src/plugin-paths.js", async (original) => ({
+  ...(await original<typeof import("../src/plugin-paths.js")>()),
   ensureCaptureBinary: async () => process.execPath,
   ensureHelperArtifacts: async () => ({ buildId: "b".repeat(64), ipcKey: "a".repeat(64) }),
 }));
@@ -34,7 +41,9 @@ vi.mock("../src/helper-supervisor.js", () => ({
   FaceTimeHelperSupervisor: class {
     start() {}
     stop() {}
-    connected() {}
+    connected() {
+      isolation.onHelperConnect?.();
+    }
     disconnected() {}
     stale() {}
     status() {
@@ -46,6 +55,7 @@ import * as configModule from "../src/config.js";
 import { resolveFaceTimeConfig } from "../src/config.js";
 import type { PendingFaceTimeDial } from "../src/outbound-call.js";
 import { PendingFaceTimeDialStore } from "../src/pending-dial-store.js";
+import { FaceTimeCallRegistry } from "../src/runtime-state.js";
 import { createFaceTimeRuntime, type FaceTimeRuntime } from "../src/runtime.js";
 
 const validateConfig = configModule.validateFaceTimeConfig;
@@ -59,7 +69,7 @@ const openStore = () =>
     Omit<PendingFaceTimeDial, "callUUIDAliases"> & { callUUIDAliases?: string[] }
   >("facetime", storeOptions, { assertCurrent() {} });
 
-async function createWireHelper(socket: net.Socket) {
+async function createWireHelper(socket: net.Socket, respond?: (payload: Payload) => Payload) {
   socket.setEncoding("utf8");
   const lines = createInterface({ input: socket });
   const peer = new HelperClient(
@@ -78,9 +88,10 @@ async function createWireHelper(socket: net.Socket) {
       actions.push(payload);
       peer.send({
         transactionId: payload.transactionId,
-        ...(payload.action === "find-outgoing-call"
-          ? { found: true, call_uuid: "recovered-call" }
-          : { found: false, cancelled: true, tombstoned: true }),
+        ...(respond?.(payload) ??
+          (payload.action === "find-outgoing-call"
+            ? { found: true, call_uuid: "recovered-call" }
+            : { found: false, cancelled: true, tombstoned: true })),
       });
     });
   });
@@ -233,5 +244,398 @@ describe("FaceTime production authority boundary", () => {
       peer.send(call(6, lateIdentity));
       await vi.waitFor(async () => expect(await store.load()).toBeUndefined());
     },
+  );
+  // Opt in: actual Gateway discovery, plugin registration, WebSocket dispatch,
+  // runtime/persistence and HMAC helper socket. Only native effects are synthetic.
+  it
+    .runIf(process.env.POLLWAITS_FACETIME_GATEWAY === "1")
+    .for(["delayed-call", "late-alias", "no-frame"] as const)(
+    "measures Gateway registration wait: %s",
+    async (scenario, { signal }) => {
+      const [
+        { createOpenClawTestState },
+        { KERNEL_TEST_ENV },
+        { reserveGatewayTestListener },
+        { startGatewayServerCore },
+        { connectGatewayClient, disconnectGatewayClient },
+        loaderRuntime,
+        pluginModule,
+        registryRuntime,
+        { withinTest },
+      ] = await Promise.all([
+        import("../../../src/test-utils/openclaw-test-state.js"),
+        import("../../../src/gateway/test-helpers.env.js"),
+        import("../../../src/gateway/test-helpers.listener.js"),
+        import("../../../src/gateway/server-start.js"),
+        import("../../../src/gateway/test-helpers.e2e.js"),
+        import("../../../src/plugins/loader-module-runtime.js"),
+        import("../index.js"),
+        import("../../../src/plugins/runtime.js"),
+        import("../../../test/helpers/promise.js"),
+      ]);
+      const originalRegistry = registryRuntime.captureActivePluginRegistrySnapshot();
+      const rows: Array<{
+        sample: number;
+        temperature: "first-wait" | "warm";
+        registryLookups: number;
+        timerAllocations: number;
+        timerFires: number;
+        publishedAtMs?: number;
+        leaveCallAtMs?: number;
+        settledAtMs?: number;
+        actions: Record<string, number>;
+      }> = [];
+      let current: (typeof rows)[number] | undefined;
+      let targetID: string | undefined;
+      let measuring = false;
+      let startedAt = 0;
+      let registrations = 0;
+      let onCallRegistered: (() => void) | undefined;
+      const countWaits = process.env.POLLWAITS_FACETIME_COUNTS !== "0";
+      const timerIDs = new Set<number>();
+      const registrationStack = () => {
+        const stack = new Error().stack ?? "";
+        return (
+          (stack.includes("/facetime/src/runtime.") && /\bhangup\b/.test(stack)) ||
+          (stack.includes("/facetime/src/runtime-state.") && /\bwaitForCall\b/.test(stack))
+        );
+      };
+      const get = FaceTimeCallRegistry.prototype.get;
+      vi.spyOn(FaceTimeCallRegistry.prototype, "get").mockImplementation(function (
+        this: FaceTimeCallRegistry,
+        identity,
+      ) {
+        if (countWaits && measuring && current && registrationStack()) {
+          current.registryLookups += 1;
+        }
+        return get.call(this, identity);
+      });
+      const publish = (registry: FaceTimeCallRegistry) => {
+        if (
+          current &&
+          targetID &&
+          current.publishedAtMs === undefined &&
+          get.call(registry, targetID)
+        ) {
+          current.publishedAtMs = performance.now() - startedAt;
+        }
+      };
+      const create = FaceTimeCallRegistry.prototype.create;
+      vi.spyOn(FaceTimeCallRegistry.prototype, "create").mockImplementation(function (
+        this: FaceTimeCallRegistry,
+        activeCall,
+      ) {
+        const result = create.call(this, activeCall);
+        publish(this);
+        onCallRegistered?.();
+        return result;
+      });
+      const retain = FaceTimeCallRegistry.prototype.retainAlias;
+      vi.spyOn(FaceTimeCallRegistry.prototype, "retainAlias").mockImplementation(function (
+        this: FaceTimeCallRegistry,
+        activeCall,
+        alias,
+      ) {
+        const result = retain.call(this, activeCall, alias);
+        publish(this);
+        return result;
+      });
+      const hook = createHook({
+        init(id, type) {
+          if (measuring && current && type === "Timeout" && registrationStack()) {
+            current.timerAllocations += 1;
+            timerIDs.add(id);
+          }
+        },
+        before(id) {
+          if (measuring && current && timerIDs.delete(id)) {
+            current.timerFires += 1;
+          }
+        },
+      });
+      // Acquisition still creates the real PluginInstance and captures its source.
+      // Return the same source's Vitest module so native-edge mocks remain effective.
+      const createLoader = loaderRuntime.createPluginModuleLoader;
+      vi.spyOn(loaderRuntime, "createPluginModuleLoader").mockImplementation((options) => {
+        const load = createLoader(options);
+        const intercepted: typeof load = Object.assign(
+          (...args: Parameters<typeof load>) => {
+            const captured = load(...args);
+            if (args[1]?.record.id !== "facetime") {
+              return captured;
+            }
+            registrations += 1;
+            return pluginModule;
+          },
+          { prepare: load.prepare },
+        );
+        return intercepted;
+      });
+      // Block native commands even on cleanup/error paths; other runtime surfaces
+      // (especially plugin state and Gateway scope) are the real host runtime.
+      const createRuntime = loaderRuntime.createLazyPluginRuntime;
+      vi.spyOn(loaderRuntime, "createLazyPluginRuntime").mockImplementation((options) => {
+        const runtime = createRuntime(options);
+        vi.spyOn(runtime.system, "runCommandWithTimeout").mockImplementation(
+          isolation.nativeCommand,
+        );
+        return runtime;
+      });
+      let cleared = Promise.withResolvers<void>();
+      const clear = PendingFaceTimeDialStore.prototype.clear;
+      vi.spyOn(PendingFaceTimeDialStore.prototype, "clear").mockImplementation(async function (
+        this: PendingFaceTimeDialStore,
+        ...args
+      ) {
+        const result = await clear.apply(this, args);
+        cleared.resolve();
+        return result;
+      });
+      const state = await createOpenClawTestState({
+        label: "facetime-registration-gateway",
+        layout: "home",
+        env: {
+          ...KERNEL_TEST_ENV,
+          OPENCLAW_TEST_MINIMAL_GATEWAY: "0",
+          OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1",
+        },
+      });
+      let listener: Awaited<ReturnType<typeof reserveGatewayTestListener>> | undefined;
+      const token = "synthetic-facetime-gateway-token";
+      let server: Awaited<ReturnType<typeof startGatewayServerCore>> | undefined;
+      let client: Awaited<ReturnType<typeof connectGatewayClient>> | undefined;
+      let peer: Awaited<ReturnType<typeof createWireHelper>> | undefined;
+      try {
+        const reservation = await reserveGatewayTestListener(0);
+        listener = reservation;
+        await state.writeConfig({
+          agents: { defaults: { workspace: state.workspaceDir } },
+          gateway: {
+            mode: "local",
+            port: reservation.port,
+            bind: "loopback",
+            auth: { mode: "token", token },
+            reload: { mode: "off" },
+            controlUi: { enabled: false },
+          },
+          plugins: {
+            allow: ["facetime"],
+            slots: { memory: "none" },
+            load: { paths: [fileURLToPath(new URL("..", import.meta.url))] },
+            entries: {
+              facetime: { enabled: true, config: { ownerHandles: ["owner@example.com"] } },
+            },
+          },
+        });
+        server = await reservation.start(() =>
+          startGatewayServerCore(reservation.port, {
+            bind: "loopback",
+            auth: { mode: "token", token },
+            controlUiEnabled: false,
+          }),
+        );
+        await server.startupSettled;
+        client = await connectGatewayClient({
+          url: `ws://127.0.0.1:${reservation.port}`,
+          token,
+          scopes: ["operator.read", "operator.write"],
+        });
+        expect(registrations).toBeGreaterThan(0);
+        const admitted = Promise.withResolvers<void>();
+        isolation.onHelperConnect = () => admitted.resolve();
+        const socket = net.createConnection({ host: "127.0.0.1", port: isolation.port });
+        ownedSocket = socket;
+        await withinTest(once(socket, "connect"), signal);
+        peer = await withinTest(
+          createWireHelper(socket, (payload) => {
+            const action = String(payload.action);
+            if (current) {
+              current.actions[action] = (current.actions[action] ?? 0) + 1;
+              if (action === "leave-call" && current.leaveCallAtMs === undefined) {
+                current.leaveCallAtMs = performance.now() - startedAt;
+                measuring = false;
+              }
+            }
+            switch (action) {
+              case "start-call":
+                return {
+                  muted: true,
+                  is_uplink_muted: true,
+                  transport: incomingCall().data.transport,
+                };
+              case "safety-mute":
+                return {
+                  outcome: "safe-muted",
+                  muted: true,
+                  is_uplink_muted: true,
+                  downlink_muted: true,
+                };
+              case "leave-call":
+                return { outcome: "termination-requested" };
+              case "cancel-outgoing-call":
+                return { cancelled: true, tombstoned: true, found: false };
+              default:
+                return { outcome: "absent", found: false };
+            }
+          }),
+          signal,
+        );
+        await withinTest(admitted.promise, signal);
+        // This is one setup assertion, not part of the measured wait.
+        expect(await client.request("facetime.status", {})).toMatchObject({
+          helperConnected: true,
+        });
+        const samples = Number(process.env.POLLWAITS_FACETIME_SAMPLES ?? "6");
+        expect(Number.isSafeInteger(samples) && samples >= 1 && samples <= 20).toBe(true);
+        if (countWaits) {
+          hook.enable();
+        }
+        for (let sample = 0; sample < samples; sample += 1) {
+          current = undefined;
+          cleared = Promise.withResolvers<void>();
+          const nativeID = `synthetic-native-${sample}`;
+          targetID = scenario === "late-alias" ? `synthetic-alias-${sample}` : nativeID;
+          const dial =
+            scenario === "no-frame"
+              ? undefined
+              : await client.request<{ dialID: string; state: string }>("facetime.dial", {
+                  handle: "owner@example.com",
+                  mode: "audio",
+                });
+          if (dial) {
+            expect(dial.state).toBe("pending");
+          }
+          if (scenario === "late-alias") {
+            const registered = Promise.withResolvers<void>();
+            onCallRegistered = () => registered.resolve();
+            try {
+              peer.send(call(3, { call_uuid: nativeID, is_outgoing: true, dial_id: dial!.dialID }));
+              await withinTest(registered.promise, signal);
+            } finally {
+              onCallRegistered = undefined;
+            }
+          }
+          current = {
+            sample,
+            temperature: sample === 0 ? "first-wait" : "warm",
+            registryLookups: 0,
+            timerAllocations: 0,
+            timerFires: 0,
+            actions: {},
+          };
+          timerIDs.clear();
+          measuring = true;
+          startedAt = performance.now();
+          const outcome = client
+            .request<{ ok: boolean; callUUID: string }>(
+              "facetime.hangup",
+              { callUUID: ` ${targetID.toUpperCase()} ` },
+              { timeoutMs: 10_000 },
+            )
+            .then(
+              (value) => ({ value, error: undefined }),
+              (error: unknown) => ({ value: undefined, error }),
+            );
+          const stimulus =
+            scenario === "no-frame"
+              ? undefined
+              : setTimeout(() => {
+                  peer!.send(
+                    call(3, {
+                      call_uuid: nativeID,
+                      is_outgoing: true,
+                      dial_id: dial!.dialID,
+                      ...(scenario === "late-alias" ? { conversation_uuid: targetID } : {}),
+                    }),
+                  );
+                }, 125);
+          try {
+            const result = await outcome;
+            current.settledAtMs = performance.now() - startedAt;
+            measuring = false;
+            if (scenario === "no-frame") {
+              expect(String(result.error)).toContain("no active FaceTime call to hang up");
+              expect(current.actions).toEqual({});
+              if (countWaits && process.env.POLLWAITS_FACETIME_EXPECT_BASELINE === "1") {
+                expect(current.registryLookups).toBe(13);
+                expect(current.timerAllocations).toBe(11);
+                expect(current.timerFires).toBe(11);
+              }
+            } else {
+              expect(result.error).toBeUndefined();
+              expect(result.value).toEqual({ ok: true, callUUID: nativeID });
+              expect(current.publishedAtMs).toBeDefined();
+              expect(current.leaveCallAtMs).toBeDefined();
+              peer.send(call(6, { call_uuid: nativeID, is_outgoing: true, dial_id: dial!.dialID }));
+              await withinTest(cleared.promise, signal);
+            }
+            expect(isolation.spawn).not.toHaveBeenCalled();
+            expect(isolation.nativeCommand).not.toHaveBeenCalled();
+            rows.push(current);
+          } finally {
+            if (stimulus) {
+              clearTimeout(stimulus);
+            }
+            await outcome;
+            measuring = false;
+          }
+        }
+      } finally {
+        hook.disable();
+        measuring = false;
+        try {
+          if (client) {
+            await disconnectGatewayClient(client);
+          }
+        } finally {
+          try {
+            if (server) {
+              await server.close({ reason: "FaceTime synthetic proof complete" });
+            }
+          } finally {
+            isolation.onHelperConnect = undefined;
+            ownedSocket?.destroy();
+            ownedSocket = undefined;
+            try {
+              await listener?.closeUnadopted();
+            } finally {
+              try {
+                registryRuntime.restoreActivePluginRegistrySnapshot(originalRegistry);
+              } finally {
+                await state.cleanup();
+              }
+            }
+          }
+        }
+      }
+      expect(isolation.spawn).not.toHaveBeenCalled();
+      expect(isolation.nativeCommand).not.toHaveBeenCalled();
+      const includeTiming = process.env.POLLWAITS_FACETIME_TIMING === "1";
+      console.log(
+        "POLLWAITS_FACETIME_GATEWAY_SAMPLE " +
+          JSON.stringify({
+            scenario,
+            mode: includeTiming ? "timing" : "counts-only",
+            countWaits,
+            samples: rows.map(({ publishedAtMs, leaveCallAtMs, settledAtMs, ...counts }) =>
+              Object.assign(
+                counts,
+                includeTiming
+                  ? {
+                      publishedAtMs,
+                      leaveCallAtMs,
+                      settledAtMs,
+                      publicationToLeaveCallMs:
+                        publishedAtMs === undefined || leaveCallAtMs === undefined
+                          ? undefined
+                          : leaveCallAtMs - publishedAtMs,
+                    }
+                  : {},
+              ),
+            ),
+          }),
+      );
+    },
+    180_000,
   );
 });
