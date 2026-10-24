@@ -59,6 +59,7 @@ export function CardActivity(props: {
 export function StepMarker(props: {
   status: PresentedProgressStepStatus;
   outcome?: ReturnType<typeof progressCardPresentation>["terminalOutcome"];
+  details?: boolean;
 }) {
   return (
     <Show
@@ -77,7 +78,9 @@ export function StepMarker(props: {
         />
       }
     >
-      <span class="session-run-spinner" />
+      <Show when={props.details} fallback={<span class="session-run-spinner" />}>
+        <Icon name="loaderCircle" />
+      </Show>
     </Show>
   );
 }
@@ -86,6 +89,7 @@ export function Steps(props: {
   card: ProgressCard;
   hasActiveRun: boolean;
   sessionStatus?: SessionRunStatus;
+  details?: boolean;
 }) {
   return (
     <Show when={props.card.steps?.length}>
@@ -96,6 +100,7 @@ export function Steps(props: {
               step={step}
               hasActiveRun={props.hasActiveRun}
               sessionStatus={props.sessionStatus}
+              details={props.details}
             />
           )}
         </For>
@@ -108,6 +113,7 @@ function Step(props: {
   step: ProgressCardStep;
   hasActiveRun: boolean;
   sessionStatus?: SessionRunStatus;
+  details?: boolean;
 }) {
   const terminalOutcome = () =>
     props.step.status === "in_progress" && props.sessionStatus
@@ -136,7 +142,7 @@ function Step(props: {
         data-outcome={terminalOutcome() ? props.sessionStatus : undefined}
         aria-hidden="true"
       >
-        <StepMarker status={status()} outcome={terminalOutcome()} />
+        <StepMarker status={status()} outcome={terminalOutcome()} details={props.details} />
       </span>
       <span class="session-progress-card__step-text">{props.step.step}</span>
     </li>

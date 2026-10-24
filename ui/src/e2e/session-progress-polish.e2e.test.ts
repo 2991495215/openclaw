@@ -1,5 +1,7 @@
+import type { ProgressCard } from "@openclaw/gateway-protocol";
 import type { Page } from "playwright";
 import { expect, it } from "vitest";
+import { waitForLayoutSettled } from "../pages/chat/chat-layout.browser.test-support.ts";
 import {
   controlUiBundledSettingsStorageKey,
   defaultControlUiFeatureMethods,
@@ -26,8 +28,8 @@ const steps = [
   })),
 ];
 
-async function openProgress(page: Page) {
-  const card = { sessionKey, revision: 1, updatedAt: Date.now(), steps };
+async function openProgress(page: Page, initialCard?: ProgressCard) {
+  const card = initialCard ?? { sessionKey, revision: 1, updatedAt: Date.now(), steps };
   const gateway = await installMockGateway(page, {
     featureMethods: [...defaultControlUiFeatureMethods, "chat.history", "chat.send"],
     sessionKey,
@@ -49,6 +51,153 @@ async function openProgress(page: Page) {
 }
 
 suite.define(() => {
+  it.each(["no-preference", "reduce"] as const)(
+    "keeps four task steps fixed through status changes with %s motion",
+    async (reducedMotion) => {
+      const context = await suite.newBrowserContext({
+        viewport: { width: 1440, height: 900 },
+        reducedMotion,
+      });
+      try {
+        const page = await context.newPage();
+        const labels = [
+          "Read the project instructions and inspect the current task progress behavior",
+          "Align the checklist markers with the first line of every wrapped task description",
+          "Verify the completed, current, and pending states without shifting the list",
+          "Review the screenshots and the validation notes before sharing the proposed change",
+        ];
+        const card: ProgressCard = {
+          sessionKey,
+          revision: 1,
+          updatedAt: Date.now(),
+          markdown:
+            "Review the [proposed change](https://example.com/review) and the [validation notes](https://example.com/validation).",
+          steps: labels.map((step, index) => ({
+            step,
+            status: index === 0 ? "in_progress" : "pending",
+          })),
+        };
+        const { gateway, details } = await openProgress(page, card);
+        await waitForLayoutSettled(page, ".chat-details, .task-progress-details__plan");
+        const rows = details.locator(".session-progress-card__step");
+        const measure = () =>
+          rows.evaluateAll((elements) =>
+            elements.map((row) => {
+              const marker = row.querySelector(".session-progress-card__step-marker")!;
+              const text = row.querySelector(".session-progress-card__step-text")!;
+              const icon = marker.firstElementChild!;
+              const bounds = row.getBoundingClientRect();
+              const markerBounds = marker.getBoundingClientRect();
+              const textBounds = text.getBoundingClientRect();
+              const style = getComputedStyle(text);
+              const rail = getComputedStyle(row, "::after");
+              return {
+                geometry: [bounds, markerBounds, textBounds].map(({ x, y, width, height }) => ({
+                  x,
+                  y,
+                  width,
+                  height,
+                })),
+                fontSize: style.fontSize,
+                lineHeight: style.lineHeight,
+                color: style.color,
+                markerColor: getComputedStyle(marker).color,
+                iconSize: [getComputedStyle(icon).width, getComputedStyle(icon).height],
+                animation: getComputedStyle(icon).animationName,
+                firstLineOffset: markerBounds.top - textBounds.top,
+                textGap: textBounds.left - markerBounds.right,
+                rail: {
+                  content: rail.content,
+                  x: bounds.left + Number.parseFloat(rail.left),
+                  top: bounds.top + Number.parseFloat(rail.top),
+                  height: Number.parseFloat(rail.height),
+                  width: rail.width,
+                  opacity: rail.opacity,
+                },
+              };
+            }),
+          );
+        const initial = await measure();
+        expect(initial).toHaveLength(4);
+        expect(initial.some((row) => row.geometry[2]!.height > 20)).toBe(true);
+        const palette = await details.evaluate((element) => {
+          const color = (token: string) => {
+            const probe = document.createElement("span");
+            probe.style.color = `var(${token})`;
+            element.append(probe);
+            const value = getComputedStyle(probe).color;
+            probe.remove();
+            return value;
+          };
+          return { text: color("--text"), muted: color("--muted"), success: color("--ok") };
+        });
+        const links = await details
+          .locator(".session-progress-card__markdown a")
+          .evaluateAll((elements) => elements.map((link) => getComputedStyle(link).fontWeight));
+        expect(links).toEqual(["600", "600"]);
+        for (const [index, row] of initial.entries()) {
+          expect(row.fontSize).toBe("14px");
+          expect(row.lineHeight).toBe("20px");
+          expect(row.iconSize).toEqual(["16px", "16px"]);
+          expect(row.geometry[1]!.height).toBe(20);
+          expect(row.geometry[1]!.width).toBe(16);
+          expect(row.firstLineOffset).toBe(0);
+          expect(row.textGap).toBe(10);
+          if (index === initial.length - 1) {
+            expect(row.rail.content).toBe("none");
+          } else {
+            const next = initial[index + 1]!;
+            expect(row.rail.width).toBe("1px");
+            expect(row.rail.opacity).toBe("0.5");
+            expect(row.rail.x + 0.5).toBe(row.geometry[1]!.x + 8);
+            expect(row.rail.top - (row.geometry[1]!.y + 18)).toBe(4);
+            expect(next.geometry[1]!.y + 2 - (row.rail.top + row.rail.height)).toBe(4);
+          }
+        }
+        for (let completed = 0; completed <= labels.length; completed += 1) {
+          if (completed > 0) {
+            await gateway.setMethodResponse("progressCard.get", {
+              card: {
+                ...card,
+                revision: completed + 1,
+                steps: labels.map((step, index) => ({
+                  step,
+                  status:
+                    index < completed
+                      ? "completed"
+                      : index === completed
+                        ? "in_progress"
+                        : "pending",
+                })),
+              },
+            });
+            await gateway.emitGatewayEvent("progressCard.changed", {
+              sessionKey,
+              revision: completed + 1,
+            });
+          }
+          await expect
+            .poll(() => rows.locator('[data-status="completed"]').count())
+            .toBe(completed);
+          const current = await measure();
+          expect(current.map((row) => row.geometry)).toEqual(initial.map((row) => row.geometry));
+          for (const [index, row] of current.entries()) {
+            const active = index === completed;
+            expect(row.color).toBe(active ? palette.text : palette.muted);
+            expect(row.markerColor).toBe(
+              index < completed ? palette.success : active ? palette.text : palette.muted,
+            );
+            expect(row.animation).toBe(
+              active && reducedMotion === "no-preference" ? "btn-spinner-spin" : "none",
+            );
+          }
+        }
+      } finally {
+        await suite.closeBrowserContext(context);
+      }
+    },
+  );
+
   it.each([
     { width: 1440, touch: false },
     { width: 390, touch: false },
@@ -92,9 +241,8 @@ suite.define(() => {
                 const icon = marker.getBoundingClientRect();
                 const bounds = text.getBoundingClientRect();
                 const line = Number.parseFloat(getComputedStyle(text).lineHeight);
-                const markerLine = row.closest("[data-desktop-details]") ? bounds.height : line;
                 return {
-                  delta: Math.abs(icon.top + icon.height / 2 - (bounds.top + markerLine / 2)),
+                  delta: Math.abs(icon.top + icon.height / 2 - (bounds.top + line / 2)),
                   lines: bounds.height / line,
                 };
               }),

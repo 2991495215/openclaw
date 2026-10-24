@@ -257,6 +257,7 @@ export function ProgressDetailsContent(props: ProgressDetailsContentProps) {
     <div class="task-progress-details__plan" data-has-steps={Boolean(props.card.steps?.length)}>
       <ProgressCardMarkdown markdown={props.card.markdown} />
       <Steps
+        details
         card={props.card}
         hasActiveRun={view().hasCurrentRunActivity}
         sessionStatus={view().effectiveSessionStatus}
