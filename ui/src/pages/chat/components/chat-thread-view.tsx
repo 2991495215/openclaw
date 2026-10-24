@@ -314,7 +314,7 @@ export function ChatThread(input: {
         }}
         onPointerUp={(event) => {
           const gesture = selectionGesture;
-          const ownsGesture = gesture?.pointerId === event.pointerId;
+          const ownsGesture = gesture !== undefined && gesture.pointerId === event.pointerId;
           if (ownsGesture) {
             clearSelectionGesture();
           }
