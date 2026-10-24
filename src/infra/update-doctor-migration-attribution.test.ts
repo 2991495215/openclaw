@@ -6,6 +6,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { withAgentDatabaseMaintenanceLease } from "../state/openclaw-agent-db-maintenance-lease.js";
+import { ensureOpenClawAgentDatabaseSchemaSteps } from "../state/openclaw-agent-db-schema.js";
+import { OPENCLAW_AGENT_SCHEMA_V24_SQL } from "../state/openclaw-agent-schema-v24.test-support.js";
 import { createOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import {
   closeOpenClawStateDatabaseAsync,
@@ -17,6 +19,7 @@ import {
 } from "../state/openclaw-state-db.js";
 import { addPreCutoverClientCredentialTablesForTest } from "../state/openclaw-state-schema.test-support.js";
 import { openNodeSqliteDatabase } from "./node-sqlite.js";
+import { runSqliteIntegrityOperationSync } from "./sqlite-integrity.js";
 import {
   runUpdateStateInspectionWorker,
   parseUpdateStateInspectionWorker,
@@ -219,6 +222,40 @@ it.each([false, true])(
     }
   },
 );
+
+it("attributes a captured 9.33 agent schema migration", async () => {
+  const root = fs.realpathSync(directories.make("legacy-agent-generation-"));
+  const pathname = path.join(root, "agent.sqlite");
+  const env = { ...process.env, OPENCLAW_STATE_DIR: root };
+  openOpenClawStateDatabase({ env });
+  await closeOpenClawStateDatabaseAsync();
+  {
+    using db = new DatabaseSync(pathname);
+    db.exec("PRAGMA journal_mode = WAL;");
+    db.exec(OPENCLAW_AGENT_SCHEMA_V24_SQL);
+    db.exec(`PRAGMA user_version = 24;
+      INSERT INTO schema_meta (meta_key, role, schema_version, agent_id, created_at, updated_at)
+      VALUES ('primary', 'agent', 24, 'main', 1, 1);`);
+  }
+  fs.chmodSync(pathname, 0o600);
+  const generations = { [pathname]: legacyGeneration(pathname) };
+  const { receipt, warnings } = await withCapture(env, generations, async () => {
+    await withAgentDatabaseMaintenanceLease({ env, processBound: true }, async () => {
+      using db = openNodeSqliteDatabase(pathname);
+      runSqliteIntegrityOperationSync(
+        ensureOpenClawAgentDatabaseSchemaSteps(db, {
+          agentId: "main",
+          path: pathname,
+          env,
+          versionMigrationOnly: true,
+        }),
+      );
+      expect(db.prepare("PRAGMA user_version").get()?.user_version).toBeGreaterThan(24);
+    });
+  });
+  expect(warnings).toEqual([]);
+  expect(receipt).toMatchObject({ unchanged: true, fromGenerations: generations });
+});
 
 it("answers the unmarked 9.33 rollback request only for its recorded parent producer", async () => {
   const root = fs.realpathSync(directories.make("legacy-rollback-generation-"));
