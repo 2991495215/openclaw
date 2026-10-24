@@ -96,23 +96,21 @@ type NativeConversationMessage = Binding &
       }
   );
 
-type NativeConversationWindow = Window & {
-  __OPENCLAW_NATIVE_CONVERSATION__?: unknown;
-  __OPENCLAW_NATIVE_CONVERSATION_DOCUMENT__?: Binding;
-  webkit?: {
-    messageHandlers?: {
-      openclawConversation?: {
-        postMessage: (message: NativeConversationMessage) => Promise<unknown>;
-      };
-    };
-  };
-};
-
 export function createNativeConversationBridge(
   context: ApplicationContext,
 ): NativeConversationBridge | null {
   // SAFETY: document-start WebKit globals are host input, validated before use.
-  const host = window as NativeConversationWindow;
+  const host = window as Window & {
+    __OPENCLAW_NATIVE_CONVERSATION__?: unknown;
+    __OPENCLAW_NATIVE_CONVERSATION_DOCUMENT__?: Binding;
+    webkit?: {
+      messageHandlers?: {
+        openclawConversation?: {
+          postMessage: (message: NativeConversationMessage) => Promise<unknown>;
+        };
+      };
+    };
+  };
   const capability = host["__OPENCLAW_NATIVE_CONVERSATION__"];
   const handler = host.webkit?.messageHandlers?.openclawConversation;
   if (

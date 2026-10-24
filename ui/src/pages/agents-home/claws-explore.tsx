@@ -52,8 +52,7 @@ const clawCategories = [
   ["other", "clawsCatalog.categoryOther", "layers"],
 ] as const satisfies readonly (readonly [string, string, IconName])[];
 const SECTION_SIZE = 8;
-type ClawCategory = (typeof clawCategories)[number];
-type ClawSection = { category: ClawCategory; entries: ClawCatalogEntry[] };
+type ClawSection = { category: (typeof clawCategories)[number]; entries: ClawCatalogEntry[] };
 
 function ClawCard(props: {
   entry: ClawCatalogEntry;

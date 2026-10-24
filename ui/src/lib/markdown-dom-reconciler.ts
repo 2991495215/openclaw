@@ -11,8 +11,6 @@ export type MarkdownDomMedia = {
   render: (index: number, container: HTMLElement) => MarkdownMediaRoot | undefined;
 };
 
-type MarkdownSessionTitleRegistration = (target: HTMLElement, label: HTMLElement) => () => void;
-
 type CanonicalNode = {
   key: string | number;
   canonical: string;
@@ -269,7 +267,7 @@ export class MarkdownDomReconciler {
 
   constructor(
     container: ParentNode,
-    private readonly registerSessionTitle?: MarkdownSessionTitleRegistration,
+    private readonly registerSessionTitle?: (target: HTMLElement, label: HTMLElement) => () => void,
   ) {
     this.range = createRange(container);
   }
