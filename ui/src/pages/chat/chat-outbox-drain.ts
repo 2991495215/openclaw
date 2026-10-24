@@ -49,7 +49,7 @@ export type QueuedChatSendOptions = PendingComposerSnapshot & {
   automaticResend?: boolean;
   /** Fresh selected-session sends may let the Gateway resolve its effective active-run mode. */
   allowActiveRunSend?: boolean;
-  /** Confirmation-triggered sends retain their UI owner across preparation waits. */
+  /** Prepared sends retain their connection or confirmation owner across waits. */
   canDispatch?: () => boolean;
   /** Exact submit-time leaf; restored drains omit it so intervening advances park the draft. */
   expectedLeafEntryId?: string | null;
@@ -89,30 +89,43 @@ const observedOutboxEvents = new WeakMap<GatewayBrowserClient, WeakSet<GatewayEv
 export const CHAT_OUTBOX_AUTO_RESEND_WINDOW_MS = 2 * 60_000;
 const CHAT_OUTBOX_AUTO_RESEND_MAX = 3;
 
-const sendConnectionEpochs = new WeakMap<GatewayBrowserClient, Map<string, number | undefined>>();
+const sendConnectionGenerations = new WeakMap<GatewayBrowserClient, Map<string, number>>();
 
 export function recordChatOutboxSendConnection(host: ChatHost, id: string): void {
-  if (!host.client) {
+  const client = host.client;
+  if (!client) {
     return;
   }
-  const epochs = sendConnectionEpochs.get(host.client) ?? new Map();
-  epochs.set(id, host.connectionEpoch);
-  sendConnectionEpochs.set(host.client, epochs);
+  const generations = sendConnectionGenerations.get(client) ?? new Map<string, number>();
+  // The client outlives settled messages; retain only active outbox IDs.
+  const activeIds = new Set(
+    listStoredChatOutboxes(host).flatMap(({ queue }) => queue.map((item) => item.id)),
+  );
+  for (const recordedId of generations.keys()) {
+    if (!activeIds.has(recordedId)) {
+      generations.delete(recordedId);
+    }
+  }
+  if (activeIds.has(id)) {
+    generations.set(id, client.connectionGeneration);
+  }
+  sendConnectionGenerations.set(client, generations);
 }
 
 async function canAutomaticallyResend(host: ChatHost, item: ChatQueueItem): Promise<boolean> {
-  const epochs = host.client ? sendConnectionEpochs.get(host.client) : undefined;
+  const generations = host.client ? sendConnectionGenerations.get(host.client) : undefined;
   const age = Date.now() - (item.sendFirstAttemptAtMs ?? Number.NEGATIVE_INFINITY);
   const eligible = Boolean(
     (item.sendState === "waiting-reconnect" || item.sendState === "unconfirmed") &&
     item.sendRunId &&
+    item.sessionId &&
     !item.localCommandName &&
     !item.pendingRunId &&
     ((item.sendAttempts ?? 0) > 0 || item.sendRequestStartedAtMs !== undefined) &&
     age >= 0 &&
     age <= CHAT_OUTBOX_AUTO_RESEND_WINDOW_MS &&
     (item.sendAutoResends ?? 0) < CHAT_OUTBOX_AUTO_RESEND_MAX &&
-    !(epochs?.has(item.id) && epochs.get(item.id) === host.connectionEpoch),
+    !(generations?.has(item.id) && generations.get(item.id) === host.client?.connectionGeneration),
   );
   if (!eligible || !item.attachmentPayload) {
     return eligible;
@@ -439,6 +452,12 @@ async function drainStoredChatOutbox(
     const freshAdmission = lane.freshAdmissions.delete(item.id);
     const pendingOptions = lane.pendingOptions.get(item.id);
     const retryUnconfirmed = freshAdmission && item.sendState === "unconfirmed";
+    const resendClient = host.client;
+    const resendGeneration = resendClient.connectionGeneration;
+    const resendConnectionIsCurrent = () =>
+      host.connected &&
+      host.client === resendClient &&
+      resendClient.connectionGeneration === resendGeneration;
     const automaticResend = !freshAdmission && (await canAutomaticallyResend(host, item));
     if (!freshAdmission || retryUnconfirmed || !visible) {
       // Consume before await so passive reruns stay cheap and a new foreground
@@ -472,6 +491,9 @@ async function drainStoredChatOutbox(
     }
     chatOutboxOwner(host).syncHost(host);
     if (automaticResend) {
+      if (!resendConnectionIsCurrent()) {
+        return;
+      }
       // Preparation can fail before transport; do not spin on the same row/epoch.
       recordChatOutboxSendConnection(host, item.id);
     }
@@ -481,7 +503,13 @@ async function drainStoredChatOutbox(
       {
         ...pendingOptions,
         ...(!visible ? { routingSessionKey: undefined } : {}),
-        ...(automaticResend ? { automaticResend: true } : {}),
+        ...(automaticResend
+          ? {
+              automaticResend: true,
+              canDispatch: () =>
+                resendConnectionIsCurrent() && (pendingOptions?.canDispatch?.() ?? true),
+            }
+          : {}),
       },
       outbox.sessionKey,
     );

@@ -42,7 +42,7 @@ import {
   updateQueuedSendItem,
   waitForQueuedChatHistory,
 } from "./chat-send-queue-state.ts";
-import { requestChatSend } from "./chat-send-request.ts";
+import { requestChatSend, resolveChatSendTarget } from "./chat-send-request.ts";
 import {
   OFFLINE_QUEUE_STORAGE_ERROR,
   UNCONFIRMED_CHAT_SEND_ERROR,
@@ -83,9 +83,14 @@ async function sendQueuedChatMessage(
   }
   const retrySessionKey = queued.sessionKey ?? queuedSessionKey;
   const retryAgentId = queued.agentId;
+  const unavailableRetryResult = options?.automaticResend ? "pending" : "failed";
   const retryOwnerIsCurrent = () => {
     if (!options?.canDispatch || options.canDispatch()) {
       return true;
+    }
+    if (options.automaticResend) {
+      deliveryStateWriter(host, storageMode, id)("waiting-reconnect");
+      return false;
     }
     deliveryStateWriter(host, storageMode, id)("failed", INTERRUPTED_SETTINGS_WAIT_ERROR);
     surfaceChatDeliveryFailure(
@@ -97,14 +102,14 @@ async function sendQueuedChatMessage(
     return false;
   };
   if (!retryOwnerIsCurrent()) {
-    return "failed";
+    return unavailableRetryResult;
   }
   let expectedLeafEntryId = resolveQueuedChatLeaf(host, queued, options);
   const history = waitForQueuedChatHistory(host, queued, queuedSessionKey, options);
   if (history) {
     const ready = await history;
     if (!retryOwnerIsCurrent()) {
-      return "failed";
+      return unavailableRetryResult;
     }
     if (!ready) {
       return "pending";
@@ -117,7 +122,7 @@ async function sendQueuedChatMessage(
   ) {
     const prepared = await prepareQueuedChatPayload(host, queued, queuedSessionKey);
     if (!retryOwnerIsCurrent()) {
-      return "failed";
+      return unavailableRetryResult;
     }
     if (typeof prepared === "string") {
       return prepared;
@@ -132,7 +137,7 @@ async function sendQueuedChatMessage(
     options,
     async (settledItem) => {
       if (!retryOwnerIsCurrent()) {
-        return "failed";
+        return unavailableRetryResult;
       }
       const queueSessionKey = queued.sessionKey ?? queuedSessionKey;
       const route = options?.routingSessionKey ?? queueSessionKey;
@@ -235,6 +240,12 @@ async function sendQueuedChatMessage(
         return "pending";
       }
       const requestStartedAtMs = performance.now();
+      const sendTarget = resolveChatSendTarget(host, {
+        sessionKey,
+        agentId: prepared.agentId,
+        intent: prepared.intent,
+        sessionId: prepared.sessionId,
+      });
       const sendingItem = updateQueuedSendItem(host, storageMode, id, (item) => ({
         ...item,
         sendAttempts: (item.sendAttempts ?? 0) + 1,
@@ -250,6 +261,7 @@ async function sendQueuedChatMessage(
         sendState: "sending",
         sendRequestStartedAtMs: requestStartedAtMs,
         sessionKey,
+        sessionId: sendTarget.sessionId,
         agentId: prepared.agentId,
       }));
       if (!sendingItem) {
@@ -297,15 +309,8 @@ async function sendQueuedChatMessage(
       }
 
       try {
-        if (options?.canDispatch && !options.canDispatch()) {
-          setState("failed", INTERRUPTED_SETTINGS_WAIT_ERROR);
-          surfaceChatDeliveryFailure(
-            host,
-            sessionKey,
-            prepared.agentId,
-            INTERRUPTED_SETTINGS_WAIT_ERROR,
-          );
-          return "failed";
+        if (!retryOwnerIsCurrent()) {
+          return unavailableRetryResult;
         }
         const deliveryLeafEntryId = prepared.intent
           ? prepared.expectedLeafEntryId
@@ -344,7 +349,7 @@ async function sendQueuedChatMessage(
           runId,
           sessionKey,
           agentId: prepared.agentId,
-          ...(prepared.sessionId ? { sessionId: prepared.sessionId } : {}),
+          ...(sendingItem.sessionId ? { sessionId: sendingItem.sessionId } : {}),
           ...(prepared.intent ? { intent: prepared.intent, sessionId: prepared.sessionId } : {}),
           ...(prepared.queueMode ? { queueMode: prepared.queueMode } : {}),
           ...(prepared.queueMode !== "steer" && deliveryLeafEntryId !== undefined

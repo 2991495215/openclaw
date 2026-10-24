@@ -527,14 +527,15 @@ If the connection drops before a send is acknowledged, reconnect checks delivery
 Ordinary chat sends require an exact input receipt or a user transcript row whose
 idempotency key is the submission's `runId` or `runId:user`. A matching active or
 last run ID alone confirms only commands, not ordinary chat sends.
-Without proof, the browser verifies that the session is idle and automatically resends
-messages whose first attempt was at most two minutes ago, using the original message ID.
+Without proof, the browser verifies that the original physical session is still current
+and idle, then automatically resends messages whose first attempt was at most two minutes
+ago, using the original message ID.
 It allows one automatic resend per connection and at most three per message. The message
 shows as sending, and later queued messages wait behind it. The two-minute window is shorter
 than the Gateway's five-minute deduplication lifetime; early cache eviction or a Gateway
 restart for a request without durable recovery can still cause duplicate delivery.
 
-Older attempts, messages saved without a first-attempt time, adopted attachment copies,
+Older attempts, messages saved without a first-attempt time or original physical session, adopted attachment copies,
 and messages that exhaust the automatic resend limit stay in the conversation with an
 amber **Delivery unconfirmed** footer, **Retry**, and **Discard**. Check the conversation and retry only
 if the message did not arrive. Discard removes the pending copy from this browser's outbox; it does not

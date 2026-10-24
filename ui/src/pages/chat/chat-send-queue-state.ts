@@ -291,6 +291,13 @@ export function settleQueuedChatSendFailure(
       ? {
           sendAttempts: queued.sendAttempts,
           sendRequestStartedAtMs: queued.sendRequestStartedAtMs,
+          ...(failedBeforeTransport
+            ? {
+                sessionId: queued.sessionId,
+                sendFirstAttemptAtMs: queued.sendFirstAttemptAtMs,
+                sendAutoResends: queued.sendAutoResends,
+              }
+            : {}),
         }
       : {};
     if (storageMode === "memory") {

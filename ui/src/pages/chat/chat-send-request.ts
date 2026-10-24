@@ -22,6 +22,35 @@ import { chatProviderReviewRow } from "./chat-provider-review.ts";
 import { normalizeChatSendAck, type ChatSendAck } from "./chat-send-ack.ts";
 import type { ChatState } from "./chat-state-contract.ts";
 
+export function resolveChatSendTarget(
+  state: ChatState,
+  params: {
+    sessionKey?: string;
+    agentId?: string;
+    intent?: ChatSendIntent;
+    sessionId?: string;
+  },
+) {
+  const sessionKey = params.sessionKey ?? state.sessionKey;
+  const agentId = params.agentId
+    ? normalizeAgentId(params.agentId)
+    : resolveUiSelectedSessionAgentId(state);
+  const currentSessionId = state.currentSessionId;
+  const canReuseCurrentSessionId =
+    sessionKey === state.sessionKey &&
+    (!isUiGlobalSessionKey(sessionKey) ||
+      (agentId !== undefined && agentId === resolveUiSelectedSessionAgentId(state)));
+  const routingSessionId =
+    canReuseCurrentSessionId && typeof currentSessionId === "string" && currentSessionId.trim()
+      ? currentSessionId.trim()
+      : undefined;
+  return {
+    sessionKey,
+    agentId,
+    sessionId: params.sessionId ?? (params.intent ? undefined : routingSessionId),
+  };
+}
+
 export async function requestChatSend(
   state: ChatState,
   params: {
@@ -42,27 +71,13 @@ export async function requestChatSend(
   if (params.attachments?.length) {
     assertUploadsEnabled(state.uploadConfig);
   }
-  const sessionKey = params.sessionKey ?? state.sessionKey;
+  const { sessionKey, agentId: selectedAgentId, sessionId } = resolveChatSendTarget(state, params);
   if (sessionKey === state.sessionKey && state.isRouteSessionPending?.()) {
     throw new Error(t("chat.thread.loading"));
   }
-  const selectedAgentId = params.agentId
-    ? normalizeAgentId(params.agentId)
-    : resolveUiSelectedSessionAgentId(state);
-  const currentSessionId = state.currentSessionId;
-  const canReuseCurrentSessionId =
-    sessionKey === state.sessionKey &&
-    (!isUiGlobalSessionKey(sessionKey) ||
-      (selectedAgentId !== undefined &&
-        selectedAgentId === resolveUiSelectedSessionAgentId(state)));
-  const routingSessionId =
-    canReuseCurrentSessionId && typeof currentSessionId === "string" && currentSessionId.trim()
-      ? currentSessionId.trim()
-      : undefined;
   if (chatProviderReviewRow(state, sessionKey, selectedAgentId)?.providerReview) {
     throw new Error(t("chat.providerReview.pausedBody"));
   }
-  const sessionId = params.sessionId ?? (params.intent ? undefined : routingSessionId);
   const controlUiReconnectResume = Boolean(
     !params.intent && sessionId && state.reconnectResumeSessionId === sessionId,
   );
