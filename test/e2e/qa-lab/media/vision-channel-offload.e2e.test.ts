@@ -211,7 +211,7 @@ describe("QA-channel vision offload", () => {
     expect(imageRequest.allInputText, requestDiagnostics).toContain(IMAGE_PROMPT);
     expect(activeModelRequest.allInputText, requestDiagnostics).toContain(PROVIDER_SUMMARY);
     expect(activeModelRequest.allInputText, requestDiagnostics).toContain(
-      "OpenClaw runtime context:\n",
+      "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
     );
 
     const visibleOutbound = state
