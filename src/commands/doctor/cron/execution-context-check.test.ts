@@ -15,7 +15,8 @@ const mocks = vi.hoisted(() => ({
   readSession: vi.fn(),
 }));
 
-vi.mock("./store-repair.js", () => ({
+vi.mock("./store-repair.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./store-repair.js")>()),
   inspectCronJobsForDoctor: async () => ({
     jobs: mocks.jobs.map((job, sortOrder) => ({
       storeKey: "store",
@@ -26,31 +27,27 @@ vi.mock("./store-repair.js", () => ({
   }),
 }));
 
-vi.mock("../../../config/sessions/session-entry-read-runtime.js", () => ({
+vi.mock("../../../config/sessions/session-entry-read-runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../config/sessions/session-entry-read-runtime.js")
+  >()),
   readSessionEntryReadOnlyInWorker: mocks.readSession,
 }));
 
 vi.mock("../../../state/openclaw-state-db-readonly.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../state/openclaw-state-db-readonly.js")>()),
-  withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync: async (
-    operation: (database: { db: unknown }) => unknown,
-  ) => operation({ db: {} }),
-}));
-
-vi.mock("../../../state/user-profile-identity.read.js", () => ({
-  selectUserProfileIdentityInDatabase: (_db: unknown, profileId: string) =>
-    mocks.profiles.has(profileId)
-      ? { profileId, role: mocks.roles.get(profileId) ?? null }
+  executeExistingOpenClawStateRead: async (_options: unknown, command: { profileId: string }) => ({
+    type: "userProfiles.reconcile",
+    profile: mocks.profiles.has(command.profileId)
+      ? { id: command.profileId, role: mocks.roles.get(command.profileId) ?? null }
       : undefined,
-}));
-
-vi.mock("../../../state/user-profile-github-identity.js", () => ({
-  selectUserProfileGitHubIdentities: () => new Map(),
+  }),
 }));
 
 const { collectScheduledContextReport } = await import("./execution-context-check.js");
 
 const PARENT = "agent:main:dashboard:parent";
+const GONE = { sessionKey: "agent:main:dashboard:gone", sessionId: "gone-session" };
 
 function jobRow(id: string, overrides: Partial<CronStoredJob> = {}) {
   return {
@@ -162,11 +159,10 @@ describe("collectScheduledContextReport", () => {
     );
   });
 
-  it("reports a parent without a chat type and skips malformed and main-session rows", async () => {
+  it("reports a parent without a chat type and skips malformed rows", async () => {
     mocks.jobs = [
       jobRow("no-chat-type", { createdActor: profileActor }),
       { id: "broken", definition: null, invalidReason: "invalid-definition-json" },
-      jobRow("main", { sessionTarget: "main", payload: { kind: "systemEvent", text: "x" } }),
     ];
     mocks.sessions.set(PARENT, { sessionId: "parent-session" });
     const report = await collectScheduledContextReport({ cfg: {} });
@@ -184,6 +180,41 @@ describe("collectScheduledContextReport", () => {
     expect(report.failed).toEqual([
       expect.objectContaining({ job: expect.objectContaining({ id: "unreadable" }) }),
     ]);
+    expect(mocks.readSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports only the pause for a main-target job, which runs in the agent's own session", async () => {
+    mocks.jobs = [
+      jobRow("main-removed", {
+        sessionTarget: "main",
+        payload: { kind: "systemEvent", text: "x" },
+        sourceConversation: GONE,
+      }),
+      jobRow("main-live", { sessionTarget: "main", payload: { kind: "systemEvent", text: "x" } }),
+    ];
+    mocks.sessions.set(PARENT, { sessionId: "parent-session" });
+    const report = await collectScheduledContextReport({ cfg: {} });
+    expect(report.pauses).toEqual([
+      expect.objectContaining({
+        job: expect.objectContaining({ id: "main-removed" }),
+        cause: "removed",
+      }),
+    ]);
+    expect(report.losses).toEqual([]);
+    expect(report.missingChatType).toEqual([]);
+  });
+
+  it("never pauses or predicts access changes for a command job", async () => {
+    mocks.jobs = [
+      jobRow("command-removed", {
+        payload: { kind: "command", argv: ["true"] },
+        sourceConversation: GONE,
+      }),
+      jobRow("command-live", { payload: { kind: "command", argv: ["true"] } }),
+    ];
+    mocks.sessions.set(PARENT, { sessionId: "parent-session" });
+    const report = await collectScheduledContextReport({ cfg: {} });
+    expect(report).toMatchObject({ pauses: [], losses: [], missingChatType: [], failed: [] });
     expect(mocks.readSession).toHaveBeenCalledTimes(2);
   });
 });

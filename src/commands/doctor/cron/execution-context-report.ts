@@ -58,7 +58,7 @@ export type ScheduledJobObservation = {
 };
 
 function jobRef(job: CronStoredJob): JobRef {
-  return { id: job.id, name: job.name?.trim() || job.id, enabled: job.enabled !== false };
+  return { id: job.id, name: job.name?.trim() || job.id, enabled: job.enabled };
 }
 
 /**
@@ -71,17 +71,27 @@ export function classifyScheduledJob(
 ): void {
   const { job, facts, result } = observation;
   const ref = jobRef(job);
-  if (result.status === "fail") {
-    report.failed.push({ job: ref, reason: result.error });
+  // Command payloads run host commands without the parent's access and never pause.
+  const runsCommand = job.payload.kind === "command";
+  // Only a trigger script or a detached/custom-session run executes under the minted context;
+  // a main-target job runs in the agent's own session, though a missing parent still pauses it.
+  const usesContext = Boolean(job.trigger) || (!runsCommand && job.sessionTarget !== "main");
+  if (result.status === "pause") {
+    if (!runsCommand) {
+      report.pauses.push({
+        job: ref,
+        parentSessionKey: result.parentSessionKey,
+        cause: result.reason,
+        ...(result.worktreePath ? { worktreePath: result.worktreePath } : {}),
+      });
+    }
     return;
   }
-  if (result.status === "pause") {
-    report.pauses.push({
-      job: ref,
-      parentSessionKey: result.parentSessionKey,
-      cause: result.reason,
-      ...(result.worktreePath ? { worktreePath: result.worktreePath } : {}),
-    });
+  if (!usesContext) {
+    return;
+  }
+  if (result.status === "fail") {
+    report.failed.push({ job: ref, reason: result.error });
     return;
   }
   const { principal, authority } = result.facts;

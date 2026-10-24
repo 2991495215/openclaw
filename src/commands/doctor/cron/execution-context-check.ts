@@ -10,6 +10,7 @@ import { isCliProvider } from "../../../agents/model-selection-cli.js";
 import { resolveDefaultModelForAgent } from "../../../agents/model-selection-config.js";
 import { resolveModelRefFromString } from "../../../agents/model-selection-shared.js";
 import { isConfiguredCommandOwner } from "../../../auto-reply/command-auth.js";
+import { resolveAgentMainSessionKey } from "../../../config/sessions/main-session.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions/paths.js";
 import { readSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
@@ -31,9 +32,7 @@ import { resolveCronRunToolsAllow } from "../../../cron/tools-allow.js";
 import type { CronStoredJob } from "../../../cron/types.js";
 import { resolveOperatorRolePolicyForAssignment } from "../../../gateway/operator-role-policy.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
-import { withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync } from "../../../state/openclaw-state-db-readonly.js";
-import { selectUserProfileGitHubIdentities } from "../../../state/user-profile-github-identity.js";
-import { selectUserProfileIdentityInDatabase } from "../../../state/user-profile-identity.read.js";
+import { executeExistingOpenClawStateRead } from "../../../state/openclaw-state-db-readonly.js";
 import {
   classifyScheduledJob,
   emptyScheduledContextReport,
@@ -56,25 +55,27 @@ async function readCreatorProfile(
   profileId: string,
 ): Promise<CreatorProfile> {
   try {
-    const profile = await withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync(
-      ({ db }) => {
-        const identity = selectUserProfileIdentityInDatabase(db, profileId);
-        if (!identity) {
-          return "missing" as const;
-        }
-        const github = selectUserProfileGitHubIdentities(db, [identity.profileId]);
-        return {
-          assignedRole: identity.role,
-          githubLogin: github.get(identity.profileId)?.login ?? null,
-        };
-      },
-      { env },
-    );
-    return profile ?? "missing";
+    // A merged profile's row names its canonical profile, whose role and login apply.
+    let row = await readProfileRow(env, profileId);
+    if (row?.merged_into) {
+      row = await readProfileRow(env, row.merged_into);
+    }
+    return row
+      ? { assignedRole: row.role ?? null, githubLogin: row.githubLogin ?? null }
+      : "missing";
   } catch {
     // An older or damaged profile store cannot answer; the review says so instead of failing.
     return "unreadable";
   }
+}
+
+// One stored profile row (role, merge target, GitHub login) through the state-read worker.
+async function readProfileRow(env: NodeJS.ProcessEnv, profileId: string) {
+  const reply = await executeExistingOpenClawStateRead(
+    { env },
+    { type: "userProfiles.reconcile", profileId },
+  );
+  return reply?.profile;
 }
 
 // Admission's creator-role sandbox rule, evaluated on the profile read above.
@@ -195,10 +196,6 @@ async function reviewJob(
   env: NodeJS.ProcessEnv,
   job: CronStoredJob,
 ): Promise<void> {
-  // Main-session jobs are system events in the agent's own session; they have no parent.
-  if (job.sessionTarget === "main") {
-    return;
-  }
   const agentId = tryResolveCronJobEffectiveAgentId(job, tryResolveAmbientOwnerAgentId(cfg));
   if (!agentId) {
     return;
@@ -219,8 +216,10 @@ async function reviewJob(
     owner = checkRequesterOwnerReadOnly(cfg, resolveScheduledRequester(job), profile);
   }
   const runSessionKey =
-    resolveCronSessionTargetSessionKey(job.sessionTarget) ??
-    `agent:${agentId}:cron:${job.id}:run:doctor`;
+    job.sessionTarget === "main"
+      ? resolveAgentMainSessionKey({ cfg, agentId })
+      : (resolveCronSessionTargetSessionKey(job.sessionTarget) ??
+        `agent:${agentId}:cron:${job.id}:run:doctor`);
   const facts = assembleScheduledAdmissionFacts(
     {
       cfg,
@@ -275,7 +274,7 @@ export async function collectScheduledContextReport(params: {
       await reviewJob(report, params.cfg, env, job);
     } catch (error) {
       report.failed.push({
-        job: { id: job.id, name: job.name?.trim() || job.id, enabled: job.enabled !== false },
+        job: { id: job.id, name: job.name?.trim() || job.id, enabled: job.enabled },
         reason: formatErrorMessage(error),
       });
     }
