@@ -40,7 +40,8 @@ if (isMainThread && process.env.SESSION_COST_READY_PROBE) {
       apply(target, receiver, args) {
         const stack = new Error().stack ?? "";
         if (
-          stack.includes("prepareSessionCostUsageRefreshLock") &&
+          (stack.includes("prepareSessionCostUsageRefreshLock") ||
+            stack.includes("createCacheWriter")) &&
           stack.includes("loadSessionCostSummary")
         ) {
           phaseCounts()[counter]++;
@@ -53,7 +54,8 @@ if (isMainThread && process.env.SESSION_COST_READY_PROBE) {
     apply(target, receiver, args) {
       const stack = new Error().stack ?? "";
       if (
-        stack.includes("prepareSessionCostUsageRefreshLock") &&
+        (stack.includes("prepareSessionCostUsageRefreshLock") ||
+          stack.includes("createCacheWriter")) &&
         stack.includes("loadSessionCostSummary")
       ) {
         phaseCounts().refreshPathRealpathCalls++;
