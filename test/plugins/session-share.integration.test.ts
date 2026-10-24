@@ -316,14 +316,14 @@ describe("session-share node commands", () => {
       expect(plain.sessions.map(({ threadId }) => threadId)).toContain("agent:main:global");
       expect(plain.sessions.every((row) => row.originalPath === undefined)).toBe(true);
       const command = fixture.commands.find(
-        ({ command }) => command === "openclaw.sessions.list-with-links.v1",
+        ({ command: candidate }) => candidate === "openclaw.sessions.list-with-links.v1",
       )!;
       const linked = JSON.parse(await command.handle("{}")) as SessionPage;
       expect(
         linked.sessions
           .filter(({ originalPath }) => originalPath)
           .map(({ threadId, originalPath }) => ({ threadId, originalPath }))
-          .sort((left, right) => left.threadId.localeCompare(right.threadId)),
+          .toSorted((left, right) => left.threadId.localeCompare(right.threadId)),
       ).toEqual([
         { threadId: `agent:main:dashboard:${uuid}`, originalPath: `/chat/main/dashboard/${uuid}` },
         { threadId: "agent:main:planning", originalPath: "/chat/main/planning" },

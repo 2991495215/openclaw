@@ -263,7 +263,7 @@ export function createSessionShareNodeCommands(
             entry.worktree?.repoRoot;
           return {
             threadId,
-            ...(originalPaths[index] ? { originalPath: originalPaths[index] } : {}),
+            originalPath: originalPaths[index],
             name,
             color: entry.color,
             cwd: cwd ? cwd.slice(0, 6000) : undefined,

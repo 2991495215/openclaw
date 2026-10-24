@@ -119,7 +119,7 @@ async function catalogFixture() {
     read: (hostId = "node:alpha") => catalog.read({ hostId, threadId: nativeSession.threadId }),
     expectSessions: async (sessions = [nativeSession], query: CatalogQuery = {}) => {
       expect((await readList(query))[0]?.sessions).toEqual(
-        sessions.map((session) => ({ ...session, originalUrl: null })),
+        sessions.map((session) => Object.assign({}, session, { originalUrl: null })),
       );
     },
     hold: () => {
@@ -279,7 +279,7 @@ describe("session-share receiver catalog", () => {
     await vi.advanceTimersByTimeAsync(delay ? 35_005 : 2);
     const first = (await f.host({ limitPerHost: 100 }))!;
     expect(first.sessions).toEqual(
-      sessions.slice(0, 100).map((session) => ({ ...session, originalUrl: null })),
+      sessions.slice(0, 100).map((session) => Object.assign({}, session, { originalUrl: null })),
     );
     expect(first.error).toBeUndefined();
     await f.expectSessions(sessions.slice(100, 200), {
