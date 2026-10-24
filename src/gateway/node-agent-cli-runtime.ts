@@ -19,6 +19,7 @@ export async function invokeNodeClaudeCliRun(params: {
   cwd?: string;
   env?: Record<string, string>;
   clearEnv?: string[];
+  nativeAuthOnly?: true;
   systemPrompt?: string;
   agentId?: string;
   sessionKey?: string;
@@ -78,6 +79,7 @@ export async function invokeNodeClaudeCliRun(params: {
       ...(params.cwd ? { cwd: params.cwd } : {}),
       ...(params.env ? { env: params.env } : {}),
       ...(params.clearEnv ? { clearEnv: params.clearEnv } : {}),
+      ...(params.nativeAuthOnly ? { nativeAuthOnly: true } : {}),
       ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
       ...(params.agentId ? { agentId: params.agentId } : {}),
       ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
