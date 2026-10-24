@@ -126,7 +126,7 @@ export function hasAgentId(cfg: AgentRosterConfig, agentId: string): boolean {
   // Keep both normalization passes and inspect every legacy id, including malformed tails.
   const matches = (id: string | undefined) => normalizeAgentId(normalizeAgentId(id)) === agentId;
   return roster?.kind === "entries" && isRecord(value)
-    ? Object.keys(value).some((id) => isRecord(value[id]) && matches(id))
+    ? Object.keys(value).some((id) => matches(id) && isRecord(value[id]))
     : roster?.kind === "list" && Array.isArray(value)
       ? value.reduce(
           (found, entry) =>

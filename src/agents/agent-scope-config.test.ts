@@ -355,23 +355,30 @@ describe("agent roster resolution", () => {
     }
   });
 
-  it("does not project roster entry fields for repeated membership checks", () => {
+  it("reads only matching roster entries without projecting their fields", () => {
     const readName = vi.fn(() => "Synthetic agent");
-    const entries = Object.fromEntries(
-      Array.from({ length: 100 }, (_, index) => [
-        `agent-${index}`,
-        {
-          get name() {
-            return readName();
-          },
+    const readEntry = vi.fn();
+    const entries: Record<string, { readonly name: string }> = {};
+    for (let index = 0; index < 100; index += 1) {
+      const entry = {
+        get name() {
+          return readName();
         },
-      ]),
-    );
+      };
+      Object.defineProperty(entries, `agent-${index}`, {
+        enumerable: true,
+        get: () => {
+          readEntry();
+          return entry;
+        },
+      });
+    }
     const config = { agents: { entries } };
     for (let check = 0; check < 20; check += 1) {
       expect(agentRoster.hasAgentId(config, "agent-99")).toBe(true);
       expect(agentRoster.hasAgentId(config, "missing")).toBe(false);
     }
+    expect(readEntry).toHaveBeenCalledTimes(20);
     expect(readName).not.toHaveBeenCalled();
   });
 
