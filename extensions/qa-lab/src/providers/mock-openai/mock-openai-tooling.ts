@@ -8,7 +8,11 @@ import {
   QA_WHATSAPP_AGENT_MESSAGE_ACTION_REACT_PROMPT_RE,
   QA_WHATSAPP_AGENT_MESSAGE_ACTION_UPLOAD_PROMPT_RE,
   TINY_PNG_BASE64,
+  QA_TOOL_SEARCH_PROMPT_RE,
+  QA_TOOL_SEARCH_FAILURE_PROMPT_RE,
 } from "./mock-openai-contracts.js";
+import { hasDeclaredTool, findNamedToolDefinition } from "./mock-openai-directives.js";
+import { parseToolOutputJson } from "./mock-openai-input.js";
 import { MockResponseStream } from "./mock-openai-stream.js";
 
 let mockFunctionCallSequence = 0;
@@ -175,6 +179,92 @@ function decodeXmlEntities(text: string) {
 export function extractActiveMemorySummary(text: string) {
   const match = /<active_memory_plugin>\s*([\s\S]*?)\s*<\/active_memory_plugin>/i.exec(text);
   return match?.[1] ? decodeXmlEntities(match[1]).trim() : null;
+}
+
+export function buildQaToolSearchFixtureEvents({
+  body,
+  toolDeclarationBody,
+  currentPrompt,
+  allInputText,
+  hasCompletedToolOutput,
+  completedToolName,
+  toolOutput,
+  finalReply,
+  callTool,
+  complete,
+}: {
+  body: Record<string, unknown>;
+  toolDeclarationBody: Record<string, unknown>;
+  currentPrompt: string;
+  allInputText: string;
+  hasCompletedToolOutput: boolean;
+  completedToolName: unknown;
+  toolOutput: string;
+  finalReply: string | null;
+  callTool: (name: string, args: Record<string, unknown>) => StreamEvent[];
+  complete: (text: string) => StreamEvent[];
+}): StreamEvent[] | undefined {
+  if (
+    QA_TOOL_SEARCH_PROMPT_RE.test(allInputText) ||
+    QA_TOOL_SEARCH_FAILURE_PROMPT_RE.test(allInputText)
+  ) {
+    const targetTool = extractToolSearchTarget(allInputText);
+    const resolvedQuestionPrefix =
+      "The previously requested user question has resolved. Continue the original task using this result:\n";
+    const resolvedQuestion =
+      targetTool === "ask_user" && currentPrompt.includes(resolvedQuestionPrefix)
+        ? parseToolOutputJson(currentPrompt.split(resolvedQuestionPrefix)[1] ?? "")
+        : null;
+    if (
+      resolvedQuestion?.status === "answered" &&
+      typeof resolvedQuestion.id === "string" &&
+      isRecord(resolvedQuestion.answers)
+    ) {
+      return complete(finalReply ?? "ASK-USER-ANSWERED-OK");
+    }
+    const plannedArgs = targetTool
+      ? buildQaToolSearchArgs(
+          targetTool,
+          QA_TOOL_SEARCH_FAILURE_PROMPT_RE.test(allInputText),
+          allInputText,
+        )
+      : {};
+    if (
+      targetTool &&
+      hasCompletedToolOutput &&
+      completedToolName === "tool_search" &&
+      !toolOutput.includes("FAKE_PLUGIN_OK") &&
+      toolSearchOutputHasCandidate(parseToolOutputJson(toolOutput), targetTool) &&
+      hasDeclaredTool(body, "dispatch_action")
+    ) {
+      return callTool("dispatch_action", { id: targetTool, args: plannedArgs });
+    }
+    if (
+      !hasCompletedToolOutput &&
+      targetTool &&
+      findNamedToolDefinition(toolDeclarationBody, targetTool)?.type === "custom" &&
+      typeof plannedArgs.input === "string"
+    ) {
+      return callTool(targetTool, plannedArgs);
+    }
+    if (
+      !hasCompletedToolOutput &&
+      targetTool &&
+      !hasDeclaredTool(body, targetTool) &&
+      hasDeclaredTool(body, "tool_search")
+    ) {
+      return callTool("tool_search", {
+        queries: [
+          { query: targetTool, limit: 1 },
+          { query: QA_TOOL_SEARCH_SECONDARY_TARGET, limit: 1 },
+        ],
+      });
+    }
+    if (!hasCompletedToolOutput && targetTool) {
+      return callTool(targetTool, plannedArgs);
+    }
+  }
+  return undefined;
 }
 
 export function extractToolSearchTarget(text: string): string | null {
