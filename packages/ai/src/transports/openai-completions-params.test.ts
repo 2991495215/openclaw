@@ -295,7 +295,7 @@ describe("OpenAI completions reasoning", () => {
   );
 
   it.each(["direct", "managed"] as const)(
-    "omits inferred Z.AI off controls but preserves other custom contracts (%s)",
+    "preserves binary off contracts without inventing scalar effort (%s)",
     (mode) => {
       for (const [baseUrl, thinkingFormat] of [
         ["https://api.z.ai/api/paas/v4", "zai"],
@@ -311,7 +311,7 @@ describe("OpenAI completions reasoning", () => {
           });
           const params = requestMode(mode, model, { reasoningEffort: "off" });
           const hasOffContract = explicit || thinkingFormat !== "zai";
-          if (hasOffContract && (mode === "direct" || thinkingFormat === "together")) {
+          if (hasOffContract) {
             expect(params).toMatchObject(
               thinkingFormat === "together"
                 ? { reasoning: { enabled: false } }
@@ -321,13 +321,20 @@ describe("OpenAI completions reasoning", () => {
             expect(params).not.toHaveProperty("thinking");
             expect(params).not.toHaveProperty("reasoning");
           }
-          if (
-            mode === "managed" &&
-            (thinkingFormat === "deepseek" || (explicit && thinkingFormat === "zai"))
-          ) {
-            expect(params.reasoning_effort).toBe("none");
-          } else {
-            expect(params).not.toHaveProperty("reasoning_effort");
+          expect(params).not.toHaveProperty("reasoning_effort");
+          if (mode === "managed" && thinkingFormat !== "together") {
+            const enabledOptions: (OpenAICompletionsOptions | undefined)[] = [
+              undefined,
+              { reasoningEffort: "high" },
+            ];
+            for (const options of enabledOptions) {
+              const enabled = requestMode(
+                mode,
+                { ...model, compat: { ...model.compat, supportsReasoningEffort: false } },
+                options,
+              );
+              expect(enabled).not.toHaveProperty("thinking");
+            }
           }
         }
       }

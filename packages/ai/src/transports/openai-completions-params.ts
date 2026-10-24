@@ -534,12 +534,13 @@ export function buildOpenAICompletionsRequest(
   }
   const nativeEffort = compat.thinkingFormat === "openrouter" ? undefined : effort;
   const enabled = thinkingEnabled ?? false;
+  const useBinaryThinking = direct || (nativeEffort === undefined && thinkingEnabled === false);
   if (
     model.reasoning &&
     (!compat.thinkingOffControlUndeclared || thinkingEnabled === true || !thinkingExplicit)
   ) {
     let allowScalarEffort = true;
-    if (direct && compat.thinkingFormat === "zai") {
+    if (useBinaryThinking && compat.thinkingFormat === "zai") {
       params.thinking = enabled ? { type: "enabled", clear_thinking: false } : { type: "disabled" };
       allowScalarEffort = false;
     } else if (compat.thinkingFormat === "qwen") {
@@ -558,7 +559,7 @@ export function buildOpenAICompletionsRequest(
       allowScalarEffort = false;
     } else if (
       compat.thinkingFormat === "together" ||
-      (direct && compat.thinkingFormat === "deepseek")
+      (useBinaryThinking && compat.thinkingFormat === "deepseek")
     ) {
       if (compat.thinkingFormat === "deepseek") {
         params.thinking = { type: enabled ? "enabled" : "disabled" };
