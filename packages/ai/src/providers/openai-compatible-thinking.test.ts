@@ -110,6 +110,14 @@ const mappingCases: ReasoningCase[] = [
 ];
 
 const adapterCases: ReasoningCase[] = [
+  mapped("proxy model name cannot declare a disable control", "off", undefined, {
+    modelId: "gpt-5.4",
+  }),
+  mapped("unknown off contract omits scalar effort", "off", undefined),
+  mapped("unknown native none omits scalar effort", "none", undefined),
+  mapped("off without disable support", "off", undefined, {
+    compat: efforts(["low", "medium", "high"]),
+  }),
   mapped("known model API max default", "max", "xhigh", {
     modelId: "gpt-5.6-sol",
     expectedResponses: "max",
