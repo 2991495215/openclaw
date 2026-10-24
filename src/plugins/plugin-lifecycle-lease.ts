@@ -392,7 +392,7 @@ export async function withPluginLifecycleLeaseAsync<T>(
           assertCurrent();
         }),
     };
-    await owned.assertOwned();
+    owned.assertCurrent();
     return activePluginLifecycleLease.run(
       { kind: "worker", databasePath: owned.databasePath, lease: owned, refusal },
       () => run(owned),

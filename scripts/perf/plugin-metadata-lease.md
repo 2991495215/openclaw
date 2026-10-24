@@ -20,6 +20,9 @@ Use three alternating baseline/candidate pairs when load is below 64 and at leas
 12 GiB is free internally, otherwise one pair with explicit source attribution.
 Keep cold startup, post-ready maintenance and warm turns separate. Report median,
 p95 and min-max for each measured count. CPU profiles cover each Gateway thread.
+Use `scripts/bench-gateway-startup.ts --case pluginMetadataMaintenance --runs 1
+--warmup 0 --cpu-prof-dir <dir> --output <json>` for the diagnostic profile; this
+opt-in case waits for the real post-ready registry refresh to finish.
 No wall-clock or CPU A/B claim without the campaign timing lock and load below 24;
 if timing is attempted, use at least five interleaved samples per arm. A 20% rise
 in any user-facing metric stops landing for attribution and disposition.
