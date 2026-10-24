@@ -263,7 +263,7 @@ describe("OpenAI completions output budgets", () => {
 });
 
 describe("OpenAI completions reasoning", () => {
-  it.each(["direct", "managed"] as const)(
+  it.each<"direct" | "managed">(["direct", "managed"])(
     "honors model off mappings on configured Z.AI routes (%s)",
     (mode) => {
       const scalarSupport: (boolean | undefined)[] = [undefined, false, true];
