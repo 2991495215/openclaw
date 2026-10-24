@@ -10,6 +10,7 @@ import {
 } from "../../test/helpers/openai-responses-sse.js";
 import { withinTest } from "../../test/helpers/promise.js";
 import { runQaGatewayFixture } from "../../test/helpers/qa-gateway-cleanup.js";
+import { modelDefinition } from "../agents/model-auth.fixtures.test-support.js";
 import { resetSubagentRegistryForTests } from "../agents/subagents/registry/subagent-registry.test-helpers.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resetHeartbeatEventsForTest } from "../infra/heartbeat-events.js";
@@ -187,16 +188,14 @@ describe("session notification store ownership through the Gateway", () => {
                   apiKey: "synthetic-key",
                   api: "openai-responses",
                   request: { allowPrivateNetwork: true },
-                  models: ["primary", "backup"].map((id) => ({
-                    id,
-                    name: id,
-                    api: "openai-responses",
-                    reasoning: false,
-                    input: ["text"],
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                    contextWindow: 128_000,
-                    maxTokens: 4096,
-                  })),
+                  models: ["primary", "backup"].map((id) =>
+                    modelDefinition(id, {
+                      api: "openai-responses",
+                      reasoning: false,
+                      contextWindow: 128_000,
+                      maxTokens: 4096,
+                    }),
+                  ),
                 },
               },
             },

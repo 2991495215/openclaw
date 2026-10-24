@@ -10,6 +10,7 @@ import {
 } from "../../test/helpers/gateway/chat-display-replay.js";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { modelDefinition } from "../agents/model-auth.fixtures.test-support.js";
 import { clearConfigCache, clearRuntimeConfigSnapshot } from "../config/config.js";
 import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
@@ -67,16 +68,13 @@ const scenarios = [
   ...rejections.keys(),
 ] as const;
 type Scenario = (typeof scenarios)[number];
-const model = (id: string) => ({
-  id,
-  name: id,
-  api: "openai-responses",
-  reasoning: false,
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 16_000,
-  maxTokens: 256,
-});
+const model = (id: string) =>
+  modelDefinition(id, {
+    api: "openai-responses",
+    reasoning: false,
+    contextWindow: 16_000,
+    maxTokens: 256,
+  });
 const encodeEvent = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
 const responseMessage = (id: string, text: string) => ({
   type: "message",

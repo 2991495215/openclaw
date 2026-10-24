@@ -10,6 +10,7 @@ import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promis
 import { mergeAcceptedSessionSpawnsForRun } from "../agents/accepted-session-spawn.js";
 import { createOpenClawCodingToolsAsync } from "../agents/agent-tools.js";
 import * as embeddedAgent from "../agents/embedded-agent.js";
+import { modelDefinition } from "../agents/model-auth.fixtures.test-support.js";
 import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
@@ -270,15 +271,12 @@ describe("X publication production-owner composition", () => {
             baseUrl: "https://model-proof.example.test/v1",
             apiKey: "synthetic-model-proof-key",
             models: [
-              {
-                id: "proof-model",
+              modelDefinition("proof-model", {
                 name: "Composition model fixture",
                 reasoning: false,
-                input: ["text"],
                 contextWindow: 32000,
                 maxTokens: 2048,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              },
+              }),
             ],
           },
         },

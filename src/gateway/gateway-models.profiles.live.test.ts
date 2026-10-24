@@ -4780,13 +4780,6 @@ async function loadProviderScopedConfiguredModels(params: {
   return models;
 }
 
-async function loadProviderScopedModels(params: {
-  agentDir: string;
-  providerList: readonly string[];
-}): Promise<Array<Model>> {
-  return await loadProviderScopedConfiguredModels(params);
-}
-
 function createStaticLiveModelRegistry(models: Array<Model>): LiveModelRegistry {
   return {
     find(provider, modelId) {
@@ -6236,7 +6229,10 @@ describeLive("gateway live (dev agent, profile keys)", () => {
         if (providerScopedModelProviders) {
           logProgress("[all-models] loading provider-scoped model refs");
           all = await withGatewayLiveSetupTimeout(
-            loadProviderScopedModels({ agentDir, providerList: providerScopedModelProviders }),
+            loadProviderScopedConfiguredModels({
+              agentDir,
+              providerList: providerScopedModelProviders,
+            }),
             "[all-models] load provider-scoped model refs",
           );
           if (all.length > 0) {

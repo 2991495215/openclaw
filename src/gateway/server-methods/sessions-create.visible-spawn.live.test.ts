@@ -9,6 +9,7 @@ import type { SessionRow } from "../../../packages/gateway-protocol/src/schema/s
 import { createOpenClawTestInstance } from "../../../test/helpers/openclaw-test-instance.js";
 import { runQaGatewayFixture } from "../../../test/helpers/qa-gateway-cleanup.js";
 import { isLiveTestEnabled } from "../../agents/live-test-helpers.js";
+import { modelDefinition } from "../../agents/model-auth.fixtures.test-support.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { loadOrCreateDeviceIdentity } from "../../infra/device-identity.js";
 import {
@@ -98,17 +99,7 @@ describeLive("Gateway visible worktree spawn (live)", () => {
                 baseUrl: "https://api.openai.com/v1",
                 api: "openai-responses",
                 apiKey: { source: "env", provider: "default", id: "OPENAI_API_KEY" },
-                models: [
-                  {
-                    id: modelId,
-                    name: modelId,
-                    reasoning: true,
-                    input: ["text"],
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                    contextWindow: 200_000,
-                    maxTokens: 2048,
-                  },
-                ],
+                models: [modelDefinition(modelId, { contextWindow: 200_000, maxTokens: 2048 })],
               },
             },
           },

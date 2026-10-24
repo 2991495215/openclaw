@@ -7,6 +7,7 @@ import {
   withinTest,
 } from "../../../test/helpers/promise.js";
 import { runQaGatewayFixture } from "../../../test/helpers/qa-gateway-cleanup.js";
+import { modelDefinition } from "../../agents/model-auth.fixtures.test-support.js";
 import { acquireAgentRunPreparedModelRuntime } from "../../agents/prepared-model-runtime.js";
 import { resetPreparedModelRuntimeSnapshotsForTest } from "../../agents/prepared-model-runtime.test-support.js";
 import { AuthStorage } from "../../agents/sessions/auth-storage.js";
@@ -137,15 +138,12 @@ it("fences real admitted worker credential exchange and inference I/O", async ({
                 apiKey: key,
                 baseUrl: `${endpoint}/v1`,
                 models: [
-                  {
-                    id: "model",
+                  modelDefinition("model", {
                     name: "Boundary model",
                     reasoning: false,
-                    input: ["text"],
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                     contextWindow: 8192,
                     maxTokens: 128,
-                  },
+                  }),
                 ],
               },
             },

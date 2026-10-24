@@ -10,6 +10,7 @@ import { assert, expect, it, onTestFinished, vi } from "vitest";
 import { writeOpenAiResponsesText } from "../../test/helpers/openai-responses-sse.js";
 import { createDeferred, withTestTimeout } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { modelDefinition } from "../agents/model-auth.fixtures.test-support.js";
 import { captureEnv } from "../test-utils/env.js";
 
 // Native plugins share the actual host graph, outside Vitest's transformed graph.
@@ -297,15 +298,12 @@ module.exports = {
             apiKey: "synthetic-local-only",
             api: "openai-responses",
             models: [
-              {
-                id: model,
+              modelDefinition(model, {
                 name: "Synthetic model",
                 reasoning: false,
-                input: ["text"],
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 128000,
                 maxTokens: 1024,
-              },
+              }),
             ],
           },
         },

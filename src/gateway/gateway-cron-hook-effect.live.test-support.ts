@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import path from "node:path";
+import {
+  listenLoopback,
+  closeHttpServer,
+} from "../../test/helpers/gateway-integration-fixtures.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { OpenClawTestState } from "../test-utils/openclaw-test-state.js";
 
@@ -32,15 +36,7 @@ export async function createCronHookEffectProbe(state: OpenClawTestState) {
       response.writeHead(400).end();
     }
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Cron hook effect receiver did not bind");
-  }
-  const url = `http://127.0.0.1:${address.port}`;
+  const url = await listenLoopback(server);
   const pluginPath = state.path(CRON_HOOK_PROBE_ID);
   await fs.mkdir(pluginPath, { recursive: true });
   await fs.writeFile(
@@ -123,10 +119,7 @@ module.exports = {
       for (const gate of gates.values()) {
         gate.response?.end();
       }
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+      await closeHttpServer(server);
     },
   };
 }

@@ -9,6 +9,7 @@ import {
 } from "../../test/helpers/openclaw-test-instance.js";
 import { runQaGatewayFixture } from "../../test/helpers/qa-gateway-cleanup.js";
 import { isLiveTestEnabled, logLiveProgress } from "../agents/live-test-helpers.js";
+import { modelDefinition } from "../agents/model-auth.fixtures.test-support.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { reserveTestPortListener } from "../test-utils/port-claims.js";
 import { writeToolCallResponse } from "./gateway-provider-fixture.test-support.js";
@@ -114,16 +115,12 @@ function createConfig(url: string): OpenClawConfig {
           api: "openai-responses",
           request: { allowPrivateNetwork: true },
           models: [
-            {
-              id: "egress-proof",
-              name: "egress-proof",
+            modelDefinition("egress-proof", {
               api: "openai-responses",
               reasoning: false,
-              input: ["text"],
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               contextWindow: 128_000,
               maxTokens: 4096,
-            },
+            }),
           ],
         },
       },

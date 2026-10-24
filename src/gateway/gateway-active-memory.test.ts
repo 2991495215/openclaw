@@ -9,6 +9,7 @@ import {
   createFixtureRequest,
   verifyBuiltGatewayHead,
 } from "../../test/helpers/gateway-built-fixture.js";
+import { closeHttpServer } from "../../test/helpers/gateway-integration-fixtures.js";
 import {
   createOpenClawTestInstance,
   type OpenClawTestInstance,
@@ -367,10 +368,7 @@ describe("Gateway Active Memory", () => {
           }
           await runQaGatewayFixture(
             async () => {
-              server.closeAllConnections();
-              await new Promise<void>((resolve, reject) => {
-                server.close((error) => (error ? reject(error) : resolve()));
-              });
+              await closeHttpServer(server);
             },
             async () => {
               await Promise.allSettled(providerHandlers);
