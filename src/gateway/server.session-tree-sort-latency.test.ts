@@ -256,8 +256,17 @@ test("measures tree-event reduction through the real Gateway and session capabil
           }
           let delivered = 0;
           const observer = sessions.observeRow({ key: shape.key, agentId: "main" }, () => {}, {
-            onEvent: () => {
-              delivered += 1;
+            onEvent: (event) => {
+              const payload = event.payload as {
+                session?: { key?: string };
+                sessionKey?: string;
+              } | null;
+              if (
+                event.event === "sessions.changed" &&
+                (payload?.session?.key ?? payload?.sessionKey) === shape.key
+              ) {
+                delivered += 1;
+              }
             },
           });
           cleanup.push(() => observer.dispose());
@@ -350,6 +359,7 @@ test("measures tree-event reduction through the real Gateway and session capabil
         }
       }
     }
+    expect(samples).toHaveLength(216);
     expect(counts).toEqual([
       { shape: "tree", variant: "baseline", sorts: 17 },
       { shape: "tree", variant: "candidate", sorts: 1 },
