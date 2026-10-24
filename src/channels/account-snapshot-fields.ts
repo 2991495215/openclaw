@@ -47,13 +47,6 @@ export function redactChannelStatusSummaryBaseUrl<T>(summary: T): T {
     : ({ ...summary, baseUrl: redactedBaseUrl } as T);
 }
 
-function readNullableNumber(
-  record: Record<string, unknown>,
-  key: string,
-): number | null | undefined {
-  return record[key] === null ? null : asFiniteNumber(record[key]);
-}
-
 function setSnapshotField<TKey extends keyof ChannelAccountSnapshot>(
   snapshot: Partial<ChannelAccountSnapshot>,
   key: TKey,
@@ -62,17 +55,6 @@ function setSnapshotField<TKey extends keyof ChannelAccountSnapshot>(
   if (value !== undefined) {
     snapshot[key] = value;
   }
-}
-
-function readStringArray(record: Record<string, unknown>, key: string): string[] | undefined {
-  const value = record[key];
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const normalized = normalizeStringEntries(
-    value.map((entry) => (typeof entry === "string" || typeof entry === "number" ? entry : "")),
-  );
-  return normalized.length > 0 ? normalized : undefined;
 }
 
 function readCredentialStatus(
@@ -234,7 +216,7 @@ export function projectSafeChannelAccountSnapshotFields(
     "lastRunActivityAt",
     "activeRunStartedAt",
   ] as const) {
-    setSnapshotField(snapshot, key, readNullableNumber(record, key));
+    setSnapshotField(snapshot, key, record[key] === null ? null : asFiniteNumber(record[key]));
   }
   const lifecycle = record.lifecycle;
   if (
@@ -250,7 +232,17 @@ export function projectSafeChannelAccountSnapshotFields(
   if (asBoolean(record.ingressUnavailable) === true) {
     snapshot.ingressUnavailable = true;
   }
-  setSnapshotField(snapshot, "allowFrom", readStringArray(record, "allowFrom"));
+  const allowFrom = record.allowFrom;
+  if (Array.isArray(allowFrom)) {
+    const normalized = normalizeStringEntries(
+      allowFrom.map((entry) =>
+        typeof entry === "string" || typeof entry === "number" ? entry : "",
+      ),
+    );
+    if (normalized.length > 0) {
+      snapshot.allowFrom = normalized;
+    }
+  }
   Object.assign(snapshot, projectCredentialSnapshotFields(account));
   setSnapshotField(
     snapshot,
