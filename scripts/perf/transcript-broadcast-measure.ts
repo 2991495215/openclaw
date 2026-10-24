@@ -62,16 +62,24 @@ import { parseStrictIntegerOption } from "../lib/strict-integer-option.ts";
 const { values } = parseArgs({
   options: {
     "state-dir": { type: "string" },
+    "startup-timeout-ms": { type: "string", default: "150000" },
     allocations: { type: "boolean", default: false },
     "worker-allocations": { type: "boolean", default: false },
     diagnostics: { type: "boolean", default: false },
     "broadcast-timing": { type: "boolean", default: false },
     "session-projection-counts": { type: "boolean", default: false },
+    "session-projection-sites": { type: "boolean", default: false },
+    "session-consumption": { type: "boolean", default: false },
+    "sidebar-narration": { type: "boolean", default: false },
     "session-projection-source": { type: "string" },
     "disable-inlining": { type: "boolean", default: false },
     "transport-counts": { type: "boolean", default: false },
     compressed: { type: "boolean", default: false },
     "distinct-viewers": { type: "boolean", default: false },
+    "viewer-profiles": { type: "string" },
+    "viewer-roles": { type: "boolean", default: false },
+    "viewer-join-batch": { type: "string", default: "0" },
+    "fixture-plugins": { type: "string", default: "0" },
     "prep-trace": { type: "boolean", default: false },
     "cpu-profile": { type: "boolean", default: false },
     "workload-cpu-profile": { type: "boolean", default: false },
@@ -193,6 +201,7 @@ if (
 const integer = (raw: string, label: string, min = 1) =>
   parseStrictIntegerOption({ raw, label, min, fallback: min });
 const port = integer(values.port, "--port", 40000);
+const startupTimeoutMs = integer(values["startup-timeout-ms"], "--startup-timeout-ms");
 const mockPort = integer(
   values["mock-port"] ?? String(values["dashboard-rpc"] ? port + 2 : 41034),
   "--mock-port",
@@ -283,7 +292,11 @@ if (verifyHistoryReplay && (historyLastTurns || historyPayloadBytes)) {
     "--verify-history-replay uses equal-length histories with two 4 KiB reasoning items per turn; omit --history-last-turns and --history-payload-kib",
   );
 }
-const proxyViewers = values.compressed || values["distinct-viewers"];
+const proxyViewers =
+  values.compressed || values["distinct-viewers"] || values["viewer-profiles"] !== undefined;
+if (values["session-consumption"] && !proxyViewers) {
+  throw new Error("--session-consumption requires trusted-proxy viewers");
+}
 if (proxyViewers && values["operator-access-policy"]) {
   throw new Error("--compressed/--distinct-viewers cannot combine with --operator-access-policy");
 }
@@ -363,6 +376,20 @@ if (!["compact", "sidebar", "dashboard"].includes(rowMode)) {
 }
 const clientCount =
   scenario === "chat.send" || idleScenario ? 1 : integer(values.clients, "--clients");
+const viewerProfileCount = integer(
+  values["viewer-profiles"] ?? String(values["distinct-viewers"] ? clientCount : 1),
+  "--viewer-profiles",
+);
+const viewerJoinBatch = integer(values["viewer-join-batch"], "--viewer-join-batch", 0);
+if (viewerJoinBatch && !turnScenario) {
+  throw new Error("--viewer-join-batch requires a turn workload");
+}
+if (viewerProfileCount > clientCount) {
+  throw new Error("--viewer-profiles must not exceed --clients");
+}
+if (values["viewer-roles"] && viewerProfileCount < 3) {
+  throw new Error("--viewer-roles requires at least three --viewer-profiles");
+}
 const rpcConcurrency = integer(values["rpc-concurrency"], "--rpc-concurrency");
 if (rpcConcurrency > clientCount) {
   throw new Error("--rpc-concurrency must not exceed --clients");
@@ -682,9 +709,6 @@ if (
   throw new Error("--session-projection-source requires --entry src/entry.ts");
 }
 if (values["session-projection-counts"]) {
-  if (path.resolve(values.entry) !== path.resolve("src/entry.ts")) {
-    throw new Error("--session-projection-counts requires --entry src/entry.ts");
-  }
   if (
     values.allocations ||
     values["worker-allocations"] ||
@@ -706,6 +730,20 @@ const sessionProjectionSource = values["session-projection-source"]
   : undefined;
 if (values["disable-inlining"] && !values.allocations) {
   throw new Error("--disable-inlining requires --allocations for a separate attribution capture");
+}
+if (
+  values["session-consumption"] &&
+  (values.allocations ||
+    values["stream-start-allocations"] ||
+    values["cpu-profile"] ||
+    values["workload-cpu-profile"] ||
+    values["trace-gc"] ||
+    (soakScenario && retainedProfileMs > 0))
+) {
+  throw new Error("--session-consumption requires a separate diagnostic pass without profiling");
+}
+if (values["session-projection-sites"] && !values["disable-inlining"]) {
+  throw new Error("--session-projection-sites requires --disable-inlining");
 }
 if (values["poll-seed"] !== undefined && !listIntervalMs) {
   throw new Error("--poll-seed requires --list-interval-ms");
@@ -943,7 +981,17 @@ if (values["stress-tools"] || values["mixed-rpc"] || values["attempt-setup-image
 }
 const viewerOrigin = "https://broadcast-measure.example.invalid";
 const viewerIdentity = (index: number) =>
-  `broadcast-viewer-${values["distinct-viewers"] ? index : 0}@example.invalid`;
+  `broadcast-viewer-${index % viewerProfileCount}@example.invalid`;
+const viewerRole = (index: number) =>
+  values["viewer-roles"]
+    ? (["administrator", "editor", "reader"] as const)[(index % viewerProfileCount) % 3]!
+    : "administrator";
+const viewerScopes = (index: number) =>
+  viewerRole(index) === "administrator"
+    ? ["operator.admin", "operator.read", "operator.write"]
+    : viewerRole(index) === "editor"
+      ? ["operator.read", "operator.write"]
+      : ["operator.read"];
 const viewerProfiles = new Set<string>();
 const cfg = JSON.parse(readFileSync(path.join(root, "openclaw.json"), "utf8"));
 if (sessionEventAncestors !== undefined) {
@@ -970,9 +1018,8 @@ if (verifyHistoryReplay) {
   }
 }
 if (proxyViewers) {
-  const identities = Array.from(
-    { length: values["distinct-viewers"] ? clientCount : 1 },
-    (_, index) => viewerIdentity(index),
+  const identities = Array.from({ length: viewerProfileCount }, (_, index) =>
+    viewerIdentity(index),
   );
   const scopes = ["operator.admin", "operator.read", "operator.write"];
   cfg.gateway = {
@@ -985,13 +1032,23 @@ if (proxyViewers) {
         allowUsers: identities,
         allowLoopback: true,
       },
-      identityScopes: Object.fromEntries(identities.map((identity) => [identity, scopes])),
+      identityScopes: Object.fromEntries(
+        identities.map((identity, index) => [identity, viewerScopes(index)]),
+      ),
     },
     trustedProxies: ["127.0.0.1", "::1"],
     controlUi: { enabled: false, allowedOrigins: [viewerOrigin] },
     roles: {
       default: "administrator",
-      definitions: { administrator: { agents: "*", sessions: { others: "write" }, scopes } },
+      definitions: {
+        administrator: { agents: "*", sessions: { others: "write" }, scopes },
+        ...(values["viewer-roles"]
+          ? {
+              editor: { agents: "*", sessions: { others: "write" }, scopes: viewerScopes(1) },
+              reader: { agents: "*", sessions: { others: "view" }, scopes: viewerScopes(2) },
+            }
+          : {}),
+      },
     },
   };
 }
@@ -1037,6 +1094,23 @@ if (soakScenario) {
   if (values["stress-tools"]) {
     cfg.cron = { ...cfg.cron, enabled: true };
   }
+}
+const fixturePluginCount = integer(values["fixture-plugins"], "--fixture-plugins", 0);
+if (fixturePluginCount) {
+  const plugins = writePluginFixtures(output, { count: fixturePluginCount });
+  cfg.plugins = {
+    ...cfg.plugins,
+    enabled: true,
+    allow: [
+      ...new Set([
+        ...(cfg.plugins.allow ?? []),
+        ...Object.keys(cfg.plugins.entries ?? {}),
+        ...plugins.pluginIds,
+        "openai",
+      ]),
+    ],
+    load: { ...cfg.plugins.load, paths: [...(cfg.plugins.load?.paths ?? []), plugins.pluginsDir] },
+  };
 }
 const dashboardBoardId = "synthetic-soak-board";
 const dashboardPreviewUrl = "https://github.com/openclaw-fixture/soak/issues/1";
@@ -2184,6 +2258,14 @@ const mock = createServer((req, res) => {
 });
 const children: ChildProcess[] = [];
 const clients: ReturnType<typeof createGatewayWsClient>[] = [];
+const createConsumption = values["session-consumption"]
+  ? (await import("./session-event-consumption.ts")).createSessionEventConsumption
+  : undefined;
+const consumers: Array<
+  ReturnType<typeof import("./session-event-consumption.ts").createSessionEventConsumption>
+> = [];
+const clientHellos: Array<import("../../ui/src/api/gateway.ts").GatewayHelloOk> = [];
+const viewerProfileIds: string[] = [];
 const githubOptionsClients: ReturnType<typeof createGatewayWsClient>[] = [];
 const chatDeltaDeliveryMs: number[] = [];
 const expectedClosures = new WeakSet<ReturnType<typeof createGatewayWsClient>>();
@@ -2343,6 +2425,7 @@ const env = {
     ? { OPENCLAW_PERF_FSYNC_DELAY_MS: process.env.OPENCLAW_PERF_FSYNC_DELAY_MS }
     : {}),
   ...(values["session-projection-counts"] ? { OPENCLAW_BENCH_SESSION_PROJECTION_COUNTS: "1" } : {}),
+  ...(values["session-projection-sites"] ? { OPENCLAW_BENCH_SESSION_PROJECTION_SITES: "1" } : {}),
   ...(values["disable-inlining"] ? { OPENCLAW_BENCH_DISABLE_INLINING: "1" } : {}),
   ...(sessionProjectionSource
     ? { OPENCLAW_BENCH_SESSION_PROJECTION_SOURCE: sessionProjectionSource }
@@ -2498,7 +2581,8 @@ async function assertPortAvailable(targetPort: number) {
   });
 }
 async function ready(targetPort: number, endpoint: string, owned?: ChildProcess) {
-  for (let attempt = 0; attempt < 300; attempt++) {
+  const deadline = performance.now() + startupTimeoutMs;
+  while (performance.now() < deadline) {
     if (owned) {
       assertGatewayAlive();
       // Preflight is best effort; the owned bind-success log handles another process taking the port.
@@ -2596,6 +2680,7 @@ const keys = Array.from({ length: sessionCount }, (_, index) =>
     ? `agent:main:memory-soak-history-child-${index}`
     : `agent:main:transcript-broadcast-measure-child-${index}`,
 );
+const sidebarNarrationKeys = new Set(values["sidebar-narration"] ? keys.slice(0, 6) : []);
 const historyNamespace = verifyHistoryReplay ? "memory-soak-history" : "reopen-history";
 const historySeedPath = path.join(root, `${historyNamespace}.json`);
 if (values["seed-history"]) {
@@ -2846,6 +2931,7 @@ for (let offset = 0; clientConnectParams.length < clientCount; offset++) {
       }
       clientConnectParams.push({
         ...connectParams,
+        scopes: proxyViewers ? viewerScopes(clientConnectParams.length) : connectParams.scopes,
         caps: [
           ...connectParams.caps,
           ...capabilityCohort.caps,
@@ -3978,6 +4064,7 @@ async function connectClient(index: number) {
         }
       : {}),
     onEvent: (event) => {
+      consumers[index]?.receive(event);
       lastSubscriberEventAt = performance.now();
       if (
         measuringWholeSoakAllocation &&
@@ -4066,9 +4153,10 @@ async function connectClient(index: number) {
         const attribution = prepareSessionEventMetrics(event.event, payload, [], undefined)?.("");
         if (attribution) {
           const delivery =
-            index < exactClients &&
             typeof payload?.sessionKey === "string" &&
-            keys.includes(payload.sessionKey)
+            (index < exactClients
+              ? keys.includes(payload.sessionKey)
+              : sidebarNarrationKeys.has(payload.sessionKey))
               ? "subscribed"
               : "roster";
           const bucket = `${event.event}:${attribution.reason}:${delivery}`;
@@ -4115,7 +4203,9 @@ async function connectClient(index: number) {
     !hello.features.methods.includes("sessions.describe") ||
     hello.auth.role !== "operator" ||
     (trustedProxyScenario && hello.auth.method !== "trusted-proxy") ||
-    !hello.auth.scopes.includes("operator.admin") ||
+    !(proxyViewers ? viewerScopes(index) : ["operator.admin"]).every((scope) =>
+      hello.auth.scopes.includes(scope),
+    ) ||
     hello.snapshot.sessionDefaults?.defaultAgentId !== "main"
   ) {
     throw new Error("connect did not return a valid hello snapshot");
@@ -4125,6 +4215,7 @@ async function connectClient(index: number) {
   ) {
     throw new Error("Gateway compression negotiation did not match the requested ingress");
   }
+  clientHellos[index] = hello;
   if (proxyViewers) {
     if (hello.auth.method !== "trusted-proxy") {
       throw new Error("Synthetic viewer did not authenticate through the trusted proxy");
@@ -4138,8 +4229,27 @@ async function connectClient(index: number) {
     ) {
       throw new Error("Synthetic viewer did not acquire a user profile");
     }
+    const newProfile = !viewerProfiles.has(self.profile.id);
     viewerProfiles.add(self.profile.id);
-    const expectedProfiles = values["distinct-viewers"] ? index + 1 : 1;
+    viewerProfileIds[index] = self.profile.id;
+    if (newProfile && values["viewer-roles"] && viewerRole(index) !== "administrator") {
+      expectedClosures.add(client);
+      await rpc(clients[0]!, "users.setRole", {
+        profileId: self.profile.id,
+        role: viewerRole(index),
+      });
+      // Role changes revoke existing sockets; admit the measurement socket under its final role.
+      client.ws.close();
+      return await connectClient(index);
+    }
+    if (
+      values["viewer-roles"] &&
+      viewerRole(index) !== "administrator" &&
+      self.profile.role !== viewerRole(index)
+    ) {
+      throw new Error("Synthetic viewer did not reconnect under its assigned role");
+    }
+    const expectedProfiles = Math.min(index + 1, viewerProfileCount);
     if (viewerProfiles.size !== expectedProfiles) {
       throw new Error(
         "Synthetic viewer profile identities did not match the requested cardinality",
@@ -4156,6 +4266,9 @@ function cleanup() {
   return (cleanupPromise ??= (async () => {
     closing = true;
     cohort?.release();
+    for (const consumer of consumers) {
+      consumer?.dispose();
+    }
     if (stressCronJobId) {
       try {
         const result = await clients[0]?.request("cron.remove", { id: stressCronJobId }, 5000);
@@ -4310,6 +4423,41 @@ try {
     await rpc(client, "sessions.subscribe", {});
     for (const key of index < exactClients ? keys : []) {
       await rpc(client, "sessions.messages.subscribe", { key, subscriptionId: key });
+    }
+    if (values["sidebar-narration"] && index >= exactClients) {
+      for (const key of sidebarNarrationKeys) {
+        await rpc(client, "sessions.messages.subscribe", {
+          key,
+          subscriptionId: `sidebar:${key}`,
+          mode: "narration",
+        });
+      }
+    }
+    if (createConsumption) {
+      const consumer = createConsumption({
+        url: clientConnection.url,
+        request: async <T>(method: string, params?: unknown) =>
+          (await rpc(client, method, params)) as T,
+        hello: clientHellos[index]!,
+        agentId: "main",
+        selfUser: {
+          id: viewerProfileIds[index]!,
+          identity: { type: "profile", id: viewerProfileIds[index]! },
+        },
+        sidebar: { limit: 100 },
+        sidebarOnly: index >= exactClients,
+        observedSessions:
+          index < exactClients ? [{ key: keys[index % keys.length]!, agentId: "main" }] : [],
+      });
+      consumers[index] = consumer;
+      await consumer.ready;
+    }
+    if (viewerJoinBatch && (index + 1) % viewerJoinBatch === 0 && index + 1 < clientCount) {
+      await rpc(clients[0]!, "sessions.patch", {
+        key: keys[0],
+        label: `Synthetic join cohort ${index + 1}`,
+      });
+      await drainEvents();
     }
   }
   const sender = clients[0];
@@ -5334,6 +5482,7 @@ try {
         await listWork;
       }
     };
+    let sessionConsumption: ReturnType<(typeof consumers)[number]["snapshot"]>[] = [];
     const measuredWorkload = async () => {
       if (workloadCpuProfilePath) {
         await controlGatewayProfile(measuredGateway, "cpu", "start", workloadCpuProfilePath);
@@ -5343,6 +5492,9 @@ try {
           await drainEvents();
         }
         measuring = true;
+        for (const consumer of consumers) {
+          consumer.reset();
+        }
         await workload();
         // Polling RPCs can publish after workload's first drain. Freeze counters
         // at a quiet boundary, rather than midway through their recipient fanout.
@@ -5360,6 +5512,7 @@ try {
           );
         }
       } finally {
+        sessionConsumption = consumers.map((consumer) => consumer.snapshot());
         measuring = false;
         if (workloadCpuProfilePath) {
           await controlGatewayProfile(measuredGateway, "cpu", "stop", workloadCpuProfilePath);
@@ -5469,8 +5622,17 @@ try {
       );
     }
     for (const event of turnScenario ? ["session.message", "sessions.changed"] : []) {
-      const expected = perClientCounters[0]?.get(event) ?? 0;
-      if (!expected || perClientCounters.some((counts) => counts.get(event) !== expected)) {
+      // Different roles can legitimately see different private maintenance/subagent events.
+      const expectedByProfile = new Map<string, number>();
+      if (
+        perClientCounters.some((counts, index) => {
+          const profile = values["viewer-roles"] ? viewerProfileIds[index]! : "all";
+          const count = counts.get(event) ?? 0;
+          const expected = expectedByProfile.get(profile) ?? count;
+          expectedByProfile.set(profile, expected);
+          return !count || count !== expected;
+        })
+      ) {
         throw new Error(
           `incomplete ${event} fanout: ${JSON.stringify(perClientCounters.map((counts) => counts.get(event) ?? 0))}`,
         );
@@ -5511,8 +5673,17 @@ try {
     const deliveredEvents = [...counters.values()].reduce((sum, count) => sum + count, 0);
     const deliveredSessionEvents =
       (counters.get("session.message") ?? 0) + (counters.get("sessions.changed") ?? 0);
-    const sourceEvents = deliveredSessionEvents / clientCount;
+    const sourceEvents = values["viewer-roles"] ? null : deliveredSessionEvents / clientCount;
     const sortedListLatencies = listLatencies.toSorted((a, b) => a - b);
+    if (
+      sessionConsumption.some(
+        (consumer) =>
+          consumer.failedRequests > 0 ||
+          Object.values(consumer.events).some((event) => event.missingBaseline > 0),
+      )
+    ) {
+      throw new Error("Session consumer lost a wire baseline or failed a refresh request");
+    }
     const sample = {
       round,
       scenario,
@@ -5569,6 +5740,7 @@ try {
         ? { allocatedMbPerTurn: allocation.estimatedAllocatedBytesPerOperation / 1_000_000 }
         : {}),
       diagnostics,
+      ...(createConsumption ? { sessionConsumption } : {}),
       ...(values["session-projection-counts"]
         ? {
             sessionProjectionCounts: Object.fromEntries(
@@ -5576,6 +5748,7 @@ try {
                 const publications = group.metrics.publications?.total ?? 0;
                 const audienceCacheMisses = group.metrics.audienceCacheMisses?.total ?? 0;
                 const payloadCacheMisses = group.metrics.payloadCacheMisses?.total ?? 0;
+                const deliveryPlanMisses = group.metrics.deliveryPlanMisses?.total ?? 0;
                 const projectedRecipients = group.metrics.projectedRecipients?.total ?? 0;
                 const wirePayloads = group.metrics.wirePayloads?.total ?? 0;
                 return [
@@ -5584,6 +5757,7 @@ try {
                     publications,
                     audienceCacheMisses,
                     payloadCacheMisses,
+                    deliveryPlanMisses,
                     projectedRecipients,
                     wirePayloads,
                     audienceCacheMissesPerPublication: publications
@@ -5591,6 +5765,9 @@ try {
                       : null,
                     payloadCacheMissesPerPublication: publications
                       ? payloadCacheMisses / publications
+                      : null,
+                    deliveryPlanMissesPerPublication: publications
+                      ? deliveryPlanMisses / publications
                       : null,
                     projectedRecipientsPerPublication: publications
                       ? projectedRecipients / publications
@@ -5701,7 +5878,7 @@ try {
           ? allocation.broadcastAllocation.sampledBytes / sessionCount
           : null,
       mainThreadMsPerSecond: (cpu.mainThread.totalMs / cpu.wallMs) * 1000,
-      sessionEventsPerSecond: (sourceEvents / cpu.wallMs) * 1000,
+      sessionEventsPerSecond: sourceEvents === null ? null : (sourceEvents / cpu.wallMs) * 1000,
     };
     samples.push(sample);
     const samplePath = path.join(output, `round-${round}.json`);
@@ -6169,11 +6346,17 @@ try {
     broadcastTiming: values["broadcast-timing"],
     workerAttribution: process.env.OPENCLAW_BENCH_WORKER_ATTRIBUTION === "1",
     sessionProjectionCounts: values["session-projection-counts"],
+    sessionProjectionSites: values["session-projection-sites"],
+    sidebarNarration: values["sidebar-narration"],
     sessionProjectionSource,
     inliningDisabled: values["disable-inlining"],
     transportCounts: values["transport-counts"],
     compressed: proxyViewers,
     distinctViewers: values["distinct-viewers"],
+    viewerRoles: values["viewer-roles"],
+    viewerJoinBatch,
+    fixturePluginCount,
+    startupTimeoutMs,
     viewerProfileCount: viewerProfiles.size,
     cpuProfile: values["cpu-profile"],
     workloadCpuProfile: values["workload-cpu-profile"],
