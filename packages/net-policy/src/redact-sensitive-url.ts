@@ -332,7 +332,11 @@ function redactFragment(value: string, depth: number): string {
   return redactedDecoded === decoded ? fallback : encodeURIComponent(redactedDecoded);
 }
 
-function redactEncodedNestedUrlPath(value: string, depth: number): string {
+function redactEncodedUrlValue(
+  value: string,
+  depth: number,
+  redactDecoded: (decoded: string) => string,
+): string {
   if (!looksLikeNestedUrlValue(value)) {
     return value;
   }
@@ -349,18 +353,23 @@ function redactEncodedNestedUrlPath(value: string, depth: number): string {
   if (decoded === value) {
     return value;
   }
+  return redactDecoded(decoded);
+}
 
-  const direct = redactSensitiveUrlLikeStringAtDepth(decoded, depth);
-  // Emit sanitized decoded secrets; unresolved decoded authorities fail closed.
-  if (direct.value !== decoded || hasUnresolvedEmbeddedUrlUserInfo(decoded)) {
-    return direct.value !== decoded ? direct.value : "***";
-  }
-  if (direct.parsedWholeUrl) {
-    return value;
-  }
+function redactEncodedNestedUrlPath(value: string, depth: number): string {
+  return redactEncodedUrlValue(value, depth, (decoded) => {
+    const direct = redactSensitiveUrlLikeStringAtDepth(decoded, depth);
+    // Emit sanitized decoded secrets; unresolved decoded authorities fail closed.
+    if (direct.value !== decoded || hasUnresolvedEmbeddedUrlUserInfo(decoded)) {
+      return direct.value !== decoded ? direct.value : "***";
+    }
+    if (direct.parsedWholeUrl) {
+      return value;
+    }
 
-  const nested = redactEncodedNestedUrlPath(decoded, depth + 1);
-  return nested === decoded ? value : nested;
+    const nested = redactEncodedNestedUrlPath(decoded, depth + 1);
+    return nested === decoded ? value : nested;
+  });
 }
 
 function redactSensitiveUrlAtDepth(value: string, depth: number): UrlRedactionResult {
@@ -415,28 +424,13 @@ function redactSensitiveUrlLikeStringAtDepth(value: string, depth: number): UrlR
 }
 
 function redactEncodedUrlLikeString(value: string, depth: number): string {
-  if (!looksLikeNestedUrlValue(value)) {
-    return value;
-  }
-  if (depth > MAX_NESTED_URL_REDACTION_DEPTH) {
-    return "***";
-  }
-
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(value);
-  } catch {
-    return "***";
-  }
-  if (decoded === value) {
-    return value;
-  }
-
-  const redactedDecoded = redactSensitiveUrlLikeStringAtDepth(decoded, depth + 1);
-  if (redactedDecoded.value !== decoded || redactedDecoded.parsedWholeUrl) {
-    return redactedDecoded.value === decoded ? value : redactedDecoded.value;
-  }
-  return hasUnresolvedEmbeddedUrlUserInfo(decoded) ? "***" : value;
+  return redactEncodedUrlValue(value, depth, (decoded) => {
+    const redactedDecoded = redactSensitiveUrlLikeStringAtDepth(decoded, depth + 1);
+    if (redactedDecoded.value !== decoded || redactedDecoded.parsedWholeUrl) {
+      return redactedDecoded.value === decoded ? value : redactedDecoded.value;
+    }
+    return hasUnresolvedEmbeddedUrlUserInfo(decoded) ? "***" : value;
+  });
 }
 
 function redactNestedUrlValue(value: string, depth: number): string {
