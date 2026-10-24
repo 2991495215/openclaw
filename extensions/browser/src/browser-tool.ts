@@ -9,6 +9,7 @@ import {
   readPositiveIntegerParam,
   readStringParam,
 } from "openclaw/plugin-sdk/channel-actions";
+import type { DecisionRuntimeV2 } from "openclaw/plugin-sdk/decisions";
 import { readRuntimeConfig as getRuntimeConfig } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import {
   asNullableRecord,
@@ -193,6 +194,7 @@ export function createBrowserTool(
     allowHostControl?: boolean;
     agentSessionKey?: string;
     agentId?: string;
+    decisions?: DecisionRuntimeV2;
     runToolBinding?: unknown;
     toolCapabilities?: BrowserToolCapabilities;
   },
@@ -443,7 +445,7 @@ export function createBrowserTool(
       if (
         !proxyRequest &&
         isUserBrowserProfile &&
-        ["requests", "errors", "text", "emulate"].includes(action)
+        ["requests", "errors", "text", "judge", "emulate"].includes(action)
       ) {
         throw new Error(
           `action=${action} is not supported for existing-session profiles; use action=snapshot to inspect this page, or select a managed browser profile for ${action}.`,
@@ -551,6 +553,10 @@ export function createBrowserTool(
           requestedTimeoutMs,
           signal,
           opts,
+          judgment:
+            opts?.decisions && opts.agentId
+              ? { decisions: opts.decisions, agentId: opts.agentId }
+              : undefined,
           boundTargetId: binding
             ? binding.targetId
             : dashboardName
@@ -618,6 +624,7 @@ export function createBrowserTool(
         "screenshot",
         "snapshot",
         "text",
+        "judge",
         "requests",
         "errors",
         "console",
