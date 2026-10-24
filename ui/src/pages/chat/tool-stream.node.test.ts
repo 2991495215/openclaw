@@ -7,7 +7,7 @@ import { chatRunPresentation } from "./chat-run-presentation.ts";
 import { activeChatRunStartupStatus, chatStartupStatusLabel } from "./chat-run-startup.ts";
 import { coalesceToolActivityMessages } from "./chat-tool-activity-coalesce.ts";
 import { buildToolStreamIdentity } from "./tool-stream-identity.ts";
-import { resetToolStream, suspendToolStream } from "./tool-stream-state.ts";
+import { resetToolStream } from "./tool-stream-state.ts";
 import { reconcileWaitingApprovalsFromSnapshot } from "./tool-stream-status.ts";
 import {
   agentEvent,
@@ -102,7 +102,7 @@ it("retains operation facts without callbacks or running cards during reconnect"
   });
   expect(host.toolStreamSyncTimer).not.toBeNull();
 
-  suspendToolStream(host);
+  resetToolStream(host, { keepPresentation: true });
   expect(vi.getTimerCount()).toBe(0);
   expect(host.waitingApprovalStatuses?.size).toBe(0);
   expect(host.knownAgentRunIds?.size).toBe(0);
@@ -123,7 +123,7 @@ it("retains operation facts without callbacks or running cards during reconnect"
     ["completed", "succeeded"],
   ]);
   const suspendedMessages = host.chatToolMessages;
-  suspendToolStream(host);
+  resetToolStream(host, { keepPresentation: true });
   expect(host.chatToolMessages).toBe(suspendedMessages);
   handleAgentEvent(host, agentEvent("run-1", 4, "item", activity("completed")), "history");
   expect(summarizeToolGroup(messages().flatMap(readPreparedActivity))).toBe("2 commands");

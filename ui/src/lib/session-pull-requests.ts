@@ -133,12 +133,16 @@ export function sessionPullRequestsForGateway(
     }
   };
 
-  const clearSnapshotsAndWaiters = () => {
-    const hadSnapshots = snapshots.size > 0;
-    snapshots.clear();
+  const settleWaiters = () => {
     for (const key of waiters.keys()) {
       settle(key);
     }
+  };
+
+  const clearSnapshotsAndWaiters = () => {
+    const hadSnapshots = snapshots.size > 0;
+    snapshots.clear();
+    settleWaiters();
     if (hadSnapshots) {
       notify();
     }
@@ -233,13 +237,11 @@ export function sessionPullRequestsForGateway(
     retainRefreshIntent(watchedKeys());
     lifecycle.clearRequest();
     refreshing = null;
-    for (const key of waiters.keys()) {
-      settle(key);
-    }
+    settleWaiters();
   };
 
   const handleGatewaySnapshot = (snapshot: ApplicationGateway["snapshot"]) => {
-    const changed = connection.transition(snapshot);
+    const connectionChanged = connection.transition(snapshot);
     const nextScope = gatewayPresentationScope(gateway);
     const presentationChanged = presentationScope !== nextScope;
     presentationScope = nextScope;
@@ -251,16 +253,12 @@ export function sessionPullRequestsForGateway(
     if (presentationChanged || readScopeChanged || !canPresentPullRequests()) {
       clearSnapshotsAndWaiters();
     }
-    if (changed || readScopeChanged || presentationChanged) {
+    const changed = connectionChanged || readScopeChanged || presentationChanged;
+    if (changed) {
       orderedWatchedKeys = undefined;
       retireConnection();
     }
-    if (
-      changed ||
-      readScopeChanged ||
-      presentationChanged ||
-      snapshot.hello !== lifecycle.requestHello
-    ) {
+    if (changed || snapshot.hello !== lifecycle.requestHello) {
       lifecycle.resetRetry();
       lifecycle.schedule();
     }
@@ -412,10 +410,9 @@ export function sessionPullRequestsForGateway(
     if (!canReadPullRequests() || !client) {
       retainRefreshIntent(watchedKeys());
       lifecycle.clearRequest();
-      for (const key of waiters.keys()) {
-        settle(key);
-      }
-      if (!canPresentPullRequests()) {
+      if (canPresentPullRequests()) {
+        settleWaiters();
+      } else {
         clearSnapshotsAndWaiters();
       }
       if (!isActive()) {

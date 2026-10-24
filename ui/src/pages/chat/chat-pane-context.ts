@@ -62,7 +62,7 @@ import { currentInlineSessionApproval } from "./session-approval-projection.ts";
 import { retireCachedPairingQr } from "./session-message-cache.ts";
 import { migrateLegacyDockVisibility } from "./sidebar-layout-legacy-migration.ts";
 import { normalizeSidebarLayout } from "./sidebar-layout.ts";
-import { resetToolStream, suspendToolStream } from "./tool-stream-state.ts";
+import { resetToolStream } from "./tool-stream-state.ts";
 import { reconcileWaitingApprovalsFromSnapshot } from "./tool-stream-status.ts";
 
 export abstract class ChatPaneContext extends ChatPaneLifecycle {
@@ -337,8 +337,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       (snapshot.phase === "connected" && !hasOperatorSelfReadAccess(snapshot.hello?.auth ?? null));
     const metadataOwnerChanged = state.client !== snapshot.client || reactionOwnerChanged;
     const detailsOwnerChanged =
-      state.client !== snapshot.client ||
-      pairingOwnerChanged ||
+      draftOwnerChanged ||
       (snapshot.phase === "connected" &&
         hasOperatorSelfReadAccess(state.hello?.auth ?? null) &&
         !hasOperatorSelfReadAccess(snapshot.hello?.auth ?? null));
@@ -540,14 +539,12 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       this.connectedClient = null;
       setQuestionPromptClient(this.questionPromptState, null);
       stopChatRealtimeTalk(state);
-      if (
-        !detailsOwnerChanged &&
-        (snapshot.phase === "reconnecting" || snapshot.phase === "reload-required")
-      ) {
-        suspendToolStream(state);
-      } else {
-        resetToolStream(state, { preserveStreamSegments: state.chatRunId !== null });
-      }
+      resetToolStream(state, {
+        preserveStreamSegments: state.chatRunId !== null,
+        keepPresentation:
+          !detailsOwnerChanged &&
+          (snapshot.phase === "reconnecting" || snapshot.phase === "reload-required"),
+      });
       return;
     }
     this.refreshSwarmRoster();
