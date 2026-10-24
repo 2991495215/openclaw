@@ -101,16 +101,22 @@ it.skipIf(process.platform !== "linux")(
                 maxConcurrent: 12,
                 timeoutSeconds: 3600,
                 model: { primary: modelRef },
+                modelPolicy: { allow: [modelRef] },
                 models: {
                   [modelRef]: {
                     agentRuntime: { id: "openclaw" },
                     params: { transport: "sse", openaiWsWarmup: false },
                   },
                 },
+                skipBootstrap: true,
+                skills: [],
               },
+              entries: { main: {} },
             },
             models: {
-              mode: "merge",
+              // Keep this synthetic restart fixture independent of remote catalog adoption.
+              catalogRefresh: { enabled: false },
+              mode: "replace",
               providers: {
                 openai: {
                   ...model.config,
@@ -121,14 +127,16 @@ it.skipIf(process.platform !== "linux")(
             },
             plugins: {
               enabled: true,
+              allow: [SERVICE_ID],
               load: { paths: [pluginDir] },
-              entries: {
-                [SERVICE_ID]: { enabled: true },
-                browser: { enabled: false },
-                "memory-core": { config: { dreaming: { enabled: false } } },
-              },
+              entries: { [SERVICE_ID]: { enabled: true } },
+              slots: { memory: "none" },
             },
-            tools: { codeMode: false, exec: { host: "gateway", security: "full", ask: "off" } },
+            tools: {
+              allow: ["exec", "process"],
+              codeMode: { enabled: false },
+              exec: { host: "gateway", mode: "full" },
+            },
           },
           env: {
             OPENCLAW_TEST_MINIMAL_GATEWAY: undefined,
