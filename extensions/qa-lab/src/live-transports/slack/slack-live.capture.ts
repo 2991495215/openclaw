@@ -50,14 +50,11 @@ async function readSlackQaCapturePayload(
 }
 
 function parseSlackQaCaptureObject(payload: string): Record<string, unknown> | undefined {
-  try {
-    const parsed = JSON.parse(payload) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // @slack/web-api serializes ordinary method arguments as URL-encoded form data.
+  const parsed = safeParseQaJson(payload);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
   }
+  // @slack/web-api serializes ordinary method arguments as URL-encoded form data.
   return Object.fromEntries(new URLSearchParams(payload));
 }
 

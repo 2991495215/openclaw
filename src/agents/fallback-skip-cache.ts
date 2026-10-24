@@ -116,17 +116,10 @@ function getFallbackCandidateSkipEntry(params: SkipLookup): SkipEntry | undefine
   }
   const now = params.now ?? Date.now();
   pruneAllExpired(now);
-  const buckets = getState().buckets;
-  const bucket = buckets.get(params.sessionId);
-  if (!bucket) {
-    return undefined;
-  }
-  pruneExpired(bucket, now);
-  if (bucket.size === 0) {
-    buckets.delete(params.sessionId);
-    return undefined;
-  }
-  return bucket.get(candidateKey(params.provider, params.model, params.authScope));
+  const entry = getState()
+    .buckets.get(params.sessionId)
+    ?.get(candidateKey(params.provider, params.model, params.authScope));
+  return entry && entry.expiresAtMs <= now ? undefined : entry;
 }
 
 export function isFallbackCandidateSkipped(params: SkipLookup): boolean {
