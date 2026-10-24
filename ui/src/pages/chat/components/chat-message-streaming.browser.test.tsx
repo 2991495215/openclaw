@@ -107,6 +107,28 @@ function drawContent(content: RawContent["content"], media?: MarkdownMedia) {
 }
 
 describe("streaming Markdown DOM", () => {
+  it("keeps visible plain text in place when deferred formatting catches up", async () => {
+    vi.useFakeTimers();
+    const mutations: MutationRecord[] = [];
+    const observer = new MutationObserver((records) => mutations.push(...records));
+    try {
+      draw("A growing reply");
+      draw("A growing reply with more text");
+      const text = container.querySelector("p")?.textContent;
+      observer.observe(container, { characterData: true, subtree: true });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(container.querySelector("p")?.textContent).toBe(text);
+      expect([...mutations, ...observer.takeRecords()]).toHaveLength(0);
+      observer.disconnect();
+      draw("A growing reply with more text and a pending suffix");
+      draw("A growing reply with more text");
+      expect(container.querySelector("p")?.textContent).toBe(text);
+    } finally {
+      observer.disconnect();
+      vi.useRealTimers();
+    }
+  });
+
   it("shows appended text before bounded formatting and flushes completion without a stale timer", async () => {
     vi.useFakeTimers();
     const parse = vi.spyOn(DOMParser.prototype, "parseFromString");

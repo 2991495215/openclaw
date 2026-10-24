@@ -260,7 +260,7 @@ export class MarkdownDomReconciler {
   private messageKey?: string;
   private source = "";
   private stableHtml = "";
-  private previewText?: { node: Text; original: string };
+  private previewText?: { node: Text; original: string; path: RenderedNode[] };
   private connected = true;
   private readonly mediaSlots = new Map<
     number,
@@ -298,41 +298,48 @@ export class MarkdownDomReconciler {
     return Boolean(this.previewText || this.findPreviewText(this.tail.children));
   }
 
-  private findPreviewRange(nodes: RenderedNode[]): RenderedNode | undefined {
+  private findPreviewPath(nodes: RenderedNode[]): RenderedNode[] | undefined {
     for (let i = nodes.length - 1; i >= 0; i--) {
       const node = nodes[i]!;
-      const nested = this.findPreviewRange(node.children);
+      const nested = this.findPreviewPath(node.children);
       if (nested) {
-        return nested;
+        return [node, ...nested];
       }
       if (
         node.canonical?.startsWith("3:") &&
         node.start.parentElement?.closest("p,li,code,td,th,h1,h2,h3,h4,h5,h6")
       ) {
-        return node;
+        return [node];
       }
     }
     return undefined;
   }
 
-  private findPreviewText(nodes: RenderedNode[]): Text | undefined {
-    const range = this.findPreviewRange(nodes);
+  private findPreviewText(nodes: RenderedNode[]) {
+    const path = this.findPreviewPath(nodes);
+    const range = path?.at(-1);
     const text = range?.start.nextSibling;
-    return text instanceof Text && text.nextSibling === range?.end ? text : undefined;
+    return text instanceof Text && text.nextSibling === range?.end
+      ? { node: text, path: path! }
+      : undefined;
   }
 
   /** Show safe text now; formatting still owns the canonical tree and the next update. */
   preview(source: string): void {
     if (!this.previewText) {
-      const node = this.findPreviewText(this.tail!.children)!;
-      this.previewText = { node, original: node.data };
+      const preview = this.findPreviewText(this.tail!.children)!;
+      this.previewText = { ...preview, original: preview.node.data };
     }
     this.previewText.node.data = this.previewText.original + source.slice(this.source.length);
   }
 
   private clearPreview(): void {
     if (this.previewText) {
-      this.previewText.node.data = this.previewText.original;
+      // Reconcile from the visible text, without dirtying layout by restoring old bytes first.
+      for (const node of this.previewText.path) {
+        node.canonical = undefined;
+      }
+      this.tail!.parsedHtml = undefined;
       this.previewText = undefined;
     }
   }
@@ -527,7 +534,9 @@ export class MarkdownDomReconciler {
       const first = node.start.nextSibling;
       // External highlighters can split or wrap text; repair only this range.
       if (first instanceof Text && first.nextSibling === node.end) {
-        first.data = source.text;
+        if (first.data !== source.text) {
+          first.data = source.text;
+        }
       } else {
         clearRenderedRange(node);
         node.end.before(document.createTextNode(source.text));
