@@ -210,34 +210,43 @@ describe("chat pane connection lifecycle", () => {
     },
   );
 
-  it("retires retained operation facts when the authenticated person changes on the same client", () => {
-    const { pane, state } = reconnectPane({ messages: [], sessionId: "operation-session" });
-    pane.context.gateway.snapshot.selfUser = { id: "original-person" };
-    pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
-    state.chatRunId = "operation-run";
-    handleAgentEvent(state, {
-      sessionKey: state.sessionKey,
-      runId: "operation-run",
-      seq: 1,
-      ts: 1,
-      stream: "item",
-      data: {
-        itemId: "operation",
-        toolCallId: "operation",
-        kind: "command",
-        name: "exec",
-        title: "Check the working tree",
-        phase: "end",
-        status: "completed",
-      },
-    });
-    expect(state.toolStreamById.size).toBe(1);
-    pane.context.gateway.snapshot.selfUser = { id: "replacement-person" };
-    pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
-    expect(state.toolStreamById.size).toBe(0);
-    expect(state.chatToolMessages).toEqual([]);
-    expect(state.activityEventSeqById?.size).toBe(0);
-  });
+  it.each(["person", "read access"] as const)(
+    "retires retained operation facts when %s changes on the same client",
+    (changed) => {
+      const { pane, state } = reconnectPane({ messages: [], sessionId: "operation-session" });
+      pane.context.gateway.snapshot.selfUser = { id: "original-person" };
+      pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
+      state.chatRunId = "operation-run";
+      handleAgentEvent(state, {
+        sessionKey: state.sessionKey,
+        runId: "operation-run",
+        seq: 1,
+        ts: 1,
+        stream: "item",
+        data: {
+          itemId: "operation",
+          toolCallId: "operation",
+          kind: "command",
+          name: "exec",
+          title: "Check the working tree",
+          phase: "end",
+          status: "completed",
+        },
+      });
+      expect(state.toolStreamById.size).toBe(1);
+      if (changed === "person") {
+        pane.context.gateway.snapshot.selfUser = { id: "replacement-person" };
+      } else {
+        disconnect(pane);
+        pane.context.gateway.snapshot.phase = "connected";
+        pane.context.gateway.snapshot.hello = sessionMutationGatewayHello([]);
+      }
+      pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
+      expect(state.toolStreamById.size).toBe(0);
+      expect(state.chatToolMessages).toEqual([]);
+      expect(state.activityEventSeqById?.size).toBe(0);
+    },
+  );
 
   it("adopts a persisted draft when recovery becomes ready without a transcript event", async () => {
     const text = "Saved draft from the previous tab";
