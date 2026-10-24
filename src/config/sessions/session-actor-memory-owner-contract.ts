@@ -20,15 +20,15 @@ import type { InternalSessionEntry } from "./types.js";
 
 export type MemoryOwnerOptions = { agentId: string; path: string };
 
-/** Registry readers share the owner contract without depending on its factory. */
+/** Registry readers avoid the factory; lexical callbacks stay safe to pass unbound. */
 export type MemorySessionActorOwner = MemoryOwnerOptions &
   SessionActorFactory & {
     identity: Readonly<Extract<SessionActorTarget["database"], { kind: "memory" }>>;
-    assertCurrent(): void;
-    readSession(
+    assertCurrent: () => void;
+    readSession: (
       sessionKey: string,
       authority: SessionActorAuthority,
-    ): SessionActorHotState | undefined;
+    ) => SessionActorHotState | undefined;
     captureSessionReadGuard(sessionKey: string): () => void;
     readStorage<Key extends keyof SessionActorStorageReads>(
       sessionKey: string,
@@ -55,10 +55,10 @@ export type MemorySessionActorOwner = MemoryOwnerOptions &
     ): Promise<SessionActor | undefined>;
     closeSession(sessionKey: string): void;
     close(): void;
-    readConversation<Key extends keyof SessionActorMemoryConversationReads>(
+    readConversation: <Key extends keyof SessionActorMemoryConversationReads>(
       query: { type: Key; input: SessionActorMemoryConversationReads[Key]["input"] },
       authority: SessionActorAuthority,
-    ): SessionActorMemoryConversationReads[Key]["output"];
+    ) => SessionActorMemoryConversationReads[Key]["output"];
     readConversationAfterWrites<Key extends keyof SessionActorMemoryConversationReads>(
       query: { type: Key; input: SessionActorMemoryConversationReads[Key]["input"] },
       authority: SessionActorAuthority,
