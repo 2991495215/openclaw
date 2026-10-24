@@ -31,6 +31,7 @@ type ChatOutputsData = {
   artifacts: readonly ArtifactSummary[] | null;
   artifactRead?: SessionWorkspaceArtifacts;
   artifactsError: string | null;
+  artifactsDisabled?: boolean;
   /** undefined: not resolved; null: confirmed absent. Not one entry per widget. */
   dashboard: ChatOutputsDashboard | null | undefined;
   dashboardError: string | null;
@@ -101,6 +102,7 @@ function ArtifactRow(props: {
     <button
       type="button"
       class="chat-outputs__row"
+      disabled={props.outputs.artifactsDisabled}
       onClick={() => props.outputs.onOpenArtifact(props.artifact.id)}
     >
       <span class="chat-outputs__icon">{props.outputs.renderArtifactIcon(props.artifact)}</span>
@@ -135,6 +137,7 @@ function OutputReadStatus(props: {
   error: string | null;
   label: string;
   onRetry?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <>
@@ -142,7 +145,11 @@ function OutputReadStatus(props: {
         <div class="chat-outputs__status" role="status">
           <span>{props.error}</span>
           <Show when={props.onRetry}>
-            <button type="button" disabled={props.pending} onClick={() => props.onRetry?.()}>
+            <button
+              type="button"
+              disabled={props.pending || props.disabled}
+              onClick={() => props.onRetry?.()}
+            >
               {t("common.retry")}
             </button>
           </Show>
@@ -195,6 +202,7 @@ function ArtifactReadSlot(props: {
         fallback={(failure, reset) => (
           <OutputReadStatus
             pending={false}
+            disabled={props.outputs.artifactsDisabled}
             error={formatUiError(failure())}
             label=""
             onRetry={() => {

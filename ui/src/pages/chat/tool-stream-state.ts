@@ -13,6 +13,31 @@ export function cancelToolStreamSync(host: Pick<ToolStreamState, "toolStreamSync
   }
 }
 
+/** Retain received operation facts while the transport has no live activity authority. */
+export function suspendToolStream(host: ToolStreamState) {
+  const pending = host.toolStreamSyncTimer != null;
+  cancelToolStreamSync(host);
+  let changed = pending;
+  for (const entry of host.toolStreamById.values()) {
+    if (entry.message["__openclawToolStreamLive"] === false) {
+      continue;
+    }
+    entry.message = { ...entry.message, __openclawToolStreamLive: false };
+    changed = true;
+  }
+  if (changed) {
+    syncToolStreamMessages(host);
+  }
+  // Only operation receipts survive. Connection-owned waits and notices must be re-admitted.
+  for (const identity of host.activityEventSeqById?.keys() ?? []) {
+    if (!identity.startsWith("tool:") && !identity.startsWith("item:")) {
+      host.activityEventSeqById?.delete(identity);
+    }
+  }
+  host.knownAgentRunIds?.clear();
+  host.waitingApprovalStatuses?.clear();
+}
+
 export function resetToolStream(
   host: ToolStreamState,
   options?: { preserveStreamSegments?: boolean },

@@ -11,6 +11,7 @@ import {
   CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
 } from "../../../src/gateway/control-ui-contract.js";
 import { operatorScopeSatisfied } from "../../../src/shared/operator-scope-compat.js";
+import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
 import { createGatewayConnectionLifecycle } from "./gateway-connection-lifecycle.ts";
 import { canCallGatewayMethod } from "./gateway-methods.ts";
@@ -112,6 +113,12 @@ export function sessionPullRequestsForGateway(
   const canReadAllPullRequests = () =>
     operatorScopeSatisfied("operator.read", gateway.snapshot.hello?.auth?.scopes ?? []);
   let broadRead = canReadAllPullRequests();
+  let presentationScope = gatewayPresentationScope(gateway);
+  const canPresentPullRequests = () =>
+    gatewayPresentationScope(gateway) === presentationScope &&
+    (canReadPullRequests() ||
+      gateway.snapshot.phase === "reconnecting" ||
+      gateway.snapshot.phase === "reload-required");
 
   const notify = () => Array.from(listeners).forEach((listener) => listener());
 
@@ -154,7 +161,7 @@ export function sessionPullRequestsForGateway(
     }
     const keys = new Map<string, number>();
     for (const watched of watchedByOwner.values()) {
-      if (watched.passive && !canReadAllPullRequests()) {
+      if (watched.passive && !broadRead) {
         continue;
       }
       for (const key of watched.keys) {
@@ -226,25 +233,43 @@ export function sessionPullRequestsForGateway(
     retainRefreshIntent(watchedKeys());
     lifecycle.clearRequest();
     refreshing = null;
-    clearSnapshotsAndWaiters();
+    for (const key of waiters.keys()) {
+      settle(key);
+    }
   };
 
   const handleGatewaySnapshot = (snapshot: ApplicationGateway["snapshot"]) => {
     const changed = connection.transition(snapshot);
+    const nextScope = gatewayPresentationScope(gateway);
+    const presentationChanged = presentationScope !== nextScope;
+    presentationScope = nextScope;
     const nextBroadRead = canReadAllPullRequests();
-    const readScopeChanged = broadRead !== nextBroadRead;
-    broadRead = nextBroadRead;
-    if (changed || readScopeChanged) {
+    const readScopeChanged = snapshot.phase === "connected" && broadRead !== nextBroadRead;
+    if (snapshot.phase === "connected") {
+      broadRead = nextBroadRead;
+    }
+    if (presentationChanged || readScopeChanged || !canPresentPullRequests()) {
+      clearSnapshotsAndWaiters();
+    }
+    if (changed || readScopeChanged || presentationChanged) {
       orderedWatchedKeys = undefined;
       retireConnection();
     }
-    if (changed || readScopeChanged || snapshot.hello !== lifecycle.requestHello) {
+    if (
+      changed ||
+      readScopeChanged ||
+      presentationChanged ||
+      snapshot.hello !== lifecycle.requestHello
+    ) {
       lifecycle.resetRetry();
       lifecycle.schedule();
     }
   };
 
   const handleGatewayEvent: Parameters<ApplicationGateway["subscribeEvents"]>[0] = (event) => {
+    if (!canReadPullRequests()) {
+      return;
+    }
     if (event.event === "agent" || event.event === "session.tool") {
       const payload = asNullableRecord(event.payload);
       const data = asNullableRecord(payload?.data);
@@ -387,7 +412,12 @@ export function sessionPullRequestsForGateway(
     if (!canReadPullRequests() || !client) {
       retainRefreshIntent(watchedKeys());
       lifecycle.clearRequest();
-      clearSnapshotsAndWaiters();
+      for (const key of waiters.keys()) {
+        settle(key);
+      }
+      if (!canPresentPullRequests()) {
+        clearSnapshotsAndWaiters();
+      }
       if (!isActive()) {
         lifecycle.detach();
       }
@@ -576,7 +606,7 @@ export function sessionPullRequestsForGateway(
       }
     },
     refresh,
-    get: (sessionKey) => (canReadPullRequests() ? snapshots.get(sessionKey) : undefined),
+    get: (sessionKey) => (canPresentPullRequests() ? snapshots.get(sessionKey) : undefined),
     subscribe: (listener) => {
       const wasActive = isActive();
       listeners.add(listener);

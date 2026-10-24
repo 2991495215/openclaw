@@ -38,6 +38,7 @@ import type { AfterCommitEffect } from "./render-lifecycle.ts";
 import { handleAbortChat, replayPendingChatAbort } from "./run-lifecycle.ts";
 import { scheduleChatScroll } from "./scroll.ts";
 import { cacheChatSessionSnapshot, readChatMessagesFromCache } from "./session-message-cache.ts";
+import { handleAgentEvent } from "./tool-stream.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -162,6 +163,34 @@ describe("chat pane connection lifecycle", () => {
       releaseDetails?.();
       releaseDetails?.();
     }
+  });
+
+  it("retires retained operation facts when the authenticated person changes on the same client", () => {
+    const { pane, state } = reconnectPane({ messages: [], sessionId: "operation-session" });
+    pane.context.gateway.snapshot.selfUser = { id: "original-person" };
+    pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
+    state.chatRunId = "operation-run";
+    handleAgentEvent(state, {
+      sessionKey: state.sessionKey,
+      runId: "operation-run",
+      seq: 1,
+      stream: "item",
+      data: {
+        itemId: "operation",
+        toolCallId: "operation",
+        kind: "command",
+        name: "exec",
+        title: "Check the working tree",
+        phase: "end",
+        status: "completed",
+      },
+    });
+    expect(state.toolStreamById.size).toBe(1);
+    pane.context.gateway.snapshot.selfUser = { id: "replacement-person" };
+    pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
+    expect(state.toolStreamById.size).toBe(0);
+    expect(state.chatToolMessages).toEqual([]);
+    expect(state.activityEventSeqById?.size).toBe(0);
   });
 
   it("adopts a persisted draft when recovery becomes ready without a transcript event", async () => {

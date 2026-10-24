@@ -348,6 +348,7 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
               personActivity: chatProps.personActivity,
             }),
             goal: {
+              gatewayScope: chatProps.gatewayScope,
               connected: chatProps.connected,
               canAct:
                 chatProps.connected &&
