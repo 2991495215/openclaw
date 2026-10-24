@@ -50,7 +50,7 @@ function normalizeOwnedProviderMap<T>(
   value: unknown,
   ownedProvidersRaw: ReadonlySet<string>,
   normalizePolicy: (value: unknown) => T | undefined,
-): Record<string, T> | undefined {
+): { providers: Record<string, T> } | undefined {
   if (!isRecord(value) || !isRecord(value.providers)) {
     return undefined;
   }
@@ -67,19 +67,14 @@ function normalizeOwnedProviderMap<T>(
       providers[providerId] = policy;
     }
   }
-  return Object.keys(providers).length > 0 ? providers : undefined;
+  return Object.keys(providers).length > 0 ? { providers } : undefined;
 }
 
 export function normalizeManifestModelPricing(
   value: unknown,
   params: { ownedProviders: ReadonlySet<string> },
 ): PluginManifestModelPricing | undefined {
-  const providers = normalizeOwnedProviderMap(
-    value,
-    params.ownedProviders,
-    normalizeModelPricingProvider,
-  );
-  return providers ? { providers } : undefined;
+  return normalizeOwnedProviderMap(value, params.ownedProviders, normalizeModelPricingProvider);
 }
 
 function normalizeManifestModelIdPrefixRules(
@@ -123,24 +118,22 @@ export function normalizeManifestModelIdNormalization(
   value: unknown,
   params: { ownedProviders: ReadonlySet<string> },
 ): PluginManifestModelIdNormalization | undefined {
-  const providers = normalizeOwnedProviderMap(
+  return normalizeOwnedProviderMap(
     value,
     params.ownedProviders,
     normalizeManifestModelIdNormalizationProvider,
   );
-  return providers ? { providers } : undefined;
 }
 
 export function normalizeManifestProviderRequest(
   value: unknown,
   params: { ownedProviders: ReadonlySet<string> },
 ): PluginManifestProviderRequest | undefined {
-  const providers = normalizeOwnedProviderMap(
+  return normalizeOwnedProviderMap(
     value,
     params.ownedProviders,
     normalizeManifestProviderRequestProvider,
   );
-  return providers ? { providers } : undefined;
 }
 
 function normalizeManifestPositiveInteger(value: unknown, max: number): number | undefined {
