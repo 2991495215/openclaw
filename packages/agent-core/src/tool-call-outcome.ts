@@ -109,6 +109,12 @@ export async function finalizeExecutedToolCall(
     }
   }
 
+  // Use the raw result mark so after-tool hooks cannot replace its content source.
+  const resultContentSource =
+    executed.executionStarted && !executed.callerCancelled
+      ? (prepared.tool.resultContentSource ?? getInternalToolResultContentSource(executed.result))
+      : undefined;
+
   return await finalizeToolCallOutcome(
     batch,
     {
@@ -117,9 +123,7 @@ export async function finalizeExecutedToolCall(
       isError,
       executionStarted: executed.executionStarted,
       ...(prepared.tool.hideFromChannelProgress === true ? { hideFromChannelProgress: true } : {}),
-      ...(executed.executionStarted && !executed.callerCancelled
-        ? resolveToolResultContentSource(prepared.tool, executed.result)
-        : {}),
+      ...(resultContentSource ? { resultContentSource } : {}),
     },
     finalArgs,
   );
@@ -237,19 +241,6 @@ export function immediateToolPreparationError(error: unknown): ImmediateToolCall
   return error instanceof ToolArgumentValidationError
     ? immediateToolArgumentValidationError(error)
     : immediateToolCallError(coerceErrorMessage(error));
-}
-
-/**
- * An executed call's source comes from its tool declaration, or from the raw
- * result/error mark a dispatcher (Tool Search, Code Mode) sets for nested calls.
- */
-export function resolveToolResultContentSource(
-  tool: Pick<AgentTool, "resultContentSource">,
-  result: object,
-): Pick<FinalizedToolCallOutcome, "resultContentSource"> {
-  const resultContentSource =
-    tool.resultContentSource ?? getInternalToolResultContentSource(result);
-  return resultContentSource ? { resultContentSource } : {};
 }
 
 export function createToolExecutionErrorResult(error: unknown): AgentToolResult<unknown> {
