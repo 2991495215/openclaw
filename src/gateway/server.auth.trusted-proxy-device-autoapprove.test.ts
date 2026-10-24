@@ -673,8 +673,8 @@ describe("trusted-proxy operator device auto-approval", () => {
           if (!projection) {
             throw new Error("Gateway session projection missing");
           }
-          const candidate = projection.isMember;
-          const collection = projection.readMembership;
+          const candidate = projection.isMember.bind(projection);
+          const collection = projection.readMembership.bind(projection);
           const publication = prepareSessionRowPublicationView(projection);
           let variant: "baseline" | "candidate" = "candidate";
           let counts = { predicateReads: 0, collectionReads: 0 };
@@ -698,6 +698,7 @@ describe("trusted-proxy operator device auto-approval", () => {
             for (const cache of ["cold", "warm"] as const) {
               for (let pair = 0; pair < 6; pair++) {
                 const responses = [];
+                const revisions = [];
                 const sides =
                   pair % 2 === 0
                     ? (["baseline", "candidate"] as const)
@@ -723,7 +724,10 @@ describe("trusted-proxy operator device auto-approval", () => {
                   const rows = expandSessionRowFacts(payload.sessions, payload.sharedFacts);
                   expect(rows.map((row) => row.key).toSorted()).toEqual(keys.toSorted());
                   expect(rows.every((row) => row.sharingRole === "member")).toBe(true);
-                  responses.push(payload);
+                  const { rowsRevision, ...data } = payload;
+                  expect(rowsRevision).toEqual(expect.any(String));
+                  revisions.push(rowsRevision);
+                  responses.push(data);
                   samples.push({
                     variant,
                     cache,
@@ -734,6 +738,12 @@ describe("trusted-proxy operator device auto-approval", () => {
                   });
                 }
                 expect(responses[0]).toEqual(responses[1]);
+                // Revisions identify retained vectors, not their serialized content.
+                if (cache === "cold") {
+                  expect(revisions[0]).not.toBe(revisions[1]);
+                } else {
+                  expect(revisions[0]).toBe(revisions[1]);
+                }
               }
             }
             console.log(
