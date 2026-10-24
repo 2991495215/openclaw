@@ -7,6 +7,7 @@ import { coerceConfigFormNumberString } from "../../components/config-form.numer
 import { t } from "../../i18n/index.ts";
 import {
   copyWithPathPatch,
+  isNonNullSchema,
   removePathValue,
   pruneEmptyConfigForm,
   schemaMayAcceptString,
@@ -112,13 +113,7 @@ function coerceFormValues(value: unknown, schema: JsonSchema): unknown {
 
   const type = schemaType(schema);
   if (schema.anyOf || schema.oneOf) {
-    const variants = (schema.anyOf ?? schema.oneOf ?? []).filter(
-      (variant) =>
-        !(
-          variant.type === "null" ||
-          (Array.isArray(variant.type) && variant.type.includes("null"))
-        ),
-    );
+    const variants = (schema.anyOf ?? schema.oneOf ?? []).filter(isNonNullSchema);
 
     if (variants.length === 1) {
       const variant = variants[0];

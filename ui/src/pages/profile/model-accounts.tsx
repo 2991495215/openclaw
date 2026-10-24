@@ -28,11 +28,7 @@ export function ModelAccounts(props: ModelAccountsProps) {
   const inventoryScope = createMemo(() => readState().target);
   const inventoryReceipt = createMemo(() => readState().inventoryReceipt);
   const inventoryRead = createDeferred(() =>
-    inventoryReceipt().result.then((error) => {
-      if (error) {
-        throw new Error(error);
-      }
-    }),
+    inventoryReceipt().result.then(ModelAccountsState.assertRead),
   );
   const readInventory = () => {
     // Retain inventory rows without holding connection controls or sign-in drafts.

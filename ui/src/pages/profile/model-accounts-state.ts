@@ -40,6 +40,12 @@ type AccountAction = "request" | "answer" | "cancel";
 
 /** Model-account actions belong to the connection, not the profile editor's refresh cycle. */
 export class ModelAccountsState {
+  static assertRead(this: void, error: string | null): void {
+    if (error) {
+      throw new Error(error);
+    }
+  }
+
   links: UserProfileAuthLink[] = [];
   accounts: UserModelAccount[] = [];
   nextCursor: string | undefined;
