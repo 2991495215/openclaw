@@ -96,6 +96,7 @@ it.each(["replaced", "made private"])(
         sessionId: "child-session",
         updatedAt: Date.now(),
         visibility: "shared",
+        parentSessionKey: controller,
       });
       persistRegistryFixture(new Map([child, collector].map((entry) => [entry.runId, entry])));
       clearSubagentRunsReadCacheForTest();
@@ -143,7 +144,7 @@ it.each(["replaced", "made private"])(
   },
 );
 
-it("lists off-page controller links and deleted-collector totals while a sibling worker write settles", async () => {
+it("lists off-page child lineage and deleted-collector totals while a sibling worker write settles", async () => {
   await withRunState(async () => {
     clearSubagentRunsReadCacheForTest();
     const cfg = {
@@ -159,7 +160,14 @@ it("lists off-page controller links and deleted-collector totals while a sibling
       [child.childSessionKey, 200, requester],
       [controller, 300, undefined],
     ] as const) {
-      await writeSession(key, { sessionId: key, updatedAt, visibility: "shared", spawnedBy });
+      await writeSession(key, {
+        sessionId: key,
+        updatedAt,
+        visibility: "shared",
+        spawnedBy,
+        // Retained terminal runs summarize work; durable lineage owns navigation.
+        parentSessionKey: key === child.childSessionKey ? controller : undefined,
+      });
     }
     persistRegistryFixture(new Map([child, collector].map((entry) => [entry.runId, entry])));
     const key = { pluginId: "session-list-proof", namespace: "mixed-progress", key: "written" };
