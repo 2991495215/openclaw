@@ -79,13 +79,6 @@ type BootstrapTruncationReportMeta = {
   totalNearLimit: boolean;
 };
 
-function normalizePositiveLimit(value: number): number {
-  if (!Number.isFinite(value) || value <= 0) {
-    return 1;
-  }
-  return Math.floor(value);
-}
-
 function effectiveBootstrapFileLimit(name: string, bootstrapMaxChars: number): number {
   return name.toLowerCase() === "user.md"
     ? Math.min(bootstrapMaxChars, USER_BOOTSTRAP_MAX_CHARS)
@@ -172,8 +165,8 @@ export function analyzeBootstrapBudget(params: {
   bootstrapMaxChars: number;
   bootstrapTotalMaxChars: number;
 }): BootstrapBudgetAnalysis {
-  const bootstrapMaxChars = normalizePositiveLimit(params.bootstrapMaxChars);
-  const bootstrapTotalMaxChars = normalizePositiveLimit(params.bootstrapTotalMaxChars);
+  const bootstrapMaxChars = Math.floor(params.bootstrapMaxChars);
+  const bootstrapTotalMaxChars = Math.floor(params.bootstrapTotalMaxChars);
   const nearLimitRatio = DEFAULT_BOOTSTRAP_NEAR_LIMIT_RATIO;
   let rawChars = 0;
   let injectedChars = 0;

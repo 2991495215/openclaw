@@ -312,17 +312,15 @@ function resolveFallbackCandidatesUncached(
   const allowPluginModelAliases =
     params.allowPluginNormalization !== false && params.cfg?.plugins?.enabled !== false;
   const requestedRouteResolution = params.requestedRouteResolution ?? "raw";
+  const allowRequestedPluginNormalization =
+    requestedRouteResolution === "raw" &&
+    params.allowPluginNormalization !== false &&
+    allowsPluginModelNormalization({ cfg: params.cfg, provider: providerRaw, model: modelRaw });
   const normalizedPrimary =
     requestedRouteResolution === "resolved"
       ? { provider: normalizeProviderId(providerRaw), model: modelRaw }
       : normalizeModelRef(providerRaw, modelRaw, {
-          allowPluginNormalization:
-            params.allowPluginNormalization !== false &&
-            allowsPluginModelNormalization({
-              cfg: params.cfg,
-              provider: providerRaw,
-              model: modelRaw,
-            }),
+          allowPluginNormalization: allowRequestedPluginNormalization,
           manifestPlugins: params.manifestPlugins,
         });
   const aliasIndex = buildModelAliasIndex({
@@ -351,13 +349,7 @@ function resolveFallbackCandidatesUncached(
         model: modelRaw,
         defaultProvider,
         aliasIndex,
-        allowPluginNormalization:
-          params.allowPluginNormalization !== false &&
-          allowsPluginModelNormalization({
-            cfg: params.cfg,
-            provider: providerRaw,
-            model: modelRaw,
-          }),
+        allowPluginNormalization: allowRequestedPluginNormalization,
         manifestPlugins: params.manifestPlugins,
       }) ?? normalizedPrimary;
   }

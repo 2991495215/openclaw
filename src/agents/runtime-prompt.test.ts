@@ -1,4 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  captureActivePluginRegistrySnapshot,
+  restoreActivePluginRegistrySnapshot,
+  setActivePluginRegistry,
+} from "../plugins/runtime.js";
+import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
 import { resolveSessionGitCoauthorPrompt } from "./git-coauthor-prompt.js";
 import { resolveAgentRuntimePrompt } from "./runtime-prompt.js";
 
@@ -13,15 +19,13 @@ const {
   resolveChannelMessageToolHintsMock: vi.fn(() => ["Use the message tool."]),
   resolveChannelReactionGuidanceMock: vi.fn(() => ({
     level: "minimal" as const,
-    channel: "Telegram",
+    channelLabel: "Telegram",
   })),
 }));
 
 vi.mock("./channel-tools.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./channel-tools.js")>()),
   resolveChannelMessageToolHints: resolveChannelMessageToolHintsMock,
-  resolveChannelPromptCapabilities: vi.fn(() => []),
-  resolveChannelReactionGuidance: resolveChannelReactionGuidanceMock,
 }));
 
 vi.mock("./model-selection.js", () => ({
@@ -50,14 +54,30 @@ vi.mock("../infra/os-summary.js", () => ({
 }));
 
 describe("resolveAgentRuntimePrompt", () => {
+  let registrySnapshot: ReturnType<typeof captureActivePluginRegistrySnapshot>;
   const gitCoauthorPrompt =
     "Git co-authors: add these exact trailers to every commit you make from this session.\n" +
     "Co-authored-by: ada <20+ada@users.noreply.github.com>";
 
   beforeEach(() => {
     vi.clearAllMocks();
+    registrySnapshot = captureActivePluginRegistrySnapshot();
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "telegram",
+          source: "test",
+          plugin: {
+            ...createChannelTestPluginBase({ id: "telegram" }),
+            agentPrompt: { reactionGuidance: resolveChannelReactionGuidanceMock },
+          },
+        },
+      ]),
+    );
     vi.mocked(resolveSessionGitCoauthorPrompt).mockResolvedValue(gitCoauthorPrompt);
   });
+
+  afterEach(() => restoreActivePluginRegistrySnapshot(registrySnapshot));
 
   it("resolves shared runtime and channel prompt facts", async () => {
     const config = {};
@@ -76,7 +96,10 @@ describe("resolveAgentRuntimePrompt", () => {
 
     const channelContext = { cfg: config, channel: "telegram", accountId: "work" };
     expect(resolveChannelCapabilitiesMock).toHaveBeenCalledWith(channelContext);
-    expect(resolveChannelReactionGuidanceMock).toHaveBeenCalledWith(channelContext);
+    expect(resolveChannelReactionGuidanceMock).toHaveBeenCalledWith({
+      cfg: config,
+      accountId: "work",
+    });
     expect(resolveChannelMessageToolHintsMock).toHaveBeenCalledWith(channelContext);
     expect(resolveSessionGitCoauthorPrompt).toHaveBeenCalledExactlyOnceWith({
       config,

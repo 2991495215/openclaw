@@ -1,7 +1,7 @@
 /**
  * Channel-owned agent tool and prompt helpers.
- * Discovers channel tools, message actions, prompt capabilities, reaction
- * guidance, and weakly-attached channel metadata for wrapped tools.
+ * Discovers channel tools, message actions, prompt hints, and weakly-attached
+ * channel metadata for wrapped tools.
  */
 import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { getChannelPlugin, listChannelPlugins } from "../channels/plugins/index.js";
@@ -13,10 +13,6 @@ import {
   resolveCurrentChannelMessageToolDiscoveryAdapter,
   type PreparedMessageToolCatalog,
 } from "../channels/plugins/message-action-discovery.js";
-import {
-  channelPluginHasNativeApprovalPromptUi,
-  NATIVE_APPROVAL_PROMPT_RUNTIME_CAPABILITY,
-} from "../channels/plugins/native-approval-prompt.js";
 import type {
   ChannelAgentTool,
   ChannelMessageActionName,
@@ -95,50 +91,4 @@ export function resolveChannelMessageToolHints(params: {
   }
   const cfg = params.cfg ?? {};
   return normalizeStringEntries(resolve({ cfg, accountId: params.accountId }));
-}
-
-/** Resolve channel prompt capabilities, including native approval UI support. */
-export function resolveChannelPromptCapabilities(params: {
-  cfg?: OpenClawConfig;
-  channel?: string | null;
-  accountId?: string | null;
-}): string[] {
-  const channelId = normalizeAnyChannelId(params.channel);
-  if (!channelId) {
-    return [];
-  }
-  const plugin = getChannelPlugin(channelId);
-  const cfg = params.cfg ?? {};
-  const capabilities = normalizeStringEntries(
-    plugin?.agentPrompt?.messageToolCapabilities?.({ cfg, accountId: params.accountId }) ?? [],
-  );
-  if (channelPluginHasNativeApprovalPromptUi(plugin)) {
-    capabilities.push(NATIVE_APPROVAL_PROMPT_RUNTIME_CAPABILITY);
-  }
-  return capabilities;
-}
-
-/** Resolve optional channel reaction guidance for assistant replies. */
-export function resolveChannelReactionGuidance(params: {
-  cfg?: OpenClawConfig;
-  channel?: string | null;
-  accountId?: string | null;
-}): { level: "minimal" | "extensive"; channel: string } | undefined {
-  const channelId = normalizeAnyChannelId(params.channel);
-  if (!channelId) {
-    return undefined;
-  }
-  const resolve = getChannelPlugin(channelId)?.agentPrompt?.reactionGuidance;
-  if (!resolve) {
-    return undefined;
-  }
-  const cfg = params.cfg ?? {};
-  const resolved = resolve({ cfg, accountId: params.accountId });
-  if (!resolved?.level) {
-    return undefined;
-  }
-  return {
-    level: resolved.level,
-    channel: resolved.channelLabel?.trim() || channelId,
-  };
 }

@@ -5,19 +5,23 @@
  * tools and thread-bound spawn features that depend on channel policy.
  */
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
-import { normalizeStringEntriesLower } from "@openclaw/normalization-core/string-normalization";
+import {
+  normalizeStringEntries,
+  normalizeStringEntriesLower,
+} from "@openclaw/normalization-core/string-normalization";
 import { supportsThreadBindingSpawn } from "../channels/conversation-resolution.js";
 import { getChannelPlugin } from "../channels/plugins/index.js";
+import {
+  channelPluginHasNativeApprovalPromptUi,
+  NATIVE_APPROVAL_PROMPT_RUNTIME_CAPABILITY,
+} from "../channels/plugins/native-approval-prompt.js";
+import { normalizeAnyChannelId } from "../channels/registry.js";
 import { resolveThreadBindingSpawnPolicy } from "../channels/thread-bindings-policy.js";
 import { resolveChannelCapabilities } from "../config/channel-capabilities.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel-constants.js";
 import { normalizeMessageChannel } from "../utils/message-channel-normalize.js";
-import {
-  resolveChannelMessageToolHints,
-  resolveChannelPromptCapabilities,
-  resolveChannelReactionGuidance,
-} from "./channel-tools.js";
+import { resolveChannelMessageToolHints } from "./channel-tools.js";
 import {
   resolveSpawnRequesterConversationTarget,
   type SpawnRequesterConversationSource,
@@ -82,9 +86,19 @@ export function collectRuntimeChannelCapabilities(params: {
       }
     }
   }
+  const channelId = params.cfg ? normalizeAnyChannelId(params.channel) : null;
+  const plugin = channelId ? getChannelPlugin(channelId) : undefined;
   const channelPromptCapabilities = params.cfg
-    ? resolveChannelPromptCapabilities(channelContext)
+    ? normalizeStringEntries(
+        plugin?.agentPrompt?.messageToolCapabilities?.({
+          cfg: params.cfg,
+          accountId: params.accountId,
+        }) ?? [],
+      )
     : [];
+  if (params.cfg && channelPluginHasNativeApprovalPromptUi(plugin)) {
+    channelPromptCapabilities.push(NATIVE_APPROVAL_PROMPT_RUNTIME_CAPABILITY);
+  }
   return mergeRuntimeCapabilities(resolveChannelCapabilities(channelContext), [
     ...channelPromptCapabilities,
     ...internalChannelCapabilities,
@@ -102,14 +116,27 @@ export function resolveRuntimeChannelPromptContext(
     ...context,
     requester: params.requester,
   });
+  const customInlineButtonHint =
+    runtimeChannel && getChannelPlugin(runtimeChannel)?.agentPrompt?.customInlineButtonHint;
+  const channelId = params.cfg ? normalizeAnyChannelId(runtimeChannel) : null;
+  const reactionGuidance =
+    channelId && params.cfg
+      ? getChannelPlugin(channelId)?.agentPrompt?.reactionGuidance?.({
+          cfg: params.cfg,
+          accountId: params.accountId,
+        })
+      : undefined;
   return {
     runtimeChannel,
-    ...(runtimeChannel && getChannelPlugin(runtimeChannel)?.agentPrompt?.customInlineButtonHint
-      ? { customInlineButtonHint: true }
-      : {}),
+    ...(customInlineButtonHint ? { customInlineButtonHint: true } : {}),
     runtimeCapabilities,
     reactionGuidance:
-      runtimeChannel && params.cfg ? resolveChannelReactionGuidance(context) : undefined,
+      channelId && reactionGuidance?.level
+        ? {
+            level: reactionGuidance.level,
+            channel: reactionGuidance.channelLabel?.trim() || channelId,
+          }
+        : undefined,
     messageToolHints: runtimeChannel ? resolveChannelMessageToolHints(context) : undefined,
   };
 }

@@ -40,7 +40,6 @@ export { AgentSharedStoreOwnerError } from "./agent-delete-session-store-safety.
 
 export type AgentDeleteDatabasePlan = {
   agentDirs: string[];
-  registrationPaths: string[];
   // Stale registrations can name a survivor's database; path-only readers must exclude it.
   readerPaths: string[];
   fileGroups: string[][];
@@ -307,7 +306,6 @@ export async function prepareAgentDeleteDatabases(
   });
   return {
     agentDirs: resolveAgentDeleteRuntimeDirs(agentId, agentDir, registeredDatabases),
-    registrationPaths: [...registeredDatabasePaths],
     readerPaths: databasePaths,
     fileGroups,
     relocatedFileGroups,
