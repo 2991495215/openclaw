@@ -58,7 +58,7 @@ export function ChannelsPage() {
 
   const pluginPresentation = createChannelPluginPresentation({
     getContext: () => context,
-    getProps: () => ({ ...viewProps(), mutationBusy: mutations.busy() }),
+    getProps: () => ({ ...viewProps(), mutationBusy: presentation().busy }),
     getConnection: () => connection,
     getChannelIds: () => resolveChannelOrder(channelsProjection.read().channelsSnapshot),
     isConnected: () => active && context.gateway.snapshot.phase === "connected",
@@ -67,10 +67,10 @@ export function ChannelsPage() {
   const wizardHost = createChannelSetup({
     getContext: () => context,
     clearSelection: () => setSelectedChannel(null),
-    presentWizard: (pending) => mutations.run("wizard", pending),
+    presentWizard: (pending) => runMutation("wizard", pending),
     retire: () => {
-      mutations.retire("wizard");
-      mutations.retire("whatsapp");
+      retireMutation("wizard");
+      retireMutation("whatsapp");
     },
     startWhatsApp,
   });
@@ -83,20 +83,72 @@ export function ChannelsPage() {
     getGateway: () => context.gateway,
     onSnapshot: handleGatewaySnapshot,
   });
-  const mutations = createChannelMutations({
-    readEpoch: () => {
-      gatewayProjection.read();
-      return connection.epoch;
-    },
-    currentEpoch: () => connection.epoch,
-    isActive: () => active,
+  // Presents admitted work without changing its owner's write or settlement policy.
+  const epoch = createMemo(() => {
+    gatewayProjection.read();
+    return connection.epoch;
   });
+  const presentation = createMemo(() => {
+    const currentEpoch = epoch();
+    const [busy, setBusy] = createOptimisticStore({
+      config: false,
+      pairing: false,
+      whatsapp: false,
+      wizard: false,
+    });
+    return { epoch: currentEpoch, busy, setBusy };
+  });
+  const lifetimes = {
+    config: Promise.withResolvers<void>(),
+    pairing: Promise.withResolvers<void>(),
+    whatsapp: Promise.withResolvers<void>(),
+    wizard: Promise.withResolvers<void>(),
+  };
+  const isCurrent = (view: ReturnType<typeof presentation>) =>
+    active && view.epoch === connection.epoch;
+  const present = action(function* (
+    view: ReturnType<typeof presentation>,
+    kind: ChannelMutation,
+    pending: Promise<unknown>,
+    retired: Promise<void>,
+  ) {
+    try {
+      if (isCurrent(view)) {
+        view.setBusy((busy) => {
+          busy[kind] = true;
+        });
+      }
+      // Leaving the presentation never cancels an already admitted write.
+      yield Promise.race([pending, retired]);
+    } catch (error) {
+      if (isCurrent(view)) {
+        showToast({ message: formatUiError(error) });
+      }
+    }
+  });
+
+  function retireMutation(kind?: ChannelMutation) {
+    for (const key of kind ? [kind] : (["config", "pairing", "whatsapp", "wizard"] as const)) {
+      lifetimes[key].resolve();
+      lifetimes[key] = Promise.withResolvers<void>();
+    }
+  }
+
+  async function runMutation(kind: ChannelMutation, pending: Promise<unknown>) {
+    const view = presentation();
+    const retired = lifetimes[kind].promise;
+    // Let owner publication and any newly opened modal mount before joining the action.
+    await new Promise<void>((resolve) => {
+      onSettled(resolve);
+    });
+    return present(view, kind, pending, retired);
+  }
 
   function handleGatewaySnapshot(change: GatewayPageChange) {
     const { snapshot, initial, identityChanged } = change;
     const transportChanged = change.clientChanged || change.connectionChanged;
     if (identityChanged || transportChanged) {
-      mutations.retire();
+      retireMutation();
     }
     const connected = snapshot.phase === "connected";
     const pairingAccess = connected
@@ -104,9 +156,9 @@ export function ChannelsPage() {
       : canManagePairing;
     const adminAccess = connected ? hasOperatorAdminAccess(snapshot.hello?.auth ?? null) : canAdmin;
     if (!adminAccess) {
-      mutations.retire("config");
-      mutations.retire("whatsapp");
-      mutations.retire("wizard");
+      retireMutation("config");
+      retireMutation("whatsapp");
+      retireMutation("wizard");
     }
     const pairingAuthSignature = connected
       ? resolveChannelPairingAuthSignature(snapshot)
@@ -118,7 +170,7 @@ export function ChannelsPage() {
       pluginPresentation.invalidateRequests();
     }
     if (identityChanged || pairingAuthChanged || (connected && !pairingAccess)) {
-      mutations.retire("pairing");
+      retireMutation("pairing");
       updateOperations({ prompt: null });
       setPairingFilter(null, null);
       setPairingNotice(null);
@@ -313,7 +365,7 @@ export function ChannelsPage() {
   }
 
   function presentWhatsApp(pending: Promise<void>) {
-    void mutations.run("whatsapp", pending).then(() => {
+    void runMutation("whatsapp", pending).then(() => {
       // Plugin views receive imperative snapshots, including the settled saving flag.
       onSettled(() => pluginPresentation.details.sync());
     });
@@ -346,13 +398,13 @@ export function ChannelsPage() {
       },
       selectedChannel: selectedChannel(),
       onShowDetail: (channel) => {
-        mutations.retire("config");
-        mutations.retire("whatsapp");
+        retireMutation("config");
+        retireMutation("whatsapp");
         setSelectedChannel(channel);
       },
       onCloseDetail: () => {
-        mutations.retire("config");
-        mutations.retire("whatsapp");
+        retireMutation("config");
+        retireMutation("whatsapp");
         setSelectedChannel(null);
       },
       onStartSetup: (channelId) => {
@@ -368,17 +420,17 @@ export function ChannelsPage() {
       onPairingDismiss: (request) => openPairingPrompt("dismiss", request),
       onPairingPromptChange: patchPairingPrompt,
       onPairingPromptCancel: () => {
-        mutations.retire("pairing");
+        retireMutation("pairing");
         updateOperations({ prompt: null });
       },
-      onPairingPromptConfirm: () => void mutations.run("pairing", confirmPairingPrompt()),
+      onPairingPromptConfirm: () => void runMutation("pairing", confirmPairingPrompt()),
       onWhatsAppStart: startWhatsApp,
       onWhatsAppWait: () =>
         presentWhatsApp(context.channels.waitWhatsApp(wizardHost.whatsappAccountId())),
       onWhatsAppLogout: (accountId) => presentWhatsApp(context.channels.logoutWhatsApp(accountId)),
       onShowAdvancedSettings: setShowAdvancedSettings,
       onConfigPatch: (path, value) => context.runtimeConfig.patchForm(path, value),
-      onConfigSave: () => void mutations.run("config", saveChannelConfig()),
+      onConfigSave: () => void runMutation("config", saveChannelConfig()),
       onConfigReload: () => void reloadChannelConfig(),
     };
   }
@@ -406,12 +458,12 @@ export function ChannelsPage() {
     const stopNavigation = context.router.subscribe((state) => {
       if (state.location !== location) {
         location = state.location;
-        mutations.retire();
+        retireMutation();
       }
     });
     return () => {
       active = false;
-      mutations.retire();
+      retireMutation();
       stopNavigation();
       stopChannels();
       stopConfig();
@@ -430,75 +482,10 @@ export function ChannelsPage() {
         }
       />
       <SettingsWorkspace>
-        <ChannelsView {...presentedProps()} mutationBusy={mutations.busy()} />
+        <ChannelsView {...presentedProps()} mutationBusy={presentation().busy} />
       </SettingsWorkspace>
     </openclaw-channels-page>
   );
 }
 
 type ChannelMutation = keyof NonNullable<ChannelsProps["mutationBusy"]>;
-
-/** Presents admitted work without changing its owner's write or settlement policy. */
-function createChannelMutations(deps: {
-  readEpoch: () => number;
-  currentEpoch: () => number;
-  isActive: () => boolean;
-}) {
-  const epoch = createMemo(deps.readEpoch);
-  const presentation = createMemo(() => {
-    const currentEpoch = epoch();
-    const [busy, setBusy] = createOptimisticStore({
-      config: false,
-      pairing: false,
-      whatsapp: false,
-      wizard: false,
-    });
-    return { epoch: currentEpoch, busy, setBusy };
-  });
-  const lifetimes = {
-    config: Promise.withResolvers<void>(),
-    pairing: Promise.withResolvers<void>(),
-    whatsapp: Promise.withResolvers<void>(),
-    wizard: Promise.withResolvers<void>(),
-  };
-  const isCurrent = (view: ReturnType<typeof presentation>) =>
-    deps.isActive() && view.epoch === deps.currentEpoch();
-  const present = action(function* (
-    view: ReturnType<typeof presentation>,
-    kind: ChannelMutation,
-    pending: Promise<unknown>,
-    retired: Promise<void>,
-  ) {
-    try {
-      if (isCurrent(view)) {
-        view.setBusy((busy) => {
-          busy[kind] = true;
-        });
-      }
-      // Leaving the presentation never cancels an already admitted write.
-      yield Promise.race([pending, retired]);
-    } catch (error) {
-      if (isCurrent(view)) {
-        showToast({ message: formatUiError(error) });
-      }
-    }
-  });
-  return {
-    busy: () => presentation().busy,
-    retire(kind?: ChannelMutation) {
-      for (const key of kind ? [kind] : (["config", "pairing", "whatsapp", "wizard"] as const)) {
-        lifetimes[key].resolve();
-        lifetimes[key] = Promise.withResolvers<void>();
-      }
-    },
-    async run(kind: ChannelMutation, pending: Promise<unknown>) {
-      const view = presentation();
-      const retired = lifetimes[kind].promise;
-      // Let owner publication and any newly opened modal mount before joining the action.
-      await new Promise<void>((resolve) => {
-        onSettled(resolve);
-      });
-      return present(view, kind, pending, retired);
-    },
-  };
-}
