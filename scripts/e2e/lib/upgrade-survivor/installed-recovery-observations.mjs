@@ -98,7 +98,7 @@ export function capturePackageTree(root, { maxEntries = 100_000, maxBytes = 4 * 
       content,
     });
     if (kind === "directory") {
-      for (const name of fs.readdirSync(file).sort()) {
+      for (const name of fs.readdirSync(file).toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
         visit(path.join(relative, name));
       }
     }
@@ -118,7 +118,9 @@ export function assertPackageTree(expected, actual, { tightenPermissions = false
       differences.push(`${JSON.stringify((relative || ".").slice(0, 96))}: ${field}`);
     }
   };
-  for (const relative of [...new Set([...before.keys(), ...after.keys()])].sort()) {
+  for (const relative of [...new Set([...before.keys(), ...after.keys()])].toSorted((a, b) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  )) {
     const prior = before.get(relative);
     const observed = after.get(relative);
     if (!prior || !observed) {
