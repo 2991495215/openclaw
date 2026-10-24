@@ -18,6 +18,7 @@ import {
   isCurrentSessionWorkspace,
   loadSessionWorkspace,
   refreshSessionWorkspaceState,
+  selectSessionWorkspacePreview,
   sessionWorkspaceForHost,
 } from "./chat-session-workspace-state.ts";
 import type {
@@ -195,11 +196,25 @@ export function revealSessionWorkspaceFile(state: SessionWorkspaceHost, path: st
   clearWorkspaceTimer(workspace);
   const normalizedPath = path.replaceAll("\\", "/");
   const separator = normalizedPath.lastIndexOf("/");
-  workspace.browserPath = separator > 0 ? normalizedPath.slice(0, separator) : "";
-  workspace.browserSearch = "";
-  workspace.filter = "all";
+  const browserPath = separator > 0 ? normalizedPath.slice(0, separator) : "";
+  if (workspace.activePreviewId !== null) {
+    // Restore the catalog at the reveal target, without loading its previous location first.
+    workspace.catalogNavigation = {
+      ...captureSessionWorkspaceNavigation(workspace),
+      browserPath,
+      browserSearch: "",
+      filter: "all",
+      treeVisible: true,
+      searchOpen: false,
+    };
+    selectSessionWorkspacePreview(state, null);
+  } else {
+    workspace.browserPath = browserPath;
+    workspace.browserSearch = "";
+    workspace.filter = "all";
+    loadSessionWorkspace(state, workspace, true);
+  }
   workspace.activeId = `file:${path}`;
-  loadSessionWorkspace(state, workspace, true);
   sessionWorkspaceForHost(state).publish();
 }
 
