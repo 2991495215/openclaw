@@ -88,6 +88,7 @@ export function shouldRetrySilentErrorAssistantTurn(params: {
   // harnesses retain the cumulative, fail-closed behavior.
   if (
     joinAssistantTexts(params.attempt.assistantTexts).length > 0 ||
+    params.attempt.lastToolError ||
     hasAttemptTerminalState(params.attempt) ||
     !isCurrentAttemptReplaySafe(params.attempt)
   ) {
@@ -387,6 +388,9 @@ export function resolveSettledToolTerminalContinuation(
     intentionalTermination ||
     parkedCodeModeRun ||
     hasUnsettledToolError ||
+    // Preserve the tool-use summary contract; a completed or missing assistant
+    // after failure must not enter empty-response recovery or replay denied work.
+    (attempt.lastToolError && assistantState.assistant?.stopReason !== "toolUse") ||
     hasAsyncActivity(attempt.toolMetas) ||
     hasAcceptedSessionSpawn(attempt.acceptedSessionSpawns) ||
     attempt.clientToolCalls ||
