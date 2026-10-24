@@ -49,6 +49,7 @@ import {
   chunkTextForOutbound,
   sanitizeAssistantVisibleText,
 } from "openclaw/plugin-sdk/text-chunking";
+import { extractToolSend } from "openclaw/plugin-sdk/tool-send";
 import {
   inspectZaloAccount,
   isZaloAccountConfigured,
@@ -57,7 +58,6 @@ import {
   resolveZaloAccount,
   type ResolvedZaloAccount,
 } from "./accounts.js";
-import { zaloMessageActions } from "./actions.js";
 import { zaloApprovalAuth } from "./approval-auth.js";
 import { ZaloConfigSchema } from "./config-schema.js";
 import type { ZaloProbeResult } from "./probe.js";
@@ -231,7 +231,20 @@ export const zaloPlugin: ChannelPlugin<ResolvedZaloAccount, ZaloProbeResult> =
       groups: {
         resolveRequireMention: () => true,
       },
-      actions: zaloMessageActions,
+      actions: {
+        describeMessageTool: ({ cfg, accountId }) => {
+          const accounts = accountId
+            ? [inspectZaloAccount({ cfg, accountId })]
+            : listZaloAccountIds(cfg).map((listedAccountId) =>
+                inspectZaloAccount({ cfg, accountId: listedAccountId }),
+              );
+          return accounts.some((account) => account.enabled && account.tokenStatus === "available")
+            ? { actions: ["send"], capabilities: [] }
+            : null;
+        },
+        supportsAction: ({ action }) => action === "send",
+        extractToolSend: ({ args }) => extractToolSend(args, "sendMessage"),
+      },
       messaging: {
         targetPrefixes: ["zalo", "zl"],
         normalizeTarget: normalizeZaloMessagingTarget,

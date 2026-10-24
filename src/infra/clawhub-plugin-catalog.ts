@@ -272,17 +272,7 @@ function readOptionalRecord(
   return value;
 }
 
-function parseManifest(
-  value: Record<string, unknown> | undefined,
-): Pick<
-  ClawHubPluginDetail,
-  | "compatibility"
-  | "configFields"
-  | "mcpServers"
-  | "mcpServerDetails"
-  | "skills"
-  | keyof ClawHubPluginCapabilities
-> {
+function parseManifest(value: Record<string, unknown> | undefined) {
   if (!value) {
     return { configFields: [], mcpServers: [], skills: [] };
   }
