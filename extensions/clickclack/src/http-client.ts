@@ -457,7 +457,7 @@ export function createClickClackClient(options: {
         body: form,
       });
     },
-    findUploadByNonce: (params: {
+    findUploadByNonce: async (params: {
       workspaceId: string;
       nonce: string;
     }): Promise<ClickClackUpload | undefined> => findByNonce("upload", params),
