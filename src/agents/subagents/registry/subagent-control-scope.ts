@@ -8,6 +8,7 @@ import {
 } from "../../../infra/exec-request-context.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../../infra/sqlite-worker-contract.js";
 import { isSystemEventStoreCurrent } from "../../../infra/system-event-ownership.js";
+import { groupPluginRecords as groupRecords } from "../../../plugins/record-groups.js";
 import {
   isSubagentSessionKey,
   normalizeAgentId,
@@ -399,16 +400,7 @@ function selectControlledSubagentRunFacts(
   cfg?: OpenClawConfig,
   selectedRunId?: string,
 ): SubagentRunReadRecord[] {
-  const children = new Map<string, SubagentRunReadRecord[]>();
-  for (const entry of snapshot.values()) {
-    const key = entry.childSessionKey.trim();
-    const runs = children.get(key);
-    if (runs) {
-      runs.push(entry);
-    } else {
-      children.set(key, [entry]);
-    }
-  }
+  const children = groupRecords(snapshot.values(), (entry) => entry.childSessionKey.trim());
   children.delete("");
   return [...children.values()].flatMap((runs) =>
     runs.filter(

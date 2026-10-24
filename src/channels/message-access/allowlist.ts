@@ -1,4 +1,5 @@
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
+import { groupPluginRecords as groupRecords } from "../../plugins/record-groups.js";
 import {
   meetsIdentifierAuthentication,
   minimumIdentifierAuthenticationFrom,
@@ -98,12 +99,10 @@ export function applyIdentifierAuthenticationPolicy(
   policy: ChannelIngressPolicyInput,
 ): NormalizedIngressAllowlist {
   const minimum = minimumIdentifierAuthenticationFrom(policy);
-  const pairsByEntry = new Map<string, NonNullable<typeof allowlist.match.matchedPairs>>();
-  for (const pair of allowlist.match.matchedPairs ?? []) {
-    const pairs = pairsByEntry.get(pair.opaqueEntryId) ?? [];
-    pairs.push(pair);
-    pairsByEntry.set(pair.opaqueEntryId, pairs);
-  }
+  const pairsByEntry = groupRecords(
+    allowlist.match.matchedPairs ?? [],
+    (pair) => pair.opaqueEntryId,
+  );
   const rejectedEntryIds = new Set<string>();
   for (const entry of allowlist.normalizedEntries) {
     const pairs = pairsByEntry.get(entry.opaqueEntryId);

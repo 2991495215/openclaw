@@ -1,4 +1,3 @@
-import type { NormalizedModelCatalogRow } from "@openclaw/model-catalog-core/model-catalog-types";
 import type { ModelProviderConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { planEffectiveModelCatalogRows } from "../model-catalog/index.js";
@@ -6,6 +5,7 @@ import { normalizePluginsConfig, type NormalizedPluginsConfig } from "../plugins
 import { isManifestPluginAvailableForControlPlane } from "../plugins/manifest-contract-eligibility.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import { buildEffectiveManifestProviderConfig } from "../plugins/provider-catalog.js";
+import { groupPluginRecords as groupRecords } from "../plugins/record-groups.js";
 
 export function resolveEligibleManifestCatalogPlugins(
   snapshot: PluginMetadataSnapshot,
@@ -44,16 +44,11 @@ export function loadManifestModelProviderConfigs(params: {
     config: params.config,
     providerFilters: params.providerIds,
   });
-  const rowsByProvider = new Map<string, NormalizedModelCatalogRow[]>();
-  for (const row of rows) {
-    // Typed-only declarations have no conversational Model defaults or registry entry.
-    if (row.inference?.chat === false) {
-      continue;
-    }
-    const providerRows = rowsByProvider.get(row.provider) ?? [];
-    providerRows.push(row);
-    rowsByProvider.set(row.provider, providerRows);
-  }
+  // Typed-only declarations have no conversational Model defaults or registry entry.
+  const rowsByProvider = groupRecords(
+    rows.filter((row) => row.inference?.chat !== false),
+    (row) => row.provider,
+  );
   const providers: Record<string, ModelProviderConfig> = {};
   for (const [provider, providerRows] of rowsByProvider) {
     const providerConfig = buildEffectiveManifestProviderConfig(providerRows);

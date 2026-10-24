@@ -1,4 +1,5 @@
 import path from "node:path";
+import { groupPluginRecords as groupRecords } from "../plugins/record-groups.js";
 import { isPathInside } from "./path-guards.js";
 
 /**
@@ -29,21 +30,8 @@ export function createRuntimePathLookup<T>(entries: Iterable<readonly [string, T
   };
   const roots = Array.from(entries, ([root, value], order) => ({ root, value, order }));
   type Entry = (typeof roots)[number];
-  const indexed = new Map<string, Entry[]>();
-  const fallback: Entry[] = [];
-  for (const entry of roots) {
-    const key = keyFor(entry.root);
-    if (key === undefined) {
-      fallback.push(entry);
-    } else {
-      const bucket = indexed.get(key);
-      if (bucket) {
-        bucket.push(entry);
-      } else {
-        indexed.set(key, [entry]);
-      }
-    }
-  }
+  const indexed = groupRecords(roots, (entry) => keyFor(entry.root));
+  const fallback = indexed.get(undefined) ?? [];
   return (value: string): T | undefined => {
     const key = keyFor(value);
     if (key === undefined) {

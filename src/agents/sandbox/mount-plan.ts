@@ -2,6 +2,7 @@ import { decodeMountInfoPath } from "@openclaw/normalization-core/mountinfo-path
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { root as openFsSafeRoot } from "../../infra/fs-safe.js";
 import { isPathInside } from "../../infra/path-guards.js";
+import { groupPluginRecords as groupRecords } from "../../plugins/record-groups.js";
 import { MATERIALIZED_SANDBOX_SKILLS_WORKSPACE } from "../../shared/sandbox-workspace-paths.js";
 import { splitSandboxBindSpec } from "./bind-spec.js";
 import { execContainer, type SandboxContainerEngine } from "./container-engine.js";
@@ -178,16 +179,10 @@ export async function resolveSandboxContainerOnlyMounts(params: {
   if (entries.size === 0) {
     throw new Error("Container mountinfo did not return a mount table.");
   }
-  const byDestination = new Map<string, ContainerMountInfo[]>();
-  const byParent = new Map<string, ContainerMountInfo[]>();
+  const byDestination = groupRecords(entries.values(), (entry) => entry.destination);
+  const byParent = groupRecords(entries.values(), (entry) => entry.parent);
   const covered = new Set<string>();
   for (const entry of entries.values()) {
-    const group = byDestination.get(entry.destination) ?? [];
-    group.push(entry);
-    byDestination.set(entry.destination, group);
-    const siblings = byParent.get(entry.parent) ?? [];
-    siblings.push(entry);
-    byParent.set(entry.parent, siblings);
     if (entries.get(entry.parent)?.destination === entry.destination && entry.parent !== entry.id) {
       covered.add(entry.parent);
     }
