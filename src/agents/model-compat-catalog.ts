@@ -95,7 +95,10 @@ export function resolveCatalogOwnedModelCompat(params: {
     ...params.catalogCompat,
     ...(efforts !== undefined
       ? { supportedReasoningEfforts: efforts, supportsReasoningEffort: efforts.length > 0 }
-      : {}),
+      : configured?.supportsReasoningEffort !== false &&
+          Object.keys(configured?.reasoningEffortMap ?? {}).length > 0
+        ? { supportedReasoningEfforts: undefined, supportsReasoningEffort: true }
+        : {}),
     ...(configured?.supportsReasoningEffort !== undefined
       ? { supportsReasoningEffort: configured.supportsReasoningEffort }
       : {}),

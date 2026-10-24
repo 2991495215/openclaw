@@ -69,7 +69,9 @@ export function resolveOpenAIRequestReasoning(
       effort === "none" &&
       resolveOpenAIThinkingApi(model.api) === "openai-chatgpt-responses" &&
       !supportsOpenAIReasoningEffort(
-        model.id === "gpt-6-sol" || model.id === "gpt-6-luna" ? model : { compat: model.compat },
+        model.id === "gpt-6-sol" || model.id === "gpt-6-luna"
+          ? model
+          : { compat: model.compat, thinkingLevelMap: model.thinkingLevelMap },
         "none",
       )
         ? undefined
