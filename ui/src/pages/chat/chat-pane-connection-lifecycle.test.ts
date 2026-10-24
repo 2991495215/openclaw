@@ -165,6 +165,50 @@ describe("chat pane connection lifecycle", () => {
     }
   });
 
+  it.each(["reconnecting", "reload-required"] as const)(
+    "retains received operation facts without live authority while %s",
+    (phase) => {
+      const { pane, state, request } = reconnectPane({
+        messages: [],
+        sessionId: "operation-session",
+      });
+      pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
+      state.chatRunId = "operation-run";
+      handleAgentEvent(state, {
+        sessionKey: state.sessionKey,
+        runId: "operation-run",
+        seq: 1,
+        stream: "item",
+        data: {
+          itemId: "operation",
+          toolCallId: "operation",
+          kind: "command",
+          name: "exec",
+          title: "Check the working tree",
+          phase: "start",
+          status: "running",
+        },
+      });
+      expect(state.toolStreamById.size).toBe(1);
+      request.mockClear();
+
+      const snapshot = { ...pane.context.gateway.snapshot, phase };
+      pane.applyGatewaySnapshot(snapshot);
+      expect(state.connected).toBe(false);
+      expect(state.toolStreamById.size).toBe(1);
+      expect(state.chatToolMessages).toEqual([
+        expect.objectContaining({ __openclawToolStreamLive: false }),
+      ]);
+      expect(state.knownAgentRunIds?.size).toBe(0);
+      expect(request).not.toHaveBeenCalled();
+
+      const retained = state.chatToolMessages;
+      pane.applyGatewaySnapshot(snapshot);
+      expect(state.chatToolMessages).toBe(retained);
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+
   it("retires retained operation facts when the authenticated person changes on the same client", () => {
     const { pane, state } = reconnectPane({ messages: [], sessionId: "operation-session" });
     pane.context.gateway.snapshot.selfUser = { id: "original-person" };

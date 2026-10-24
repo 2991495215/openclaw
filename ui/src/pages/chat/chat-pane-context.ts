@@ -540,7 +540,10 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       this.connectedClient = null;
       setQuestionPromptClient(this.questionPromptState, null);
       stopChatRealtimeTalk(state);
-      if (!detailsOwnerChanged && snapshot.phase === "reconnecting") {
+      if (
+        !detailsOwnerChanged &&
+        (snapshot.phase === "reconnecting" || snapshot.phase === "reload-required")
+      ) {
         suspendToolStream(state);
       } else {
         resetToolStream(state, { preserveStreamSegments: state.chatRunId !== null });
