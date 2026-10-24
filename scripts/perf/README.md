@@ -4733,6 +4733,15 @@ traffic, not production fork frequency. `--unicode` adds one non-Latin1 characte
 to each padded history message, exposing the V8 UTF-16 versus JSON UTF-8 storage
 tradeoff in a separate count pass.
 
+`--allocations` runs a separate inspector sampling pass with collected objects
+included (32 KiB interval); it cannot be combined with `--counts` or `--gateway`.
+The output reports estimated JavaScript heap bytes per turn and sample counts,
+and writes a `.heapprofile` alongside `--output`. It excludes external Buffer
+and ArrayBuffer backing storage. Sampler teardown occurs after the measured
+interval. Profiled CPU/GC numbers are attribution context, never timing gates.
+Run both ASCII and `--unicode` workloads with two swapped pairs per shape; compare
+them against their own matching baseline, not an unprofiled process.
+
 `--gateway --counts --state-dir /path/to/new-synthetic-state --turns 8` runs actual
 `chat.send` and `agent.wait` RPCs through an isolated Gateway, with the HTTP peer at
 `--port` and Gateway at `--port + 1`. This is a capture-count smoke, not a paired

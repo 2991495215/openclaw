@@ -4,6 +4,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createServer } from "node:http";
+import type { HeapProfiler } from "node:inspector";
+import { Session } from "node:inspector/promises";
 import { registerHooks, stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 import { constants, monitorEventLoopDelay, PerformanceObserver } from "node:perf_hooks";
@@ -25,6 +27,7 @@ const { values } = parseArgs({
     port: { type: "string", default: "41668" },
     "start-at": { type: "string", default: "0" },
     counts: { type: "boolean", default: false },
+    allocations: { type: "boolean", default: false },
     unicode: { type: "boolean", default: false },
     output: { type: "string" },
   },
@@ -34,6 +37,10 @@ function integer(value: string | undefined, minimum: number) {
   assert(Number.isSafeInteger(parsed) && parsed >= minimum);
   return parsed;
 }
+assert(
+  !values.allocations || (!values.counts && !values.gateway),
+  "--allocations is a separate owner pass",
+);
 const sessions = integer(values.sessions, 1);
 const turns = integer(values.turns, 2);
 const history = integer(values.history, 1);
@@ -366,6 +373,7 @@ const observer = new PerformanceObserver((entries) => {
 });
 observer.observe({ entryTypes: ["gc"] });
 const loop = monitorEventLoopDelay({ resolution: 10 });
+const inspector = values.allocations ? new Session() : undefined;
 try {
   await runWithAiTransportHost(host, () => populate(2, true));
   cleanupSessionResources(undefined, host);
@@ -382,17 +390,41 @@ try {
     assert(Date.now() < startAt, "missed common start deadline");
     await delay(startAt - Date.now());
   }
+  if (inspector) {
+    inspector.connect();
+    await inspector.post("HeapProfiler.startSampling", {
+      samplingInterval: 32_768,
+      includeObjectsCollectedByMajorGC: true,
+      includeObjectsCollectedByMinorGC: true,
+    });
+  }
   loop.enable();
   const beforeCpu = process.cpuUsage();
   const beforeThreadCpu = process.threadCpuUsage();
+  const startedAt = Date.now();
   begin = performance.now();
   counting = true;
   await runWithAiTransportHost(host, () => populate(sessions, false));
   counting = false;
   end = performance.now();
+  const endedAt = Date.now();
   const cpu = process.cpuUsage(beforeCpu);
   const threadCpu = process.threadCpuUsage(beforeThreadCpu);
   loop.disable();
+  // Sampler teardown can collect; keep it outside the CPU/GC interval.
+  const profile = inspector
+    ? (await inspector.post("HeapProfiler.stopSampling")).profile
+    : undefined;
+  let sampledHeapBytes = 0;
+  const pending: HeapProfiler.SamplingHeapProfileNode[] = profile ? [profile.head] : [];
+  while (pending.length) {
+    const node = pending.pop()!;
+    sampledHeapBytes += node.selfSize;
+    pending.push(...node.children);
+  }
+  if (profile && values.output) {
+    fs.writeFileSync(`${path.resolve(values.output)}.heapprofile`, stringify(profile));
+  }
   await nextTurn();
   const captureCounts = { ...probe };
   const measuredRequests = requests;
@@ -409,6 +441,19 @@ try {
     ownerSha256: createHash("sha256").update(ownerSource).digest("hex"),
     immutableDataSha256: createHash("sha256").update(immutableSource).digest("hex"),
     counts: values.counts,
+    allocations: profile
+      ? {
+          sampledHeapBytes,
+          heapBytesPerTurn: sampledHeapBytes / operations,
+          samples: profile.samples.length,
+          samplingInterval: 32_768,
+          includesCollectedObjects: true,
+          excludes: "External Buffer and ArrayBuffer backing storage",
+        }
+      : undefined,
+    timingProfiled: values.allocations,
+    startedAt,
+    endedAt,
     sessions,
     turns,
     history,
@@ -454,6 +499,7 @@ try {
 } finally {
   cleanupSessionResources(undefined, host);
   observer.disconnect();
+  inspector?.disconnect();
   hooks.deregister();
   Reflect.deleteProperty(globalThis, probeKey);
   const closed = new Promise<void>((resolve, reject) => {
