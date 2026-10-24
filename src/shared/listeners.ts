@@ -22,6 +22,21 @@ export function registerListener<T>(
   return () => listeners.delete(listener);
 }
 
+export function createStatePublisher<T>(
+  listeners: Set<(state: T) => void>,
+  state: T,
+  isDisposed: () => boolean,
+): () => void {
+  return () => {
+    if (isDisposed()) {
+      return;
+    }
+    for (const listener of listeners) {
+      listener(state);
+    }
+  };
+}
+
 /** Synchronous changes propagate errors; iteration is live unless a snapshot is requested. */
 export function createChangeListeners(options?: { snapshot?: boolean }) {
   const listeners = new Set<() => void>();
