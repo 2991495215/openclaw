@@ -69,8 +69,6 @@ export type DiscordComponentSectionAccessory =
       button: DiscordComponentButtonSpec;
     };
 
-type DiscordComponentSeparatorSpacing = "small" | "large" | 1 | 2;
-
 export type DiscordComponentBlock =
   | {
       type: "text";
@@ -84,7 +82,7 @@ export type DiscordComponentBlock =
     }
   | {
       type: "separator";
-      spacing?: DiscordComponentSeparatorSpacing;
+      spacing?: "small" | "large" | 1 | 2;
       divider?: boolean;
     }
   | {
