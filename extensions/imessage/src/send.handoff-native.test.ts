@@ -11,15 +11,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { IMessageRpcClient } from "./client.js";
 import { loadFreshIMessageReplyCacheForTest } from "./test-support/runtime.js";
 
-const effectGate = vi.hoisted(() => ({ prepare: undefined as (() => Promise<void>) | undefined }));
-vi.mock("openclaw/plugin-sdk/fetch-runtime", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/fetch-runtime")>();
-  const { withEffectPreparation } = await import("./test-support/authority.js");
-  return {
-    ...actual,
-    captureEffectAuthority: withEffectPreparation(actual, effectGate).captureEffectAuthority,
-  };
-});
+const effectGate = await vi.hoisted(async () =>
+  (
+    await import("../../test-support/effect-preparation.test-support.js")
+  ).createEffectPreparationGate(),
+);
+vi.mock("openclaw/plugin-sdk/fetch-runtime", effectGate.mockRuntime);
 
 afterEach(() => {
   effectGate.prepare = undefined;

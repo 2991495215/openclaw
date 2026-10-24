@@ -71,12 +71,9 @@ vi.mock("openclaw/plugin-sdk/conversation-runtime", async () => {
   const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/conversation-runtime")>(
     "openclaw/plugin-sdk/conversation-runtime",
   );
-  return {
-    ...actual,
-    recordInboundSession: recordInboundSessionMock,
-    readChannelAllowFromStore: vi.fn().mockResolvedValue([]),
-    upsertChannelPairingRequest: vi.fn(),
-  };
+  const { signalConversationTestModule } =
+    await import("./event-handler.inbound-context.test-support.js");
+  return signalConversationTestModule(actual, recordInboundSessionMock);
 });
 
 const CONFLICT_ERROR = new Error(
