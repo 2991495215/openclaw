@@ -104,7 +104,6 @@ export class ChatSessionVirtualizerHost implements ChatTranscriptSession {
       this.canAutoFollow(),
       this.offsetState.pendingScrollOffset !== null || this.offsetState.touchActive,
       this.followEnd,
-      this.callbacks.canFollowEnd !== undefined,
     );
   };
   private readonly scrollRestoreHost: TranscriptScrollRestoreHost;

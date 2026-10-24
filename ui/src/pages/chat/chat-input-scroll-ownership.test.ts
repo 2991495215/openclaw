@@ -92,22 +92,20 @@ function setup() {
 }
 
 describe("transcript arrival scroll ownership", () => {
-  it.each(["manual", "auto"] as const)(
-    "keeps a pending %s command ahead of geometric follow",
-    (source) => {
-      const { state } = setup();
-      const follow = vi.spyOn(state, "chatScrollToEnd");
-      state.chatHasAutoScrolled = false;
-      state.chatFollowLocked = false;
-      scheduleCommittedChatScroll(state, true, false, { source });
+  it("keeps a pending manual command ahead of geometric follow", () => {
+    const source = "manual";
+    const { state } = setup();
+    const follow = vi.spyOn(state, "chatScrollToEnd");
+    state.chatHasAutoScrolled = false;
+    state.chatFollowLocked = false;
+    scheduleCommittedChatScroll(state, true, false, { source });
 
-      expect(canAutoFollowChat(state)).toBe(false);
-      expect(follow).not.toHaveBeenCalled();
-      vi.advanceTimersToNextFrame();
-      expect(follow).toHaveBeenCalledExactlyOnceWith({ behavior: "auto", source });
-      expect(state.chatHasAutoScrolled).toBe(true);
-    },
-  );
+    expect(canAutoFollowChat(state)).toBe(false);
+    expect(follow).not.toHaveBeenCalled();
+    vi.advanceTimersToNextFrame();
+    expect(follow).toHaveBeenCalledExactlyOnceWith({ behavior: "auto", source });
+    expect(state.chatHasAutoScrolled).toBe(true);
+  });
 
   it("keeps text publications out of the message and run-state projections", () => {
     const { state, runtime } = setup();
@@ -163,42 +161,30 @@ describe("transcript arrival scroll ownership", () => {
     expect(observed.mock.calls[0]?.[0].runId).toBeNull();
   });
 
-  it("follows the first live publication and leaves continuing text to row geometry without a pane commit", async () => {
+  it("only schedules same-height streaming arrivals for a locked reader without a pane commit", async () => {
     const { state, scrollport } = setup();
     const follow = vi.spyOn(state, "chatScrollToEnd");
-    const readHeight = vi.spyOn(scrollport, "scrollHeight", "get");
-    const publish = async (text: string) => {
-      chatRunPresentation(state).batch(() => {
-        state.chatStream = text;
-      }, "animation-frame");
-      vi.advanceTimersToNextFrame();
-      await Promise.resolve();
-      vi.advanceTimersToNextFrame();
-    };
-    scrollport.scrollTop -= 53;
-    await publish("First text in the live tail row");
-    expect(follow).toHaveBeenCalledOnce();
-    expect(scrollport.scrollTop).toBe(1500);
-    follow.mockClear();
-    readHeight.mockClear();
-
-    for (const text of ["The live tail grows", "The live tail grows again"]) {
-      await publish(text);
-    }
+    chatRunPresentation(state).batch(() => {
+      state.chatStream = "Text in the existing tail row";
+    }, "animation-frame");
+    vi.advanceTimersToNextFrame();
+    await Promise.resolve();
+    vi.advanceTimersToNextFrame();
     expect(follow).not.toHaveBeenCalled();
-    expect(readHeight).not.toHaveBeenCalled();
     expect(scrollport.scrollTop).toBe(1500);
     expect(state.chatNewMessagesBelow).toBe(false);
-
     scrollport.scrollTop = 800;
     handleChatScrollTakeover(state);
     state.chatNewMessagesBelow = false;
-    readHeight.mockClear();
-    await publish("More text while reading history");
+    chatRunPresentation(state).batch(() => {
+      state.chatStream = "More text in the existing tail row";
+    }, "animation-frame");
+    vi.advanceTimersToNextFrame();
+    await Promise.resolve();
+    vi.advanceTimersToNextFrame();
     expect(state.chatNewMessagesBelow).toBe(true);
     expect(scrollport.scrollTop).toBe(800);
     expect(follow).not.toHaveBeenCalled();
-    expect(readHeight).not.toHaveBeenCalled();
   });
 
   it("coalesces streamed replies without delaying the draft or new transcript rows", () => {

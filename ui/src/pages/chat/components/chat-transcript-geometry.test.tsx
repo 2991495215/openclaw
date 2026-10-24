@@ -4,9 +4,8 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { Virtualizer } from "@tanstack/virtual-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { flush } from "../../../test-helpers/solid-settle.ts";
-import { makeChatHost } from "../chat-host.test-support.ts";
 import { createTestTranscript, stubAnimationFrames } from "../chat-view.test-helpers.ts";
-import { handleChatScrollTakeover, saveChatSessionScrollPosition } from "../scroll.ts";
+import { saveChatSessionScrollPosition } from "../scroll.ts";
 import { SIDEBAR_GEOMETRY_COMMIT_EVENT } from "../sidebar-layout.ts";
 import {
   render,
@@ -155,72 +154,6 @@ it("keeps fractional observer sizes as the sole skipped-row sizing input", async
     for (const row of transcriptRows(container)) {
       expect(row.style.containIntrinsicBlockSize).toBe("100.375px");
     }
-  } finally {
-    transcript.dispose();
-  }
-});
-
-it("recovers a displaced end only while the pane permits following", async () => {
-  const flushFrames = stubAnimationFrames();
-  const policy = makeChatHost({ chatHasAutoScrolled: true });
-  let scrollHeight = 2000;
-  const transcript = createChatTranscript(() => "row-resize-policy", {
-    canFollowEnd: () => !policy.chatFollowLocked,
-  });
-  const rows = contentRows(1);
-  const { container, renderRows } = await mountTestTranscript(
-    "row-resize-policy",
-    rows,
-    transcript,
-  );
-  try {
-    setTranscriptViewport(container, () => scrollHeight);
-    container.scrollTo = (options?: ScrollToOptions | number) => {
-      if (typeof options === "object") {
-        container.scrollTop = options.top ?? container.scrollTop;
-      }
-    };
-    policy.chatScrollElement = () => container;
-    policy.chatScrollToEnd = (options) => transcript.scrollToEnd(options);
-    const row = requireElement(container, ".chat-virtual-row");
-    emitTranscriptResize(row, 800, scrollHeight);
-    renderRows(rows);
-    flushFrames();
-
-    // Initial layout can leave an unlocked reader near the end without an exact-edge anchor.
-    transcript.cancelScroll();
-    container.scrollTop = scrollHeight - container.clientHeight - 53;
-    policy.chatLastScrollTop = container.scrollTop;
-    emitTranscriptResize(row, 800, scrollHeight);
-    scrollHeight += 100;
-    emitTranscriptResize(row, 800, scrollHeight);
-    renderRows(rows);
-    flushFrames();
-    expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
-
-    // Ordinary growth reuses the captured end in the coalesced frame.
-    scrollHeight += 100;
-    emitTranscriptResize(row, 800, scrollHeight);
-    renderRows(rows);
-    flushFrames();
-    expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
-
-    // Native layout can displace the viewport before a scroll notification arrives.
-    container.scrollTop -= 53;
-    scrollHeight += 100;
-    emitTranscriptResize(row, 800, scrollHeight);
-    renderRows(rows);
-    flushFrames();
-    expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
-
-    container.scrollTop = 800;
-    handleChatScrollTakeover(policy);
-    policy.chatNewMessagesBelow = false;
-    scrollHeight += 100;
-    emitTranscriptResize(row, 800, scrollHeight);
-    renderRows(rows);
-    flushFrames();
-    expect(container.scrollTop).toBe(800);
   } finally {
     transcript.dispose();
   }

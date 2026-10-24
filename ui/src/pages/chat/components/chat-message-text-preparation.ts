@@ -69,13 +69,15 @@ export function prepareMessageMarkdown(
     }
     return parts;
   };
+  // Settled content must be prepared before the row's first measurement.
+  const deferFormatting =
+    streaming && !recovered && !duplicateSuffix && source.length <= MARKDOWN_PARSE_LIMIT;
+  const eagerParts = deferFormatting ? undefined : prepare();
   return {
     messageKey,
     source,
-    parts: prepare,
-    // Truncation and recovered/status content keep their full render contract.
-    deferFormatting:
-      streaming && !recovered && !duplicateSuffix && source.length <= MARKDOWN_PARSE_LIMIT,
+    parts: eagerParts ? () => eagerParts : prepare,
+    deferFormatting,
     recoverFullMessage,
   };
 }

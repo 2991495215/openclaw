@@ -35,7 +35,9 @@ it("preserves readable code and node state across lazy highlighting", async () =
         "plain-history",
         { role: "assistant", isStreaming: false },
         {},
-      ).parts.join("");
+      )
+        .parts()
+        .join("");
     });
     const streamed = createMemo(() => {
       proseRuns.streaming++;

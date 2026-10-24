@@ -161,7 +161,6 @@ export class TranscriptEndAnchor {
     canFollow: boolean,
     suspended: boolean,
     follow: () => void,
-    recoverDisplacedEnd = false,
   ): void {
     const atEnd = this.recordViewport(element);
     // A resized viewport can clamp a reader to the end without granting follow.
@@ -169,19 +168,16 @@ export class TranscriptEndAnchor {
       this.clear();
       return;
     }
-    if (suspended || !element || this.maxOffset === null) {
+    if (suspended || !element || this.maxOffset === null || this.offset === null) {
       return;
     }
     if (atEnd) {
       this.offset = this.maxOffset;
       return;
     }
-    if (this.offset === null || Math.abs(element.scrollTop - this.offset) > 1) {
+    if (Math.abs(element.scrollTop - this.offset) > 1) {
       this.clear();
-      // A page's reader policy can retain follow through native layout displacement.
-      if (!recoverDisplacedEnd) {
-        return;
-      }
+      return;
     }
     // Row measurement moved the end while the reader still rests at its old edge.
     follow();
