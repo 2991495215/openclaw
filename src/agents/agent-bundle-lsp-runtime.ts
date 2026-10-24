@@ -560,9 +560,7 @@ export async function createBundleLspToolRuntime(params: {
 
       try {
         const mergedEnv = resolveLspServerEnv(launchConfig.env);
-        if (serverName !== undefined) {
-          warnWithheldLspEnvOnce(serverName, mergedEnv);
-        }
+        warnWithheldLspEnvOnce(serverName, mergedEnv);
         const program = resolveWindowsSpawnProgram({
           command: launchConfig.command,
           env: mergedEnv,
