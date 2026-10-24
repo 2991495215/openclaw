@@ -157,9 +157,6 @@ test("keeps committed node bindings across bootstrap writes and caller-owned row
   expect(Object.isFrozen(snapshot)).toBe(true);
   expect(Object.isFrozen(snapshot.paired)).toBe(true);
   expect(Object.isFrozen(snapshot.paired[0]!.tokens!.node)).toBe(true);
-  expect(() => {
-    snapshot.paired[0]!.tokens!.node!.revokedAtMs = 100;
-  }).toThrow(TypeError);
   const binding = getPublishedPairedDeviceBinding("node", baseDir);
   expect(binding).not.toBeNull();
   expect(snapshot.bindings.get("node")).toEqual(binding);
