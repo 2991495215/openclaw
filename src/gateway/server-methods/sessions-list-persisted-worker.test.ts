@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { notifyPreparedModelRuntimePublication } from "../../agents/prepared-model-runtime.publication-events.js";
+import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import { persistRegistryFixture } from "../../agents/subagents/registry/subagent-registry-state.fixture.test-support.js";
 import { clearSubagentRunsReadCacheForTest } from "../../agents/subagents/registry/subagent-registry-state.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
@@ -17,6 +18,7 @@ import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { EmbeddedTuiBackend } from "../../tui/embedded-backend.js";
 import { getSessionRowProjection } from "../session-row-projection-access.js";
+import { holdSubagentExecution } from "../session-row-projection.read-fixture.test-support.js";
 import { sessionReader } from "./sessions-keyed-read.test-support.js";
 import {
   identifiedClient,
@@ -52,15 +54,30 @@ const childLinks = {
   swarm: { groups: [{ ...group, failed: 0 }] },
 };
 const controllerRow = { key: controller, ...childLinks };
-const withRunState = (consume: () => Promise<void>) =>
+const withRunState = (consume: (runs: ReturnType<typeof linkedRuns>) => Promise<void>) =>
   withOpenClawTestState(
     { scenario: "minimal", env: { OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1" } },
-    consume,
+    async () => {
+      const runs = linkedRuns();
+      const [child] = runs;
+      // Controller links need a live owner; collector totals remain historical.
+      using _ = holdSubagentExecution(child.runId, child.childSessionKey);
+      subagentRuns.set(child.runId, child);
+      try {
+        await consume(runs);
+      } finally {
+        subagentRuns.delete(child.runId);
+      }
+    },
   );
 
 function linkedRuns() {
   return [
-    run("child", { requesterSessionKey: "agent:main:requester", controllerSessionKey: controller }),
+    run("child", {
+      requesterSessionKey: "agent:main:requester",
+      controllerSessionKey: controller,
+      execution: { status: "running", startedAt: Date.now() },
+    }),
     run("deleted", {
       collect: true,
       groupId: "retained-group",
@@ -72,7 +89,7 @@ function linkedRuns() {
 it.each(["replaced", "made private"])(
   "describes current session metadata without waiting for catalog readiness when the session is %s",
   async (change) => {
-    await withRunState(async () => {
+    await withRunState(async ([child, collector]) => {
       const reader: GatewayOperatorRoleDefinition = {
         agents: "*" as const,
         scopes: ["operator.read"],
@@ -91,7 +108,6 @@ it.each(["replaced", "made private"])(
         visibility: "shared",
         createdActor: { type: "human", source: "profile", id: ownerId },
       });
-      const [child, collector] = linkedRuns();
       await writeSession(child.childSessionKey, {
         sessionId: "child-session",
         updatedAt: Date.now(),
@@ -144,7 +160,7 @@ it.each(["replaced", "made private"])(
 );
 
 it("lists off-page controller links and deleted-collector totals while a sibling worker write settles", async () => {
-  await withRunState(async () => {
+  await withRunState(async ([child, collector]) => {
     clearSubagentRunsReadCacheForTest();
     const cfg = {
       ...mainConfig(),
@@ -153,7 +169,6 @@ it("lists off-page controller links and deleted-collector totals while a sibling
     };
     setRuntimeConfigSnapshot(cfg);
     const requester = "agent:main:requester";
-    const [child, collector] = linkedRuns();
     for (const [key, updatedAt, spawnedBy] of [
       [requester, 100, undefined],
       [child.childSessionKey, 200, requester],
