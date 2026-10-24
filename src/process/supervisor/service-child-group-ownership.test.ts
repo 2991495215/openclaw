@@ -223,7 +223,6 @@ it.each([1000, 2000, undefined])(
       identities.set(owner, `Uid:\t${uid}\t${uid}\t${uid}\t${uid}\n`);
     }
     commands.set(owner, Object.assign(new Error("denied"), { code: "EACCES" }));
-    const inspect = () => [...readProcessGroupMembers(1_000, { readDarwinCommand: darwinCommand })];
     if (uid === 2000) {
       expect(inspect()).toMatchObject([{ command: { ppid: 1, argvUnavailable: true, uid } }]);
     } else {
