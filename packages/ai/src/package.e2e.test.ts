@@ -67,8 +67,8 @@ const compatibility = {
       resolveOpenAISupportedReasoningEfforts supportsOpenAITemperature supportsOpenAIReasoningEffort
       resolveOpenAIReasoningEffortForModel streamOpenAIResponses streamSimpleOpenAIResponses
       OPENAI_RESPONSES_OUTPUT_TEXT_CONTENT_PART_TYPE AZURE_RESPONSES_TEXT_CONTENT_PART_TYPE
-      OPENAI_RESPONSES_OUTPUT_TEXT_DELTA_EVENT_TYPE AZURE_RESPONSES_TEXT_DELTA_EVENT_TYPE
-      isResponsesTextContentPartType isResponsesTextDeltaEventType isAzureResponsesTextDeltaEventType
+      AZURE_RESPONSES_TEXT_DELTA_EVENT_TYPE
+      isResponsesTextContentPartType isAzureResponsesTextDeltaEventType
       isAzureResponsesTextDeltaEvent resolveResponsesMessageSnapshotCollapse mapResponsesTerminalUsage
       readResponsesReasoningTokens resolveResponsesTerminalStopReason readResponsesToolCallItemIdentity
       createResponsesToolCallTracker mapOpenAIStopReason projectOpenAITools
@@ -76,7 +76,7 @@ const compatibility = {
       encodedModelRequestBodyStream modelRequestBodyState`),
     types:
       names(`OpenAICompletionsOptions OpenAIReasoningEffort OpenAIApiReasoningEffort OpenAIResponsesOptions
-      ResponsesTextContentPartType ResponsesTextDeltaEventType AzureResponsesTextContentPart
+      ResponsesTextContentPartType AzureResponsesTextContentPart
       AzureResponsesTextDeltaEvent ResponsesMessageSnapshotCollapse ResponsesTerminalUsagePayload
       ResponsesToolCallIdentity ResponsesToolCallState OpenAIStopReasonResult OpenAIToolProjection
       OpenAICompletionsToolChoice ResponsesPromptObservation`),

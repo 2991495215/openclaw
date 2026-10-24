@@ -1,15 +1,10 @@
 export const OPENAI_RESPONSES_OUTPUT_TEXT_CONTENT_PART_TYPE = "output_text";
 export const AZURE_RESPONSES_TEXT_CONTENT_PART_TYPE = "text";
-export const OPENAI_RESPONSES_OUTPUT_TEXT_DELTA_EVENT_TYPE = "response.output_text.delta";
 export const AZURE_RESPONSES_TEXT_DELTA_EVENT_TYPE = "response.text.delta";
 
 export type ResponsesTextContentPartType =
   | typeof OPENAI_RESPONSES_OUTPUT_TEXT_CONTENT_PART_TYPE
   | typeof AZURE_RESPONSES_TEXT_CONTENT_PART_TYPE;
-
-export type ResponsesTextDeltaEventType =
-  | typeof OPENAI_RESPONSES_OUTPUT_TEXT_DELTA_EVENT_TYPE
-  | typeof AZURE_RESPONSES_TEXT_DELTA_EVENT_TYPE;
 
 export type AzureResponsesTextContentPart = {
   type: typeof AZURE_RESPONSES_TEXT_CONTENT_PART_TYPE;
@@ -27,13 +22,6 @@ export function isResponsesTextContentPartType(
   return (
     type === OPENAI_RESPONSES_OUTPUT_TEXT_CONTENT_PART_TYPE ||
     type === AZURE_RESPONSES_TEXT_CONTENT_PART_TYPE
-  );
-}
-
-export function isResponsesTextDeltaEventType(type: unknown): type is ResponsesTextDeltaEventType {
-  return (
-    type === OPENAI_RESPONSES_OUTPUT_TEXT_DELTA_EVENT_TYPE ||
-    type === AZURE_RESPONSES_TEXT_DELTA_EVENT_TYPE
   );
 }
 
