@@ -1,4 +1,3 @@
-import { resolveNonNegativeIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import type { ChannelDirectoryEntryKind, ChannelId } from "../../channels/plugins/types.public.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { getOrCreateWeakOwnerMap } from "../../shared/weak-owner-map.js";
@@ -25,13 +24,10 @@ export function buildDirectoryCacheKey(key: DirectoryCacheKey): string {
 /** TTL and capacity are scoped to a config object reference. */
 export class DirectoryCache<T> {
   private cachesByConfig = new WeakMap<OpenClawConfig, Map<string, CacheEntry<T>>>();
-  private readonly ttlMs: number;
-  private readonly maxSize: number;
-
-  constructor(ttlMs: number, maxSize = 2000) {
-    this.ttlMs = resolveNonNegativeIntegerOption(ttlMs, 0);
-    this.maxSize = Math.max(1, resolveNonNegativeIntegerOption(maxSize, 2000));
-  }
+  constructor(
+    private readonly ttlMs: number,
+    private readonly maxSize = 2000,
+  ) {}
 
   get(key: string, cfg: OpenClawConfig): T | undefined {
     const entry = this.cachesByConfig.get(cfg)?.get(key);
