@@ -7,6 +7,7 @@ import {
   type MarkdownAnnotationSpan,
 } from "./ir-spans.js";
 import type { MarkdownIR, MarkdownLinkSpan, MarkdownStyle, MarkdownStyleSpan } from "./ir.js";
+import { lowerBoundIndex } from "./sorted-search.js";
 
 export type RenderStyleMarker = {
   open: string | ((span: MarkdownStyleSpan) => string);
@@ -90,26 +91,14 @@ function mergeRanges(ranges: readonly TextRange[]): TextRange[] {
   return merged;
 }
 
-function firstOverlappingRangeIndex(ranges: readonly TextRange[], start: number): number {
-  let low = 0;
-  let high = ranges.length;
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2);
-    const range = ranges[middle];
-    if (range && range.end <= start) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
-  return low;
-}
-
 function subtractRanges<T extends { start: number; end: number }>(
   span: T,
   ranges: readonly TextRange[],
 ): T[] {
-  const firstOverlap = firstOverlappingRangeIndex(ranges, span.start);
+  const firstOverlap = lowerBoundIndex(ranges.length, (index) => {
+    const range = ranges[index];
+    return Boolean(range && range.end <= span.start);
+  });
   const firstRange = ranges[firstOverlap];
   if (!firstRange || firstRange.start >= span.end) {
     return [span];
@@ -138,16 +127,10 @@ function splitAtBoundaries<T extends { start: number; end: number }>(
   span: T,
   boundaries: readonly number[],
 ): T[] {
-  let low = 0;
-  let high = boundaries.length;
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2);
-    if ((boundaries[middle] ?? Number.POSITIVE_INFINITY) <= span.start) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
+  const low = lowerBoundIndex(
+    boundaries.length,
+    (index) => (boundaries[index] ?? Number.POSITIVE_INFINITY) <= span.start,
+  );
   if ((boundaries[low] ?? Number.POSITIVE_INFINITY) >= span.end) {
     return [span];
   }

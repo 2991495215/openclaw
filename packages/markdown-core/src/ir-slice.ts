@@ -9,6 +9,7 @@ import {
 } from "./ir-metadata.js";
 import { sliceAnnotationSpans, sliceLinkSpans, sliceStyleSpans } from "./ir-spans.js";
 import type { MarkdownIR } from "./ir.js";
+import { lowerBoundIndex } from "./sorted-search.js";
 
 type MarkdownIRRange = { start: number; end: number };
 
@@ -115,20 +116,11 @@ export function sliceMarkdownIRRanges(ir: MarkdownIR, ranges: MarkdownIRRange[])
       metadata: { text: ir.text, styles: [], links: [] },
     }));
 
-  function firstRangeEndingAtOrAfter(offset: number): number {
-    let low = 0;
-    let high = partitions.length;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      const partition = partitions[middle];
-      if (partition && partition.range.end < offset) {
-        low = middle + 1;
-      } else {
-        high = middle;
-      }
-    }
-    return low;
-  }
+  const firstRangeEndingAtOrAfter = (offset: number) =>
+    lowerBoundIndex(
+      partitions.length,
+      (index) => (partitions[index]?.range.end ?? Number.POSITIVE_INFINITY) < offset,
+    );
 
   function visitRanges(
     start: number,

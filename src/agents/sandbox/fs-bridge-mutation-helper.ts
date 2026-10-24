@@ -4,7 +4,10 @@ import { PATH_ALIAS_POLICIES } from "@openclaw/fs-safe/advanced";
  *
  * Selects the local interpreter and supplies quoted Python source to local and remote transports.
  */
-import { GUEST_FILESYSTEM_PYTHON } from "@openclaw/fs-safe/guest";
+import {
+  GUEST_FILESYSTEM_CREATE_EXISTS_EXIT_CODE,
+  GUEST_FILESYSTEM_PYTHON,
+} from "@openclaw/fs-safe/guest";
 import type {
   PathSafetyCheck,
   PinnedSandboxDirectoryEntry,
@@ -27,6 +30,19 @@ const SANDBOX_PINNED_MUTATION_PYTHON_CANDIDATES = [
   "/opt/homebrew/bin/python3",
   "/bin/python3",
 ] as const;
+
+export function resolvePinnedCreateResult(
+  result: { code: number; stderr: Buffer },
+  failurePrefix: string,
+): "created" | "exists" {
+  if (result.code === GUEST_FILESYSTEM_CREATE_EXISTS_EXIT_CODE) {
+    return "exists";
+  }
+  if (result.code !== 0) {
+    throw new Error(`${failurePrefix}: ${result.stderr.toString("utf8").trim()}`);
+  }
+  return "created";
+}
 
 export const PINNED_MUTATION_ACTION_LABELS = {
   write: "write files",

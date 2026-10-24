@@ -2,6 +2,7 @@ import type {
   AssistantTranscriptRole,
   AssistantTranscriptRoleHeaderKind,
 } from "./assistant-transcript-headers.js";
+import { lowerBoundIndex } from "./sorted-search.js";
 
 /** A replacement in the original text's UTF-16 coordinates; equal bounds insert text. */
 export type MarkdownTextEdit = { start: number; end: number; text: string };
@@ -20,16 +21,10 @@ export function applyMarkdownTextEdits(text: string, edits: readonly MarkdownTex
   return {
     text: output + text.slice(cursor),
     mapOffset: (offset: number): number => {
-      let low = 0;
-      let high = shifts.length;
-      while (low < high) {
-        const middle = low + Math.floor((high - low) / 2);
-        if ((shifts[middle]?.end ?? Number.POSITIVE_INFINITY) <= offset) {
-          low = middle + 1;
-        } else {
-          high = middle;
-        }
-      }
+      const low = lowerBoundIndex(
+        shifts.length,
+        (index) => (shifts[index]?.end ?? Number.POSITIVE_INFINITY) <= offset,
+      );
       return offset + (shifts[low - 1]?.shift ?? 0);
     },
   };
