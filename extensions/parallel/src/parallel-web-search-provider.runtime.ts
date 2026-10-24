@@ -82,9 +82,6 @@ export async function executeParallelWebSearchProviderTool(
     } catch {
       return invalidBaseUrlPayload(configured);
     }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return invalidBaseUrlPayload(configured);
-    }
     const pathname = parsed.pathname.replace(/\/+$/, "");
     parsed.pathname = pathname.endsWith(PARALLEL_SEARCH_PATHNAME)
       ? pathname

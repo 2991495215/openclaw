@@ -114,9 +114,6 @@ export async function executeExaWebSearchProviderTool(
     } catch {
       return invalidBaseUrlPayload(configured);
     }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return invalidBaseUrlPayload(configured);
-    }
     const pathname = parsed.pathname.replace(/\/+$/, "");
     parsed.pathname = pathname.endsWith("/search") ? pathname : `${pathname}/search`;
     parsed.hash = "";
