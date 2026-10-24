@@ -174,61 +174,42 @@ export function reserveUpdateFailureReportReceipt(
   );
 }
 
-export function beginUpdateFailureReportReceiptCleanup(
-  attemptId: string,
-  reservationId: string,
-  env: NodeJS.ProcessEnv = process.env,
-  context = captureOpenClawStateWorkerContext({ env }),
-): Promise<boolean> {
-  return runRestartSentinelOperation(
-    { type: "restartSentinel.beginCleanup", input: { attemptId, reservationId } },
-    context,
-    undefined,
-    decodeUpdateFailureReportMutation,
-  );
+function createUpdateFailureReceiptMutation(
+  type:
+    | "restartSentinel.beginCleanup"
+    | "restartSentinel.beginStaleCleanup"
+    | "restartSentinel.completeCleanup"
+    | "restartSentinel.refreshPreparation",
+) {
+  return (
+    attemptId: string,
+    reservationId: string,
+    env: NodeJS.ProcessEnv = process.env,
+    context = captureOpenClawStateWorkerContext({ env }),
+  ): Promise<boolean> =>
+    runRestartSentinelOperation(
+      { type, input: { attemptId, reservationId } },
+      context,
+      undefined,
+      decodeUpdateFailureReportMutation,
+    );
 }
 
-export function beginStaleUpdateFailureReportReceiptCleanup(
-  attemptId: string,
-  reservationId: string,
-  env: NodeJS.ProcessEnv = process.env,
-  context = captureOpenClawStateWorkerContext({ env }),
-): Promise<boolean> {
-  return runRestartSentinelOperation(
-    { type: "restartSentinel.beginStaleCleanup", input: { attemptId, reservationId } },
-    context,
-    undefined,
-    decodeUpdateFailureReportMutation,
-  );
-}
+export const beginUpdateFailureReportReceiptCleanup = createUpdateFailureReceiptMutation(
+  "restartSentinel.beginCleanup",
+);
 
-export function completeUpdateFailureReportReceiptCleanup(
-  attemptId: string,
-  reservationId: string,
-  env: NodeJS.ProcessEnv = process.env,
-  context = captureOpenClawStateWorkerContext({ env }),
-): Promise<boolean> {
-  return runRestartSentinelOperation(
-    { type: "restartSentinel.completeCleanup", input: { attemptId, reservationId } },
-    context,
-    undefined,
-    decodeUpdateFailureReportMutation,
-  );
-}
+export const beginStaleUpdateFailureReportReceiptCleanup = createUpdateFailureReceiptMutation(
+  "restartSentinel.beginStaleCleanup",
+);
 
-export function refreshUpdateFailureReportReceiptPreparation(
-  attemptId: string,
-  reservationId: string,
-  env: NodeJS.ProcessEnv = process.env,
-  context = captureOpenClawStateWorkerContext({ env }),
-): Promise<boolean> {
-  return runRestartSentinelOperation(
-    { type: "restartSentinel.refreshPreparation", input: { attemptId, reservationId } },
-    context,
-    undefined,
-    decodeUpdateFailureReportMutation,
-  );
-}
+export const completeUpdateFailureReportReceiptCleanup = createUpdateFailureReceiptMutation(
+  "restartSentinel.completeCleanup",
+);
+
+export const refreshUpdateFailureReportReceiptPreparation = createUpdateFailureReceiptMutation(
+  "restartSentinel.refreshPreparation",
+);
 
 export function finalizeUpdateFailureReportReceipt(
   attemptId: string,
