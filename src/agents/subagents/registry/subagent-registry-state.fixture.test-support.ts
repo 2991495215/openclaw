@@ -136,7 +136,7 @@ export function persistRegistryFixture(
   publishRegistryFixture(runs, runIds);
 }
 
-function publishRegistryFixture(
+export function publishRegistryFixture(
   runs: Map<string, SubagentRunRecord>,
   runIds?: readonly string[],
 ): void {
