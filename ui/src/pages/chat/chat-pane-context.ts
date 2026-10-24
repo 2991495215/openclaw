@@ -542,9 +542,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       stopChatRealtimeTalk(state);
       resetToolStream(state, {
         preserveStreamSegments: state.chatRunId !== null,
-        keepPresentation:
-          !detailsOwnerChanged &&
-          (snapshot.phase === "reconnecting" || snapshot.phase === "reload-required"),
+        keepPresentation: !detailsOwnerChanged,
       });
       return;
     }

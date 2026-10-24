@@ -164,7 +164,7 @@ describe("chat pane connection lifecycle", () => {
     }
   });
 
-  it.each(["reconnecting", "reload-required"] as const)(
+  it.each(["reconnecting", "reload-required", "offline"] as const)(
     "retains received operation facts without live authority while %s",
     (phase) => {
       const { pane, state, request } = reconnectPane({
