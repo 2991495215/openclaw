@@ -142,7 +142,10 @@ it.each(["caller", "credential", "current"] as const)(
       ...(owner === "caller" ? { assertCurrent } : {}),
       context: {
         ...DECISION_CONTEXT,
-        model: attachProviderAuthAuthority(DECISION_CONTEXT.model, assertCurrent),
+        model: attachProviderAuthAuthority(
+          DECISION_CONTEXT.model,
+          owner === "caller" ? undefined : assertCurrent,
+        ),
       },
     });
     await entered.promise;
