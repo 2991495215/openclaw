@@ -13,7 +13,7 @@ import type { PreparedCliRunContext } from "./types.js";
 
 type ChildEnvBackend = Pick<
   PreparedCliRunContext["preparedBackend"],
-  "backend" | "env" | "secretInput"
+  "backend" | "env" | "resetEnv" | "secretInput"
 >;
 
 // These exclusions reset ambient defaults before the backend applies the turn's settings.
@@ -63,21 +63,20 @@ export function resolveCliChildEnv(
   selectedClaudeClearEnv: Set<string> | undefined;
 } {
   const { backend } = preparedBackend;
+  const clearEnv = [...(backend.clearEnv ?? []), ...(preparedBackend.resetEnv ?? [])];
   const preparedBackendEnv = preparedBackend.env ?? {};
   const hasSelectedClaudeAuth =
     !params.nativeAuthOnly &&
     (Boolean(preparedBackend.secretInput) ||
       [...CLAUDE_SELECTED_AUTH_ENV_KEYS].some((key) => Object.hasOwn(preparedBackendEnv, key)));
-  const selectedClaudeClearEnv = hasSelectedClaudeAuth
-    ? new Set(backend.clearEnv ?? [])
-    : undefined;
+  const selectedClaudeClearEnv = hasSelectedClaudeAuth ? new Set(clearEnv) : undefined;
   const configuredBackendEnv = Object.fromEntries(
     Object.entries(backend.env ?? {}).filter(([key]) => !selectedClaudeClearEnv?.has(key)),
   );
   const backendEnv = { ...configuredBackendEnv, ...preparedBackendEnv };
   const env = sanitizeHostExecEnv({ baseEnv: process.env, blockPathOverrides: true });
   const preservedEnv = parseCliBackendPreserveEnv(process.env[CLI_BACKEND_PRESERVE_ENV]);
-  for (const key of backend.clearEnv ?? []) {
+  for (const key of clearEnv) {
     if (!preservedEnv.has(key) || selectedClaudeClearEnv?.has(key)) {
       delete env[key];
     }
