@@ -18,6 +18,7 @@ import { captureDurableChatAttachments } from "./durable-composer-persistence.ts
 type Host = ChatComposerScope & { sessionKey?: string };
 type PayloadUpdate = Pick<ChatQueueItem, "attachments" | "attachmentPayload"> & {
   attachmentStorageError?: undefined;
+  sendFirstAttemptAtMs?: undefined;
 } & (
     | { sendState: "unconfirmed" | "held"; sendError: string }
     | { sendState?: never; sendError?: never }
@@ -169,6 +170,7 @@ async function preparePayload(
             attachmentPayload: copy.value,
             sendState: item.sendState === "held" ? "held" : "unconfirmed",
             sendError: t("chat.sendErrors.outboxPayloadCopied"),
+            sendFirstAttemptAtMs: undefined,
           },
         };
       }

@@ -185,8 +185,7 @@ export async function reconcileStoredChatOutboxHead(
     }
     return receipt;
   };
-  // Passive unknown sends need positive delivery proof; only an explicit retry
-  // may continue through idle reconciliation to the same idempotency key.
+  // Bounded reconnect retries share explicit retry's idle verification and key.
   if (typeof history === "string") {
     return reconcileReceipt(history);
   }
@@ -196,7 +195,7 @@ export async function reconcileStoredChatOutboxHead(
   if (visibleSessionMatches(host, outbox.sessionKey, outbox.agentId) && isChatBusy(host)) {
     return "blocked";
   }
-  if ((item.sendAttempts ?? 0) > 0) {
+  if (!neverAttempted) {
     // History and run metadata are non-atomic; verify idle before parking unknown.
     const verifiedHistory = await readCurrentStoredChatHistory(...historyArgs);
     if (typeof verifiedHistory === "string") {

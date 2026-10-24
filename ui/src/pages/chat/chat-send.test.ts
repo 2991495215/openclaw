@@ -3359,6 +3359,8 @@ describe("handleSendChat", () => {
           "Blob-backed reconnect send",
         );
         const reference = expectDefined(stored.attachmentPayload, "reconnect payload reference");
+        // Keep this manual-retry/preview contract outside automatic resend eligibility.
+        vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3 * 60_000);
         markQueuedChatSendsWaitingForReconnect(source);
         if (retry) {
           const unconfirmed: typeof stored = { ...stored, sendState: "unconfirmed" };
@@ -3376,7 +3378,6 @@ describe("handleSendChat", () => {
         recovering = true;
         const host = makeChatHost({
           client: clientWithRequest(request),
-          chatMessagesBySession: new Map(),
         });
         const readPayload = outboxPayloadStore.readOutboxPayload;
         const read = vi

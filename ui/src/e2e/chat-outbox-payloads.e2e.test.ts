@@ -124,7 +124,7 @@ suite.define(() => {
       await expectPayload(page, original.attachmentPayload.key);
     }));
 
-  it("reloads an offline Blob queue with exact bytes and idempotency, and never replays a lost ACK", () =>
+  it("reloads an offline Blob queue with exact bytes and idempotency, and never replays an expired lost ACK", () =>
     suite.withPage(pageOptions, async ({ page }) => {
       const gateway = await installGateway(page, true);
       await openChat(page);
@@ -140,7 +140,8 @@ suite.define(() => {
       const sent = await gateway.waitForRequest("chat.send");
       expectAttachmentSend(sent.params, { idempotencyKey: queued.sendRunId });
       await expect.poll(() => payloadCount(page)).toBe(1);
-      // Reload destroys the pending ACK. The restored attempted row must require review.
+      // Reload destroys the pending ACK; expired attempts still require review.
+      await page.clock.setFixedTime(Date.now() + 3 * 60_000);
       await page.reload();
       await paneFor(page).getByText("Delivery unconfirmed", { exact: true }).waitFor();
       await expectRequestCountStable(gateway, "chat.send", 0);

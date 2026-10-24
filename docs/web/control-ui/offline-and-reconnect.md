@@ -453,7 +453,8 @@ If a saved input remains interrupted, copy it and send again to continue.
 When the Gateway confirms that it holds the same pending input, the Control UI clears the
 uncertain-delivery warning without sending the message again. The browser keeps its retry
 payload until consumption or cancellation is confirmed. If delivery is still unknown,
-the review warning remains. Confirmed server custody does not block later browser-queued
+recent interrupted sends can retry automatically after reconnect as described below.
+Confirmed server custody does not block later browser-queued
 chat sends, including when the accepted input is too old for automatic recovery.
 Local commands such as `/compact` and `/reset` in the same browser outbox still wait
 behind that input. An independent authorized reset from another client can cancel
@@ -475,7 +476,7 @@ the **System · restart recovery** notice shows that outcome and asks you to sen
 message to continue. It does not mean the agent resumed. Messages forwarded from
 other sessions keep their own delivery status next to each message.
 
-Once the Gateway confirms that a message is in the transcript, reconnecting retires its temporary browser copy even when the original message is outside the latest history page. Delivery checks also clear confirmed later messages when an earlier unconfirmed message still blocks the queue, so those delivered copies no longer raise sidebar or Inbox attention. This does not retry the uncertain message or send later queued messages out of order. Loading older history shows the saved message in its original position without adding a second copy.
+Once the Gateway confirms that a message is in the transcript, reconnecting retires its temporary browser copy even when the original message is outside the latest history page. Delivery checks also clear confirmed later messages when an earlier unconfirmed message still blocks the queue, so those delivered copies no longer raise sidebar or Inbox attention. Later queued messages never pass an uncertain message. Loading older history shows the saved message in its original position without adding a second copy.
 
 Retiring a delivered attachment does not discard the run's completion. If the browser misses
 that completion, a queue recovery read that confirms the same session and run have finished
@@ -526,8 +527,16 @@ If the connection drops before a send is acknowledged, reconnect checks delivery
 Ordinary chat sends require an exact input receipt or a user transcript row whose
 idempotency key is the submission's `runId` or `runId:user`. A matching active or
 last run ID alone confirms only commands, not ordinary chat sends.
-Without proof, an attempted message stays in the conversation
-with an amber **Delivery unconfirmed** footer, **Retry**, and **Discard**. Check the conversation and retry only
+Without proof, the browser verifies that the session is idle and automatically resends
+messages whose first attempt was at most two minutes ago, using the original message ID.
+It allows one automatic resend per connection and at most three per message. The message
+shows as sending, and later queued messages wait behind it. The two-minute window is shorter
+than the Gateway's five-minute deduplication lifetime; early cache eviction or a Gateway
+restart for a request without durable recovery can still cause duplicate delivery.
+
+Older attempts, messages saved without a first-attempt time, adopted attachment copies,
+and messages that exhaust the automatic resend limit stay in the conversation with an
+amber **Delivery unconfirmed** footer, **Retry**, and **Discard**. Check the conversation and retry only
 if the message did not arrive. Discard removes the pending copy from this browser's outbox; it does not
 undo or cancel work the Gateway already accepted. Later queued messages stay paused until the earlier
 unconfirmed message is resolved or discarded, and the queue explains that blockage. Discarding the

@@ -46,6 +46,7 @@ import { isChatBusy } from "./run-lifecycle.ts";
 export type QueuedChatSendResult = "sent" | "pending" | "failed";
 export type QueuedChatStorageMode = "durable" | "memory";
 export type QueuedChatSendOptions = PendingComposerSnapshot & {
+  automaticResend?: boolean;
   /** Fresh selected-session sends may let the Gateway resolve its effective active-run mode. */
   allowActiveRunSend?: boolean;
   /** Confirmation-triggered sends retain their UI owner across preparation waits. */
@@ -82,6 +83,48 @@ type StoredChatOutboxDrainLane = {
 };
 
 const observedOutboxEvents = new WeakMap<GatewayBrowserClient, WeakSet<GatewayEventFrame>>();
+
+// Stay below the Gateway's five-minute dedupe TTL. Early eviction or a restart
+// of a non-restart-safe send can still duplicate an admitted input.
+export const CHAT_OUTBOX_AUTO_RESEND_WINDOW_MS = 2 * 60_000;
+const CHAT_OUTBOX_AUTO_RESEND_MAX = 3;
+
+const sendConnectionEpochs = new WeakMap<GatewayBrowserClient, Map<string, number | undefined>>();
+
+export function recordChatOutboxSendConnection(host: ChatHost, id: string): void {
+  if (!host.client) {
+    return;
+  }
+  const epochs = sendConnectionEpochs.get(host.client) ?? new Map();
+  epochs.set(id, host.connectionEpoch);
+  sendConnectionEpochs.set(host.client, epochs);
+}
+
+async function canAutomaticallyResend(host: ChatHost, item: ChatQueueItem): Promise<boolean> {
+  const epochs = host.client ? sendConnectionEpochs.get(host.client) : undefined;
+  const age = Date.now() - (item.sendFirstAttemptAtMs ?? Number.NEGATIVE_INFINITY);
+  const eligible = Boolean(
+    (item.sendState === "waiting-reconnect" || item.sendState === "unconfirmed") &&
+    item.sendRunId &&
+    !item.localCommandName &&
+    !item.pendingRunId &&
+    ((item.sendAttempts ?? 0) > 0 || item.sendRequestStartedAtMs !== undefined) &&
+    age >= 0 &&
+    age <= CHAT_OUTBOX_AUTO_RESEND_WINDOW_MS &&
+    (item.sendAutoResends ?? 0) < CHAT_OUTBOX_AUTO_RESEND_MAX &&
+    !(epochs?.has(item.id) && epochs.get(item.id) === host.connectionEpoch),
+  );
+  if (!eligible || !item.attachmentPayload) {
+    return eligible;
+  }
+  // A new tab must review its copied submission, even while its bytes are still loading.
+  try {
+    const { outboxPayloadTab } = await import("../../lib/chat/outbox-payload-store.runtime.ts");
+    return item.attachmentPayload.tabId === (await outboxPayloadTab());
+  } catch {
+    return false;
+  }
+}
 
 const UNCERTAIN_CLEAR_SUCCESSOR_ERROR =
   "A preceding /clear may have completed. Review the current conversation before retrying.";
@@ -396,6 +439,7 @@ async function drainStoredChatOutbox(
     const freshAdmission = lane.freshAdmissions.delete(item.id);
     const pendingOptions = lane.pendingOptions.get(item.id);
     const retryUnconfirmed = freshAdmission && item.sendState === "unconfirmed";
+    const automaticResend = !freshAdmission && (await canAutomaticallyResend(host, item));
     if (!freshAdmission || retryUnconfirmed || !visible) {
       // Consume before await so passive reruns stay cheap and a new foreground
       // request arriving during reconciliation retains its own wake.
@@ -408,7 +452,7 @@ async function drainStoredChatOutbox(
         storedItem,
         dependencies,
         accepted,
-        retryUnconfirmed,
+        retryUnconfirmed || automaticResend,
         reconcileActiveRun,
       );
       if (reconciled === "blocked") {
@@ -427,10 +471,18 @@ async function drainStoredChatOutbox(
       continue;
     }
     chatOutboxOwner(host).syncHost(host);
+    if (automaticResend) {
+      // Preparation can fail before transport; do not spin on the same row/epoch.
+      recordChatOutboxSendConnection(host, item.id);
+    }
     const result = await dependencies.sendQueuedChatMessage(
       host,
       item.id,
-      visible ? pendingOptions : { ...pendingOptions, routingSessionKey: undefined },
+      {
+        ...pendingOptions,
+        ...(!visible ? { routingSessionKey: undefined } : {}),
+        ...(automaticResend ? { automaticResend: true } : {}),
+      },
       outbox.sessionKey,
     );
     lane.outcomes.set(item.id, result);

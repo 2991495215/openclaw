@@ -277,6 +277,7 @@ class ChatOutboxGatewayOwner {
                     attachmentPayload: result.update.attachmentPayload,
                     sendState: result.update.sendState,
                     sendError: result.update.sendError,
+                    sendFirstAttemptAtMs: result.update.sendFirstAttemptAtMs,
                   }
                 : {}),
             });
