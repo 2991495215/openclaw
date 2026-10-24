@@ -228,6 +228,22 @@ export function installGatewayDeflateCodec(socket: WebSocket):
     const input = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     return deflate(input, kMaxLength) ?? deflateRawSync(input, deflateOptions);
   };
+  const compressSharedPiece = (bytes: Uint8Array): Buffer => {
+    const windows = getOrCreateWeakOwnerMap(deflatedSegments, bytes);
+    let piece = windows.get(windowBits);
+    if (!piece) {
+      // Avoid retaining pooled slabs for small copies; keep Node's native large-copy path.
+      const compressed = compressPiece(bytes);
+      if (compressed.length < Buffer.poolSize >>> 1) {
+        piece = Buffer.allocUnsafeSlow(compressed.length);
+        compressed.copy(piece);
+      } else {
+        piece = Buffer.from(compressed);
+      }
+      windows.set(windowBits, piece);
+    }
+    return piece;
+  };
   const compress = (
     frame: Buffer | SerializedGatewayFrame,
   ): Buffer | SerializedGatewayFrame | undefined => {
@@ -250,20 +266,7 @@ export function installGatewayDeflateCodec(socket: WebSocket):
           continue;
         }
         flushSmall();
-        const windows = getOrCreateWeakOwnerMap(deflatedSegments, bytes);
-        let piece = windows.get(windowBits);
-        if (!piece) {
-          // Avoid retaining pooled slabs for small copies; keep Node's native large-copy path.
-          const compressed = compressPiece(bytes);
-          if (compressed.length < Buffer.poolSize >>> 1) {
-            piece = Buffer.allocUnsafeSlow(compressed.length);
-            compressed.copy(piece);
-          } else {
-            piece = Buffer.from(compressed);
-          }
-          windows.set(windowBits, piece);
-        }
-        pieces.push(piece);
+        pieces.push(compressSharedPiece(bytes));
       }
       flushSmall();
       // Independent raw streams concatenate at sync-flush boundaries; keep interior trailers.
@@ -272,9 +275,12 @@ export function installGatewayDeflateCodec(socket: WebSocket):
       return new SerializedGatewayFrame(pieces);
     }
     // Z_SYNC_FLUSH ends with the empty block that permessage-deflate strips.
-    return compressPiece(
-      frame instanceof SerializedGatewayFrame ? frame.toBuffer() : frame,
-    ).subarray(0, -TRAILER.length);
+    // A shared frame owns immutable bytes even when no individual segment reaches the threshold.
+    const compressed =
+      frame instanceof SerializedGatewayFrame
+        ? compressSharedPiece(frame.toBuffer())
+        : compressPiece(frame);
+    return compressed.subarray(0, -TRAILER.length);
   };
   return {
     acceptsDeflatedSegments: windowBits === zlibConstants.Z_DEFAULT_WINDOWBITS,
