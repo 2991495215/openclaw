@@ -32,8 +32,10 @@ export function createMarkdownRef(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let formattedAt = -Infinity;
   const cancel = () => {
-    clearTimeout(timer);
-    timer = undefined;
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
   };
   createEffect(
     () => {

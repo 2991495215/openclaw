@@ -616,7 +616,6 @@ export function createPositionRail(props: PositionRailParams) {
     return {
       assistant,
       markers,
-      liveMarkers: positions.liveMarkers,
       resolveLiveMessage: positions.resolveLiveMessage,
       renderedIndexes,
       activeId: currentActiveId,

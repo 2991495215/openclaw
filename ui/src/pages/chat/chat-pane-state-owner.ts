@@ -419,6 +419,7 @@ export abstract class ChatPaneStateOwner {
     getComposerFloat: () => (this.usesMobileHost ? this.composerFloat : null),
     getComposerActivityLayout: () => (this.usesMobileHost ? this.composerActivityLayout : null),
     onViewportResize: () => this.chatState.handleTranscriptResize(),
+    onContentResize: () => this.chatState.handleTranscriptResize(),
     canFollowEnd: () => this.state !== undefined && canAutoFollowChat(this.state),
     onReaderScroll: (towardEnd) => this.state && handleChatScrollTakeover(this.state, towardEnd),
   });

@@ -136,7 +136,7 @@ export function projectChatTranscript(
           }
         : undefined,
   } satisfies Parameters<typeof buildCachedChatItems>[0];
-  const { snapshot, initialLiveMessage, live, resolveLiveStream } = createTranscriptStreamSource(
+  const { snapshot, live, resolveLiveStream } = createTranscriptStreamSource(
     chatItemsInput,
     searchFiltering,
   );
@@ -687,7 +687,9 @@ export function projectChatTranscript(
       : {
           ...positionIndex,
           resolveLiveMessage: (message: unknown) =>
-            message === initialLiveMessage ? (live().prepared?.message ?? message) : message,
+            message === transcriptChain.live?.message
+              ? (live().prepared?.message ?? message)
+              : message,
         },
     isEmpty,
     showLoadingSkeleton,

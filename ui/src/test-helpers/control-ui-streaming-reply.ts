@@ -1,5 +1,5 @@
 /** A long synthetic answer whose fences, tables, and inline tokens cross delta boundaries. */
-export function createControlUiStreamingReply() {
+export function createControlUiStreamingReply(deltasPerSecond = 30) {
   const text = Array.from({ length: 24 }, (_, index) => {
     const section = index + 1;
     return `## Checkpoint ${section}\n\nThe streaming renderer should retain completed content while the next paragraph grows. This checkpoint includes **important details**, an [example link](https://example.com/checkpoint/${section}), and inline \`code\` without moving the surrounding conversation.\n\n\`\`\`typescript\nexport function checkpoint${section}(values: readonly number[]) {\n  return values.filter((value) => value < 100).map((value) => ({ value, doubled: value * 2 }));\n}\n\`\`\`\n\n| Measurement | Expected behavior |\n| --- | --- |\n| Completed blocks | Retain their DOM |\n| Open paragraph | Update in place |\n| Checkpoint | ${section} of 24 |\n\nThe result is ready for the next checkpoint.\n\n`;
@@ -11,7 +11,7 @@ export function createControlUiStreamingReply() {
     offset = Math.min(text.length, offset + 12 + ((deltas.length * 17) % 25));
     deltas.push(text.slice(0, offset));
   }
-  return { text, deltas, deltasPerSecond: 30 };
+  return { text, deltas, deltasPerSecond };
 }
 
 export function createStreamingReplyProbeInitScript(): string {
@@ -39,7 +39,12 @@ function installStreamingReplyProbe() {
   let initialScrollHeight = 0;
   let paneProbeAttached = false;
   let observeTextVisibility = false;
-  const textVisibility: Array<{ index: number; visible: boolean; nextFrameMs: number }> = [];
+  const textVisibility: Array<{
+    index: number;
+    present: boolean;
+    visible: boolean;
+    nextFrameMs: number;
+  }> = [];
   const pipeline = {
     streamWrites: 0,
     streamWriteMs: 0,
@@ -172,14 +177,38 @@ function installStreamingReplyProbe() {
             const sample = current;
             queueMicrotask(() =>
               requestAnimationFrame(() => {
-                textVisibility.push({
-                  index: sample.index,
-                  visible:
-                    document
-                      .querySelector(".chat-bubble.streaming .chat-text")
-                      ?.textContent?.includes(expected) ?? false,
-                  nextFrameMs: performance.now() - startedAt - sample.at,
+                // rAF precedes ResizeObserver-driven follow. Sample after layout,
+                // at this frame's pre-paint boundary rather than before its scroll writes.
+                const painted = new OriginalResizeObserver(() => {
+                  painted.disconnect();
+                  const bubble = document.querySelector(".chat-bubble.streaming .chat-text");
+                  const viewport = bubble?.closest(".chat-thread");
+                  let visible = false;
+                  if (bubble && viewport) {
+                    const bounds = viewport.getBoundingClientRect();
+                    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+                    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                      const end = node.textContent?.lastIndexOf(expected) ?? -1;
+                      if (end < 0) {
+                        continue;
+                      }
+                      const range = document.createRange();
+                      range.setStart(node, end + expected.length - 1);
+                      range.setEnd(node, end + expected.length);
+                      visible = Array.from(range.getClientRects()).some(
+                        (rect) =>
+                          rect.bottom > bounds.top && rect.top < bounds.bottom && rect.width > 0,
+                      );
+                    }
+                  }
+                  textVisibility.push({
+                    index: sample.index,
+                    present: bubble?.textContent?.includes(expected) ?? false,
+                    visible,
+                    nextFrameMs: performance.now() - startedAt - sample.at,
+                  });
                 });
+                painted.observe(document.documentElement);
               }),
             );
           }

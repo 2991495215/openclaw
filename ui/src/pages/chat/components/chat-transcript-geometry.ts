@@ -180,12 +180,18 @@ export function measureTranscriptRow(
   element: HTMLElement,
   entry: ResizeObserverEntry | undefined,
   virtualizer: Virtualizer<HTMLDivElement, HTMLElement>,
+  onContentResize?: () => void,
 ): number {
   if (entry || !virtualizer.targetWindow?.ResizeObserver) {
     // Rounded row heights accumulate when skipped overscan uses those measurements.
     const size =
       entry?.borderBoxSize?.[0]?.blockSize ?? measureElement(element, entry, virtualizer);
     if (size !== 0 || virtualizer.scrollElement?.clientHeight !== 0) {
+      const key = virtualizer.options.getItemKey(virtualizer.indexFromElement(element));
+      if (entry && size !== virtualizer.itemSizeCache.get(key)) {
+        // The pane owns follow intent when layout displaced the native end anchor.
+        onContentResize?.();
+      }
       return size;
     }
   }

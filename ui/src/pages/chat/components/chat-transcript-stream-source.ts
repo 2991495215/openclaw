@@ -1,5 +1,4 @@
 import { createMemo } from "solid-js";
-import { resolveMessageVisibleContent } from "../../../lib/chat/message-visibility.ts";
 import {
   buildCachedChatItems,
   findLiveStreamIndex,
@@ -7,6 +6,7 @@ import {
 } from "../chat-thread.ts";
 import { prepareChatStreamRender } from "./chat-message-markdown-view.tsx";
 import type { StreamGroupOptions } from "./chat-message-stream-view.tsx";
+import { isVisibleChatStream } from "./chat-position-projection.ts";
 import { projectTurnVideoMessages } from "./chat-turn-video-gallery.ts";
 
 /** Keep row membership separate from the live text consumed by the bubble and open previews. */
@@ -41,26 +41,19 @@ export function createTranscriptStreamSource(
   const snapshot = structure();
   const chatItems = snapshot.items;
   const liveIndex = findLiveStreamIndex(chatItems);
-  const initialLive = chatItems[liveIndex];
-  const initialLiveMessage =
-    initialLive?.kind === "stream" ? prepareChatStreamRender(initialLive).message : undefined;
   const live = createMemo(() => {
     const candidate = source().items[liveIndex];
     const part = candidate?.kind === "stream" ? candidate : undefined;
     return { part, prepared: part ? prepareChatStreamRender(part) : undefined };
   });
   const liveVisibility = createMemo(() => {
-    const prepared = live().prepared;
-    return Boolean(
-      prepared &&
-      (resolveMessageVisibleContent(prepared.message, prepared.normalizedMessage) === "non-text" ||
-        prepared.displayMarkdown.trim()),
-    );
+    const part = live().part;
+    return Boolean(part && isVisibleChatStream(part));
   });
   liveVisibility();
   const resolveLiveStream: NonNullable<StreamGroupOptions["resolveLiveStream"]> = (part) => {
     const current = live().part;
     return current?.key === part.key ? current : part;
   };
-  return { snapshot, initialLiveMessage, live, resolveLiveStream };
+  return { snapshot, live, resolveLiveStream };
 }

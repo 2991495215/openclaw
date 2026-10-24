@@ -4,8 +4,13 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { Virtualizer } from "@tanstack/virtual-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { flush } from "../../../test-helpers/solid-settle.ts";
+import { makeChatHost } from "../chat-host.test-support.ts";
 import { createTestTranscript, stubAnimationFrames } from "../chat-view.test-helpers.ts";
-import { saveChatSessionScrollPosition } from "../scroll.ts";
+import {
+  handleChatScrollTakeover,
+  saveChatSessionScrollPosition,
+  scheduleCommittedChatScroll,
+} from "../scroll.ts";
 import { SIDEBAR_GEOMETRY_COMMIT_EVENT } from "../sidebar-layout.ts";
 import {
   render,
@@ -154,6 +159,63 @@ it("keeps fractional observer sizes as the sole skipped-row sizing input", async
     for (const row of transcriptRows(container)) {
       expect(row.style.containIntrinsicBlockSize).toBe("100.375px");
     }
+  } finally {
+    transcript.dispose();
+  }
+});
+
+it("routes changed row observations through the pane's follow policy", async () => {
+  const flushFrames = stubAnimationFrames();
+  const policy = makeChatHost({ chatHasAutoScrolled: true });
+  const resized = vi.fn(() =>
+    scheduleCommittedChatScroll(policy, false, false, { source: "resize" }),
+  );
+  const transcript = createChatTranscript(() => "row-resize-policy", {
+    onContentResize: resized,
+    canFollowEnd: () => !policy.chatFollowLocked,
+  });
+  const rows = contentRows(1);
+  const { container, renderRows } = await mountTestTranscript("row-resize-policy", rows, transcript);
+  try {
+    // Registering a row has no observer measurement to report.
+    expect(resized).not.toHaveBeenCalled();
+    let scrollHeight = 2000;
+    setTranscriptViewport(container, () => scrollHeight);
+    container.scrollTo = (options?: ScrollToOptions | number) => {
+      if (typeof options === "object") {
+        container.scrollTop = options.top ?? container.scrollTop;
+      }
+    };
+    policy.chatScrollElement = () => container;
+    policy.chatScrollToEnd = (options) => transcript.scrollToEnd(options);
+    const row = requireElement(container, ".chat-virtual-row");
+    emitTranscriptResize(row, 800, scrollHeight);
+    renderRows(rows);
+    flushFrames();
+    resized.mockClear();
+
+    // Initial layout can leave an unlocked reader near the end without an exact-edge anchor.
+    container.scrollTop = scrollHeight - container.clientHeight - 53;
+    policy.chatLastScrollTop = container.scrollTop;
+    emitTranscriptResize(row, 800, scrollHeight);
+    expect(resized).not.toHaveBeenCalled();
+    scrollHeight += 100;
+    emitTranscriptResize(row, 800, scrollHeight);
+    renderRows(rows);
+    flushFrames();
+    expect(resized).toHaveBeenCalledOnce();
+    expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
+
+    container.scrollTop = 800;
+    handleChatScrollTakeover(policy);
+    policy.chatNewMessagesBelow = false;
+    scrollHeight += 100;
+    emitTranscriptResize(row, 800, scrollHeight);
+    renderRows(rows);
+    flushFrames();
+    expect(resized).toHaveBeenCalledTimes(2);
+    expect(container.scrollTop).toBe(800);
+    expect(policy.chatNewMessagesBelow).toBe(true);
   } finally {
     transcript.dispose();
   }

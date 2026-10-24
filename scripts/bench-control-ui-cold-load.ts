@@ -258,6 +258,7 @@ const { values } = parseArgs({
     "streaming-reply": { type: "boolean", default: false },
     "streaming-allocations": { type: "boolean", default: false },
     "streaming-burst-size": { type: "string", default: "1" },
+    "streaming-rate": { type: "string", default: "30" },
     "session-switch": { type: "boolean", default: false },
     "critical-path": { type: "boolean", default: false },
     "critical-path-route": { type: "string", multiple: true, default: [] },
@@ -469,6 +470,10 @@ const captureMs = Number(values["capture-ms"]);
 const transcriptMessages =
   values["transcript-messages"] === undefined ? undefined : Number(values["transcript-messages"]);
 const streamingBurstSize = Number(values["streaming-burst-size"]);
+const streamingRate = Number(values["streaming-rate"]);
+if (!Number.isFinite(streamingRate) || streamingRate <= 0) {
+  throw new Error("streaming-rate must be a positive number of deltas per second");
+}
 if (
   !Number.isSafeInteger(streamingBurstSize) ||
   streamingBurstSize < 1 ||
@@ -656,7 +661,9 @@ const fixture = createControlUiTeamScaleFixture({
   historyStateReceipt: historyValidatorDelayMs > 0,
   dashboardPaintMarker: values["dashboard-paint-marker"],
 });
-const streamingReply = values["streaming-reply"] ? createControlUiStreamingReply() : undefined;
+const streamingReply = values["streaming-reply"]
+  ? createControlUiStreamingReply(streamingRate)
+  : undefined;
 const extraInitScripts = await Promise.all(
   values["init-script"].map((file) => readFile(file, "utf8")),
 );

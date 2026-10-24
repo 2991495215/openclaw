@@ -225,7 +225,8 @@ export class ChatSessionVirtualizerHost implements ChatTranscriptSession {
           instance,
           callback,
         ),
-      measureElement: measureTranscriptRow,
+      measureElement: (element, entry, instance) =>
+        measureTranscriptRow(element, entry, instance, this.callbacks.onContentResize),
       rangeExtractor: (range) =>
         this.prependAnchor.extractRange(range, this.rowIndexesByKey, this.focusedRowKey),
       // Virtual distance omits real padding, pinning readers ~80px up past scroll.ts's follow-lock.

@@ -222,11 +222,8 @@ export function createChatState<TState extends ChatPageHost>(
       previousChatStream = state.chatStream;
       // Publication also owns persistence and activity/retention effects in parked panes.
       releaseRunPublication = chatRunPresentation(state).subscribe(() => {
-        // Geometry commits follow a growing tail; locked readers also need same-height arrivals.
-        if (state.chatFollowLocked) {
-          captureRenderLifecycleChanges();
-          schedulePendingScroll(false);
-        }
+        captureRenderLifecycleChanges();
+        schedulePendingScroll(false);
         publishStateEffects();
       });
       // Queue transitions synchronously update pane retention and shell activity,
