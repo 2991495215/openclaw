@@ -856,9 +856,7 @@ button.chat-details__process:is(:hover, :focus-visible) {
   outline-offset: 2px;
 }
 
-.chat-environment__machine .chat-pane__placement-control {
-  display: block;
-}
+.chat-environment__machine .chat-pane__placement-control,
 .chat-environment__machine .chat-pane__placement-menu {
   display: block;
 }

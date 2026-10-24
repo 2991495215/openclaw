@@ -640,10 +640,7 @@
     padding: 0 var(--space-3) var(--space-2);
   }
 
-  .md-preview-dialog__footer {
-    padding: var(--space-3);
-  }
-
+  .md-preview-dialog__footer,
   .agent-file-preview .md-preview-dialog__body {
     padding: var(--space-3);
   }
@@ -1051,10 +1048,7 @@
     padding-left: 24px;
   }
 
-  .agent-tool-summary {
-    grid-template-columns: 1fr;
-  }
-
+  .agent-tool-summary,
   .agent-tool-summary__facts {
     grid-template-columns: 1fr;
   }
