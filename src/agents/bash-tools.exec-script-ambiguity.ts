@@ -255,14 +255,7 @@ function extractShellWrappedCommandPayload(
   return null;
 }
 
-export function shouldFailClosedInterpreterPreflight(command: string): {
-  hasInterpreterInvocation: boolean;
-  hasComplexSyntax: boolean;
-  hasProcessSubstitution: boolean;
-  hasInterpreterSegmentScriptHint: boolean;
-  hasInterpreterPipelineScriptHint: boolean;
-  isDirectInterpreterCommand: boolean;
-} {
+export function shouldFailClosedInterpreterPreflight(command: string) {
   const raw = command.trim();
   const rawArgv = splitShellArgs(raw);
   const [directCommandToken, ...args] = rawArgv

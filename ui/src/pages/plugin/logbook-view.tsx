@@ -1,5 +1,9 @@
 import type { JSX } from "@solidjs/web";
 import {
+  action,
+  affects,
+  createOptimistic,
+  refresh,
   createMemo,
   createSignal,
   Errored,
@@ -21,11 +25,12 @@ import { formatUiError, formatUiExternalText } from "../../lib/format-error.ts";
 import { formatTimeMs } from "../../lib/format.ts";
 import { projectI18n, registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import "../../styles/logbook.css";
-import { createLogbookActions } from "./logbook-actions.ts";
 import { createLogbook, localDayKey, shiftDay, type LogbookModel } from "./logbook-state.ts";
 import type { LogbookCardPayload, LogbookStatusPayload } from "./logbook-types.ts";
 
 registerEnglishCatalog(registerLogbookEnglish);
+
+type Kind = "capture" | "analyze" | "standup" | "ask";
 
 export type LogbookProps = {
   initialClient: GatewayBrowserClient | null;
@@ -119,7 +124,68 @@ export function Logbook(props: LogbookProps) {
   // PluginPage's keyed host keeps this client fixed until the model is disposed.
   const initialClient = props.initialClient;
   const model = createLogbook(initialClient);
-  const actions = createLogbookActions(model, () => props.getRetired());
+  const statusRead = createMemo(() => model.state.status);
+  const standupResult = createMemo(() => model.state.standup);
+  const answer = createMemo(() => model.state.askAnswer);
+  const [paused, setPaused] = createOptimistic(() => statusRead()?.capturePaused ?? false);
+  const [actionPending, setActionPending] = createOptimistic(false);
+  const [standupPending, setStandupPending] = createOptimistic(false);
+  const [askPending, setAskPending] = createOptimistic(false);
+  const captureStatus = createMemo(() => {
+    const current = statusRead();
+    return current && { ...current, capturePaused: paused() };
+  });
+
+  const present = action(function* (
+    kind: Kind,
+    pending: Promise<unknown>,
+    retirement: Promise<void>,
+    isCurrent: () => boolean,
+    expectedPaused?: boolean,
+  ) {
+    const read = kind === "standup" ? standupResult : kind === "ask" ? answer : statusRead;
+    const saving =
+      kind === "standup" ? setStandupPending : kind === "ask" ? setAskPending : setActionPending;
+    try {
+      if (isCurrent()) {
+        saving(true);
+        if (expectedPaused !== undefined) {
+          setPaused(expectedPaused);
+        }
+        affects(read);
+      }
+      // Retire presentation without cancelling the owner's admitted write.
+      yield Promise.race([pending, retirement]);
+      if (isCurrent()) {
+        yield refresh(read);
+      }
+    } catch (error) {
+      if (isCurrent()) {
+        model.reportError(error);
+      }
+    }
+  });
+
+  async function perform(
+    kind: Kind,
+    run: () => Promise<unknown> | undefined,
+    expectedPaused?: boolean,
+  ) {
+    const routeLifetime = props.getRetired();
+    const dayLifetime = model.dayRetired;
+    const isCurrent = () =>
+      props.getRetired() === routeLifetime && model.dayRetired === dayLifetime;
+    const pending = run();
+    if (!pending) {
+      return;
+    }
+    const retirement = Promise.race([routeLifetime, dayLifetime]);
+    await Promise.resolve();
+    return present(kind, pending, retirement, isCurrent, expectedPaused);
+  }
+
+  const setCapturePaused = (value: boolean) =>
+    perform("capture", () => model.setCapturePaused(value), value);
   const state = () => model.state;
   const day = createMemo(() => state().day);
   const [completion, setCompletion] = createSignal<Promise<void>>();
@@ -284,18 +350,21 @@ export function Logbook(props: LogbookProps) {
         <div class="logbook-side__card-header">
           <div class="card-title">{t("logbook.standup.title")}</div>
           <ActionButton
-            disabled={actions.standupPending() || model.state.standupLoading}
-            onClick={() => void actions.createStandup(actions.standup() !== null)}
+            disabled={standupPending() || model.state.standupLoading}
+            onClick={() => {
+              const force = standupResult() !== null;
+              void perform("standup", () => model.standup(force));
+            }}
           >
-            {actions.standupPending() || model.state.standupLoading
+            {standupPending() || model.state.standupLoading
               ? t("common.loading")
-              : actions.standup()
+              : standupResult()
                 ? t("logbook.standup.refresh")
                 : t("logbook.standup.generate")}
           </ActionButton>
         </div>
         <Show
-          when={actions.standup()}
+          when={standupResult()}
           fallback={<div class="card-sub">{t("logbook.standup.empty")}</div>}
         >
           {(standup) => (
@@ -319,7 +388,7 @@ export function Logbook(props: LogbookProps) {
           class="logbook-ask__form"
           onSubmit={(event) => {
             event.preventDefault();
-            void actions.ask(question());
+            void perform("ask", () => model.ask(question()));
           }}
         >
           <input
@@ -331,14 +400,12 @@ export function Logbook(props: LogbookProps) {
               setQuestion(event.currentTarget.value);
             }}
           />
-          <ActionButton type="submit" disabled={actions.askPending() || model.state.askLoading}>
-            {actions.askPending() || model.state.askLoading
-              ? t("common.loading")
-              : t("logbook.ask.submit")}
+          <ActionButton type="submit" disabled={askPending() || model.state.askLoading}>
+            {askPending() || model.state.askLoading ? t("common.loading") : t("logbook.ask.submit")}
           </ActionButton>
         </form>
-        <Show when={actions.answer()}>
-          <p class="logbook-ask__answer">{actions.answer()}</p>
+        <Show when={answer()}>
+          <p class="logbook-ask__answer">{answer()}</p>
         </Show>
       </section>
     );
@@ -367,23 +434,21 @@ export function Logbook(props: LogbookProps) {
             </ActionButton>
           </Show>
         </div>
-        <Show when={actions.status()}>{(status) => <StatusChips status={status()} />}</Show>
+        <Show when={captureStatus()}>{(status) => <StatusChips status={status()} />}</Show>
         <div class="logbook__actions">
-          <Show when={actions.status()}>
+          <Show when={captureStatus()}>
             {(status) => (
               <ActionButton
-                disabled={
-                  actions.actionPending() || state().actionPending || !status().captureEnabled
-                }
-                onClick={() => void actions.setCapturePaused(!actions.status()?.capturePaused)}
+                disabled={actionPending() || state().actionPending || !status().captureEnabled}
+                onClick={() => void setCapturePaused(!captureStatus()?.capturePaused)}
               >
                 {t(status().capturePaused ? "logbook.actions.resume" : "logbook.actions.pause")}
               </ActionButton>
             )}
           </Show>
           <ActionButton
-            onClick={() => void actions.analyze()}
-            disabled={actions.actionPending() || state().actionPending}
+            onClick={() => void perform("analyze", () => model.analyze())}
+            disabled={actionPending() || state().actionPending}
           >
             {t("logbook.actions.analyzeNow")}
           </ActionButton>
