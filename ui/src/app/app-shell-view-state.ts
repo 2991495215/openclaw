@@ -21,7 +21,6 @@ import { isMobileNavLayout, shouldMergeChatChrome } from "./mobile-nav-layout.ts
 import type { NativeHistoryState } from "./native-web-chrome.ts";
 import { isNativeEmbedHost, nativeEmbedHost, isNativeWebChromeHost } from "./native-web-chrome.ts";
 import {
-  floatingSidebarAttentionVisible,
   navigationSurfaceIsHidden,
   NAVIGATION_RAIL_WIDTH,
   type ShellNavigationElements,
@@ -156,14 +155,6 @@ export function readShellView(host: ShellViewHost) {
     mobileNavLayout,
     railAvailable,
   });
-  const floatingAttentionVisible =
-    !nativeEmbed &&
-    floatingSidebarAttentionVisible({
-      navigationSurfaceHidden,
-      mobileNavLayout,
-      onboarding,
-      compact: mergedChatChrome,
-    });
   const shellWidth = Math.max(globalThis.innerWidth || 0, NAV_WIDTH_MAX);
   // A route query is navigation input, not an owner record. Let it override the
   // live selection only after the roster proves that agent exists.
@@ -286,7 +277,6 @@ export function readShellView(host: ShellViewHost) {
     config,
     gatewayConnected,
     overlaySnapshot,
-    connectionStatus,
     presentationScope,
     terminalAvailable,
     desktopPanelAvailable,
@@ -313,7 +303,6 @@ export function readShellView(host: ShellViewHost) {
     railWidth,
     expandedNavWidth,
     navigationSurfaceHidden,
-    floatingAttentionVisible,
     shellWidth,
     selectedAgentId,
     newSessionDisabledReason,
