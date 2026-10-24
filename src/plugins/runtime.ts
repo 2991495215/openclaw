@@ -2,11 +2,7 @@ import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import {
-  AsyncWorkScope,
-  isAsyncWorkScopeActiveHere,
-  trackAsyncWork,
-} from "../shared/async-work-scope.js";
+import { AsyncWorkScope, trackAsyncWork } from "../shared/async-work-scope.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import {
   drainGlobalSingletonLifecycleState,
@@ -637,13 +633,8 @@ export async function clearActivePluginRegistry(
   });
   // Publish the drain before synchronous retirement listeners can reenter.
   quiescePluginRegistry(previousRegistry);
-  // Reentrant commands and retired cleanup callbacks must not await their own pending attempt.
-  if (
-    isPluginCommandExecutionActiveHere() ||
-    [...(state.retiredRegistryCleanups?.values() ?? [])].some(({ work }) =>
-      isAsyncWorkScopeActiveHere(work),
-    )
-  ) {
+  // Commands cannot await their own pending registry drain.
+  if (isPluginCommandExecutionActiveHere()) {
     return;
   }
   await completion;
