@@ -1211,74 +1211,67 @@
     --chat-composer-footer-icon-size: var(--chat-mobile-row-icon-size);
     --chat-composer-menu-icon: var(--chat-mobile-row-icon-size);
     --chat-composer-send-size: var(--chat-mobile-row-plus-target-size);
-  }
 
-  :where(.agent-chat__input--mobile-toolbar) svg {
-    width: var(--chat-mobile-row-icon-size);
-    height: var(--chat-mobile-row-icon-size);
-    stroke-width: var(--chat-mobile-row-icon-stroke);
-  }
+    :where(&) svg {
+      width: var(--chat-mobile-row-icon-size);
+      height: var(--chat-mobile-row-icon-size);
+      stroke-width: var(--chat-mobile-row-icon-stroke);
+    }
 
-  .agent-chat__input--mobile-toolbar .agent-chat__composer-footer {
-    justify-content: space-between;
-    gap: 0;
-    min-height: var(--chat-mobile-row-target-size);
-    margin-bottom: 0;
-  }
+    .agent-chat__composer-footer {
+      justify-content: space-between;
+      gap: 0;
+      min-height: var(--chat-mobile-row-target-size);
+      margin-bottom: 0;
+    }
+    .agent-chat__composer-lead,
+    .agent-chat__composer-actions {
+      gap: 0;
+    }
 
-  .agent-chat__input--mobile-toolbar
-    :is(.agent-chat__composer-lead, .agent-chat__composer-actions) {
-    gap: 0;
-  }
+    .agent-chat__input-btn--attach {
+      width: var(--chat-mobile-row-plus-target-size);
+      min-width: var(--chat-mobile-row-plus-target-size);
+      height: var(--chat-mobile-row-plus-target-size);
+      padding: var(--chat-mobile-row-icon-padding);
+    }
 
-  .agent-chat__input--mobile-toolbar .agent-chat__input-btn--attach {
-    width: var(--chat-mobile-row-plus-target-size);
-    min-width: var(--chat-mobile-row-plus-target-size);
-    height: var(--chat-mobile-row-plus-target-size);
-    padding: var(--chat-mobile-row-icon-padding);
-  }
+    .agent-chat__attach-menu[open] .agent-chat__input-btn--attach svg {
+      transform: rotate(-45deg);
+    }
 
-  .agent-chat__input--mobile-toolbar
-    .agent-chat__attach-menu[open]
-    .agent-chat__input-btn--attach
-    svg {
-    transform: rotate(-45deg);
-  }
+    &.agent-chat__input .chat-controls__permission-trigger,
+    .chat-send-btn--voice {
+      width: var(--chat-composer-control-size);
+      min-width: var(--chat-composer-control-size);
+      height: var(--chat-mobile-row-target-size);
+      border-radius: var(--radius-full);
+    }
 
-  .agent-chat__input.agent-chat__input--mobile-toolbar .chat-controls__permission-trigger,
-  .agent-chat__input--mobile-toolbar .chat-send-btn--voice {
-    width: var(--chat-composer-control-size);
-    min-width: var(--chat-composer-control-size);
-    height: var(--chat-mobile-row-target-size);
-    border-radius: var(--radius-full);
-  }
-
-  /* The small dial keeps a 24px-wide target so both pickers and actions remain
+    /* The small dial keeps a 24px-wide target so both pickers and actions remain
      separate even when a desktop side panel narrows the composer. */
-  .agent-chat__input.agent-chat__input--mobile-toolbar .context-ring {
-    width: 24px;
-    min-width: 24px;
-    height: var(--chat-mobile-row-target-size);
-  }
+    &.agent-chat__input .context-ring {
+      width: 24px;
+      min-width: 24px;
+      height: var(--chat-mobile-row-target-size);
+    }
 
-  /* Mobile action controls own a real 32px target; Plus uses its explicit 36px
+    /* Mobile action controls own a real 32px target; Plus uses its explicit 36px
      role token. Adjacent controls never compete for one tap. */
-  .agent-chat__input--mobile-toolbar
-    :is(
-      .agent-chat__input-btn--attach,
-      .chat-controls__permission-trigger,
-      .context-ring,
-      .chat-controls__model-trigger,
-      .chat-controls__effort-trigger,
-      .chat-send-btn--voice,
-      .chat-send-btn--stop,
-      .chat-send-btn--send,
-      .chat-send-btn--talk-mode
-    ) {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    .agent-chat__input-btn--attach,
+    .chat-controls__permission-trigger,
+    .context-ring,
+    .chat-controls__model-trigger,
+    .chat-controls__effort-trigger,
+    .chat-send-btn--voice,
+    .chat-send-btn--stop,
+    .chat-send-btn--send,
+    .chat-send-btn--talk-mode {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
   }
 
   /* Row icons share one optical tier; role tokens below express the deliberate
