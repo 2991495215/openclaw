@@ -76,6 +76,32 @@ function reconnectPane(startup: ChatHistoryResult | Promise<ChatHistoryResult>) 
   return { request, client, ...createTestChatPane({ client }) };
 }
 
+function operationPane(phase: "start" | "end") {
+  const fixture = reconnectPane({ messages: [], sessionId: "operation-session" });
+  const { pane, state } = fixture;
+  pane.context.gateway.snapshot.selfUser = { id: "original-person" };
+  pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
+  state.chatRunId = "operation-run";
+  handleAgentEvent(state, {
+    sessionKey: state.sessionKey,
+    runId: "operation-run",
+    seq: 1,
+    ts: 1,
+    stream: "item",
+    data: {
+      itemId: "operation",
+      toolCallId: "operation",
+      kind: "command",
+      name: "exec",
+      title: "Check the working tree",
+      phase,
+      status: phase === "start" ? "running" : "completed",
+    },
+  });
+  expect(state.toolStreamById.size).toBe(1);
+  return fixture;
+}
+
 function presentationPane() {
   const fixture = createTestChatPane({
     client: { request: vi.fn() } as unknown as GatewayBrowserClient,
@@ -167,29 +193,7 @@ describe("chat pane connection lifecycle", () => {
   it.each(["reconnecting", "reload-required", "offline"] as const)(
     "retains received operation facts without live authority while %s",
     (phase) => {
-      const { pane, state, request } = reconnectPane({
-        messages: [],
-        sessionId: "operation-session",
-      });
-      pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
-      state.chatRunId = "operation-run";
-      handleAgentEvent(state, {
-        sessionKey: state.sessionKey,
-        runId: "operation-run",
-        seq: 1,
-        ts: 1,
-        stream: "item",
-        data: {
-          itemId: "operation",
-          toolCallId: "operation",
-          kind: "command",
-          name: "exec",
-          title: "Check the working tree",
-          phase: "start",
-          status: "running",
-        },
-      });
-      expect(state.toolStreamById.size).toBe(1);
+      const { pane, state, request } = operationPane("start");
       request.mockClear();
 
       const snapshot = { ...pane.context.gateway.snapshot, phase };
@@ -212,27 +216,7 @@ describe("chat pane connection lifecycle", () => {
   it.each(["person", "read access", "admission"] as const)(
     "retires retained operation facts when %s changes on the same client",
     (changed) => {
-      const { pane, state } = reconnectPane({ messages: [], sessionId: "operation-session" });
-      pane.context.gateway.snapshot.selfUser = { id: "original-person" };
-      pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
-      state.chatRunId = "operation-run";
-      handleAgentEvent(state, {
-        sessionKey: state.sessionKey,
-        runId: "operation-run",
-        seq: 1,
-        ts: 1,
-        stream: "item",
-        data: {
-          itemId: "operation",
-          toolCallId: "operation",
-          kind: "command",
-          name: "exec",
-          title: "Check the working tree",
-          phase: "end",
-          status: "completed",
-        },
-      });
-      expect(state.toolStreamById.size).toBe(1);
+      const { pane, state } = operationPane("end");
       if (changed === "person") {
         pane.context.gateway.snapshot.selfUser = { id: "replacement-person" };
       } else {

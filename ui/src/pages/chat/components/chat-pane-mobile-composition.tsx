@@ -139,7 +139,7 @@ export function ChatPaneMobileComposition(props: {
   const sharing = () => props.header.mobileSharing;
   const emptyPlacement: ChatPanePlacementProps = { session: undefined };
   const readMachineName = createMemo(() => props.header.readMachineName);
-  const machineNameScope = createMemo(() => props.header.machineNameScope ?? readMachineName());
+  const machineNameScope = createMemo(() => props.header.machineNameScope);
   const machineNameRead = createMemo(() => {
     machineNameScope();
     // Revalidate within the same environment without discarding its last presented name.

@@ -1,10 +1,7 @@
-import { writeFile } from "node:fs/promises";
-import path from "node:path";
 import { expect, it } from "vitest";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.js";
 import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { waitForControlUiGatewayReconnecting } from "../test-helpers/control-ui-e2e-readiness.ts";
-import { takeControlUiScreenshotFrame } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import { installMockGateway, reconnectMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { openChatDetails, closeChatDetails } from "./chat-details.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
@@ -28,14 +25,6 @@ suite.define(() => {
       {
         viewport: { width: 1360, height: 980 },
         locale: "en-US",
-        ...(process.env.OPENCLAW_CAPTURE_UI_PROOF === "1"
-          ? {
-              recordVideo: {
-                dir: path.join(suite.artifactDir, "video"),
-                size: { width: 1360, height: 980 },
-              },
-            }
-          : {}),
       },
       async ({ page }) => {
         const gateway = await installMockGateway(page, {
@@ -79,26 +68,10 @@ suite.define(() => {
         await artifact.waitFor();
         const prNode = await pr.elementHandle();
         const artifactNode = await artifact.elementHandle();
-        const capture = async (stage: string) => {
-          if (process.env.OPENCLAW_CAPTURE_UI_PROOF !== "1") {
-            return;
-          }
-          const frame = await takeControlUiScreenshotFrame(page, details, [], {
-            elements: [details],
-            animations: "disabled",
-          });
-          await writeFile(path.join(suite.artifactDir, stage + ".png"), frame.png);
-          await writeFile(
-            path.join(suite.artifactDir, stage + "-details.png"),
-            frame.elements[0]!.png,
-          );
-        };
-        await capture("connected");
         const artifactReads = await gateway.deferNext("artifacts.list");
         await gateway.setOnline(false);
         await gateway.closeLatest(1001, "mock Gateway restart");
         await waitForControlUiGatewayReconnecting(page);
-        await capture("reconnecting");
         expect(await pr.isVisible()).toBe(true);
         expect(await artifact.isVisible()).toBe(true);
         expect(await prNode?.evaluate((element) => element.isConnected)).toBe(true);
@@ -116,13 +89,11 @@ suite.define(() => {
           () => window.openclawControlUi?.snapshot().gatewayPhase === "connected",
         );
         await gateway.waitForRequest("artifacts.list", { after: artifactReads });
-        await capture("reconnected-refresh");
         expect(await outputGroup.getByRole("status").count()).toBe(0);
         expect(await artifact.isVisible()).toBe(true);
         expect(await artifactNode?.evaluate((element) => element.isConnected)).toBe(true);
         await gateway.resolveDeferred("artifacts.list", { artifacts: [] });
         await expect.poll(() => artifact.count()).toBe(0);
-        await capture("reconnected");
         await gateway.emitGatewayEvent(CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT, {
           sessions: { [sessionKey]: { pullRequests: [], rateLimited: false, status: "ready" } },
         });

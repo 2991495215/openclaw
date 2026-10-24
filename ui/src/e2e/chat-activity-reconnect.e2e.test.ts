@@ -1,5 +1,3 @@
-import { writeFileSync } from "node:fs";
-import path from "node:path";
 import { expect } from "playwright/test";
 import { it } from "vitest";
 import { projectAgentToolActivity } from "../../../src/infra/agent-activity-events.js";
@@ -8,7 +6,6 @@ import {
   waitForControlUiGatewayReady,
   waitForControlUiGatewayReconnecting,
 } from "../test-helpers/control-ui-e2e-readiness.ts";
-import { takeControlUiScreenshotFrame } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import { controlUiSessionUrl, installMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { createChatFlowE2eSuite } from "./chat-flow.test-support.ts";
 
@@ -52,38 +49,30 @@ const durableMessages = [
 ];
 
 suite.define(() => {
-  it.each([
-    { active: false, reboot: false },
-    { active: true, reboot: false },
-    { active: true, reboot: true },
-  ])(
-    "keeps prepared operation counts while reconnecting (active=$active, reboot=$reboot)",
-    async ({ active, reboot }) => {
+  it.each([false, true])(
+    "keeps prepared operation counts while reconnecting (new boot=%s)",
+    async (reboot) => {
       await suite.withPage(
         {
           viewport: { height: 900, width: 1280 },
           reducedMotion: "reduce",
-          ...(process.env.OPENCLAW_CAPTURE_UI_PROOF === "1"
-            ? { recordVideo: { dir: suite.artifactDir, size: { height: 900, width: 1280 } } }
-            : {}),
         },
         async ({ page }) => {
           const sessionInfo = {
             key: sessionKey,
             sessionId: "activity-reconnect-session",
             kind: "direct",
-            status: active ? "running" : "done",
-            hasActiveRun: active,
-            activeRunIds: active ? [runId] : [],
+            status: "running",
+            hasActiveRun: true,
+            activeRunIds: [runId],
             lastRunId: runId,
           };
           const preparedHistory = prepareChatHistoryFixture(durableMessages);
           const initial = {
             sessionId: sessionInfo.sessionId,
             sessionInfo,
-            ...(active
-              ? { messages: [user], inFlightRun: { runId, text: "", events: [] } }
-              : preparedHistory),
+            messages: [user],
+            inFlightRun: { runId, text: "", events: [] },
           };
           const gateway = await installMockGateway(page, {
             sessionKey,
@@ -97,89 +86,49 @@ suite.define(() => {
           await waitForControlUiGatewayReady(page);
           await expect(page.getByText(user.content, { exact: true })).toBeVisible();
           const summary = page.locator(".chat-activity-group__summary");
-          const capture = async (stage: string) => {
-            if (process.env.OPENCLAW_CAPTURE_UI_PROOF !== "1") {
-              return;
-            }
-            const frame = await takeControlUiScreenshotFrame(
-              page,
-              page.locator("section.chat"),
-              [summary],
-              {
-                animations: "disabled",
-                elements: [summary],
+          // These calls have reached the live stream but are not in the saved transcript yet.
+          for (const index of [0, 1]) {
+            await gateway.emitGatewayEvent("agent", {
+              sessionKey,
+              runId,
+              seq: index * 3 + 1,
+              ts: index * 3 + 1,
+              stream: "tool",
+              data: {
+                phase: "start",
+                name: "exec",
+                toolCallId: `command-${index}`,
+                args: { command: commands[index] },
               },
-            );
-            const name = `${stage}-${active ? "active" : "idle"}${reboot ? "-reboot" : ""}`;
-            writeFileSync(path.join(suite.artifactDir, `${name}.png`), frame.png);
-            writeFileSync(
-              path.join(suite.artifactDir, `${name}-summary.png`),
-              frame.elements[0]!.png,
-            );
-          };
-          if (active) {
-            // These calls have reached the live stream but are not in the saved transcript yet.
-            for (const index of [0, 1]) {
+            });
+            if (index === 0) {
               await gateway.emitGatewayEvent("agent", {
                 sessionKey,
                 runId,
-                seq: index * 3 + 1,
-                ts: index * 3 + 1,
+                seq: 2,
+                ts: 2,
                 stream: "tool",
                 data: {
-                  phase: "start",
+                  phase: "result",
                   name: "exec",
-                  toolCallId: `command-${index}`,
-                  args: { command: commands[index] },
+                  toolCallId: "command-0",
+                  isError: false,
+                  result: "Working tree inspection complete.",
                 },
               });
-              if (index === 0) {
-                await gateway.emitGatewayEvent("agent", {
-                  sessionKey,
-                  runId,
-                  seq: 2,
-                  ts: 2,
-                  stream: "tool",
-                  data: {
-                    phase: "result",
-                    name: "exec",
-                    toolCallId: "command-0",
-                    isError: false,
-                    result: "Working tree inspection complete.",
-                  },
-                });
-              }
-              await gateway.emitGatewayEvent("agent", {
-                sessionKey,
-                runId,
-                seq: index * 3 + 3,
-                ts: index * 3 + 3,
-                stream: "item",
-                data: activity(index, index === 0 ? "result" : "start"),
-              });
             }
-            await expect(summary).toContainText(commands[1]);
-          } else {
-            await expect(summary).toHaveText(/2 commands/);
+            await gateway.emitGatewayEvent("agent", {
+              sessionKey,
+              runId,
+              seq: index * 3 + 3,
+              ts: index * 3 + 3,
+              stream: "item",
+              data: activity(index, index === 0 ? "result" : "start"),
+            });
           }
-          await capture("connected");
+          await expect(summary).toContainText(commands[1]);
           await gateway.setOnline(false);
           await waitForControlUiGatewayReconnecting(page);
-          // Capture the actual loss on the baseline even if no summary survived.
-          if (process.env.OPENCLAW_CAPTURE_UI_PROOF === "1" && (await summary.count()) === 0) {
-            const frame = await takeControlUiScreenshotFrame(
-              page,
-              page.locator("section.chat"),
-              [page.getByText(user.content, { exact: true })],
-              { animations: "disabled" },
-            );
-            writeFileSync(
-              path.join(suite.artifactDir, "reconnecting-missing-summary.png"),
-              frame.png,
-            );
-          } else {
-            await capture("reconnecting");
-          }
           await expect(summary).toHaveText(/2 commands/);
           await expect(summary).not.toHaveText(/Raw details/);
           const recoveredSession = reboot
@@ -239,7 +188,6 @@ suite.define(() => {
           await summary.click();
           await expect(page.locator(".chat-tool-row")).toHaveCount(2);
           await summary.click();
-          await capture("reconnected");
           await gateway.emitGatewayEvent("agent", {
             sessionKey,
             runId,
@@ -250,6 +198,21 @@ suite.define(() => {
           });
           await expect(summary).not.toHaveText(/Raw details/);
           await expect(summary).toHaveCount(1);
+          if (!reboot) {
+            // The terminal transcript now owns the same summary on another transport loss.
+            await gateway.setOnline(false);
+            await waitForControlUiGatewayReconnecting(page);
+            await expect(summary).toHaveText(/2 commands/);
+            await expect(summary).not.toHaveText(/Raw details/);
+            await gateway.setOnline(true);
+            await waitForControlUiGatewayReady(page);
+            await expect(summary).toHaveText(/2 commands/);
+            await expect(summary).not.toHaveText(/Raw details/);
+            await summary.click();
+            await expect(page.locator(".chat-tool-row")).toHaveCount(2);
+            await summary.click();
+            await expect(page.getByRole("button", { name: "Stop generating" })).toBeHidden();
+          }
         },
       );
     },

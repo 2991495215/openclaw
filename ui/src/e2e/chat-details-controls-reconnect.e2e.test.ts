@@ -1,9 +1,6 @@
-import { writeFile } from "node:fs/promises";
-import path from "node:path";
-import type { Locator, Page } from "playwright";
+import type { Page } from "playwright";
 import { expect, it } from "vitest";
 import type { SessionGoal } from "../api/types.ts";
-import { takeControlUiScreenshotFrame } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import {
   controlUiSessionUrl,
   defaultControlUiFeatureMethods,
@@ -89,17 +86,6 @@ async function installControls(page: Page) {
   return { gateway, goal, row };
 }
 
-async function capture(page: Page, surface: Locator, name: string, content: Locator[]) {
-  if (process.env.OPENCLAW_CAPTURE_UI_PROOF !== "1") {
-    return;
-  }
-  const frame = await takeControlUiScreenshotFrame(page, surface, content, {
-    elements: [surface],
-    animations: "disabled",
-  });
-  await writeFile(path.join(suite.artifactDir, name), frame.png);
-}
-
 suite.define(() => {
   it("retains mobile environment and Goal controls through a real socket reconnect", async () => {
     await suite.withPage({ viewport, hasTouch: true, locale: "en-US" }, async ({ page }) => {
@@ -109,7 +95,6 @@ suite.define(() => {
         .locator(".chat-environment-mobile")
         .getByRole("button", { name: machineName, exact: true });
       await machine.waitFor();
-      await capture(page, details, "machine-connected.png", [machine]);
       await closeChatDetails(page);
 
       const goalPill = page.locator('.activity-pill[data-family="goal"]').filter({ visible: true });
@@ -120,7 +105,6 @@ suite.define(() => {
       const resume = goalPage.getByRole("button", { name: "Resume goal", exact: true });
       await resume.waitFor();
       await expect.poll(() => resume.isEnabled()).toBe(true);
-      await capture(page, details, "goal-connected.png", [resume]);
 
       // Closing is local; it must not forget which actions were available before the outage.
       await closeChatDetails(page);
@@ -134,7 +118,6 @@ suite.define(() => {
       await openChatDetails(page);
       await machine.waitFor();
       expect(await gateway.getRequests("environments.list")).toHaveLength(reads);
-      await capture(page, details, "machine-reconnecting.png", [machine]);
       await closeChatDetails(page);
       await goalPill.click();
       await goalPage.waitFor();
@@ -147,7 +130,6 @@ suite.define(() => {
       }
       expect(await gateway.getRequests(goalMethod)).toHaveLength(0);
       expect(await gateway.getRequests("sessions.goal.clear")).toHaveLength(0);
-      await capture(page, details, "goal-reconnecting.png", [resume]);
 
       await gateway.setOnline(true);
       await page.waitForFunction(
@@ -155,7 +137,6 @@ suite.define(() => {
       );
       await expect.poll(() => gateway.getSocketCount()).toBeGreaterThan(sockets);
       await expect.poll(() => resume.isEnabled()).toBe(true);
-      await capture(page, details, "goal-reconnected.png", [resume]);
       await gateway.waitForRequest("environments.list", { after: reads });
       await closeChatDetails(page);
       await openChatDetails(page);
@@ -168,7 +149,6 @@ suite.define(() => {
         .locator(".chat-environment-mobile")
         .getByRole("button", { name: "Demo workstation updated", exact: true });
       await updated.waitFor();
-      await capture(page, details, "machine-reconnected.png", [updated]);
 
       await closeChatDetails(page);
       await goalPill.click();
