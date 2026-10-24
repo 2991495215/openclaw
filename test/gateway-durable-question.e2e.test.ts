@@ -278,8 +278,9 @@ it.for(["allow", "revoked"] as const)(
     const fixture = await createDurableQuestionGateway(signal, { continuationToolEffect: true });
     const state = fixture.instance.state;
     await runQaGatewayFixture(
-      () =>
-        withEnvAsync(
+      () => {
+        state.applyEnv();
+        return withEnvAsync(
           {
             ...state.envVars,
             OPENCLAW_TEST_MINIMAL_GATEWAY: undefined,
@@ -700,7 +701,8 @@ it.for(["allow", "revoked"] as const)(
               stop,
             );
           },
-        ),
+        );
+      },
       () => fixture.cleanup(),
     );
   },
