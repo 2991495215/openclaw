@@ -186,12 +186,16 @@ test("measures tree-event reduction through the real Gateway and session capabil
   let serial = 0;
   try {
     await ready.promise;
-    const chain = Array.from({ length: 17 }, (_, index) => `agent:main:tree-sort-depth-${index}`);
-    const plain = "agent:main:tree-sort-plain";
+    // Non-main operator roots implicitly parent to main; materialize that root
+    // so the projection can certify the complete ancestor chain.
+    const chain = [
+      "agent:main:main",
+      ...Array.from({ length: 16 }, (_, index) => `agent:main:tree-sort-depth-${index + 1}`),
+    ];
+    const plain = chain[0]!;
     const keys = [
       ...chain,
-      plain,
-      ...Array.from({ length: 82 }, (_, index) => `agent:main:tree-sort-filler-${index}`),
+      ...Array.from({ length: 83 }, (_, index) => `agent:main:tree-sort-filler-${index}`),
     ];
     for (const [index, key] of keys.entries()) {
       await client.request("sessions.create", {
@@ -243,6 +247,13 @@ test("measures tree-event reduction through the real Gateway and session capabil
             limit: 100,
           });
           expect(sessions.state.result?.sessions).toHaveLength(100);
+          const rows = sessions.state.result!.sessions;
+          expect(rows.find((row) => row.key === plain)?.parentSessionKey).toBeUndefined();
+          for (let index = 1; index < chain.length; index += 1) {
+            expect(rows.find((row) => row.key === chain[index])?.parentSessionKey).toBe(
+              chain[index - 1],
+            );
+          }
           let delivered = 0;
           const observer = sessions.observeRow({ key: shape.key, agentId: "main" }, () => {}, {
             onEvent: () => {
