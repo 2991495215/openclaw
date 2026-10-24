@@ -1167,7 +1167,9 @@ function releaseExecutionPlanShape(payload) {
         : []),
       ...(Object.hasOwn(payload, "telegramWaiver") ? ["targetVersion", "telegramWaiver"] : []),
       ...(Object.hasOwn(payload, "coveragePolicy") ? ["targetVersion", "coveragePolicy"] : []),
-      ...(payload.evidenceReuse?.requested === true ? ["targetVersion"] : []),
+      ...(payload.evidenceReuse?.requested === true && Object.hasOwn(payload, "targetVersion")
+        ? ["targetVersion"]
+        : []),
       ...(Object.hasOwn(payload, "sourceAdmissionContract")
         ? ["sourceAdmissionContract", "sourceAdmission"]
         : []),
@@ -1185,6 +1187,9 @@ function releaseExecutionPlanShape(payload) {
     (Object.hasOwn(payload, "sealParentRunAttempt") && !hasAttemptEvidence) ||
     (Object.hasOwn(payload, "knownFlakyJobs") && !hasAttemptEvidence) ||
     (Object.hasOwn(payload, "coveragePolicy") && attemptEvidenceVersion !== 3) ||
+    (payload.evidenceReuse?.requested === true &&
+      Object.hasOwn(payload.evidenceReuse, "sourceArtifact") &&
+      !Object.hasOwn(payload, "targetVersion")) ||
     !hasExactKeys(payload, expectedPlanKeys) ||
     !Array.isArray(payload.children) ||
     payload.children.some((child) => !hasExactKeys(child, expectedChildKeys))
