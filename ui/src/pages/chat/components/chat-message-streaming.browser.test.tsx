@@ -107,26 +107,27 @@ function drawContent(content: RawContent["content"], media?: MarkdownMedia) {
 }
 
 describe("streaming Markdown DOM", () => {
-  it("coalesces formatting with the next delta and bounds an idle preview", async () => {
+  it("coalesces burst formatting into one frame and flushes an idle preview", async () => {
     vi.useFakeTimers();
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString");
     try {
       draw("A growing reply");
-      await vi.advanceTimersByTimeAsync(33);
+      const parsed = parse.mock.calls.length;
       draw("A growing reply with **bold**");
-      await vi.advanceTimersByTimeAsync(20);
-      expect(container.querySelector("strong")).toBeNull();
-      expect(container.textContent).toContain("with **bold**");
-      await vi.advanceTimersByTimeAsync(13);
       draw("A growing reply with **bold** text");
+      expect(container.querySelector("strong")).toBeNull();
+      expect(container.textContent).toContain("with **bold** text");
+      expect(parse.mock.calls.length).toBe(parsed);
+      await vi.advanceTimersByTimeAsync(17);
       expect(container.querySelector("strong")?.textContent).toBe("bold");
+      expect(parse.mock.calls.length).toBeGreaterThan(parsed);
 
-      await vi.advanceTimersByTimeAsync(33);
       draw("A growing reply with **bold** text and *more*");
-      await vi.advanceTimersByTimeAsync(49);
       expect(container.querySelector("em")).toBeNull();
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(17);
       expect(container.querySelector("em")?.textContent).toBe("more");
     } finally {
+      parse.mockRestore();
       vi.useRealTimers();
     }
   });

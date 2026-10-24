@@ -2,8 +2,6 @@ import { createEffect, createSignal, onCleanup } from "solid-js";
 import { MarkdownDomReconciler, type MarkdownDomMedia } from "../lib/markdown-dom-reconciler.ts";
 import { registerSessionTitleTarget } from "./session-title-target-registration.ts";
 
-const STREAMING_FORMAT_INTERVAL_MS = 50;
-
 export type MarkdownContentValue =
   | string
   | {
@@ -29,27 +27,26 @@ export function createMarkdownRef(
   });
   let current: MarkdownDomReconciler | undefined;
   const [tick, setTick] = createSignal(0);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let formattedAt = -Infinity;
+  let frame: number | undefined;
+  let formattedTick = -1;
   const cancel = () => {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      timer = undefined;
+    if (frame !== undefined) {
+      cancelAnimationFrame(frame);
+      frame = undefined;
     }
   };
   createEffect(
     () => {
-      tick();
+      const generation = tick();
       const reconciler = owner();
       const value = read();
       const content = value.content;
-      const remaining = STREAMING_FORMAT_INTERVAL_MS - (performance.now() - formattedAt);
       const preview = Boolean(
         reconciler &&
         typeof content !== "string" &&
         content.deferFormatting &&
         !value.media &&
-        remaining > 0 &&
+        generation === formattedTick &&
         reconciler.canPreview(content.messageKey, content.source),
       );
       // Formatting stays in the tracked phase: late code highlighting must still invalidate it.
@@ -59,9 +56,9 @@ export function createMarkdownRef(
             ? content.parts()
             : content.parts
           : undefined;
-      return { reconciler, value, preview, parts };
+      return { reconciler, value, preview, parts, generation };
     },
-    ({ reconciler, value, preview, parts }) => {
+    ({ reconciler, value, preview, parts, generation }) => {
       if (!reconciler) {
         return;
       }
@@ -69,11 +66,10 @@ export function createMarkdownRef(
       const content = value.content;
       if (preview && typeof content !== "string") {
         reconciler.preview(content.source);
-        // Let arriving text carry the next format; bound silence from the first preview.
-        timer ??= setTimeout(() => {
-          timer = undefined;
+        frame ??= requestAnimationFrame(() => {
+          frame = undefined;
           setTick((previous) => previous + 1);
-        }, STREAMING_FORMAT_INTERVAL_MS);
+        });
         return;
       }
       cancel();
@@ -82,7 +78,7 @@ export function createMarkdownRef(
       } else {
         reconciler.update(content.messageKey, content.source, parts!, value.media);
       }
-      formattedAt = performance.now();
+      formattedTick = generation;
       value.onUpdate?.();
     },
   );
@@ -92,7 +88,7 @@ export function createMarkdownRef(
   });
   return (element) => {
     cancel();
-    formattedAt = -Infinity;
+    formattedTick = -1;
     current?.dispose();
     // Create the boundary synchronously so a fragment caller can return its markers.
     current = new MarkdownDomReconciler(element, registerSessionTitleTarget);
