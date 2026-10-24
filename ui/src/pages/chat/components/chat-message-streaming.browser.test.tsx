@@ -107,6 +107,30 @@ function drawContent(content: RawContent["content"], media?: MarkdownMedia) {
 }
 
 describe("streaming Markdown DOM", () => {
+  it("coalesces formatting with the next delta and bounds an idle preview", async () => {
+    vi.useFakeTimers();
+    try {
+      draw("A growing reply");
+      await vi.advanceTimersByTimeAsync(33);
+      draw("A growing reply with **bold**");
+      await vi.advanceTimersByTimeAsync(20);
+      expect(container.querySelector("strong")).toBeNull();
+      expect(container.textContent).toContain("with **bold**");
+      await vi.advanceTimersByTimeAsync(13);
+      draw("A growing reply with **bold** text");
+      expect(container.querySelector("strong")?.textContent).toBe("bold");
+
+      await vi.advanceTimersByTimeAsync(33);
+      draw("A growing reply with **bold** text and *more*");
+      await vi.advanceTimersByTimeAsync(49);
+      expect(container.querySelector("em")).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(container.querySelector("em")?.textContent).toBe("more");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps visible plain text in place when deferred formatting catches up", async () => {
     vi.useFakeTimers();
     const mutations: MutationRecord[] = [];

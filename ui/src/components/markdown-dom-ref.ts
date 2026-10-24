@@ -59,9 +59,9 @@ export function createMarkdownRef(
             ? content.parts()
             : content.parts
           : undefined;
-      return { reconciler, value, preview, remaining, parts };
+      return { reconciler, value, preview, parts };
     },
-    ({ reconciler, value, preview, remaining, parts }) => {
+    ({ reconciler, value, preview, parts }) => {
       if (!reconciler) {
         return;
       }
@@ -69,10 +69,11 @@ export function createMarkdownRef(
       const content = value.content;
       if (preview && typeof content !== "string") {
         reconciler.preview(content.source);
+        // Let arriving text carry the next format; bound silence from the first preview.
         timer ??= setTimeout(() => {
           timer = undefined;
           setTick((previous) => previous + 1);
-        }, remaining);
+        }, STREAMING_FORMAT_INTERVAL_MS);
         return;
       }
       cancel();
