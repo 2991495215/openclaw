@@ -118,8 +118,23 @@ async function runConfigMutation(
           : {
               // The Gateway stays the single config writer: this process prepares the same
               // change it would write offline and the owner commits it against baseHash.
-              onForeignOwner: async ({ requestOwner }) => {
-                const current = await requestOwner<{ hash?: unknown }>("config.get", {});
+              onForeignOwner: async ({ env, requestOwner }) => {
+                const current = await requestOwner<{ hash?: unknown; path?: unknown }>(
+                  "config.get",
+                  {},
+                );
+                // The diff is prepared from this command's file; bind it to the file the owner writes.
+                const { resolveIdentityPathViaExistingAncestorSync: identity } =
+                  await import("../infra/boundary-path.js");
+                const selected = resolveConfigPath(env);
+                if (
+                  typeof current.path !== "string" ||
+                  identity(current.path) !== identity(selected)
+                ) {
+                  throw new Error(
+                    `The running Gateway owns this state directory but uses config file ${typeof current.path === "string" ? shortenHomePath(current.path) : "<unknown>"}, not ${shortenHomePath(selected)}. Nothing was sent and no settings were saved. Rerun with the Gateway's config path, or stop the Gateway through its service owner and rerun this exact command.`,
+                  );
+                }
                 await prepareReadOnly();
                 await run(async (change) => {
                   const { buildConfigOwnerPatch } = await import("./config-cli-owner-patch.js");

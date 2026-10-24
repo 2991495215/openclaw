@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveManagedUnsetPathsForWrite } from "../config/config-path-mutation.js";
+import { assertConfigWriteAllowedInCurrentMode } from "../config/config-write-guard.js";
 import { replaceConfigFile } from "../config/config.js";
 import { getDeferredPluginMigrationConfigFacts } from "../config/deferred-plugin-migration-config.js";
 import { AUTO_MANAGED_CONFIG_META_PATHS } from "../config/io.meta.js";
@@ -493,6 +494,8 @@ export async function runConfigOperations(params: {
 
   let committedHint: string | undefined;
   if (params.commit) {
+    // The local writer enforces immutable config at its write; a routed commit checks here.
+    assertConfigWriteAllowedInCurrentMode({ configPath: snapshot.path });
     assertCurrentExpectation?.();
     params.beforePersistentApply?.();
     committedHint = await params.commit({

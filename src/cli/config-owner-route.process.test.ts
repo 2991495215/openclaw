@@ -210,6 +210,38 @@ describe("config mutations against a running Gateway", () => {
     expect(await fs.readFile(env.OPENCLAW_CONFIG_PATH!, "utf8")).toBe(before);
   });
 
+  it("refuses a config file other than the one the Gateway writes", async () => {
+    const before = await fs.readFile(env.OPENCLAW_CONFIG_PATH!, "utf8");
+    const otherPath = path.join(env.HOME!, "other.openclaw.json");
+    await fs.writeFile(otherPath, before);
+    const result = await run({ ...env, OPENCLAW_CONFIG_PATH: otherPath }, [
+      "config",
+      "set",
+      "gateway.reload.mode",
+      "off",
+    ]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Nothing was sent and no settings were saved.");
+    expect(await fs.readFile(env.OPENCLAW_CONFIG_PATH!, "utf8")).toBe(before);
+    expect(await fs.readFile(otherPath, "utf8")).toBe(before);
+  });
+
+  it.each(["OPENCLAW_CONFIG_READONLY", "OPENCLAW_NIX_MODE"])(
+    "keeps immutable config immutable under %s",
+    async (key) => {
+      const before = await fs.readFile(env.OPENCLAW_CONFIG_PATH!, "utf8");
+      const result = await run({ ...env, [key]: "1" }, [
+        "config",
+        "set",
+        "gateway.reload.mode",
+        "off",
+      ]);
+      expect(result.code).toBe(1);
+      expect(await fs.readFile(env.OPENCLAW_CONFIG_PATH!, "utf8")).toBe(before);
+      expect((await gatewayConfig()).gateway.reload.mode).toBe("hybrid");
+    },
+  );
+
   it("refuses database settings, which stay offline-only", async () => {
     const before = await fs.readFile(env.OPENCLAW_CONFIG_PATH!, "utf8");
     const result = await run(env, ["config", "set", "database.postgres.schemaPrefix", "repaired"]);
