@@ -11,30 +11,14 @@ defineDiscordVoiceTests(
     assertSecretOwnerAvailableMock,
     isSecretOwnerAvailableMock,
     canonicalizeRealtimeVoiceProviderIdMock,
-    realtimeModule,
+    createDirectRealtimeSession,
     createManager,
   }) => {
     it("gates an unavailable explicit realtime secret owner before provider resolution", async () => {
       assertSecretOwnerAvailableMock.mockImplementationOnce(() => {
         throw new Error("SECRET_SURFACE_UNAVAILABLE: test owner is unavailable");
       });
-      const session = new realtimeModule.DiscordRealtimeVoiceSession({
-        accountId: "work",
-        cfg: {},
-        discordConfig: {
-          voice: { enabled: true, mode: "agent-proxy", realtime: { provider: "openai" } },
-        },
-        entry: {
-          guildId: "g1",
-          channelId: "1001",
-          voiceSessionKey: "discord:g1:1001",
-          route: { agentId: "agent-1", sessionKey: "discord:g1:1001" },
-          audio: { on: vi.fn(), off: vi.fn(), stopPlayback: vi.fn() },
-        },
-        mode: "agent-proxy",
-        onTerminalError: vi.fn(),
-        runAgentTurn: vi.fn(),
-      } as never);
+      const session = createDirectRealtimeSession({ realtime: { provider: "openai" } });
 
       await expect(session.connect()).rejects.toThrow("SECRET_SURFACE_UNAVAILABLE");
 
@@ -59,21 +43,7 @@ defineDiscordVoiceTests(
           providerConfig: { model: "grok-voice", voice: "ara" },
         };
       });
-      const session = new realtimeModule.DiscordRealtimeVoiceSession({
-        accountId: "work",
-        cfg: {},
-        discordConfig: { voice: { enabled: true, mode: "agent-proxy", realtime: {} } },
-        entry: {
-          guildId: "g1",
-          channelId: "1001",
-          voiceSessionKey: "discord:g1:1001",
-          route: { agentId: "agent-1", sessionKey: "discord:g1:1001" },
-          audio: { on: vi.fn(), off: vi.fn(), stopPlayback: vi.fn() },
-        },
-        mode: "agent-proxy",
-        onTerminalError: vi.fn(),
-        runAgentTurn: vi.fn(),
-      } as never);
+      const session = createDirectRealtimeSession();
 
       await session.connect();
 
@@ -95,21 +65,7 @@ defineDiscordVoiceTests(
         params?.assertProviderAvailable?.({ id: "openai" });
         throw new Error("expected availability assertion to throw");
       });
-      const session = new realtimeModule.DiscordRealtimeVoiceSession({
-        accountId: "work",
-        cfg: {},
-        discordConfig: { voice: { enabled: true, mode: "agent-proxy", realtime: {} } },
-        entry: {
-          guildId: "g1",
-          channelId: "1001",
-          voiceSessionKey: "discord:g1:1001",
-          route: { agentId: "agent-1", sessionKey: "discord:g1:1001" },
-          audio: { on: vi.fn(), off: vi.fn(), stopPlayback: vi.fn() },
-        },
-        mode: "agent-proxy",
-        onTerminalError: vi.fn(),
-        runAgentTurn: vi.fn(),
-      } as never);
+      const session = createDirectRealtimeSession();
 
       await expect(session.connect()).rejects.toThrow(
         "Secret owner capability:discord:voice:realtime:work:openai is configured but unavailable",

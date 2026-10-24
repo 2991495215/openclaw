@@ -179,6 +179,31 @@ function buildVoiceTestHarness() {
     return manager;
   };
 
+  const createDirectRealtimeSession = ({
+    accountId = "work",
+    realtime = {},
+    audio = { on: vi.fn(), off: vi.fn(), stopPlayback: vi.fn() },
+  }: {
+    accountId?: string;
+    realtime?: VoiceConfig["realtime"];
+    audio?: object;
+  } = {}) =>
+    new realtimeModule.DiscordRealtimeVoiceSession({
+      accountId,
+      cfg: {},
+      discordConfig: { voice: { enabled: true, mode: "agent-proxy", realtime } },
+      entry: {
+        guildId: "g1",
+        channelId: "1001",
+        voiceSessionKey: "discord:g1:1001",
+        route: { agentId: "agent-1", sessionKey: "discord:g1:1001" },
+        audio,
+      },
+      mode: "agent-proxy",
+      onTerminalError: vi.fn(),
+      runAgentTurn: vi.fn(),
+    } as never);
+
   const makeVoiceConfig = (
     voice: Partial<VoiceConfig> = {},
     overrides: Omit<Partial<DiscordConfig>, "voice"> = {},
@@ -423,6 +448,7 @@ function buildVoiceTestHarness() {
     createClientWithMember,
     createRuntime,
     createManager,
+    createDirectRealtimeSession,
     makeVoiceConfig,
     makeAgentProxyConfig,
     createAgentProxyManager,

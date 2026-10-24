@@ -30,7 +30,7 @@ defineDiscordVoiceTests(
     decodeOpusStreamChunksMock,
     managerModule,
     listenersModule,
-    realtimeModule,
+    createDirectRealtimeSession,
     configureVoiceStateGateway,
     createClient,
     createClientWithMember,
@@ -708,21 +708,10 @@ defineDiscordVoiceTests(
           }),
       );
       const audio = { on: vi.fn(), off: vi.fn(), send: vi.fn() };
-      const session = new realtimeModule.DiscordRealtimeVoiceSession({
+      const session = createDirectRealtimeSession({
         accountId: "default",
-        cfg: {},
-        discordConfig: { voice: { enabled: true, mode: "agent-proxy", realtime: {} } },
-        entry: {
-          guildId: "g1",
-          channelId: "1001",
-          voiceSessionKey: "discord:g1:1001",
-          route: { agentId: "agent-1", sessionKey: "discord:g1:1001" },
-          audio,
-        },
-        mode: "agent-proxy",
-        onTerminalError: vi.fn(),
-        runAgentTurn: vi.fn(),
-      } as never);
+        audio,
+      });
 
       const connect = session.connect();
       await vi.waitFor(() => expect(realtimeSessionMock.connect).toHaveBeenCalledOnce());
