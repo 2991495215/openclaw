@@ -134,7 +134,6 @@ export function buildElevenLabsRealtimeTranscriptionProvider({
       const baseUrl = normalizeElevenLabsRealtimeBaseUrl(config.baseUrl);
       const sampleRate = config.sampleRate ?? ELEVENLABS_REALTIME_DEFAULT_SAMPLE_RATE;
       const commitStrategy = config.commitStrategy ?? ELEVENLABS_REALTIME_DEFAULT_COMMIT_STRATEGY;
-      let pendingTimestampEcho: string | undefined;
 
       return createRealtimeTranscriptionWebSocketSession<ElevenLabsRealtimeTranscriptionEvent>({
         providerId: "elevenlabs",
@@ -190,7 +189,6 @@ export function buildElevenLabsRealtimeTranscriptionProvider({
         },
         onMessage: (event, transport) => {
           if (event.message_type === "session_started") {
-            pendingTimestampEcho = undefined;
             transport.markReady();
             return;
           }
@@ -208,13 +206,7 @@ export function buildElevenLabsRealtimeTranscriptionProvider({
             case "committed_transcript":
             case "committed_transcript_with_timestamps":
               if (event.text) {
-                // A committed segment can have one matching timestamp companion, never another turn.
-                const hasTimestamps = event.message_type !== "committed_transcript";
-                const isEcho = hasTimestamps && pendingTimestampEcho === event.text;
-                pendingTimestampEcho = hasTimestamps ? undefined : event.text;
-                if (!isEcho) {
-                  req.onTranscript?.(event.text);
-                }
+                req.onTranscript?.(event.text);
               }
               return;
             default:

@@ -39,7 +39,6 @@ function createSession(
 
 const committed = { message_type: "committed_transcript", text: "yes" };
 const timestamped = { message_type: "committed_transcript_with_timestamps", text: "yes" };
-const committedNo = { ...committed, text: "no" };
 const timestampedNo = { ...timestamped, text: "no" };
 const partial = (text: string) => ({ message_type: "partial_transcript", text });
 
@@ -50,19 +49,16 @@ async function createRealtimeServer(
   options?: {
     initialEvent?: Record<string, unknown>;
     events?: readonly Record<string, unknown>[];
-    eventsByConnection?: readonly (readonly Record<string, unknown>[])[];
     closeAfterEvents?: boolean;
   },
 ) {
   const server = createServer();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
-  let connectionCount = 0;
   server.on("upgrade", (request, socket, head) => {
     onRequest(new URL(request.url ?? "/", "http://127.0.0.1"));
     wss.handleUpgrade(request, socket, head, (ws) => {
       ws.send(JSON.stringify(options?.initialEvent ?? { message_type: "session_started" }));
-      const events = options?.eventsByConnection?.[connectionCount] ?? options?.events ?? [];
-      connectionCount += 1;
+      const events = options?.events ?? [];
       for (const event of events) {
         ws.send(JSON.stringify(event));
       }
@@ -146,6 +142,7 @@ describe("buildElevenLabsRealtimeTranscriptionProvider", () => {
     expect(requests[0]?.searchParams.get("audio_format")).toBe("ulaw_8000");
     expect(requests[0]?.searchParams.get("commit_strategy")).toBe("vad");
     expect(requests[0]?.searchParams.get("language_code")).toBe("en");
+    expect(requests[0]?.searchParams.get("include_timestamps")).toBe("false");
   });
 
   it("reports ready-state input_error errors exactly once", async () => {
@@ -174,24 +171,11 @@ describe("buildElevenLabsRealtimeTranscriptionProvider", () => {
     expect(onError).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message }));
   });
 
-  it.each<[string, (typeof committed)[], string[], string[]]>([
-    ["preserves identical adjacent commits", [committed, committed], ["yes", "yes"], []],
-    ["consumes one timestamp echo", [committed, timestamped, timestamped], ["yes", "yes"], []],
-    ["preserves timestamp-only repeats", [timestamped, timestamped], ["yes", "yes"], []],
-    ["preserves differing timestamp text", [committed, timestampedNo], ["yes", "no"], []],
-    [
-      "preserves delayed echoes across partials",
-      [committed, partial("next turn"), timestamped, committed, timestamped],
-      ["yes", "yes"],
-      ["next turn"],
-    ],
-    [
-      "pairs timestamps with alternating commits",
-      [committed, timestamped, committedNo, timestampedNo, committed, timestamped],
-      ["yes", "no", "yes"],
-      [],
-    ],
-  ])("%s", async (_name, events, transcripts, partials) => {
+  it.each<[string, (typeof committed)[], string[]]>([
+    ["preserves identical adjacent commits", [committed, committed], ["yes", "yes"]],
+    ["preserves timestamp-only repeats", [timestamped, timestamped], ["yes", "yes"]],
+    ["preserves differing timestamp text", [committed, timestampedNo], ["yes", "no"]],
+  ])("%s", async (_name, events, transcripts) => {
     const deliveryMarker = "transcript frames delivered";
     const baseUrl = await createRealtimeServer(() => undefined, {
       events: [...events, partial(deliveryMarker)],
@@ -204,32 +188,10 @@ describe("buildElevenLabsRealtimeTranscriptionProvider", () => {
 
     await session.connect();
     await vi.waitFor(() => expect(onPartial).toHaveBeenCalledWith(deliveryMarker));
-    expect(onPartial.mock.calls.map(([text]) => text)).toEqual([...partials, deliveryMarker]);
+    expect(onPartial.mock.calls.map(([text]) => text)).toEqual([deliveryMarker]);
     expect(onTranscript.mock.calls.map(([text]) => text)).toEqual(transcripts);
     expect(onError).not.toHaveBeenCalled();
     expect(onSpeechStart).not.toHaveBeenCalled();
-  });
-
-  it("does not suppress a timestamp-only transcript from a replacement session", async () => {
-    const firstMarker = "first session delivered";
-    const secondMarker = "replacement session delivered";
-    const baseUrl = await createRealtimeServer(() => undefined, {
-      eventsByConnection: [
-        [committed, partial(firstMarker)],
-        [timestamped, partial(secondMarker)],
-      ],
-    });
-    const onPartial = vi.fn();
-    const onTranscript = vi.fn();
-    const session = createSession(baseUrl, { onPartial, onTranscript });
-
-    await session.connect();
-    await vi.waitFor(() => expect(onPartial).toHaveBeenCalledWith(firstMarker));
-    expect(onTranscript).toHaveBeenCalledExactlyOnceWith("yes");
-
-    await session.connect();
-    await vi.waitFor(() => expect(onPartial).toHaveBeenCalledWith(secondMarker));
-    expect(onTranscript.mock.calls).toEqual([["yes"], ["yes"]]);
   });
 
   it("rejects whitespace-only environment keys before session creation", async () => {
