@@ -19,7 +19,10 @@ import {
 import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
-import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
+import {
+  ensureCanonicalUserProfileForEmail,
+  mergeCanonicalUserProfiles,
+} from "../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   accessOrigin,
@@ -225,6 +228,33 @@ it("reports existing profiles once as not new, and skips plugins registered late
     expect(late).not.toHaveBeenCalled();
     const [record] = await openRecords().entries();
     expect(record).toMatchObject({ key: profile.id, value: { pendingPluginIds: [] } });
+  });
+});
+
+it("keeps a merged-in profile's first sign-in and pending delivery with the merge target", async () => {
+  await withOpenClawTestState({ label: "first-sign-in-merge" }, async () => {
+    const source = await ensureCanonicalUserProfileForEmail("old-login@example.test");
+    const target = await ensureCanonicalUserProfileForEmail("new-login@example.test");
+    const events: PluginHookUserFirstSignInEvent[] = [];
+    installHandlers({
+      welcome: (event) => {
+        events.push(event);
+        if (event.attempt === 1) {
+          throw new Error("welcome session unavailable");
+        }
+      },
+    });
+
+    await signIn(source.id);
+    await mergeCanonicalUserProfiles(source.id, target.id);
+    await signIn(target.id);
+    await simulateRestart();
+    await resumeUserFirstSignInDeliveries();
+
+    expect(events.map(({ profileId, attempt }) => ({ profileId, attempt }))).toEqual([
+      { profileId: source.id, attempt: 1 },
+      { profileId: target.id, attempt: 2 },
+    ]);
   });
 });
 

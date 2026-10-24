@@ -14,6 +14,7 @@ import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import {
   captureResidentUserProfileAccess,
   prepareUserProfileCatalog,
+  prepareUserProfileIdentity,
 } from "../state/user-profile-list.js";
 import { UserProfileNotFoundError } from "../state/user-profiles-schema.js";
 import type { GatewayAuthResult } from "./auth.js";
@@ -148,15 +149,20 @@ async function deliver(profileId: string): Promise<void> {
   const store = openRecords();
   let record = await store.lookup(profileId);
   if (!record) {
-    const created: FirstSignInRecord = {
+    // A merged-in profile's sign-in is this person's history; the merge target inherits it.
+    const merged = await findMergedRecord(profileId);
+    const created: FirstSignInRecord = merged?.record ?? {
       firstSignedInAt: Date.now(),
       // Plugins that register later do not receive earlier people's first sign-in.
       pendingPluginIds: [...new Set(firstSignInHooks().map((hook) => hook.pluginId))],
       attempts: {},
     };
-    record = (await store.registerIfAbsent(profileId, created))
-      ? created
-      : await store.lookup(profileId);
+    const registered = await store.registerIfAbsent(profileId, created);
+    if (registered && merged?.record.pendingPluginIds.length) {
+      // The target now owns the pending deliveries; a crash before this only duplicates one.
+      await store.register(merged.key, { ...merged.record, pendingPluginIds: [], attempts: {} });
+    }
+    record = registered ? created : await store.lookup(profileId);
     if (!record) {
       return;
     }
@@ -218,6 +224,33 @@ async function deliver(profileId: string): Promise<void> {
   if (failedAttempt > 0) {
     scheduleRetry(profileId, failedAttempt);
   }
+}
+
+async function findMergedRecord(
+  profileId: string,
+): Promise<{ key: string; record: FirstSignInRecord } | undefined> {
+  let aliases: string[];
+  try {
+    const identity = await prepareUserProfileIdentity(profileId);
+    try {
+      aliases = [...identity.readCurrentFacts().aliases].filter((id) => id !== profileId);
+    } finally {
+      identity.release();
+    }
+  } catch (error) {
+    if (error instanceof UserProfileNotFoundError) {
+      return undefined;
+    }
+    throw error;
+  }
+  const store = openRecords();
+  for (const key of aliases.toSorted()) {
+    const record = await store.lookup(key);
+    if (record) {
+      return { key, record };
+    }
+  }
+  return undefined;
 }
 
 async function readProfileFacts(
