@@ -33,6 +33,13 @@ backup.
 
 ## Update implementation contract
 
+Candidate Doctor preserves same-conversation automation continuations when adopting
+a stored inference account. It carries forward the original authenticated source
+only when its old executable revision still matches, then binds that source and
+existing standing-grant references to the restricted definition. Stale captures
+stay stale; runtime authorization, conversation identity and revocation checks
+remain required. The candidate must contain this repair.
+
 Background discovery failures are logged and retried at the next scheduled check.
 Gateway shutdown cancellation stays quiet; unexpected scheduled task failures
 are reported by the scheduler without restarting the Gateway.
@@ -1605,9 +1612,9 @@ Migrates config, audits DM policies, and checks gateway health. Doctor also comp
 Standalone repair cancels its pre-repair original-state capture after ten minutes.
 If that capture times out, Doctor waits for its workers to settle and reports a
 warning with backup and retry instructions; repair-specific migration backups still apply.
-Doctor restores a managed Gateway it stopped, including after interruption. If
-restoration fails, it prints the failure and the command to start the Gateway
-after resolving it.
+Doctor restores a managed Gateway it stopped, including after SIGINT, SIGTERM,
+or SIGHUP interrupts repair. If restoration fails, it prints the failure and the
+command to start the Gateway after resolving it.
 
 On Linux, `openclaw doctor --fix` can reclaim abandoned updater runtimes even
 after a systemd user-manager re-exec. The manager's `--deserialize` argument and
