@@ -4,6 +4,7 @@ import type {
   SessionCatalogHost,
   SessionCatalogSession,
 } from "../../../packages/gateway-protocol/src/index.ts";
+import { indexFirstByKey } from "../../../src/shared/dedupe-by-key.ts";
 import type { GatewaySessionRow } from "../api/types.ts";
 import { formatUiError } from "../lib/format-error.ts";
 import { t } from "../lib/reactive/i18n.ts";
@@ -17,7 +18,6 @@ import { renderCatalogSessionRow } from "./app-sidebar-session-catalog-row.tsx";
 import {
   catalogErrorMessages,
   catalogSessionActivity,
-  catalogSessionRowsByKey,
   type SidebarSessionCatalog,
 } from "./app-sidebar-session-catalogs.ts";
 import type { SessionCatalogGroupsParams } from "./app-sidebar-session-render-types.ts";
@@ -30,7 +30,9 @@ const CATALOG_SESSION_GROUP_LIMIT = 5;
 export function renderSessionCatalogGroups(params: SessionCatalogGroupsParams) {
   // Adopted rows use canonical local labels and title snapshots; native catalog
   // refreshes must not rename them or replace the regular session presentation.
-  const liveRowsByKey = createMemo(() => catalogSessionRowsByKey(params.snapshot.liveRows));
+  const liveRowsByKey = createMemo(() =>
+    indexFirstByKey(params.snapshot.liveRows, (row) => row.key),
+  );
   return renderCatalogGroup(() => params.catalog, liveRowsByKey, params);
 }
 export type SessionCatalogGroupsRenderer = typeof renderSessionCatalogGroups;

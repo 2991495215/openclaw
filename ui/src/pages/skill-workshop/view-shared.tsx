@@ -97,17 +97,6 @@ const DAY_MS = 24 * 60 * 60_000;
 export const UNUSED_ARCHIVE_DAYS = 30;
 const UNUSED_NOTICE_DAYS = 14;
 
-/** Newest change per skill; the feed is newest first. */
-export function latestChanges(changes: readonly SkillWorkshopChange[]) {
-  const latest = new Map<string, SkillWorkshopChange>();
-  for (const change of changes) {
-    if (!latest.has(change.skillName)) {
-      latest.set(change.skillName, change);
-    }
-  }
-  return latest;
-}
-
 export function lastActivityMs(skill: SkillWorkshopSkillSummary, change?: SkillWorkshopChange) {
   return Math.max(skill.updatedAtMs, skill.lastUsedAtMs ?? 0, change?.createdAtMs ?? 0);
 }

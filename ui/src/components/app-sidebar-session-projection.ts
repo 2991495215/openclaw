@@ -1,5 +1,6 @@
 import type { SessionObserverDigest } from "../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { ControlUiNavigationItem } from "../../../src/plugin-sdk/control-ui.js";
+import { indexFirstByKey } from "../../../src/shared/dedupe-by-key.ts";
 import type { GatewaySessionRow } from "../api/types.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import type { PresencePayload } from "../app/user-profile.ts";
@@ -17,7 +18,6 @@ import { sidebarPresencePresentation, type SidebarPresenceScope } from "./app-si
 import {
   catalogErrorMessages,
   catalogSessionActivity,
-  catalogSessionRowsByKey,
   type SidebarSessionCatalog,
 } from "./app-sidebar-session-catalogs.ts";
 import {
@@ -261,8 +261,9 @@ export class SidebarSessionProjection {
             data.visibleSessionLimits,
           ],
           () => {
-            const catalogRowsByKey = catalogSessionRowsByKey(
+            const catalogRowsByKey = indexFirstByKey(
               catalogs.length ? readers.catalogRows() : [],
+              (row) => row.key,
             );
             return [
               catalogs.map(({ hosts, ...visible }) => [

@@ -4,6 +4,7 @@ import type {
   SkillWorkshopSkillSummary,
 } from "@openclaw/gateway-protocol";
 import { createMemo, Errored, For, Loading, Show } from "solid-js";
+import { indexFirstByKey } from "../../../../src/shared/dedupe-by-key.ts";
 import { AgentScopeControl } from "../../components/agent-scope-control.tsx";
 import { Icon } from "../../components/solid/icon.tsx";
 import {
@@ -27,7 +28,6 @@ import { Detail } from "./detail.tsx";
 import type { SkillWorkshopMode } from "./mode.ts";
 import {
   lastActivityMs,
-  latestChanges,
   MutationButton,
   renderUses,
   WorkshopChangeText,
@@ -53,7 +53,8 @@ export function sortWorkshopSkills(
   changes: readonly SkillWorkshopChange[],
   sort: WorkshopSort,
 ): SkillWorkshopSkillSummary[] {
-  const latest = latestChanges(changes);
+  // Newest change per skill; the feed is newest first.
+  const latest = indexFirstByKey(changes, (change) => change.skillName);
   const recent = (skill: SkillWorkshopSkillSummary) =>
     lastActivityMs(skill, latest.get(skill.name));
   return skills.toSorted((a, b) =>
