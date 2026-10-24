@@ -68,7 +68,7 @@ for (const engine of ["sqlite", "postgres"] as const) {
               const result = withEngineStoreAdmission(() =>
                 readPendingInputSourceInDatabase(database, input),
               );
-              const expected = source === "new" ? 1 : source === "pending" ? 6 : 10;
+              const expected = source === "new" ? 1 : source === "pending" ? 6 : 9;
               expect(statements).toBe(expected);
               return result;
             } finally {
