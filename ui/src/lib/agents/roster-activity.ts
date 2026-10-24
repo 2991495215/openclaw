@@ -24,13 +24,9 @@ export function agentRosterCards(
   if (agents.length === 0) {
     return [];
   }
-  const sessionsByAgent = new Map<string, GatewaySessionRow[]>();
-  rows.forEach((row) => {
-    const agentId = resolveUiSessionRowAgentId(row, roster.defaultId);
-    const sessions = sessionsByAgent.get(agentId) ?? [];
-    sessions.push(row);
-    sessionsByAgent.set(agentId, sessions);
-  });
+  const sessionsByAgent = Map.groupBy(rows, (row) =>
+    resolveUiSessionRowAgentId(row, roster.defaultId),
+  );
   return agents.map((agent) => {
     const identity = identityFor(agent.id);
     const name = normalizeAgentLabel(agent, identity);

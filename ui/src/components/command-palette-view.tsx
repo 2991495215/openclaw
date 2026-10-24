@@ -62,16 +62,6 @@ registerCommandPaletteEnglish();
 
 type CommandPaletteProps = ReturnType<CommandPaletteState["readProps"]>;
 
-function groupItems(items: CommandPaletteItem[]): Array<[string, CommandPaletteItem[]]> {
-  const map = new Map<string, CommandPaletteItem[]>();
-  for (const item of items) {
-    const group = map.get(item.category) ?? [];
-    group.push(item);
-    map.set(item.category, group);
-  }
-  return [...map.entries()];
-}
-
 const paletteListboxId = "cmd-palette-listbox";
 
 function selectItem(item: CommandPaletteItem, props: CommandPaletteProps) {
@@ -214,7 +204,12 @@ function resolvePaletteResults(snapshot: CommandPaletteProps) {
         query: snapshot.searchQuery,
         includeSlashCommands: Boolean(snapshot.onSlashCommand),
       });
-  const grouped = groupItems(matches.filter((item) => matchesFilter(item, snapshot.filter)));
+  const grouped = [
+    ...Map.groupBy(
+      matches.filter((item) => matchesFilter(item, snapshot.filter)),
+      (item) => item.category,
+    ),
+  ];
   const items = grouped.flatMap(([, entries]) => entries);
   // Preserve explicit selection through transient result changes, but only
   // highlight and execute current rows; an absent choice selects the first row.

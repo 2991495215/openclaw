@@ -269,17 +269,13 @@ function MeetingRow(props: TranscriptsViewProps & { entry: TranscriptSessionSumm
 
 function Library(props: TranscriptsViewProps) {
   const days = createMemo(() => {
-    const result = new Map<string, TranscriptSessionSummary[]>();
-    for (const entry of props.list?.sessions ?? []) {
-      const day = new Date(entry.startedAt).toLocaleDateString(undefined, {
+    const result = Map.groupBy(props.list?.sessions ?? [], (entry) =>
+      new Date(entry.startedAt).toLocaleDateString(undefined, {
         year: "numeric",
         month: "long",
         day: "numeric",
-      });
-      const entries = result.get(day) ?? [];
-      entries.push(entry);
-      result.set(day, entries);
-    }
+      }),
+    );
     return [...result].map(([day, entries]) => ({ day, entries }));
   });
   return (

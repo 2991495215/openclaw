@@ -28,13 +28,9 @@ const AUTH_STATUS_PRIORITY = ["expired", "missing", "expiring", "ok", "static"] 
 export function listEffectiveModelAuthProviders(
   providers: readonly ModelAuthStatusProvider[],
 ): ModelAuthStatusProvider[] {
-  const groups = new Map<string, ModelAuthStatusProvider[]>();
-  for (const provider of providers) {
-    const id = canonicalModelAuthProviderId(provider.provider);
-    const group = groups.get(id) ?? [];
-    group.push(provider);
-    groups.set(id, group);
-  }
+  const groups = Map.groupBy(providers, (provider) =>
+    canonicalModelAuthProviderId(provider.provider),
+  );
   return [...groups].map(([id, group]) => {
     const selected = group.reduce((worst, candidate) =>
       AUTH_STATUS_PRIORITY.indexOf(candidate.status) < AUTH_STATUS_PRIORITY.indexOf(worst.status)
