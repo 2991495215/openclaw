@@ -152,16 +152,16 @@ export function indexOfAsciiMarkerIgnoreCase(text: string, marker: string, start
 }
 
 /** Scan at most one character beyond the accepted tool-name limit. */
-export function scanToolCallNameEnd(
+export function scanToolCallName(
   text: string,
   start: number,
   isNameChar = isXmlishNameChar,
-): number {
+): XmlishToolCallSpan {
   let end = start;
   while (isNameChar(text[end]) && end - start < 121) {
     end += 1;
   }
-  return end;
+  return { start, end };
 }
 
 /** Uncapped structural scan shared by parsing, stripping, and stream buffering. */
@@ -184,41 +184,37 @@ export function scanXmlishToolCall(
     if (text.length - cursor < FUNCTION_OPEN.length) {
       return { kind: "prefix" };
     }
-    cursor += FUNCTION_OPEN.length;
-    const nameStart = cursor;
-    cursor = scanToolCallNameEnd(text, nameStart);
-    name = { start: nameStart, end: cursor };
+    name = scanToolCallName(text, cursor + FUNCTION_OPEN.length);
+    cursor = name.end;
     syntax = "function";
-    if (cursor - nameStart > 120) {
+    if (cursor - name.start > 120) {
       return { kind: "invalid", at: cursor };
     }
     if (cursor === text.length) {
       return { kind: "prefix", candidate: { syntax, name, nameComplete: false, parameters: [] } };
     }
-    if (cursor === nameStart || text[cursor] !== ">") {
+    if (cursor === name.start || text[cursor] !== ">") {
       return { kind: "invalid", at: cursor };
     }
     cursor += 1;
   } else if (text[cursor] === "[") {
     cursor += 1;
-    const firstNameStart = cursor;
-    cursor = scanToolCallNameEnd(text, firstNameStart, isPlainTextToolNameChar);
-    if (cursor - firstNameStart > 120) {
+    name = scanToolCallName(text, cursor, isPlainTextToolNameChar);
+    cursor = name.end;
+    if (cursor - name.start > 120) {
       return { kind: "invalid", at: cursor };
     }
-    const firstName = text.slice(firstNameStart, cursor);
+    const firstName = text.slice(name.start, cursor);
     if (cursor === text.length && "tool".startsWith(firstName)) {
       return { kind: "prefix" };
     }
     syntax = "named-bracket";
-    name = { start: firstNameStart, end: cursor };
     if (text[cursor] === ":" && firstName === "tool") {
       syntax = "tool-bracket";
       cursor += 1;
-      const nameStart = cursor;
-      cursor = scanToolCallNameEnd(text, nameStart, isPlainTextToolNameChar);
-      name = { start: nameStart, end: cursor };
-      if (cursor - nameStart > 120) {
+      name = scanToolCallName(text, cursor, isPlainTextToolNameChar);
+      cursor = name.end;
+      if (cursor - name.start > 120) {
         return { kind: "invalid", at: cursor };
       }
     }
@@ -287,25 +283,24 @@ export function scanXmlishToolCall(
       return prefix(markerStart);
     }
     if (startsWithAsciiMarkerIgnoreCase(text, markerStart, PARAMETER_OPEN)) {
-      const nameStart = markerStart + PARAMETER_OPEN.length;
-      const nameEnd = scanToolCallNameEnd(text, nameStart);
-      if (nameEnd - nameStart > 120) {
+      const parameterName = scanToolCallName(text, markerStart + PARAMETER_OPEN.length);
+      if (parameterName.end - parameterName.start > 120) {
         return { kind: "invalid", at: markerStart, candidate: candidate(markerStart) };
       }
-      if (nameEnd === text.length) {
+      if (parameterName.end === text.length) {
         return prefix(markerStart);
       }
-      if (nameEnd === nameStart || text[nameEnd] !== ">") {
+      if (parameterName.end === parameterName.start || text[parameterName.end] !== ">") {
         return { kind: "invalid", at: markerStart, candidate: candidate(markerStart) };
       }
-      const valueStart = nameEnd + 1;
+      const valueStart = parameterName.end + 1;
       const closeStart = indexOfAsciiMarkerIgnoreCase(text, PARAMETER_CLOSE, valueStart);
       if (closeStart === -1) {
         return prefix(text.length, valueStart);
       }
       const end = closeStart + PARAMETER_CLOSE.length;
       parameters.push({
-        name: { start: nameStart, end: nameEnd },
+        name: parameterName,
         value: { start: valueStart, end: closeStart },
       });
       cursor = end;
