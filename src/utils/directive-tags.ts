@@ -467,11 +467,7 @@ export const inlineDirectiveDisplayTextFilter: TextFilter = {
 };
 
 export function sanitizeReplyDirectiveId(rawReplyToId?: string): string | undefined {
-  const trimmed = rawReplyToId?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const sanitized = trimmed.replace(UNSAFE_REPLY_DIRECTIVE_CHARS_RE, "").trim();
+  const sanitized = rawReplyToId?.replace(UNSAFE_REPLY_DIRECTIVE_CHARS_RE, "").trim();
   if (!sanitized) {
     return undefined;
   }

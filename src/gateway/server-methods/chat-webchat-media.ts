@@ -35,8 +35,7 @@ type LocalAudioContentBlock = {
 };
 
 /** Map `mediaUrl` strings to an absolute filesystem path for local embedding (plain paths or `file:` URLs). */
-function resolveLocalMediaPathForEmbedding(raw: string): string | null {
-  const trimmed = raw.trim();
+function resolveLocalMediaPathForEmbedding(trimmed: string): string | null {
   if (!trimmed || /^(?:data|https?):/i.test(trimmed)) {
     return null;
   }
@@ -102,8 +101,7 @@ async function readLocalAudioContentBlockForEmbedding(
   }
 }
 
-function resolveEmbeddableImageUrl(url: string): string | null {
-  const trimmed = url.trim();
+function resolveEmbeddableImageUrl(trimmed: string): string | null {
   if (!trimmed || trimmed.length > MAX_WEBCHAT_IMAGE_DATA_URL_CHARS) {
     return null;
   }

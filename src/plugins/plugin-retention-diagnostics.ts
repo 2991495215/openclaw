@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import {
   createPluginExecutionFrame,
   getPluginExecutionFrame,
@@ -91,10 +92,7 @@ export class PluginReferenceDiagnostics {
     options: { limit?: number; includeOwners?: boolean },
   ): PluginRetentionSnapshot {
     const rows: PluginRetentionSnapshot["references"] = [];
-    const requested = options.limit ?? 64;
-    const limit = Number.isFinite(requested)
-      ? Math.max(0, Math.min(64, Math.floor(requested)))
-      : 64;
+    const limit = resolveIntegerOption(options.limit, 64, { min: 0, max: 64 });
     const now = Date.now();
     let total = 0;
     // The instance owns disjoint work, consumer, and call sets; inspect them in place.

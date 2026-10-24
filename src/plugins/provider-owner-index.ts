@@ -2,6 +2,7 @@ import {
   findNormalizedProviderValue,
   normalizeProviderId,
 } from "@openclaw/model-catalog-core/provider-id";
+import { indexFirstByKey } from "../shared/dedupe-by-key.js";
 import type { PluginManifestRegistry } from "./manifest-registry.types.js";
 
 export type DeclaredProviderOwnerIndex = ReadonlyMap<string, ReadonlySet<string>>;
@@ -16,12 +17,7 @@ type ProviderOwnerManifest = {
 export function buildDeclaredProviderOwnerIndex(
   manifests: readonly ProviderOwnerManifest[],
 ): DeclaredProviderOwnerIndex {
-  const winners = new Map<string, ProviderOwnerManifest>();
-  for (const plugin of manifests) {
-    if (!winners.has(plugin.id)) {
-      winners.set(plugin.id, plugin);
-    }
-  }
+  const winners = indexFirstByKey(manifests, (plugin) => plugin.id);
   const owners = new Map<string, Set<string>>();
   for (const phase of ["runtime", "setup"] as const) {
     const runtimeRefs = new Set(owners.keys());
