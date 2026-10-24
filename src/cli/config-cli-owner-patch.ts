@@ -23,11 +23,14 @@ function collectReplacePaths(patch: unknown, base: unknown, parentPath?: string)
 }
 
 /**
- * Express a prepared CLI change as one Gateway config.patch request. Arrays replace or
+ * Express a prepared CLI change as one Gateway config.patch request against `baseHash`. Arrays replace or
  * delete exactly, as the local writer would; a change the Gateway's merge cannot reproduce
  * (for example an authored null) is refused instead of being approximated.
  */
-export function buildConfigOwnerPatch(change: { previous: OpenClawConfig; next: OpenClawConfig }) {
+export function buildConfigOwnerPatch(
+  change: { previous: OpenClawConfig; next: OpenClawConfig },
+  baseHash: unknown,
+) {
   const patch = createMergePatch(change.previous, change.next);
   const replacePaths = collectReplacePaths(patch, change.previous);
   const replayed = applyMergePatch(change.previous, patch, {
@@ -39,8 +42,11 @@ export function buildConfigOwnerPatch(change: { previous: OpenClawConfig; next: 
       "This change cannot be expressed as a Gateway config patch, so it was not sent to the running Gateway. No settings were saved. To apply it, stop the Gateway through its service owner, wait for ownership to release, then rerun this exact command.",
     );
   }
+  // Only fields stable Gateways accept: their closed config.patch schema rejects newer ones
+  // such as `response`, and an updated CLI routes to whichever Gateway is still running.
   return {
     raw: JSON.stringify(patch),
+    ...(typeof baseHash === "string" ? { baseHash } : {}),
     ...(replacePaths.length > 0 ? { replacePaths } : {}),
   };
 }

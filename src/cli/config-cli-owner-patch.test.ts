@@ -12,7 +12,19 @@ describe("buildConfigOwnerPatch", () => {
       gateway: { reload: { mode: "off" }, nodes: { commands: { allow: ["b"] } } },
       agents: { entries: {} },
     };
-    const request = buildConfigOwnerPatch({ previous, next });
+    const request = buildConfigOwnerPatch({ previous, next }, "base-hash");
+    // v2026.10.7 Gateways accept routed writes but close config.patch over these fields.
+    const stableConfigPatchFields = new Set([
+      "raw",
+      "baseHash",
+      "sessionKey",
+      "deliveryContext",
+      "note",
+      "restartDelayMs",
+      "replacePaths",
+    ]);
+    expect(Object.keys(request).filter((key) => !stableConfigPatchFields.has(key))).toEqual([]);
+    expect(request.baseHash).toBe("base-hash");
     expect(JSON.parse(request.raw)).toEqual({
       gateway: { reload: { mode: "off" }, nodes: { commands: { allow: ["b"] } } },
       agents: { entries: { main: null } },
@@ -25,11 +37,14 @@ describe("buildConfigOwnerPatch", () => {
 
   it("refuses a change the Gateway's merge patch cannot reproduce", () => {
     expect(() =>
-      buildConfigOwnerPatch({
-        previous: {},
-        // An authored null is not a value a merge patch can carry; null means delete.
-        next: JSON.parse('{"gateway":{"remote":{"url":null}}}'),
-      }),
+      buildConfigOwnerPatch(
+        {
+          previous: {},
+          // An authored null is not a value a merge patch can carry; null means delete.
+          next: JSON.parse('{"gateway":{"remote":{"url":null}}}'),
+        },
+        undefined,
+      ),
     ).toThrow("cannot be expressed as a Gateway config patch");
   });
 });
