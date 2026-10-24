@@ -89,7 +89,8 @@ export async function persistModelFallbackTranscriptNotice(
   const toModel = step.fallbackStepToModel;
   if (
     params.behavior.kind === "maintenance" ||
-    step.fallbackStepFinalOutcome !== "next_fallback" ||
+    (step.fallbackStepFinalOutcome !== "next_fallback" &&
+      step.fallbackStepFinalOutcome !== "succeeded") ||
     !sessionKey ||
     !identity.sessionId ||
     sessionLifecycleRevision === undefined ||

@@ -298,13 +298,21 @@ async function runEmbeddedAgentEntryInternal<T extends EmbeddedAgentRunResult>(
           try {
             await params.onFallbackStep?.(step);
           } finally {
-            const recorded = await persistModelFallbackTranscriptNotice(
-              params,
-              step,
-              assertCurrent,
-            );
-            if (recorded && step.fallbackStepToModel) {
-              recordedFallbackTargets.add(step.fallbackStepToModel);
+            // An unavailable primary can be skipped before admission. Once a backup
+            // succeeds, the same writer can record its transition with admitted authority.
+            if (
+              step.fallbackStepFinalOutcome !== "succeeded" ||
+              !step.fallbackStepToModel ||
+              !recordedFallbackTargets.has(step.fallbackStepToModel)
+            ) {
+              const recorded = await persistModelFallbackTranscriptNotice(
+                params,
+                step,
+                assertCurrent,
+              );
+              if (recorded && step.fallbackStepToModel) {
+                recordedFallbackTargets.add(step.fallbackStepToModel);
+              }
             }
           }
         },

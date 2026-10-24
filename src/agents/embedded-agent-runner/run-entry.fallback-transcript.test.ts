@@ -50,6 +50,7 @@ describe("run entry durable fallback notices", () => {
       omitSessionKey?: boolean;
       abortSignal?: AbortSignal;
       writerContext?: boolean;
+      unadmittedPrimary?: boolean;
     } = {},
   ) {
     const identity = {
@@ -107,7 +108,9 @@ describe("run entry durable fallback notices", () => {
           await options.onStep?.(step);
         },
         runCandidate: async (provider, model) => {
-          await admission.admit("embedded");
+          if (!options.unadmittedPrimary || provider !== "openai") {
+            await admission.admit("embedded");
+          }
           if (options.writerContext) {
             const authority = getAgentRunContext(identity.runId)?.delegatedAuthority;
             if (!authority) {
@@ -184,8 +187,22 @@ describe("run entry durable fallback notices", () => {
     const result = await f.run();
     expect(result.provider).toBe("anthropic");
     expect(result.result.meta.modelFallbackTranscriptToModel).toBeUndefined();
-    expect(append).toHaveBeenCalledTimes(1);
+    expect(append).toHaveBeenCalledTimes(2);
     expect(f.candidates).toEqual(["openai/gpt-4.1-mini", "anthropic/claude-haiku-3-5"]);
+  });
+
+  it("records a skipped transition only after the backup admits its run", async () => {
+    using f = await fixture({ unadmittedPrimary: true });
+    const result = await f.run();
+    expect(result.result.meta.modelFallbackTranscriptToModel).toBe("anthropic/claude-haiku-3-5");
+    const notices = (await loadTranscriptEvents(f.scope))
+      .map((event) => readModelFallbackNotice(asOptionalRecord(event)?.message))
+      .filter(Boolean);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      fromModel: "openai/gpt-4.1-mini",
+      toModel: "anthropic/claude-haiku-3-5",
+    });
   });
 
   const replacements = [
