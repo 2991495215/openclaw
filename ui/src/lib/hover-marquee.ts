@@ -126,7 +126,10 @@ function observeEnvironment(
       environment.targets.set(node, callbacks);
     }
     callbacks.add(entry);
-    environment.observe(node);
+    // Every label shares the same document-direction observation policy.
+    if (node !== document.documentElement || callbacks.size === 1) {
+      environment.observe(node);
+    }
   }
   return {
     motion: environment.motion,
