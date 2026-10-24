@@ -129,11 +129,6 @@ export function parseGitHubTarget(value: unknown): GitHubTarget | null {
   return { kind, number, owner, repo };
 }
 
-export function parseGitHubItemTarget(value: unknown): GitHubItemTarget | null {
-  const target = parseGitHubTarget(value);
-  return target && target.kind !== "commit" ? target : null;
-}
-
 // Descriptor matches only supported document pages; source/download/check links
 // remain external. RPC validation below independently validates every segment.
 export const GITHUB_ITEM_PATH_PATTERN =

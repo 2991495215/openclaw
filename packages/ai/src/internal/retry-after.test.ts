@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   hasExplicitRetryText,
   parseGoogleRetryDelaySeconds,
-  parseRetryAfterErrorSeconds,
   parseRetryAfterErrorTiming,
   parseRetryAfterHeadersSeconds,
   parseRetryAfterTextSeconds,
@@ -85,19 +84,19 @@ describe("retry header floors", () => {
     );
     expect(parseRetryAfterHeadersSeconds(headers)).toBe(7);
     expect(
-      parseRetryAfterErrorSeconds(Object.defineProperty({}, "headers", { get: getter })),
+      parseRetryAfterErrorTiming(Object.defineProperty({}, "headers", { get: getter })),
     ).toBeUndefined();
-    expect(parseRetryAfterErrorSeconds(Object.create({ headers }))).toBeUndefined();
+    expect(parseRetryAfterErrorTiming(Object.create({ headers }))).toBeUndefined();
     expect(invoked).toBe(false);
   });
 
   it("combines SDK and response header floors", () => {
     expect(
-      parseRetryAfterErrorSeconds({
+      parseRetryAfterErrorTiming({
         headers: new Headers({ "retry-after": "7" }),
         response: { headers: { "Retry-After-Ms": 8500 } },
       }),
-    ).toBe(8.5);
+    ).toEqual({ explicitSeconds: 8.5 });
   });
 
   it("ignores malformed and revoked metadata", () => {
@@ -105,9 +104,9 @@ describe("retry header floors", () => {
     revoke();
     for (const headers of [undefined, null, 42, "retry-after: 7", proxy]) {
       expect(parseRetryAfterHeadersSeconds(headers)).toBeUndefined();
-      expect(parseRetryAfterErrorSeconds({ headers })).toBeUndefined();
+      expect(parseRetryAfterErrorTiming({ headers })).toBeUndefined();
     }
-    expect(parseRetryAfterErrorSeconds(proxy)).toBeUndefined();
+    expect(parseRetryAfterErrorTiming(proxy)).toBeUndefined();
   });
 });
 
@@ -122,9 +121,6 @@ describe("provider error retry authority", () => {
         response: { headers: { "retry-after": "4" } },
       }),
     ).toEqual({ explicitSeconds: 4, resetSeconds: 300 });
-    expect(
-      parseRetryAfterErrorSeconds({ ...exhausted, response: { headers: { "retry-after": "4" } } }),
-    ).toBe(4);
   });
 
   it("drops a refill reset when the provider wrote an explicit retry time", () => {

@@ -190,15 +190,6 @@ function parseQuotaResetSeconds(value: string): number | undefined {
   return Number.isFinite(seconds) && seconds <= Number.MAX_SAFE_INTEGER ? seconds : Infinity;
 }
 
-/** SDK errors carry native response headers separately from their error body. */
-export function parseRetryAfterErrorSeconds(
-  error: unknown,
-  nowMs = Date.now(),
-): number | undefined {
-  const timing = parseRetryAfterErrorTiming(error, nowMs);
-  return timing?.explicitSeconds ?? timing?.resetSeconds;
-}
-
 /** Header timing from an SDK error and its response, merged per authority. */
 export function parseRetryAfterErrorTiming(
   error: unknown,
