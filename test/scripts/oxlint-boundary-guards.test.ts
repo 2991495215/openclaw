@@ -6,6 +6,7 @@ import noForcedProcessExit from "../../scripts/lib/no-forced-process-exit.mjs";
 const FIXTURES = "test/fixtures/oxlint-boundary-guards";
 const forcedExit = "no-forced-process-exit";
 const cases = [
+  ["no-recursive-readdir", "recursive-readdir-violation.ts", 6, [3, 4, 5, 6, 7, 8]],
   [
     forcedExit,
     "forced-process-exit-violation.ts",
