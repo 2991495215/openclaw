@@ -21,6 +21,39 @@ const notice = {
 };
 
 describe("model fallback transcript dividers", () => {
+  it.each([false, true])("keeps one status surface with a separate answer=%s", (separateAnswer) => {
+    const answer = { type: "text", text: "The work continued." };
+    const status = {
+      role: "assistant",
+      text: "A transport-specific status notice.",
+      content: [
+        {
+          type: "text",
+          text: "A transport-specific status notice.",
+          openclawStatusNotice: true,
+          openclawStatusNoticeKind: "model-fallback",
+        },
+        ...(!separateAnswer ? [answer] : []),
+      ],
+      timestamp: 2500,
+      __openclaw: { id: "status-1", replyToId: "input-1" },
+    };
+    const messages = [
+      notice,
+      status,
+      ...(separateAnswer ? [{ role: "assistant", content: [answer], timestamp: 3000 }] : []),
+    ];
+    const before = structuredClone(messages);
+    const items = buildItems({ messages });
+    expect(items.filter((item) => item.kind === "divider")).toHaveLength(1);
+    const rendered = items.flatMap((item) =>
+      item.kind === "group" ? item.messages.map(({ message }) => message) : [],
+    );
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0]).toMatchObject({ content: [answer] });
+    expect(messages).toEqual(before);
+  });
+
   it.each([false, true])(
     "renders a durable switch as a divider after history reload=%s",
     (reload) => {

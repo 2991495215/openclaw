@@ -335,10 +335,18 @@ describe("buildAssistantReplyContentFromInputs", () => {
     { name: "prepared reasoning only", kind: "prepared", withAnswer: false, fallback: false },
     { name: "raw reasoning and answer", kind: "raw", withAnswer: true, fallback: false },
     { name: "fallback and answer", kind: "raw", withAnswer: true, fallback: true },
+    { name: "typed fallback and answer", kind: "prepared", withAnswer: true, fallback: true },
   ])("projects $name", async ({ kind, withAnswer, fallback }) => {
     const payloads = fallback
       ? [{ text: notice, isFallbackNotice: true }, { text: answer }]
       : [{ text: "Thinking.", isReasoning: true }, ...(withAnswer ? [{ text: answer }] : [])];
+    if (kind === "prepared" && fallback) {
+      setReplyPayloadMetadata(payloads[0], { modelFallbackNotice: true });
+    }
+    const expectedStatusContent =
+      kind === "prepared" && fallback
+        ? [{ ...statusContent[0], openclawStatusNoticeKind: "model-fallback" }, statusContent[1]]
+        : statusContent;
     const inputs =
       kind === "raw"
         ? payloads.map((payload): ReplyDispatchOperation => ({ kind: "raw", payload }))
@@ -362,9 +370,13 @@ describe("buildAssistantReplyContentFromInputs", () => {
         inputs,
       }),
     ).toEqual({
-      assistantContent: fallback ? statusContent : withAnswer ? [textBlock(answer)] : undefined,
+      assistantContent: fallback
+        ? expectedStatusContent
+        : withAnswer
+          ? [textBlock(answer)]
+          : undefined,
       persistedAssistantContent: fallback
-        ? statusContent
+        ? expectedStatusContent
         : withAnswer
           ? [textBlock("Persisted.")]
           : undefined,
