@@ -57,6 +57,7 @@ import {
   selectLatestRunsPerLane,
 } from "./lib/release-priority.mjs";
 import { sleep } from "./lib/sleep.mjs";
+import { sameJobExecution } from "./npm-prepared-bundle.mjs";
 import {
   createReleaseEvidenceClient,
   releaseExecutionPlanRestoreContract,
@@ -472,10 +473,10 @@ async function assertFailedArtifactProducersAreReusable(plan, status, client, op
     if (!child.preparation) {
       continue;
     }
-    const jobs = await client.getAttemptJobs(child.runId, child.effectiveRunAttempt, {
+    const sourceJobs = await client.getAttemptJobs(child.runId, child.preparation.runAttempt, {
       operationDeadline,
     });
-    const preparation = jobs.filter(
+    const preparation = sourceJobs.filter(
       (job) =>
         String(job.id) === child.preparation.jobId &&
         Number(job.run_attempt) === child.preparation.runAttempt,
@@ -485,12 +486,29 @@ async function assertFailedArtifactProducersAreReusable(plan, status, client, op
         `artifact:npm producer ${child.runId} preparation identity is missing or ambiguous; refusing a rerun that could replace consumed candidate bytes`,
       );
     }
-    // GitHub reruns only failed jobs. A successful preparation is carried forward
-    // without replacing the bytes already consumed by the candidate.
-    if (preparation[0].status === "completed" && preparation[0].conclusion === "success") {
+    if (preparation[0].status !== "completed" || preparation[0].conclusion !== "success") {
+      consumed.push(child);
       continue;
     }
-    consumed.push(child);
+    let preserved = true;
+    for (
+      let attempt = child.preparation.runAttempt + 1;
+      attempt <= child.effectiveRunAttempt;
+      attempt += 1
+    ) {
+      const jobs = await client.getAttemptJobs(child.runId, attempt, { operationDeadline });
+      const copies = jobs.filter((job) => job.name === preparation[0].name);
+      if (
+        copies.length > 1 ||
+        (copies.length === 1 && !sameJobExecution(preparation[0], copies[0]))
+      ) {
+        preserved = false;
+        break;
+      }
+    }
+    if (!preserved) {
+      consumed.push(child);
+    }
   }
   if (consumed.length === 0) {
     return;

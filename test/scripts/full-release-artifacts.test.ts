@@ -757,9 +757,11 @@ describe.skipIf(process.platform === "win32")("immutable release artifact CLI", 
     expectRejected(result, error);
   });
 
-  it("reports a failed receipt producer job before its siblings finish", () => {
+  it.each([
+    ["raw", "Prepare npm artifacts / Prepare publishable npm package"],
+    ["receipt", "Prepare npm artifacts / Check npm dependencies"],
+  ] as const)("reports a failed %s producer job before its siblings finish", (output, name) => {
     const test = fixture();
-    const name = "Prepare npm artifacts / Check npm dependencies";
     test.jobsApi(1, [
       { ...test.jobs[0], name, conclusion: "failure" },
       { ...test.jobs[1], status: "in_progress", conclusion: null },
@@ -769,7 +771,7 @@ describe.skipIf(process.platform === "win32")("immutable release artifact CLI", 
       "artifacts",
       [],
     );
-    const result = test.wait("receipt", { FIXTURE_STOP_ON_WAIT: "true" });
+    const result = test.wait(output, { FIXTURE_STOP_ON_WAIT: "true" });
     expectRejected(result, `${name} ended with failure`);
     expect(result.stderr).toContain(`https://github.com/${REPOSITORY}/actions/runs/81/job/901`);
     expect(result.stderr).toContain("Other producer jobs continue running");

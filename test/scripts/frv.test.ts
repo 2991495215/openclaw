@@ -567,6 +567,52 @@ describe("FRV continuation preflight", () => {
     },
   );
 
+  it("recognizes a carried npm preparation by its execution fingerprint", async () => {
+    const fixture = artifactFixture("npm");
+    fixture.producer.run_attempt = 2;
+    fixture.producer.conclusion = "failure";
+    const preparation = {
+      ...job("Prepare npm artifacts / Prepare publishable npm package"),
+      id: 901,
+      run_attempt: 1,
+    };
+    fixture.client.getAttemptJobs = async (_runId: string, attempt: number) =>
+      attempt === 1 ? [preparation] : [{ ...preparation, id: 999, run_attempt: 2 }];
+
+    await expect(
+      continueFailed(
+        { ...fixture.plan, candidate: { producer: { runId: "606" } } },
+        "77",
+        fixture.client,
+        { dryRun: true },
+      ),
+    ).resolves.toMatchObject({ action: "would-rerun" });
+  });
+
+  it("rejects a replacement npm preparation even without a second descriptor", async () => {
+    const fixture = artifactFixture("npm");
+    fixture.producer.run_attempt = 2;
+    fixture.producer.conclusion = "failure";
+    const preparation = {
+      ...job("Prepare npm artifacts / Prepare publishable npm package"),
+      id: 901,
+      run_attempt: 1,
+    };
+    fixture.client.getAttemptJobs = async (_runId: string, attempt: number) =>
+      attempt === 1
+        ? [preparation]
+        : [{ ...preparation, id: 999, run_attempt: 2, conclusion: "failure" }];
+
+    await expect(
+      continueFailed(
+        { ...fixture.plan, candidate: { producer: { runId: "606" } } },
+        "77",
+        fixture.client,
+      ),
+    ).rejects.toThrow("already supplied the sealed candidate evidence");
+    expect(fixture.client.rerunFailed).not.toHaveBeenCalled();
+  });
+
   it("does not claim recovery for a failed candidate producer with undispatched consumers", async () => {
     const fixture = artifactFixture("candidate");
     fixture.producer.conclusion = "failure";
