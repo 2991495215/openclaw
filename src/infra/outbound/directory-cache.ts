@@ -34,18 +34,17 @@ export class DirectoryCache<T> {
   }
 
   get(key: string, cfg: OpenClawConfig): T | undefined {
-    const cache = getOrCreateWeakOwnerMap(this.cachesByConfig, cfg);
-    this.pruneExpired(cache, Date.now());
-    return cache.get(key)?.value;
+    const entry = this.cachesByConfig.get(cfg)?.get(key);
+    return entry && (this.ttlMs <= 0 || Date.now() - entry.fetchedAt < this.ttlMs)
+      ? entry.value
+      : undefined;
   }
 
   set(key: string, value: T, cfg: OpenClawConfig): void {
     const cache = getOrCreateWeakOwnerMap(this.cachesByConfig, cfg);
-    const now = Date.now();
-    this.pruneExpired(cache, now);
     // Refresh insertion order so active keys are less likely to be evicted.
     cache.delete(key);
-    cache.set(key, { value, fetchedAt: now });
+    cache.set(key, { value, fetchedAt: Date.now() });
     pruneMapToMaxSize(cache, this.maxSize);
   }
 
@@ -63,16 +62,5 @@ export class DirectoryCache<T> {
 
   clear(): void {
     this.cachesByConfig = new WeakMap();
-  }
-
-  private pruneExpired(cache: Map<string, CacheEntry<T>>, now: number): void {
-    if (this.ttlMs <= 0) {
-      return;
-    }
-    for (const [cacheKey, entry] of cache) {
-      if (now - entry.fetchedAt >= this.ttlMs) {
-        cache.delete(cacheKey);
-      }
-    }
   }
 }
