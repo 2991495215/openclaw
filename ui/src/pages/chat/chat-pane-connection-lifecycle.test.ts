@@ -178,6 +178,7 @@ describe("chat pane connection lifecycle", () => {
         sessionKey: state.sessionKey,
         runId: "operation-run",
         seq: 1,
+        ts: 1,
         stream: "item",
         data: {
           itemId: "operation",
@@ -218,6 +219,7 @@ describe("chat pane connection lifecycle", () => {
       sessionKey: state.sessionKey,
       runId: "operation-run",
       seq: 1,
+      ts: 1,
       stream: "item",
       data: {
         itemId: "operation",

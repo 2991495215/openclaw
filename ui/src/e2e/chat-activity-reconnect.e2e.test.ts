@@ -15,7 +15,7 @@ import { createChatFlowE2eSuite } from "./chat-flow.test-support.ts";
 const suite = createChatFlowE2eSuite();
 const sessionKey = "agent:main:activity-reconnect";
 const runId = "activity-reconnect-run";
-const commands = ["git status -sb", "git diff --stat"];
+const commands = ["git status -sb", "git diff --stat"] as const;
 const activity = (index: number, phase: "start" | "result") =>
   projectAgentToolActivity({
     toolCallId: `command-${index}`,
@@ -158,7 +158,7 @@ suite.define(() => {
                 data: activity(index, index === 0 ? "result" : "start"),
               });
             }
-            await expect(summary).toContainText(commands[1]!);
+            await expect(summary).toContainText(commands[1]);
           } else {
             await expect(summary).toHaveText(/2 commands/);
           }
