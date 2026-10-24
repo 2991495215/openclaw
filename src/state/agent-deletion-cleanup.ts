@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
+import { throwCollectedErrors } from "../infra/error-graph-internal.js";
 import { readDatabasePathIdentitySync } from "../infra/sqlite-worker-identity.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { AgentDeletionCleanupWorkerAuthority } from "./agent-deletion-cleanup.types.js";
@@ -198,11 +199,7 @@ export function createAgentDeletionDatabaseCleanup(owner: {
               )
             : outcome.error;
         }
-        if (closeErrors.length > 0) {
-          throw closeErrors.length === 1
-            ? closeErrors[0]
-            : new AggregateError(closeErrors, "Agent deletion database cleanup failed.");
-        }
+        throwCollectedErrors(closeErrors, "Agent deletion database cleanup failed.");
         if (worker && owner.assertCurrentAsync) {
           await owner.assertCurrentAsync();
         } else {

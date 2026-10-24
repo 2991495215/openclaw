@@ -35,9 +35,6 @@ export async function withSessionCostUsageWorkerDatabases<T>(
   options: readonly OpenClawAgentDatabaseOptions[],
   operation: (owner: SessionCostUsageWorkerScope) => Promise<T>,
 ): Promise<T> {
-  if (options.length === 0) {
-    throw new Error("Usage cost work requires its database owners");
-  }
   const resources = new Set<HistoryDatabaseResource>();
   try {
     for (const databaseOptions of options) {
@@ -80,9 +77,6 @@ export async function withSessionCostUsageWorkerDatabases<T>(
     }
   };
   const retainCleanup = (close: () => Promise<void>): (() => void) => {
-    if (phase === "closed") {
-      throw new WorkerTaskError("Session usage database scope is closed", "unavailable");
-    }
     const runInContext = AsyncLocalStorage.snapshot();
     let released = false;
     let closing: Promise<void> | undefined;

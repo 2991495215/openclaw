@@ -3,6 +3,7 @@ import path from "node:path";
 import { isMainThread } from "node:worker_threads";
 import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
+import { throwCollectedErrors } from "../infra/error-graph-internal.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type {
   OpenClawAgentDatabase,
@@ -110,11 +111,7 @@ export async function runWithAgentCreationClaim<T>(
         ? new AggregateError([outcome.error, ...closeErrors], "Agent creation claim failed.")
         : outcome.error;
     }
-    if (closeErrors.length > 0) {
-      throw closeErrors.length === 1
-        ? closeErrors[0]
-        : new AggregateError(closeErrors, "Agent creation claim failed.");
-    }
+    throwCollectedErrors(closeErrors, "Agent creation claim failed.");
     return outcome.value;
   });
 }

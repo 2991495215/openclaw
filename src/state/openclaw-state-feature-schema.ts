@@ -39,44 +39,16 @@ CREATE INDEX IF NOT EXISTS idx_user_profile_emails_profile_id
 
 ${extractSqliteTableSchema(OPENCLAW_STATE_SCHEMA_SQL, "user_profile_identities")}
 `,
-  operator_approval_standing_grants: `
-CREATE TABLE IF NOT EXISTS operator_approval_standing_grants (
-  grant_id TEXT NOT NULL PRIMARY KEY CHECK (length(grant_id) > 0),
-  minted_by_approval_id TEXT NOT NULL
-    REFERENCES operator_approvals(approval_id) ON DELETE CASCADE,
-  agent_id TEXT NOT NULL CHECK (length(agent_id) > 0),
-  cron_job_id TEXT NOT NULL CHECK (length(cron_job_id) > 0),
-  job_config_revision TEXT NOT NULL CHECK (length(job_config_revision) > 0),
-  operation_binding TEXT NOT NULL CHECK (length(operation_binding) > 0),
-  created_at_ms INTEGER NOT NULL,
-  expires_at_ms INTEGER CHECK (expires_at_ms IS NULL OR expires_at_ms >= created_at_ms),
-  revoked_at_ms INTEGER,
-  revoked_by TEXT,
-  last_used_at_ms INTEGER,
-  use_count INTEGER NOT NULL DEFAULT 0
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS idx_operator_approval_standing_grants_binding
+  operator_approval_standing_grants: [
+    extractSqliteTableSchema(OPENCLAW_STATE_SCHEMA_SQL, "operator_approval_standing_grants"),
+    `CREATE INDEX IF NOT EXISTS idx_operator_approval_standing_grants_binding
   ON operator_approval_standing_grants(agent_id, cron_job_id, operation_binding, created_at_ms DESC);
-
-CREATE TABLE IF NOT EXISTS operator_approval_standing_grant_generations (
-  grant_id TEXT NOT NULL PRIMARY KEY
-    REFERENCES operator_approval_standing_grants(grant_id) ON DELETE CASCADE,
-  job_definition_generation INTEGER NOT NULL CHECK (job_definition_generation >= 1)
-) STRICT;
 `,
-  operator_approval_execution_identities: `
-CREATE TABLE IF NOT EXISTS operator_approval_execution_identities (
-  approval_id TEXT NOT NULL PRIMARY KEY
-    REFERENCES operator_approvals(approval_id) ON DELETE CASCADE,
-  source_context_id TEXT NOT NULL CHECK (
-    length(source_context_id) BETWEEN 1 AND 256 AND source_context_id = trim(source_context_id)
-  ),
-  source_execution_id TEXT NOT NULL CHECK (
-    length(source_execution_id) BETWEEN 1 AND 256 AND source_execution_id = trim(source_execution_id)
-  )
-) STRICT;
-`,
+    extractSqliteTableSchema(
+      OPENCLAW_STATE_SCHEMA_SQL,
+      "operator_approval_standing_grant_generations",
+    ),
+  ].join("\n"),
   worker_environment_ssh_fallback_ports: `
 CREATE TABLE IF NOT EXISTS worker_environment_ssh_fallback_ports (
   environment_id TEXT NOT NULL,
