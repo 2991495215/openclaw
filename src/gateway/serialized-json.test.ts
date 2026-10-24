@@ -1,11 +1,39 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   registerSerializedJsonArray,
+  SerializedGatewayFrame,
   SerializedJsonArray,
+  SerializedJsonPayload,
   serializeGatewayFrame,
 } from "./serialized-json.js";
 
 describe("serialized Gateway response arrays", () => {
+  it("retains only owned bytes for cached arrays and shared response payloads", () => {
+    const rows = [{ label: '雪🦞\\"\n' }];
+    registerSerializedJsonArray(
+      rows,
+      rows.map((row) => JSON.stringify(row)),
+    );
+    const frame = serializeGatewayFrame({ type: "res", payload: { rows } });
+    expect(frame).toBeInstanceOf(SerializedGatewayFrame);
+    const bytes = (frame as SerializedGatewayFrame).segments.find(
+      (part) =>
+        Buffer.from(part.buffer, part.byteOffset, part.byteLength).toString() ===
+        JSON.stringify(rows),
+    )!;
+    expect(bytes.buffer.byteLength).toBe(bytes.byteLength);
+
+    for (const payload of [{ rows }, { text: '雪🦞\\"\n' }, undefined, null]) {
+      const shared = new SerializedJsonPayload(payload);
+      expect(shared.toJSON()).toEqual(payload);
+      // The cached slice may borrow its own response envelope, never a global slab.
+      expect(shared.bytes.buffer.byteLength).toBeLessThanOrEqual(shared.bytes.byteLength + 14);
+      expect(serializeGatewayFrame({ type: "res", id: "one", payload: shared }).toString()).toBe(
+        JSON.stringify({ type: "res", id: "one", payload }),
+      );
+    }
+  });
+
   it.each([false, true])(
     "forwards worker JSON without materializing its messages (subscription=%s)",
     (subscription) => {
@@ -46,6 +74,11 @@ describe("serialized Gateway response arrays", () => {
         ? { ...expected, payload: { initialHistory: { ok: true, payload: expected.payload } } }
         : expected;
       const encoded = serializeGatewayFrame(wireFrame);
+      expect(encoded).toBeInstanceOf(SerializedGatewayFrame);
+      if (!(encoded instanceof SerializedGatewayFrame)) {
+        throw new Error("Expected segmented worker response");
+      }
+      expect(encoded.segments).toContain(carrier.bytes);
       expect(encoded.toString()).toBe(JSON.stringify(wireExpected));
       expect(JSON.parse(encoded.toString())).toEqual(wireExpected);
       expect(materialize).not.toHaveBeenCalled();

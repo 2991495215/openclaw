@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 281142,
-  "reason": "Matched ad9f814 base/head startup 281039 to 281142 B gzip (+103 B), with 7 JS and 1 CSS request unchanged; combined subscription/history removes one serial RPC. Original 20-pair remote/local switch medians improved 13.8%/26.5%.",
+  "startupJsGzipBytes": 281702,
+  "reason": "Combined warm transcript and shared visible clocks: measured 281702 B after integrating main. Warm transcript remote median improved from 509.3 to 304.7 ms; shared clocks retain their separately measured CPU win. Startup requests remain 7 JS and 1 CSS; accept the sub-0.5 KB change against main.",
   "updatedAt": "2026-10-24"
 }

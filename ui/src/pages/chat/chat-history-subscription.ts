@@ -28,7 +28,6 @@ import {
   getChatHistoryLoadState,
   setChatHistoryLoad,
   setChatHistoryRetrying,
-  waitForInitialChatSnapshot,
 } from "./chat-history-state.ts";
 import { readChatInputRunIds } from "./chat-pending-inputs.ts";
 import type { ChatState } from "./chat-state-contract.ts";
@@ -220,12 +219,6 @@ async function synchronizeSelectedSessionMessageSubscription(
   };
   let initialHistoryReceipt: InitialChatHistoryReceipt | undefined;
   const subscribe = async () => {
-    if (opts?.initialHistory) {
-      const hydration = waitForInitialChatSnapshot(state);
-      if (hydration && !(await hydration)) {
-        return null;
-      }
-    }
     let attempt = 0;
     while (isCurrent()) {
       try {

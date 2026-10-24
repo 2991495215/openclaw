@@ -84,6 +84,48 @@ absolute deltas and sample counts; this workload does not measure event-loop tai
 promotion, native SQL, or whole-Gateway performance. The measured loop reattaches
 synthetic reference cells directly, excluding worker admission and transport costs.
 
+## Retained Buffer pool storage
+
+These synthetic probes keep the production owners live while interleaving small
+retained values with disposable pooled allocations. They report distinct backing
+stores, logical bytes, and retained backing bytes. Read the runtime's observed
+slab size: `Buffer.poolSize` need not equal the backing allocation's byte length.
+Do not assume an 8 KiB pool. Sparse insertion is the amplification case; adjacent
+small values can share a slab efficiently.
+
+```sh
+node --import ./scripts/tsx.mjs scripts/perf/gateway-buffer-pool-retention.ts
+node --expose-gc --import ./scripts/tsx.mjs scripts/perf/process-output-pool-retention.ts
+node --expose-gc --import ./scripts/tsx.mjs scripts/perf/command-capture-pool-retention.ts
+node --expose-gc --import ./scripts/tsx.mjs scripts/perf/audio-queue-pool-retention.ts --site voice
+node --expose-gc --import ./scripts/tsx.mjs scripts/perf/audio-queue-pool-retention.ts --site meeting
+node --expose-gc --import ./scripts/tsx.mjs scripts/perf/audio-queue-pool-retention.ts --site transcription
+```
+
+Run identical workloads on baseline and candidate. Acceptance is unchanged output
+bytes and source-copy isolation, no unrelated pooled slabs retained by repaired
+owners, and collection after their normal release boundary. The Gateway owner
+probe covers registered list arrays and both ordinary and segmented shared
+response payloads. Process probes cover live output/poll retention and a real
+running child command, plus clipped and string captures. Audio probes cover
+provider-readiness/reconnect queues and a meeting capture transport fixture.
+Their fixed PCM workloads correspond to 6.4 seconds of voice readiness backlog,
+about 17 seconds of meeting input, and 20.5 seconds of transcription backlog.
+
+These are retained-storage measurements, not CPU, GC-rate, latency, or production
+saving estimates. Command allocation attribution uses stack inspection; do not
+reuse its timing as a throughput result. Audio and process probes support
+synthetic heap snapshots and release controls; keep snapshots local.
+
+For whole-Gateway attribution, use the synthetic state generator and the
+`diagnostics.heapSnapshot` procedure in [the retention runbook](heap-retention-runbook.md).
+Keep clients and mock providers alive through completed turns and capture.
+Deduplicate backing stores within each owner; different owners can share a slab,
+so their totals cannot be added as exclusive savings. Presence publications are
+transient: `listSystemPresence()` creates fresh arrays, and the delivery cache's
+weak keys do not keep those arrays alive between publications. Artificially
+retaining every roster would manufacture a lifetime absent from this flow.
+
 ## Retained heap
 
 Use the [heap retention runbook](heap-retention-runbook.md) to capture a main-isolate
@@ -687,6 +729,41 @@ Use separate `--mode profile` pairs for allocation, including collected objects.
 The lifetime gate is zero prompt serialization for default listeners, unchanged
 size values when requested, and reduced CPU/allocation per call under the
 campaign's absolute-delta and sample-count rules.
+
+## Model stream observation allocation
+
+`model-stream-observation-measure.ts` exercises the real model-call diagnostic
+wrapper with two synthetic requests per turn, each yielding 100 prebuilt text
+deltas and a terminal message. It verifies identical output, interleaved request
+identity across three `next()` resumptions, and exact completed-event byte and
+usage fields for interested listeners. It makes no provider network calls.
+Run under an isolated `HOME`, `OPENCLAW_HOME`, `OPENCLAW_STATE_DIR`, and `TMPDIR`.
+
+```sh
+node --import ./scripts/tsx.mjs scripts/perf/model-stream-observation-measure.ts \
+  --turns 1000 --chunks 100 --listeners metrics --mode timing \
+  --output /path/to/synthetic-state/stream-timing.json
+```
+
+Compare `--listeners none`, `metrics` (completed/error consumers without prompt
+statistics), and `full` (including prompt statistics). `--raw` bypasses only the
+diagnostic wrapper to attribute its cost; it is not a replacement candidate.
+`--owner /absolute/path/to/saved-wrapper.ts` selects an alternate source owner;
+its imports must resolve the corresponding baseline dependencies. Use the same
+script, fixture shape, Node version, and listener mode on both revisions, with
+counterbalanced paired runs and the campaign's quiet-slot/guard rules.
+`--start-file` waits after warmup for a future Unix epoch in milliseconds.
+
+Untraced `--mode timing` reports CPU and latency per turn, event-loop tails,
+per-kind GC totals/tails/maxima, and sample counts. `--mode allocation` separately
+samples allocated objects including those collected by minor and major GC, and
+writes `<output>.heapprofile` for source/stack attribution. `--mode count`
+separately counts JSON serializations, terminal usage getter reads, provider
+`next()` calls and result reads. Usage reads include both JSON sizing and terminal
+observation; these counts are not direct usage-normalization counts. No count
+spies run during timing or allocation. The source uses prebuilt event/message
+fixtures, so these are observer-boundary measurements including its downstream
+work, not Gateway, transport, provider-production, or whole-turn allocation claims.
 
 ## Session tool surface
 
