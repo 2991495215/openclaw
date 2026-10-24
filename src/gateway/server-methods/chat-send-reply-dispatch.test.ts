@@ -336,16 +336,21 @@ describe("buildAssistantReplyContentFromInputs", () => {
     { name: "raw reasoning and answer", kind: "raw", withAnswer: true, fallback: false },
     { name: "fallback and answer", kind: "raw", withAnswer: true, fallback: true },
     { name: "typed fallback and answer", kind: "prepared", withAnswer: true, fallback: true },
+    { name: "typed fallback only", kind: "prepared", withAnswer: false, fallback: true },
   ])("projects $name", async ({ kind, withAnswer, fallback }) => {
-    const payloads = fallback
-      ? [{ text: notice, isFallbackNotice: true }, { text: answer }]
-      : [{ text: "Thinking.", isReasoning: true }, ...(withAnswer ? [{ text: answer }] : [])];
+    const fallbackNotice = { text: notice, isFallbackNotice: true };
     if (kind === "prepared" && fallback) {
-      setReplyPayloadMetadata(payloads[0], { modelFallbackNotice: true });
+      setReplyPayloadMetadata(fallbackNotice, { modelFallbackNotice: true });
     }
+    const payloads = fallback
+      ? [fallbackNotice, ...(withAnswer ? [{ text: answer }] : [])]
+      : [{ text: "Thinking.", isReasoning: true }, ...(withAnswer ? [{ text: answer }] : [])];
     const expectedStatusContent =
       kind === "prepared" && fallback
-        ? [{ ...statusContent[0], openclawStatusNoticeKind: "model-fallback" }, statusContent[1]]
+        ? [
+            { ...statusContent[0], openclawStatusNoticeKind: "model-fallback" },
+            ...(withAnswer ? [statusContent[1]] : []),
+          ]
         : statusContent;
     const inputs =
       kind === "raw"
@@ -357,13 +362,13 @@ describe("buildAssistantReplyContentFromInputs", () => {
     expect(
       await buildAssistantReplyContentFromInputs({
         sessionKey: "agent:main:main",
-        ...(!fallback
+        ...(!fallback || kind === "prepared"
           ? {
               agentId: "main",
               transcriptMediaMessage: {
                 content: [],
                 transcriptText: "",
-                payloadTexts: ["Thinking.", "Persisted."],
+                payloadTexts: fallback ? [notice, answer] : ["Thinking.", "Persisted."],
               },
             }
           : {}),

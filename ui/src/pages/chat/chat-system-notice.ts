@@ -11,38 +11,16 @@ import { normalizeRoleForGrouping } from "../../lib/chat/message-normalizer.ts";
 import { optionalBoundaryIdentity } from "./chat-thread-run-identity.ts";
 import { safeNormalizeMessage } from "./chat-turn-boundary.ts";
 import { resolveSystemNoticeKind, type PendingInputStatus } from "./system-notice-kinds.ts";
-import { copyLiveTerminalIdentity } from "./terminal-message-identity.ts";
 
 registerChatSessionEnglish();
 
 /** Pending custody and persisted history share the same system-turn presentation. */
 export function projectChatSystemNotice(
-  initialItem: Extract<ChatItem, { kind: "message" }>,
-  initialNormalized?: NormalizedMessage | null,
+  item: Extract<ChatItem, { kind: "message" }>,
+  normalized?: NormalizedMessage | null,
   pending?: { status: PendingInputStatus; key: string; timestamp: number },
 ): ChatItem[] {
-  let item = initialItem;
-  let normalized = initialNormalized;
-  let raw = asRecord(item.message);
-  if (
-    raw?.role === "assistant" &&
-    Array.isArray(raw.content) &&
-    raw.content.some((block) => asRecord(block)?.openclawStatusNoticeKind === "model-fallback")
-  ) {
-    const content = raw.content.filter(
-      (block) => asRecord(block)?.openclawStatusNoticeKind !== "model-fallback",
-    );
-    // Transcript events own web fallback status. Keep the transport notice for
-    // other clients without turning it into an answer or an empty reply bubble.
-    if (content.length === 0) {
-      return [];
-    }
-    const message = { ...raw, content, text: undefined };
-    copyLiveTerminalIdentity(item.message, message);
-    item = { ...item, message };
-    normalized = safeNormalizeMessage(message);
-    raw = message;
-  }
+  const raw = asRecord(item.message);
   if (raw?.role === "custom" && raw.customType === "session-send-recovery-blocked") {
     return [
       {

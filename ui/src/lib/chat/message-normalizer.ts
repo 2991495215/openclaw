@@ -512,7 +512,7 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
   } else if (contentItems) {
     content = contentItems.flatMap((value) => {
       const item = asOptionalRecord(value);
-      if (!item) {
+      if (!item || (isAssistantMessage && item.openclawStatusNoticeKind === "model-fallback")) {
         return [];
       }
       const omittedMedia = normalizeOmittedMediaContentBlock(item);

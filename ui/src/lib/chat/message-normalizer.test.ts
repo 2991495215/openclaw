@@ -72,6 +72,28 @@ const failures = [
 describe("message-normalizer", () => {
   afterEach(() => vi.useRealTimers());
 
+  it.each(["assistant", "user"])(
+    "omits only confirmed assistant companion blocks for %s",
+    (role) => {
+      const notice = {
+        type: "text",
+        text: "Operational status",
+        openclawStatusNoticeKind: "model-fallback",
+      };
+      const answer = { type: "text", text: "The work continued." };
+      const ordinary = { type: "text", text: "Other status", openclawStatusNotice: true };
+      const source = { role, content: [notice, answer, ordinary] };
+      const normalized = normalizeMessage(source);
+      expect(
+        normalized.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+      ).toBe([...(role === "user" ? [notice.text] : []), answer.text, ordinary.text].join("\n"));
+      expect(source.content).toEqual([notice, answer, ordinary]);
+    },
+  );
+
   it("degrades missing transcript entries to an empty unknown message", () => {
     expect(normalizeMessage(undefined)).toMatchObject({ role: "unknown", content: [] });
     expect(isToolResultMessage(undefined)).toBe(false);

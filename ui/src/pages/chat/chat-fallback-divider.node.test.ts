@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { normalizeMessage } from "../../lib/chat/message-normalizer.ts";
 import { buildItems } from "./chat-thread.test-support.ts";
 
 const notice = {
@@ -23,6 +24,7 @@ const notice = {
 describe("model fallback transcript dividers", () => {
   it.each([false, true])("keeps one status surface with a separate answer=%s", (separateAnswer) => {
     const answer = { type: "text", text: "The work continued." };
+    const media = { type: "image", url: "https://example.com/synthetic.png" };
     const status = {
       role: "assistant",
       text: "A transport-specific status notice.",
@@ -33,7 +35,7 @@ describe("model fallback transcript dividers", () => {
           openclawStatusNotice: true,
           openclawStatusNoticeKind: "model-fallback",
         },
-        ...(!separateAnswer ? [answer] : []),
+        ...(!separateAnswer ? [answer, media] : []),
       ],
       timestamp: 2500,
       __openclaw: { id: "status-1", replyToId: "input-1" },
@@ -41,7 +43,7 @@ describe("model fallback transcript dividers", () => {
     const messages = [
       notice,
       status,
-      ...(separateAnswer ? [{ role: "assistant", content: [answer], timestamp: 3000 }] : []),
+      ...(separateAnswer ? [{ role: "assistant", content: [answer, media], timestamp: 3000 }] : []),
     ];
     const before = structuredClone(messages);
     const items = buildItems({ messages });
@@ -50,7 +52,8 @@ describe("model fallback transcript dividers", () => {
       item.kind === "group" ? item.messages.map(({ message }) => message) : [],
     );
     expect(rendered).toHaveLength(1);
-    expect(rendered[0]).toMatchObject({ content: [answer] });
+    expect(normalizeMessage(rendered[0]).content).toMatchObject([answer, { type: "image" }]);
+    expect(rendered[0]).toBe(separateAnswer ? messages[2] : status);
     expect(messages).toEqual(before);
   });
 
