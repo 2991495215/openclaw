@@ -86,7 +86,9 @@ async function recordRegistryRelease(version: string) {
   }
 }
 
-// Post-swap bridges support upgrades into this candidate, not newer-release downgrades.
+// Registry selectors newer than this candidate need not be recorded, but
+// extended-stable lines deliberately keep entries for newer monthly releases
+// whose updaters can replace themselves with this candidate.
 function isSupportedSource(version: string): boolean {
   const comparison = compareReleaseVersions(version, TARGET_VERSION);
   if (comparison === null) {
@@ -95,16 +97,6 @@ function isSupportedSource(version: string): boolean {
     );
   }
   return comparison <= 0;
-}
-
-function assertSupportedSources(inventory: UpdateCompatibilityInventory): void {
-  for (const { version } of inventory.releases) {
-    if (!isSupportedSource(version)) {
-      throw new Error(
-        `Update compatibility source ${version} is newer than target ${TARGET_VERSION}; downgrade compatibility is not supported.`,
-      );
-    }
-  }
 }
 
 function shellArgument(value: string): string {
@@ -188,7 +180,6 @@ async function runUpdateCompatibilityInventory(
       schemaVersion: 1,
       releases: sortedReleases([...(localReleases ?? []), ...registryReleases]),
     });
-    assertSupportedSources(inventory);
     const contents = `${JSON.stringify(inventory, null, 2)}\n`;
     if (values.check) {
       readUpdateCompatibilityInventory(output);
@@ -201,7 +192,6 @@ async function runUpdateCompatibilityInventory(
     }
   } else if (values.check) {
     inventory = readUpdateCompatibilityInventory(output);
-    assertSupportedSources(inventory);
     checkRegistryCoverage(inventory, values.output);
   } else {
     throw new Error(
