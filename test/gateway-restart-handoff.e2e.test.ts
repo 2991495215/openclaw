@@ -50,7 +50,9 @@ function journal(logs: string) {
 // The real CLI process, model transport, exec subprocesses, and native deadline belong in E2E.
 it.skipIf(process.platform !== "linux")(
   "resumes six interrupted turns after handing off within five seconds of its receipt after plugin cleanup",
-  { timeout: 180_000 },
+  // The internal shutdown and handoff deadlines remain strict; leave enough outer
+  // budget for two real Gateway startups and six concurrent recovery turns on CI.
+  { timeout: 300_000 },
   async ({ signal }) => {
     const beforeExit = <T>(pending: Promise<T>, closed: Promise<unknown>, message: string) =>
       withinTest(awaitGateBeforeSettlement(pending, closed, message), signal);
