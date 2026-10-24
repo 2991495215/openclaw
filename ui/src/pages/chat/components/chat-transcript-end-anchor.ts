@@ -7,16 +7,18 @@ export class TranscriptEndAnchor {
   private offset: number | null = null;
   private frame: number | null = null;
 
+  handleContentResize(canFollow: boolean, notify?: () => void): void {
+    if (this.offset === null || !canFollow) {
+      notify?.();
+    }
+  }
+
   isResizeAnchor(element: HTMLDivElement | null): boolean {
     if (this.offset === null || element === null) {
       return false;
     }
     const max = maxTranscriptScrollOffset(element);
-    return (
-      max !== null &&
-      Math.abs(element.scrollTop - this.offset) <= 1 &&
-      this.offset !== max
-    );
+    return max !== null && Math.abs(element.scrollTop - this.offset) <= 1 && this.offset !== max;
   }
 
   recordLayoutCorrection(before: number, after: number): void {
@@ -165,6 +167,7 @@ export class TranscriptEndAnchor {
     canFollow: boolean,
     suspended: boolean,
     follow: () => void,
+    recoverNativeDisplacement = false,
   ): void {
     const atEnd = this.recordViewport(element);
     // A resized viewport can clamp a reader to the end without granting follow.
@@ -181,6 +184,10 @@ export class TranscriptEndAnchor {
     }
     if (Math.abs(element.scrollTop - this.offset) > 1) {
       this.clear();
+      // Page-integrated transcripts may recover a captured edge displaced by native layout.
+      if (recoverNativeDisplacement) {
+        follow();
+      }
       return;
     }
     // Row measurement moved the end while the reader still rests at its old edge.

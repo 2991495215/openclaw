@@ -83,6 +83,8 @@ export class ChatSessionVirtualizerHost implements ChatTranscriptSession {
   private appliedHeaderHeight = 0;
   private initialPositionPending = true;
   private readonly endAnchor = new TranscriptEndAnchor();
+  private readonly handleContentResize = () =>
+    this.endAnchor.handleContentResize(this.canAutoFollow(), this.callbacks.onContentResize);
   private readonly recordEndLayoutCorrection = (before: number, after: number) => {
     this.endAnchor.recordLayoutCorrection(before, after);
     this.scheduleEndReconcile();
@@ -99,6 +101,7 @@ export class ChatSessionVirtualizerHost implements ChatTranscriptSession {
       this.canAutoFollow(),
       this.offsetState.pendingScrollOffset !== null || this.offsetState.touchActive,
       this.followEnd,
+      Boolean(this.callbacks.onContentResize),
     );
   };
   private readonly scrollRestoreHost: TranscriptScrollRestoreHost;
@@ -226,7 +229,7 @@ export class ChatSessionVirtualizerHost implements ChatTranscriptSession {
           callback,
         ),
       measureElement: (element, entry, instance) =>
-        measureTranscriptRow(element, entry, instance, this.callbacks.onContentResize),
+        measureTranscriptRow(element, entry, instance, this.handleContentResize),
       rangeExtractor: (range) =>
         this.prependAnchor.extractRange(range, this.rowIndexesByKey, this.focusedRowKey),
       // Virtual distance omits real padding, pinning readers ~80px up past scroll.ts's follow-lock.
@@ -438,28 +441,25 @@ export class ChatSessionVirtualizerHost implements ChatTranscriptSession {
     ) {
       return this.renderPreviousRows();
     }
-    return this.renderCommittedRows(
-      {
-        rows,
-        renderRow,
-        announcement,
-        announce,
-        overlay,
-        header,
-        messageRows: this.candidateMessageRowKeysById,
-        renderKeyRows: this.candidateMessageRowsByKey,
-        entryKeys: this.entryAnimations.projectedKeys,
-        presented,
-        applicationContext,
-      },
-      true,
-    );
+    return this.renderCommittedRows({
+      rows,
+      renderRow,
+      announcement,
+      announce,
+      overlay,
+      header,
+      messageRows: this.candidateMessageRowKeysById,
+      renderKeyRows: this.candidateMessageRowsByKey,
+      entryKeys: this.entryAnimations.projectedKeys,
+      presented,
+      applicationContext,
+    });
   }
 
   /** Render one selected projection without admitting a held history insertion. */
   private renderCommittedRows<T>(
     snapshot: TranscriptRenderSnapshot<T>,
-    capturePrepend: boolean,
+    capturePrepend = true,
   ): HTMLDivElement {
     const { rows, renderRow, announcement, announce, overlay, header, messageRows, renderKeyRows } =
       snapshot;

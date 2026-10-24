@@ -175,7 +175,11 @@ it("routes changed row observations through the pane's follow policy", async () 
     canFollowEnd: () => !policy.chatFollowLocked,
   });
   const rows = contentRows(1);
-  const { container, renderRows } = await mountTestTranscript("row-resize-policy", rows, transcript);
+  const { container, renderRows } = await mountTestTranscript(
+    "row-resize-policy",
+    rows,
+    transcript,
+  );
   try {
     // Registering a row has no observer measurement to report.
     expect(resized).not.toHaveBeenCalled();
@@ -195,10 +199,28 @@ it("routes changed row observations through the pane's follow policy", async () 
     resized.mockClear();
 
     // Initial layout can leave an unlocked reader near the end without an exact-edge anchor.
+    transcript.cancelScroll();
     container.scrollTop = scrollHeight - container.clientHeight - 53;
     policy.chatLastScrollTop = container.scrollTop;
     emitTranscriptResize(row, 800, scrollHeight);
     expect(resized).not.toHaveBeenCalled();
+    scrollHeight += 100;
+    emitTranscriptResize(row, 800, scrollHeight);
+    renderRows(rows);
+    flushFrames();
+    expect(resized).toHaveBeenCalledOnce();
+    expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
+
+    // Once captured, the geometric anchor follows growth without another page command.
+    scrollHeight += 100;
+    emitTranscriptResize(row, 800, scrollHeight);
+    renderRows(rows);
+    flushFrames();
+    expect(resized).toHaveBeenCalledOnce();
+    expect(container.scrollTop).toBe(scrollHeight - container.clientHeight);
+
+    // Native layout can displace the viewport before a scroll notification arrives.
+    container.scrollTop -= 53;
     scrollHeight += 100;
     emitTranscriptResize(row, 800, scrollHeight);
     renderRows(rows);
