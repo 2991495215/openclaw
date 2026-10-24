@@ -21,6 +21,10 @@ import { addPreCutoverClientCredentialTablesForTest } from "../state/openclaw-st
 import { openNodeSqliteDatabase } from "./node-sqlite.js";
 import { runSqliteIntegrityOperationSync } from "./sqlite-integrity.js";
 import {
+  detectSharedAuthStoreMigration,
+  migrateSharedAuthStore,
+} from "./state-migrations.shared-auth-store.js";
+import {
   runUpdateStateInspectionWorker,
   parseUpdateStateInspectionWorker,
 } from "./update-candidate-state.inspection.js";
@@ -223,12 +227,14 @@ it.each([false, true])(
   },
 );
 
-it("attributes a captured 9.33 agent schema migration", async () => {
+it("attributes a captured 9.33 schema migration and later shared-auth relocation", async () => {
   const root = fs.realpathSync(directories.make("legacy-agent-generation-"));
-  const pathname = path.join(root, "agent.sqlite");
+  const pathname = path.join(root, "agents", "main", "agent", "openclaw-agent.sqlite");
   const env = { ...process.env, OPENCLAW_STATE_DIR: root };
-  openOpenClawStateDatabase({ env });
+  const shared = openOpenClawStateDatabase({ env }).path;
   await closeOpenClawStateDatabaseAsync();
+  fs.mkdirSync(path.dirname(pathname), { recursive: true });
+  const store = JSON.stringify({ version: 1, profiles: {} });
   {
     using db = new DatabaseSync(pathname);
     db.exec("PRAGMA journal_mode = WAL;");
@@ -236,9 +242,13 @@ it("attributes a captured 9.33 agent schema migration", async () => {
     db.exec(`PRAGMA user_version = 24;
       INSERT INTO schema_meta (meta_key, role, schema_version, agent_id, created_at, updated_at)
       VALUES ('primary', 'agent', 24, 'main', 1, 1);`);
+    db.prepare("INSERT INTO auth_profile_store VALUES ('primary', ?, 1)").run(store);
   }
   fs.chmodSync(pathname, 0o600);
-  const generations = { [pathname]: legacyGeneration(pathname) };
+  const generations = {
+    [pathname]: legacyGeneration(pathname),
+    [shared]: legacyGeneration(shared),
+  };
   const { receipt, warnings } = await withCapture(env, generations, async () => {
     await withAgentDatabaseMaintenanceLease({ env, processBound: true }, async () => {
       using db = openNodeSqliteDatabase(pathname);
@@ -252,6 +262,22 @@ it("attributes a captured 9.33 agent schema migration", async () => {
       );
       expect(db.prepare("PRAGMA user_version").get()?.user_version).toBeGreaterThan(24);
     });
+    const detected = detectSharedAuthStoreMigration({
+      stateDir: root,
+      env,
+      doctorOnlyStateMigrations: true,
+    });
+    expect(detected.hasLegacy).toBe(true);
+    const relocation = await migrateSharedAuthStore({
+      detected,
+      stateDir: root,
+      env,
+    });
+    expect(relocation.warnings).toEqual([]);
+    expect(relocation.changes).toContain(
+      "Relocated shared auth profiles into shared SQLite state.",
+    );
+    await closeOpenClawStateDatabaseAsync();
   });
   expect(warnings).toEqual([]);
   expect(receipt).toMatchObject({ unchanged: true, fromGenerations: generations });
