@@ -55,8 +55,6 @@ export const CatalogSessionMenu = defineSolidBridge<Props>(
             "session-menu__item",
             {
               "session-menu__item--destructive": action === "delete",
-              "session-menu__item--original-unavailable":
-                action === "original" && !props.canOpenOriginal,
             },
           ],
           variant: action === "delete" ? "danger" : undefined,
@@ -75,10 +73,6 @@ export const CatalogSessionMenu = defineSolidBridge<Props>(
                   ? t("chat.catalog.originalUnavailable")
                   : undefined,
           },
-          details:
-            action === "original" && !props.canOpenOriginal ? (
-              <span id={`${id}-original-unavailable`}>{t("chat.catalog.originalUnavailable")}</span>
-            ) : undefined,
           icon: (
             <span class="session-menu__icon" aria-hidden="true">
               <Icon name={icon} />
@@ -132,6 +126,11 @@ export const CatalogSessionMenu = defineSolidBridge<Props>(
           ),
         })}
       >
+        <Show when={props.canOpenOriginal === false}>
+          <div class="session-menu__info" id={`${id}-original-unavailable`}>
+            {t("chat.catalog.originalUnavailable")}
+          </div>
+        </Show>
         <Show when={props.lastActive}>
           <div class="session-menu__info">
             {t("sessionsView.lastActive", { time: props.lastActive })}

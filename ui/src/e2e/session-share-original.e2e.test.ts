@@ -98,7 +98,9 @@ suite.define(() => {
         if (!configured) {
           const unavailable = menu.getByRole("menuitem", { name: "Open original", exact: true });
           await expect.poll(() => unavailable.isDisabled()).toBe(true);
-          const guidance = unavailable.locator(".oc-menu-item__details");
+          const descriptionId = await unavailable.getAttribute("aria-describedby");
+          expect(descriptionId).toBeTruthy();
+          const guidance = menu.locator(`[id="${descriptionId}"]`);
           await expect.poll(() => guidance.isVisible()).toBe(true);
           expect(await guidance.textContent()).toContain("check link support, session routing");
         }

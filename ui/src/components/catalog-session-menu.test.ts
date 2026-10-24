@@ -133,9 +133,22 @@ it("shows unavailable source navigation with guidance without dispatching it", a
   const original = item(menu, "original");
   expect(original.disabled).toBe(true);
   expect(original.title).toContain("check link support, session routing");
-  const guidance = original.querySelector(".oc-menu-item__details span")!;
+  const guidance = document.getElementById(original.getAttribute("aria-describedby")!)!;
   expect(guidance.textContent).toContain("check link support, session routing");
   expect(original.getAttribute("aria-describedby")).toBe(guidance.id);
   original.click();
   expect(onAction).not.toHaveBeenCalled();
+  menu.canOpenOriginal = true;
+  await waitForSolid(() => {
+    expect(original.disabled).toBe(false);
+    expect(original.hasAttribute("aria-describedby")).toBe(false);
+    expect(document.getElementById(guidance.id)).toBeNull();
+  });
+  menu.canOpenOriginal = false;
+  await waitForSolid(() => expect(document.getElementById(guidance.id)).not.toBeNull());
+  menu.canOpenOriginal = undefined;
+  await waitForSolid(() => {
+    expect(menu.querySelector('[data-value="original"]')).toBeNull();
+    expect(document.getElementById(guidance.id)).toBeNull();
+  });
 });
