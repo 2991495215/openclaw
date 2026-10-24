@@ -338,6 +338,7 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
     const metadataOwnerChanged = state.client !== snapshot.client || reactionOwnerChanged;
     const detailsOwnerChanged =
       draftOwnerChanged ||
+      !snapshot.hello ||
       (snapshot.phase === "connected" &&
         hasOperatorSelfReadAccess(state.hello?.auth ?? null) &&
         !hasOperatorSelfReadAccess(snapshot.hello?.auth ?? null));

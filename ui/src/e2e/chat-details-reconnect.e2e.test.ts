@@ -94,6 +94,7 @@ suite.define(() => {
           );
         };
         await capture("connected");
+        const artifactReads = await gateway.deferNext("artifacts.list");
         await gateway.setOnline(false);
         await gateway.closeLatest(1001, "mock Gateway restart");
         await waitForControlUiGatewayReconnecting(page);
@@ -114,6 +115,13 @@ suite.define(() => {
         await page.waitForFunction(
           () => window.openclawControlUi?.snapshot().gatewayPhase === "connected",
         );
+        await gateway.waitForRequest("artifacts.list", { after: artifactReads });
+        await capture("reconnected-refresh");
+        expect(await outputGroup.getByRole("status").count()).toBe(0);
+        expect(await artifact.isVisible()).toBe(true);
+        expect(await artifactNode?.evaluate((element) => element.isConnected)).toBe(true);
+        await gateway.resolveDeferred("artifacts.list", { artifacts: [] });
+        await expect.poll(() => artifact.count()).toBe(0);
         await capture("reconnected");
         await gateway.emitGatewayEvent(CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT, {
           sessions: { [sessionKey]: { pullRequests: [], rateLimited: false, status: "ready" } },

@@ -102,7 +102,6 @@ function disconnect(pane: TestChatPane) {
   pane.applyGatewaySnapshot({
     ...pane.context.gateway.snapshot,
     phase: "reconnecting",
-    hello: null,
   });
 }
 
@@ -210,7 +209,7 @@ describe("chat pane connection lifecycle", () => {
     },
   );
 
-  it.each(["person", "read access"] as const)(
+  it.each(["person", "read access", "admission"] as const)(
     "retires retained operation facts when %s changes on the same client",
     (changed) => {
       const { pane, state } = reconnectPane({ messages: [], sessionId: "operation-session" });
@@ -238,8 +237,10 @@ describe("chat pane connection lifecycle", () => {
         pane.context.gateway.snapshot.selfUser = { id: "replacement-person" };
       } else {
         disconnect(pane);
-        pane.context.gateway.snapshot.phase = "connected";
-        pane.context.gateway.snapshot.hello = sessionMutationGatewayHello([]);
+        pane.context.gateway.snapshot.phase =
+          changed === "admission" ? "reload-required" : "connected";
+        pane.context.gateway.snapshot.hello =
+          changed === "admission" ? null : sessionMutationGatewayHello([]);
       }
       pane.applyGatewaySnapshot(pane.context.gateway.snapshot);
       expect(state.toolStreamById.size).toBe(0);
@@ -358,7 +359,7 @@ describe("chat pane connection lifecycle", () => {
       await pane.refreshSessionSuggestions();
       expect(requestCalls(request, "session.suggestions.list")).toHaveLength(2);
 
-      pane.applyGatewaySnapshot({ ...connected, phase: "reconnecting", hello: null });
+      pane.applyGatewaySnapshot({ ...connected, phase: "reconnecting" });
       pane.applyGatewaySnapshot(connected);
       pane.applySessionsState(sessions.state);
       await pane.sessionSuggestionsRefreshPromise;
@@ -446,7 +447,7 @@ describe("chat pane connection lifecycle", () => {
       });
 
       if (transition === "reconnect") {
-        pane.applyGatewaySnapshot({ ...connected, phase: "reconnecting", hello: null });
+        pane.applyGatewaySnapshot({ ...connected, phase: "reconnecting" });
       } else if (transition === "pane disposal") {
         pane.disconnectedCallback();
       } else if (transition === "authenticated owner") {
@@ -888,7 +889,7 @@ describe("chat pane connection lifecycle", () => {
       assistantAgentId: "main",
     };
 
-    pane.applyGatewaySnapshot({ ...snapshot, phase: "reconnecting", hello: null });
+    pane.applyGatewaySnapshot({ ...snapshot, phase: "reconnecting" });
     state.sessionKey = sessionKey;
     state.chatRunId = "run-main";
     await handleAbortChat(state, { preserveDraft: true });

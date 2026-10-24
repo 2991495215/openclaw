@@ -445,9 +445,12 @@ export abstract class ChatPaneHeader extends ChatPaneDiscussion {
         this.connectionGeneration,
         machineNameScope,
         machineNameAccess.allowed,
+        Boolean(this.context.gateway.snapshot.hello),
       ],
       () =>
-        runner?.deviceId && this.context.gateway.snapshot.client
+        runner?.deviceId &&
+        this.context.gateway.snapshot.client &&
+        this.context.gateway.snapshot.hello
           ? async (previous?: string) => {
               const scope = this.captureConnectionScope();
               if (!scope) {

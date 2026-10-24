@@ -66,7 +66,7 @@ it("keeps known goal actions disabled through a temporary disconnect", () => {
   const [connected, setConnected] = createSignal(true);
   const [presented, setPresented] = createSignal(true);
   const [available, setAvailable] = createSignal(true);
-  const [scope, setScope] = createSignal<object>({});
+  const [scope, setScope] = createSignal<object | undefined>({});
   const onAction = vi.fn();
   const onSubmit = vi.fn(async () => true);
   const view = mountSolid(() => (
@@ -117,6 +117,12 @@ it("keeps known goal actions disabled through a temporary disconnect", () => {
     setAvailable(true);
     flush();
     expect(view.getByRole("button", { name: "Pause goal" })).not.toBeNull();
+    setConnected(false);
+    setScope(undefined);
+    flush();
+    expect(view.queryByRole("button", { name: "Pause goal" })).toBeNull();
+    setConnected(true);
+    flush();
     setConnected(false);
     setScope({});
     flush();

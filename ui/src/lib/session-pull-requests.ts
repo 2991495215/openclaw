@@ -14,7 +14,7 @@ import { operatorScopeSatisfied } from "../../../src/shared/operator-scope-compa
 import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
 import { createGatewayConnectionLifecycle } from "./gateway-connection-lifecycle.ts";
-import { canCallGatewayMethod } from "./gateway-methods.ts";
+import { canCallGatewayMethod, canPresentGatewayMethod } from "./gateway-methods.ts";
 import { createGatewaySetSyncLifecycle } from "./gateway-set-sync-lifecycle.ts";
 import { primarySessionPullRequest } from "./session-pull-request-presentation.ts";
 import { readSessionChangedEvent } from "./sessions/reconcile.ts";
@@ -116,9 +116,11 @@ export function sessionPullRequestsForGateway(
   let presentationScope = gatewayPresentationScope(gateway);
   const canPresentPullRequests = () =>
     gatewayPresentationScope(gateway) === presentationScope &&
-    (canReadPullRequests() ||
-      gateway.snapshot.phase === "reconnecting" ||
-      gateway.snapshot.phase === "reload-required");
+    canPresentGatewayMethod(
+      gateway.snapshot,
+      SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+      "operator.read",
+    );
 
   const notify = () => Array.from(listeners).forEach((listener) => listener());
 
@@ -165,7 +167,7 @@ export function sessionPullRequestsForGateway(
     }
     const keys = new Map<string, number>();
     for (const watched of watchedByOwner.values()) {
-      if (watched.passive && !broadRead) {
+      if (watched.passive && !canReadAllPullRequests()) {
         continue;
       }
       for (const key of watched.keys) {
@@ -246,10 +248,8 @@ export function sessionPullRequestsForGateway(
     const presentationChanged = presentationScope !== nextScope;
     presentationScope = nextScope;
     const nextBroadRead = canReadAllPullRequests();
-    const readScopeChanged = snapshot.phase === "connected" && broadRead !== nextBroadRead;
-    if (snapshot.phase === "connected") {
-      broadRead = nextBroadRead;
-    }
+    const readScopeChanged = broadRead !== nextBroadRead;
+    broadRead = nextBroadRead;
     if (presentationChanged || readScopeChanged || !canPresentPullRequests()) {
       clearSnapshotsAndWaiters();
     }

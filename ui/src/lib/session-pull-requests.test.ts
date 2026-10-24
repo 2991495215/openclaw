@@ -434,7 +434,7 @@ describe("session pull request snapshot store", () => {
     emitReadySnapshot(harness, key, [{ number: 1, state: "open" }]);
     expect(store.get(key)?.pullRequests).toEqual([{ number: 1, state: "open" }]);
 
-    harness.setSnapshot({ ...harness.gateway.snapshot, phase: "reconnecting", hello: null });
+    harness.setSnapshot({ ...harness.gateway.snapshot, phase: "reconnecting" });
     expect(store.get(key)?.pullRequests).toEqual([{ number: 1, state: "open" }]);
 
     harness.setSnapshot({
@@ -451,14 +451,14 @@ describe("session pull request snapshot store", () => {
     await unwatch();
   });
 
-  it.each(["account", "gateway", "access"] as const)(
+  it.each(["account", "gateway", "access", "admission"] as const)(
     "retires retained presentation after a %s change",
     async (change) => {
       harness.setSnapshot({ ...harness.gateway.snapshot, selfUser: { id: "original-person" } });
       await watch([key]);
       emitReadySnapshot(harness, key, [{ number: 1, state: "open" }]);
       const connected = harness.gateway.snapshot;
-      harness.setSnapshot({ ...connected, phase: "reconnecting", hello: null });
+      harness.setSnapshot({ ...connected, phase: "reconnecting" });
       expect(store.get(key)?.pullRequests).toHaveLength(1);
       // A packet from the retired connection cannot become presentation.
       emitReadySnapshot(harness, key, [{ number: 2, state: "open" }]);
@@ -468,7 +468,13 @@ describe("session pull request snapshot store", () => {
       }
       harness.setSnapshot({
         ...connected,
-        hello: change === "access" ? createHello(["operator.approvals"]) : connected.hello,
+        phase: change === "admission" ? "reconnecting" : "connected",
+        hello:
+          change === "admission"
+            ? null
+            : change === "access"
+              ? createHello(["operator.approvals"])
+              : connected.hello,
         selfUser: change === "account" ? { id: "different-person" } : connected.selfUser,
       });
       expect(store.get(key)).toBeUndefined();
@@ -827,7 +833,7 @@ describe("session pull request snapshot store", () => {
     "settles a one-shot load when %s",
     async (transition) => {
       const disconnect = () =>
-        harness.setSnapshot({ ...harness.gateway.snapshot, phase: "reconnecting", hello: null });
+        harness.setSnapshot({ ...harness.gateway.snapshot, phase: "reconnecting" });
       if (transition === "disconnected") {
         disconnect();
       } else {
