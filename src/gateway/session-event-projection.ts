@@ -261,7 +261,7 @@ export function prepareSessionEventProjection(
           wirePayload = Object.fromEntries(
             Object.keys(delivery.payload)
               .filter((field) => (!omitMessage || field !== "message") && !refs?.names.has(field))
-              .map((field) => [field, delivery.payload[field]]),
+              .map((field) => [field, wirePayload[field]]),
           );
           if (refs) {
             wirePayload.sessionFieldRefs = refs.indices;
