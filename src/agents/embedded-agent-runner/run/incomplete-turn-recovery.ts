@@ -388,9 +388,10 @@ export function resolveSettledToolTerminalContinuation(
     intentionalTermination ||
     parkedCodeModeRun ||
     hasUnsettledToolError ||
-    // Preserve the tool-use summary contract; a completed or missing assistant
-    // after failure must not enter empty-response recovery or replay denied work.
-    (attempt.lastToolError && assistantState.assistant?.stopReason !== "toolUse") ||
+    // A denied action must not reopen tools after an empty stop. Settled execution
+    // failures retain their existing continuation and text-only summary contracts.
+    (attempt.lastToolError?.executionStarted === false &&
+      assistantState.assistant?.stopReason !== "toolUse") ||
     hasAsyncActivity(attempt.toolMetas) ||
     hasAcceptedSessionSpawn(attempt.acceptedSessionSpawns) ||
     attempt.clientToolCalls ||
