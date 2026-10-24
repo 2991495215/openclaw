@@ -79,36 +79,6 @@ function resolveMediaParamEntry(
   return value ? { key: resolvedKey, value } : undefined;
 }
 
-function hasExplicitAttachmentPayload(
-  args: Record<string, unknown>,
-  extraParamKeys?: readonly string[],
-): boolean {
-  return (
-    Boolean(readToolStringParam(args, "buffer", { trim: false })) ||
-    buildActionMediaSourceParamKeys(extraParamKeys).some((key) => {
-      const entry = resolveMediaParamEntry(args, key);
-      return Boolean(entry && normalizeOptionalString(entry.value));
-    })
-  );
-}
-
-function hasExplicitSendMediaSource(
-  args: Record<string, unknown>,
-  extraParamKeys?: readonly string[],
-): boolean {
-  return (
-    buildActionMediaSourceParamKeys(extraParamKeys).some((key) => {
-      const entry = resolveMediaParamEntry(args, key);
-      const value = entry ? normalizeOptionalString(entry.value) : undefined;
-      return Boolean(value && value !== SEND_BUFFER_DRY_RUN_MEDIA_URL);
-    }) ||
-    readStringArrayParam(args, "mediaUrls")?.some(
-      (value) => value !== SEND_BUFFER_DRY_RUN_MEDIA_URL,
-    ) === true ||
-    collectAttachmentSources(args).length > 0
-  );
-}
-
 export function collectAttachmentSources(
   args: Record<string, unknown>,
 ): StructuredAttachmentSource[] {
@@ -144,7 +114,14 @@ function selectStructuredAttachmentSources(
   extraParamKeys?: readonly string[],
   mode?: StructuredAttachmentMode,
 ): StructuredAttachmentSource[] {
-  if (mode !== "all" && hasExplicitAttachmentPayload(args, extraParamKeys)) {
+  if (
+    mode !== "all" &&
+    (Boolean(readToolStringParam(args, "buffer", { trim: false })) ||
+      buildActionMediaSourceParamKeys(extraParamKeys).some((key) => {
+        const entry = resolveMediaParamEntry(args, key);
+        return Boolean(entry && normalizeOptionalString(entry.value));
+      }))
+  ) {
     return [];
   }
   const sources = collectAttachmentSources(args);
@@ -155,7 +132,7 @@ function buildActionMediaSourceParamKeys(extraParamKeys?: readonly string[]): st
   return [...new Set([...BASE_ACTION_MEDIA_SOURCE_PARAM_KEYS, ...(extraParamKeys ?? [])])];
 }
 
-type ExtraActionMediaSourceParams = {
+export async function resolveExtraActionMediaSourceParamKeysAsync(params: {
   cfg: OpenClawConfig;
   action?: ChannelMessageActionName;
   args: Record<string, unknown>;
@@ -166,11 +143,7 @@ type ExtraActionMediaSourceParams = {
   agentId?: string | null;
   requesterSenderId?: string | null;
   senderIsOwner?: boolean;
-};
-
-export async function resolveExtraActionMediaSourceParamKeysAsync(
-  params: ExtraActionMediaSourceParams,
-): Promise<string[]> {
+}): Promise<string[]> {
   if (!hasPotentialPluginActionParam(params.args)) {
     // Standard send params never need bundled action metadata discovery.
     return [];
@@ -391,8 +364,18 @@ export async function hydrateAttachmentParamsForAction(params: {
 }): Promise<void> {
   const shouldHydrateUploadFile = params.action === "upload-file";
   if (params.action === "send") {
-    const { args, preserveSendBuffer } = params;
-    if (hasExplicitSendMediaSource(args, params.extraParamKeys)) {
+    const { args, preserveSendBuffer, extraParamKeys } = params;
+    if (
+      buildActionMediaSourceParamKeys(extraParamKeys).some((key) => {
+        const entry = resolveMediaParamEntry(args, key);
+        const value = entry ? normalizeOptionalString(entry.value) : undefined;
+        return Boolean(value && value !== SEND_BUFFER_DRY_RUN_MEDIA_URL);
+      }) ||
+      readStringArrayParam(args, "mediaUrls")?.some(
+        (value) => value !== SEND_BUFFER_DRY_RUN_MEDIA_URL,
+      ) === true ||
+      collectAttachmentSources(args).length > 0
+    ) {
       const contentType = readAttachmentContentType(args);
       if (contentType) {
         args.contentType = contentType;
