@@ -1,4 +1,3 @@
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   sameBootRecordOwner,
   subscribeBootRecordChanges,
@@ -38,16 +37,9 @@ export function prewarmChatSnapshot(cacheKey: string): void {
     cancelled: false,
     promise: import("./session-snapshot-database.ts")
       .then(({ readStoredChatSnapshotRecord }) => readStoredChatSnapshotRecord(cacheKey))
-      .then((record) => {
-        if (entry.cancelled || generation !== snapshotStoreGeneration) {
-          return undefined;
-        }
-        if (asOptionalRecord(asOptionalRecord(record)?.snapshot)?.historyState !== undefined) {
-          // Fetch alongside the handshake; parsing still belongs to the snapshot reader.
-          void import("../../lib/protocol-validators.generated/history-state.js").catch(() => {});
-        }
-        return record;
-      })
+      .then((record) =>
+        entry.cancelled || generation !== snapshotStoreGeneration ? undefined : record,
+      )
       .catch(() => undefined),
   };
   pending = entry;

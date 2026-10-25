@@ -1,3 +1,4 @@
+import type { GatewaySessionInitialHistoryResult } from "@openclaw/gateway-client/browser";
 import type { SessionApprovalEvent } from "../../../../packages/gateway-protocol/src/index.js";
 import { isIncognitoSessionKey } from "../../../../src/shared/incognito-session-key.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
@@ -6,12 +7,25 @@ import {
   isUiSelectedGlobalSessionKey,
   resolveUiSelectedSessionAgentId,
 } from "../../lib/sessions/session-key.ts";
-import type { InitialChatHistoryReceipt } from "./chat-history-request.ts";
-import type { ChatHistoryResult, ObservedChatHistoryResult } from "./chat-history-snapshot.ts";
+import type {
+  ChatHistoryObservation,
+  ChatHistoryResult,
+  ObservedChatHistoryResult,
+} from "./chat-history-snapshot.ts";
 import { clearChatPendingInputs } from "./chat-pending-inputs.ts";
 import { retirePullRequestRefreshes } from "./chat-pull-request-refresh.ts";
 import type { ChatHistorySessions, ChatState } from "./chat-state-contract.ts";
 import { readChatSessionProjectionScope, reduceChatSessionProjection } from "./history-merge.ts";
+import type { ChatHistoryRunObservation } from "./run-lifecycle.ts";
+
+export type InitialChatHistoryReceipt = {
+  paramsKey: string;
+  result: GatewaySessionInitialHistoryResult;
+  observation: Omit<ChatHistoryObservation, "run">;
+  owner: object;
+  run?: ChatHistoryRunObservation;
+  isCurrent: () => boolean;
+};
 
 export type ChatBranchesQueryState =
   | { readonly status: "idle" }

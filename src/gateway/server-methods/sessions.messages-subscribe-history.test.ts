@@ -7,6 +7,7 @@ import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.j
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { WorkerTaskError } from "../../infra/worker-task-pool.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { prepareGatewayRecipientProfile } from "../expected-profile.js";
 import { createSessionMessageSubscriberRegistry } from "../server-chat-state.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import { sharingPolicyClient } from "../session-sharing.test-utils.js";
@@ -16,6 +17,7 @@ import * as historyPages from "./chat-history-pages.js";
 import { createHistoryReadContext } from "./chat-history.test-helpers.js";
 import { disposeSessionReadContexts } from "./sessions-read-cache.test-support.js";
 import { sessionSubscriptionHandlers } from "./sessions-subscriptions.js";
+import { prepareSubscriptionFixture } from "./sessions.messages-subscribe-wait.test-support.js";
 import type { RespondFn } from "./types.js";
 
 afterEach(() => {
@@ -122,6 +124,123 @@ it.each(["ready", "busy", "failed"] as const)(
         expect(subscribers.get(scope.sessionKey).size).toBe(0);
       } finally {
         read.mockRestore();
+        await disposeSessionReadContexts();
+      }
+    });
+  },
+);
+
+it.each(["unchanged", "sharing", "replay"] as const)(
+  "retains approval disclosure authority through initial history (%s)",
+  async (change) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      const { cfg, client, subscribers, runtime } = await prepareSubscriptionFixture(
+        state,
+        `history-approval-${change}`,
+        "operator.read",
+      );
+      cfg.agents = { entries: { main: {} } };
+      await state.writeConfig(cfg);
+      setRuntimeConfigSnapshot(cfg);
+      const scope = {
+        agentId: "main",
+        sessionKey: "agent:main:history-approval",
+        sessionId: "history-approval",
+      };
+      const entry = {
+        sessionId: scope.sessionId,
+        updatedAt: 1,
+        visibility: "shared" as const,
+        createdActor: { type: "human" as const, source: "profile" as const, id: "history-owner" },
+      };
+      await upsertSessionEntryCore(scope, entry);
+      await seedHistoryTranscript(scope, [["answer", { role: "assistant", content: "Ready" }]]);
+      let replayCurrent = true;
+      const released = vi.fn();
+      const context = await createHistoryReadContext({
+        getRuntimeConfig: () => cfg,
+        subscribeSessionMessageEvents: subscribers.subscribe,
+        listSessionPendingApprovals: async (...args) => {
+          const prepared = await runtime.replay(...args);
+          return {
+            replay: prepared.replay,
+            isCurrent: () => replayCurrent && prepared.isCurrent(),
+            release: () => {
+              released();
+              prepared.release();
+            },
+          };
+        },
+      });
+      prepareGatewayRecipientProfile(client);
+      expect(client.preparedSessionProfile?.role).toBe("view");
+      const readHistory = historyPages.readChatHistoryPage;
+      let observedDuringRead = false;
+      let releasedDuringRead = false;
+      const read = vi
+        .spyOn(historyPages, "readChatHistoryPage")
+        .mockImplementation(async (...args) => {
+          observedDuringRead = subscribers.get(scope.sessionKey).has(client.connId);
+          releasedDuringRead = released.mock.calls.length > 0;
+          const result = await readHistory(...args);
+          if (change === "sharing") {
+            await upsertSessionEntryCore(scope, { ...entry, visibility: "draft" });
+          } else if (change === "replay") {
+            replayCurrent = false;
+          }
+          return result;
+        });
+      const releasedAtResponse: boolean[] = [];
+      const respond = vi.fn<RespondFn>(() => {
+        releasedAtResponse.push(released.mock.calls.length > 0);
+      });
+      try {
+        await handleGatewayRequest({
+          req: {
+            type: "req",
+            id: "subscribe-with-approval-history",
+            method: "sessions.messages.subscribe",
+            params: {
+              key: scope.sessionKey,
+              subscriptionId: "foreground",
+              includeApprovals: true,
+              initialHistory: { limit: 80, maxBytes: 256 * 1024 },
+            },
+          },
+          client,
+          context,
+          respond,
+          isWebchatConnect: () => false,
+          extraHandlers: sessionSubscriptionHandlers,
+        });
+        expect(read, JSON.stringify(respond.mock.calls)).toHaveBeenCalledOnce();
+        expect(observedDuringRead).toBe(true);
+        if (change === "unchanged") {
+          expect(respond).toHaveBeenCalledExactlyOnceWith(
+            true,
+            expect.objectContaining({
+              approvalReplay: expect.objectContaining({ sessionKey: scope.sessionKey }),
+              initialHistory: expect.objectContaining({ ok: true }),
+            }),
+            undefined,
+          );
+        } else {
+          expect(respond).toHaveBeenCalledExactlyOnceWith(
+            false,
+            undefined,
+            expect.objectContaining({
+              code: expect.stringMatching(/^(INVALID_REQUEST|UNAVAILABLE)$/),
+            }),
+          );
+          expect(subscribers.get(scope.sessionKey).size).toBe(0);
+          expect(subscribers.getApprovals(scope.sessionKey).size).toBe(0);
+        }
+        expect(releasedDuringRead).toBe(false);
+        expect(releasedAtResponse).toEqual([false]);
+        expect(released).toHaveBeenCalledOnce();
+      } finally {
+        read.mockRestore();
+        subscribers.unsubscribeAll(client.connId);
         await disposeSessionReadContexts();
       }
     });

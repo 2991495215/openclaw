@@ -1,7 +1,6 @@
 import {
   DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
   GatewayProtocolRequestTimeoutError,
-  type GatewaySessionInitialHistoryResult,
 } from "@openclaw/gateway-client/browser";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { sleepWithAbort } from "@openclaw/retry";
@@ -34,6 +33,7 @@ import {
   chatHistoryRequests,
   beginHistoryRequest,
   acceptsHistoryResult,
+  type InitialChatHistoryReceipt,
 } from "./chat-history-state.ts";
 import type { ChatHistorySessions, ChatState } from "./chat-state-contract.ts";
 import type { ChatHistoryState } from "./chat-transcript-metadata.ts";
@@ -80,15 +80,6 @@ export function chatHistoryRequestParams(
     ...(inputRunIds.length ? { inputRunIds } : {}),
   };
 }
-
-export type InitialChatHistoryReceipt = {
-  paramsKey: string;
-  result: GatewaySessionInitialHistoryResult;
-  observation: Omit<ChatHistoryObservation, "run">;
-  owner: object;
-  run?: ChatHistoryRunObservation;
-  isCurrent: () => boolean;
-};
 
 export function captureChatHistoryRun(
   state: ChatState,
@@ -269,9 +260,9 @@ export function requestSharedHistory(
         throw new GatewayRequestError(initial.result.error);
       }
       const response = attachHistoryActivity(
-        // SAFETY: The opt-in subscription calls the same canonical chat.startup reader.
         initial?.result.ok
-          ? (initial.result.payload as ChatHistoryResponse)
+          ? // SAFETY: The opt-in subscription calls the same canonical chat.startup reader.
+            (initial.result.payload as ChatHistoryResponse)
           : await client.request<ChatHistoryResponse>(method, params, {
               signal: controller.signal,
               timeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,

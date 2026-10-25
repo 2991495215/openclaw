@@ -123,6 +123,7 @@ vi.mock("./session-transcript-worker-scopes.js", () => ({
   }),
   pruneClosedHistoryDatabaseScopes: () => {},
 }));
+// mock-isolation: Missing-store admission isolates startup imports from actual database handles.
 vi.mock("../../state/openclaw-agent-db-readonly.js", () => ({
   withOpenClawAgentDatabaseReadOnly: prewarm.open,
 }));
@@ -136,8 +137,11 @@ it.each([false, true])(
     prewarm.open.mockClear();
     // mock-isolation: Fresh workers have independent module caches and no previous warm request.
     vi.doMock("../../gateway/session-history-worker-reader.js", () => prewarm.modules[0]!());
+    // mock-isolation: Observe each fresh worker's presentation imports without loading the kernel.
     vi.doMock("../../gateway/chat-history-page-kernel.js", () => prewarm.modules[1]!());
+    // mock-isolation: Observe each fresh worker's presentation imports without loading response code.
     vi.doMock("../../gateway/chat-history-response-page.js", () => prewarm.modules[2]!());
+    // mock-isolation: Observe each fresh worker's presentation imports without loading snapshot code.
     vi.doMock("../../gateway/session-history-snapshot.js", () => prewarm.modules[3]!());
     await import("./session-transcript.worker.js");
     expect(prewarm.loadsAtRegistration).toEqual(Array(4).fill(Number(foreground)));

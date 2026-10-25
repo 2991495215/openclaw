@@ -13,11 +13,7 @@ import {
   resolveUiGlobalAliasAgentId,
   resolveUiSelectedGlobalAgentId,
 } from "../../lib/sessions/session-key.ts";
-import {
-  captureChatHistoryRun,
-  chatHistoryRequestParams,
-  type InitialChatHistoryReceipt,
-} from "./chat-history-request.ts";
+import { captureChatHistoryRun, chatHistoryRequestParams } from "./chat-history-request.ts";
 import {
   CHAT_HISTORY_RETRY_WINDOW_MS,
   formatChatHistoryLoadError,
@@ -28,6 +24,7 @@ import {
   getChatHistoryLoadState,
   setChatHistoryLoad,
   setChatHistoryRetrying,
+  type InitialChatHistoryReceipt,
 } from "./chat-history-state.ts";
 import { readChatInputRunIds } from "./chat-pending-inputs.ts";
 import type { ChatState } from "./chat-state-contract.ts";

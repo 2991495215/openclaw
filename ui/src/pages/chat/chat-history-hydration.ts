@@ -94,18 +94,17 @@ export async function hydrateChatHistory(
     delete requests.initialHistory;
     // A full page already covers a cache restored while its subscription was pending.
     // Keep the exact request check: changed input-run receipts still need a fresh read.
-    if (
+    const requestedCursor =
       method === "chat.startup" &&
       initialHistory?.isCurrent() &&
       initialHistory.paramsKey ===
         JSON.stringify(
           chatHistoryRequestParams(method, sessionKey, requestAgentId, undefined, inputRunIds),
         )
-    ) {
-      cursor = undefined;
-    }
-    const historyState = readChatHistoryState(state, cursor);
-    const key = `${requestKeyPrefix}${cursor === undefined ? "page" : `cursor:${cursor}`}${JSON.stringify(historyState?.stateRevision ?? null)}`;
+        ? undefined
+        : cursor;
+    const historyState = readChatHistoryState(state, requestedCursor);
+    const key = `${requestKeyPrefix}${requestedCursor === undefined ? "page" : `cursor:${requestedCursor}`}${JSON.stringify(historyState?.stateRevision ?? null)}`;
     const load = requests.historyLoad;
     // Keep pane-level coalescing aligned with the cursor actually sent.
     if (load.phase === "in-flight") {
@@ -128,7 +127,7 @@ export async function hydrateChatHistory(
           }
         },
       },
-      cursor,
+      requestedCursor,
       inputRunIds,
       historyState,
       initialHistory,
