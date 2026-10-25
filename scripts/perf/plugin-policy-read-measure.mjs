@@ -3,22 +3,33 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { Session } from "node:inspector/promises";
-import { stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 import { PerformanceObserver, monitorEventLoopDelay } from "node:perf_hooks";
 import { setTimeout as delay, setImmediate as turn } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
+function readResolver(indexFile) {
+  const source = fs.readFileSync(indexFile, "utf8");
+  const from = source.indexOf("    const resolvePluginConfig = ");
+  const until = source.indexOf("    const resolveCurrentPluginConfig = ", from);
+  assert(from !== -1 && until !== -1);
+  const resolver = source.slice(from, until);
+  return { resolver, hash: createHash("sha256").update(resolver).digest("hex") };
+}
+
 if (process.argv[2] === "--build") {
   const [sourceRoot, output] = process.argv.slice(3);
   assert(sourceRoot && output, "Usage: --build SOURCE_ROOT BUNDLE");
   const root = path.resolve(sourceRoot);
+  const { resolver, hash } = readResolver(path.join(root, "extensions/codex/index.ts"));
   const { build } = await import("esbuild");
   await build({
     stdin: {
       contents: `
-      export { normalizePluginsConfig, resolveEffectiveEnableState, resolveLivePluginConfigObject } from './src/plugin-sdk/plugin-config-runtime.js';
+      import { normalizePluginsConfig, resolveEffectiveEnableState, resolveLivePluginConfigObject } from './src/plugin-sdk/plugin-config-runtime.js';
       export { prepareRuntimePluginsConfig } from './src/plugins/config-state.js';
       export { createPluginInstanceBindings } from './src/plugins/plugin-instance-bindings.js';
+      export const codexResolverHash = ${JSON.stringify(hash)};
+      export function createCodexResolver(api) { ${resolver} return resolvePluginConfig; }
     `,
       resolveDir: root,
       loader: "ts",
@@ -49,11 +60,12 @@ assert(
 const operations = Number(count);
 assert(Number.isSafeInteger(operations) && operations > 0);
 const owner = await import(pathToFileURL(path.resolve(bundle)).href);
-const source = fs.readFileSync(indexFile, "utf8");
-const from = source.indexOf("    const resolvePluginConfig = ");
-const until = source.indexOf("    const resolveCurrentPluginConfig = ", from);
-assert(from !== -1 && until !== -1);
-const resolveSource = source.slice(from, until);
+const { hash: resolverHash } = readResolver(indexFile);
+assert.equal(
+  owner.codexResolverHash,
+  resolverHash,
+  "Bundle and Codex entry must use the same revision",
+);
 const payload = { appServer: { homeScope: "user" }, supervision: { enabled: true } };
 const config = {
   plugins: {
@@ -71,19 +83,7 @@ const config = {
   },
 };
 owner.prepareRuntimePluginsConfig(config);
-// oxlint-disable-next-line typescript/no-implied-eval -- Execute the resolver extracted from the trusted benchmark checkout, rather than a copied implementation.
-const resolveConfig = new Function(
-  "api",
-  "normalizePluginsConfig",
-  "resolveEffectiveEnableState",
-  "resolveLivePluginConfigObject",
-  stripTypeScriptTypes(resolveSource) + "\nreturn resolvePluginConfig;",
-)(
-  { pluginConfig: undefined },
-  owner.normalizePluginsConfig,
-  owner.resolveEffectiveEnableState,
-  owner.resolveLivePluginConfigObject,
-);
+const resolveConfig = owner.createCodexResolver({ pluginConfig: undefined });
 let reads = 0;
 const current = () => {
   reads++;
@@ -217,7 +217,7 @@ fs.writeFileSync(
       mode,
       operations,
       checksum,
-      sourceHash: createHash("sha256").update(resolveSource).digest("hex"),
+      sourceHash: resolverHash,
       bundleHash: createHash("sha256").update(fs.readFileSync(bundle)).digest("hex"),
       wallMs,
       cpuMs: (cpu.user + cpu.system) / 1000,
