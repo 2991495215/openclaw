@@ -71,6 +71,54 @@ describe("protected canonical session handoff", () => {
     expect(parseReturn(path, "/control")).toEqual(parseReturn(canonical, "/control"));
   });
 
+  it("preserves the short-route navigation hint without changing the target", async () => {
+    const hint = "agent:main:dashboard:12345678-aaaa-4000-8000-000000000001";
+    const path = `${canonical}?__openclawSessionKey=${encodeURIComponent(hint)}`;
+    const opened = await request(entryUrl(path, "/control"));
+    expect(opened.serveApp).toHaveBeenCalledWith(path, expect.any(Function));
+    expect(parseReturn(path, "/control")).toEqual(parseReturn(canonical, "/control"));
+    expect(resolveSession.mock.calls[0]?.[0]).toMatchObject({
+      target: parseReturn(canonical, "/control"),
+    });
+  });
+
+  it("rejects a navigation hint that does not describe the pathname", async () => {
+    for (const hint of [
+      "agent:main:dashboard:99999999-9999-4999-8999-999999999999",
+      "agent:other:dashboard:12345678-aaaa-4000-8000-000000000001",
+      "agent:main:dashboard:",
+      "dashboard:12345678-aaaa-4000-8000-000000000001",
+      "agent:main:dashboard:12345678-aaaa-4000-8000-000000000001:extra",
+      `agent:main:dashboard:${"1".repeat(600)}`,
+    ]) {
+      const path = `${canonical}?__openclawSessionKey=${encodeURIComponent(hint)}`;
+      expect(parseReturn(path, "/control")).toBeNull();
+      expect((await request(entryUrl(path, "/control"))).res.statusCode).toBe(404);
+    }
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a duplicated navigation hint", async () => {
+    const hint = encodeURIComponent("agent:main:dashboard:12345678-aaaa-4000-8000-000000000001");
+    const path = `${canonical}?__openclawSessionKey=${hint}&__openclawSessionKey=${hint}`;
+    expect(parseReturn(path, "/control")).toBeNull();
+    expect((await request(entryUrl(path, "/control"))).res.statusCode).toBe(404);
+  });
+
+  it.each([
+    "agent:main:tui-12345678-aaaa-4000-8000-000000000001",
+    "agent:main:session-12345678-aaaa-4000-8000-000000000001",
+    "agent:main:dashboard:12345678-aaaa-4000-8000-000000000001",
+    "agent:main:12345678-aaaa-4000-8000-000000000001",
+  ])(
+    "matches the short ref against the key's trailing id, not its last segment: %s",
+    async (hint) => {
+      const path = `${canonical}?__openclawSessionKey=${encodeURIComponent(hint)}`;
+      expect(parseReturn(path, "/control")).toEqual(parseReturn(canonical, "/control"));
+      expect((await request(entryUrl(path, "/control"))).res.statusCode).not.toBe(404);
+    },
+  );
+
   it("uses the authenticated profile and grants only exact accessible sessions", async () => {
     const probe = await request(`${entry}&probe=1`);
     expect(probe.res.statusCode).toBe(204);

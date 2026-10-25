@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { reloadControlUiDocument } from "../../ui/src/app/stale-chunk-reload.ts";
-import { sessionNavigationTarget } from "../../ui/src/lib/sessions/route-navigation.ts";
+import {
+  SESSION_NAVIGATION_KEY_PARAM,
+  sessionNavigationTarget,
+} from "../../ui/src/lib/sessions/route-navigation.ts";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -177,6 +180,45 @@ describe("canonical anonymous HTTP entry", () => {
     const app = await request(instance, entry);
     expect(app.res.statusCode).toBe(200);
     expect(app.getBody()).toContain("<openclaw-app>");
+    expect(reader).not.toHaveBeenCalled();
+  });
+
+  it("reloads an ordinary generated short-session address that carries the navigation hint", async () => {
+    const target = sessionNavigationTarget({
+      face: "chat",
+      sessionKey: key,
+      navigationKey: key,
+      fallbackAgentId: "main",
+      basePath: "/control",
+    });
+    const requestPath = target.options.pathname + (target.options.search ?? "");
+    // Guard the contract this issue is about: the in-app location carries the hint
+    // while the sharable href stays clean.
+    expect(new URLSearchParams(target.options.search ?? "").get(SESSION_NAVIGATION_KEY_PARAM)).toBe(
+      key,
+    );
+    expect(target.href).not.toContain(SESSION_NAVIGATION_KEY_PARAM);
+
+    const local = await sendRequest(server(), {
+      path: requestPath,
+      host: "gateway.lan:18789",
+      remoteAddress: "192.168.1.25",
+    });
+    expect(local.res.statusCode).toBe(200);
+    expect(local.getBody()).toContain("<openclaw-app>");
+    expect(resolveSession).not.toHaveBeenCalled();
+
+    // The hint must not change the anonymous representation: a private session stays
+    // indistinguishable from the canonical route, with the same handoff document.
+    resolveSession.mockResolvedValue(null);
+    const instance = server();
+    const canonicalPath = target.options.pathname;
+    const privateChat = await request(instance, requestPath);
+    expect(privateChat.res.statusCode).toBe(404);
+    expect(privateChat.getBody()).toContain("Log in");
+    expect(privateChat.getBody()).not.toContain(SESSION_NAVIGATION_KEY_PARAM);
+    expect(privateChat.getBody()).not.toContain("Published answer");
+    expect(privateChat.getBody()).toBe((await request(instance, canonicalPath)).getBody());
     expect(reader).not.toHaveBeenCalled();
   });
 

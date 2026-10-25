@@ -27,6 +27,7 @@ import {
 } from "./control-ui-public-session-token.js";
 import {
   buildControlUiSessionEntryUrl,
+  CONTROL_UI_SESSION_NAVIGATION_KEY_PARAM,
   parseControlUiSessionReturnPath,
 } from "./control-ui-session-entry-path.js";
 import { resolveControlUiSessionPath } from "./control-ui-session-path-resolve.js";
@@ -160,6 +161,11 @@ export async function serveControlUiPublicChat(params: {
   entryQuery.delete("offset");
   const entryPath = url.pathname + (entryQuery.size ? `?${entryQuery}` : "");
   const target = parseControlUiSessionReturnPath(entryPath, basePath);
+  // The session-navigation hint is a client-only shortcut for one navigation. It must
+  // not vary the rendered public representation or its cache identity, so the reader
+  // hands back the canonical pathname the hint merely describes.
+  entryQuery.delete(CONTROL_UI_SESSION_NAVIGATION_KEY_PARAM);
+  const canonicalEntryPath = url.pathname + (entryQuery.size ? `?${entryQuery}` : "");
   const publicOrigin = resolveGatewayPublicOrigin(config);
   const origin = resolveControlUiShareOrigin(req, publicOrigin);
   res.setHeader("Cache-Control", "no-store");
@@ -186,7 +192,7 @@ export async function serveControlUiPublicChat(params: {
     res.setHeader("Allow", "GET");
     return end(405, "");
   }
-  const entryUrl = buildControlUiSessionEntryUrl(entryPath, basePath);
+  const entryUrl = buildControlUiSessionEntryUrl(canonicalEntryPath, basePath);
   const clientAuthBasePath =
     params.auth.mode === "token" || params.auth.mode === "password" ? basePath : undefined;
   const secureIngress = isSecurePublicSessionIngress(req, params.ingress, publicOrigin);
