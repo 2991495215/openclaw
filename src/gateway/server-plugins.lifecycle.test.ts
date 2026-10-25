@@ -458,6 +458,7 @@ describe("gateway plugin instance bindings", () => {
       if (serviceStopFailure === "timeout") {
         expect(retry, retry.error?.message).toMatchObject({
           ok: true,
+          // Registration refresh succeeds; bundled code remains host-owned until restart.
           payload: { restartRequired: true },
         });
         expect(coordinator.serviceStarts).toBe(3);
