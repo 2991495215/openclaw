@@ -348,7 +348,8 @@ export function bindSqliteDatabaseAdmission(database: DatabaseSync, expected?: s
     return;
   }
   // Restore descriptor-held facts before schema tracking initializes the new handle.
-  if (state.registry.records.has(observed) || state.registry.descriptors.has(observed)) {
+  const known = state.registry.records.get(observed);
+  if ((known && !isRetired(known)) || state.registry.descriptors.get(observed)?.facts.size) {
     admission(database);
   }
 }
