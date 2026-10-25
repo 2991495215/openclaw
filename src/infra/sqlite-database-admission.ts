@@ -347,9 +347,9 @@ export function bindSqliteDatabaseAdmission(database: DatabaseSync, expected?: s
     state.unproven.add(database);
     return;
   }
-  const record = state.registry.records.get(observed);
-  if (record && !isRetired(record)) {
-    retainConnection(database, record);
+  // Restore descriptor-held facts before schema tracking initializes the new handle.
+  if (state.registry.records.has(observed) || state.registry.descriptors.has(observed)) {
+    admission(database);
   }
 }
 
