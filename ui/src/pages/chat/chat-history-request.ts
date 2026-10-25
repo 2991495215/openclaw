@@ -261,8 +261,7 @@ export function requestSharedHistory(
       }
       const response = attachHistoryActivity(
         initial?.result.ok
-          ? // SAFETY: The opt-in subscription calls the same canonical chat.startup reader.
-            (initial.result.payload as ChatHistoryResponse)
+          ? (initial.result.payload as ChatHistoryResponse) // SAFETY: canonical chat.startup payload.
           : await client.request<ChatHistoryResponse>(method, params, {
               signal: controller.signal,
               timeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
