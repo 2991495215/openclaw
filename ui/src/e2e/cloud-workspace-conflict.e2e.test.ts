@@ -1,7 +1,10 @@
 import type { Page } from "playwright";
 import { assert, expect, it } from "vitest";
 import { controlUiSessionUrl, installMockGateway } from "../test-helpers/control-ui-e2e.ts";
-import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+import {
+  createControlUiE2eSuite,
+  createDarkDesktopControlUiContextOptions,
+} from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createControlUiE2eSuite({
   name: "Control UI cloud workspace conflict recovery",
@@ -23,12 +26,7 @@ const conflict = {
   totalCount: 2,
 };
 
-const pageOptions = {
-  colorScheme: "dark",
-  locale: "en-US",
-  serviceWorkers: "block",
-  viewport: { height: 900, width: 1440 },
-} as const;
+const pageOptions = createDarkDesktopControlUiContextOptions();
 function sessionList(label: string, placement: Record<string, unknown>, now = Date.now()) {
   const model = { contextTokens: null, model: "gpt-5.5", modelProvider: "openai" };
   return {

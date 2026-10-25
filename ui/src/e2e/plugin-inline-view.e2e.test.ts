@@ -8,7 +8,10 @@ import {
   defaultControlUiFeatureMethods,
   installMockGateway,
 } from "../test-helpers/control-ui-e2e.ts";
-import { prepareNativeControlUiPluginFixtures } from "../test-helpers/control-ui-plugin-fixture.ts";
+import {
+  prepareNativeControlUiPluginFixtures,
+  incidentPluginFixture,
+} from "../test-helpers/control-ui-plugin-fixture.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createControlUiE2eSuite({ name: "Native inline plugin views" });
@@ -62,14 +65,7 @@ suite.define(() => {
             toolResult("search-incident", now + 1),
             { role: "assistant", content: match, timestamp: now + 2 },
           ],
-          nativePlugins: [
-            {
-              pluginId: "incident-tools",
-              rootDir: path.resolve("examples/inline-incident"),
-              source: "./control-ui.ts",
-              inlineViews: [descriptor],
-            },
-          ],
+          nativePlugins: [incidentPluginFixture([descriptor])],
           methodResponses: { "incident-tools.get": incident },
         });
         await page.goto(controlUiSessionUrl(suite.server.baseUrl, sessionKey, "chat"));
@@ -125,12 +121,7 @@ suite.define(() => {
           },
         ];
         const { catalog } = await prepareNativeControlUiPluginFixtures([
-          {
-            pluginId: "incident-tools",
-            rootDir: path.resolve("examples/inline-incident"),
-            source: "./control-ui.ts",
-            inlineViews: [descriptor],
-          },
+          incidentPluginFixture([descriptor]),
         ]);
         const gateway = await installMockGateway(page, {
           deferredMethods: ["plugins.controlUi.list"],
@@ -138,14 +129,7 @@ suite.define(() => {
           sessionKey,
           historyMessages: initial,
           inFlightRun: { runId: "incident-run", startedAt: now + 100, events: [] },
-          nativePlugins: [
-            {
-              pluginId: "incident-tools",
-              rootDir: path.resolve("examples/inline-incident"),
-              source: "./control-ui.ts",
-              inlineViews: [descriptor],
-            },
-          ],
+          nativePlugins: [incidentPluginFixture([descriptor])],
           featureMethods: [
             ...defaultControlUiFeatureMethods,
             "plugins.uiDescriptors",
@@ -246,14 +230,7 @@ suite.define(() => {
           agentModel: "openai/gpt-4.1",
           sessionKey,
           historyMessages: history,
-          nativePlugins: [
-            {
-              pluginId: "incident-tools",
-              rootDir: path.resolve("examples/inline-incident"),
-              source: "./control-ui.ts",
-              inlineViews: [descriptor],
-            },
-          ],
+          nativePlugins: [incidentPluginFixture([descriptor])],
           featureMethods: [
             ...defaultControlUiFeatureMethods,
             "plugins.uiDescriptors",
@@ -288,12 +265,7 @@ suite.define(() => {
         const requests = await gateway.getRequests("plugins.controlUi.list");
         expect(requests.length).toBeGreaterThan(0);
         const { catalog } = await prepareNativeControlUiPluginFixtures([
-          {
-            pluginId: "incident-tools",
-            rootDir: path.resolve("examples/inline-incident"),
-            source: "./control-ui.ts",
-            inlineViews: [descriptor],
-          },
+          incidentPluginFixture([descriptor]),
         ]);
         await gateway.setMethodResponse("plugins.controlUi.list", {
           ...catalog,

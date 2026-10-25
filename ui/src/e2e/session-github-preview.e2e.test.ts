@@ -4,7 +4,10 @@ import {
   installMockGateway,
 } from "../test-helpers/control-ui-e2e.ts";
 import { TEST_LINK_READER } from "../test-helpers/link-reader.ts";
-import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+import {
+  createControlUiE2eSuite,
+  createLightDesktopControlUiContextOptions,
+} from "./control-ui-e2e-suite.test-support.ts";
 import { pullPreviewResponse } from "./github-link-hovercard.test-support.ts";
 
 const suite = createControlUiE2eSuite({
@@ -15,12 +18,7 @@ const suite = createControlUiE2eSuite({
 });
 suite.define(() => {
   it("reads a configured Enterprise card in the current chat session", async () => {
-    const context = await suite.newBrowserContext({
-      colorScheme: "light",
-      locale: "en-US",
-      serviceWorkers: "block",
-      viewport: { height: 800, width: 1180 },
-    });
+    const context = await suite.newBrowserContext(createLightDesktopControlUiContextOptions());
     const page = await context.newPage();
     const url = "https://code.example.com/example/project/pull/7";
     const gateway = await installMockGateway(page, {

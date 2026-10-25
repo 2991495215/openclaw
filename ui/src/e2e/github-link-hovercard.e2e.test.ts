@@ -16,6 +16,7 @@ import { waitForWatchedSessionKey } from "./chat-github-publication.test-support
 import {
   createControlUiE2eSuite,
   holdModuleResponse,
+  createLightDesktopControlUiContextOptions,
 } from "./control-ui-e2e-suite.test-support.ts";
 import {
   expectModifiedNavigation,
@@ -32,12 +33,7 @@ const suite = createControlUiE2eSuite({
 });
 
 async function newBrowserContext(): Promise<BrowserContext> {
-  return suite.newBrowserContext({
-    colorScheme: "light",
-    locale: "en-US",
-    serviceWorkers: "block",
-    viewport: { height: 800, width: 1180 },
-  });
+  return suite.newBrowserContext(createLightDesktopControlUiContextOptions());
 }
 
 async function expectText(locator: Locator, ...texts: string[]): Promise<void> {
