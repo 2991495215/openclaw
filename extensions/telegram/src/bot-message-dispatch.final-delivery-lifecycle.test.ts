@@ -423,7 +423,11 @@ describeTelegramDispatch("dispatchTelegramMessage native questions", () => {
           phase: "update",
           steps: [{ step: "Check the workspace before asking the user", status: "in_progress" }],
         });
-        const draft: TelegramDraftStream = createDraftStream.mock.results[0].value;
+        const draftResult = createDraftStream.mock.results[0];
+        if (draftResult?.type !== "return") {
+          throw new Error("Expected the Telegram draft factory to return a stream");
+        }
+        const draft: TelegramDraftStream = draftResult.value;
         await draft.flush();
         expect(sendMessage).toHaveBeenCalledOnce();
 
