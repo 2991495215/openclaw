@@ -458,7 +458,7 @@ describe("gateway plugin instance bindings", () => {
       if (serviceStopFailure === "timeout") {
         expect(retry, retry.error?.message).toMatchObject({
           ok: true,
-          payload: { restartRequired: false },
+          payload: { restartRequired: true },
         });
         expect(coordinator.serviceStarts).toBe(3);
         await expectReplacement(coordinator, beforeRetryRegistrations, initialProbe);
