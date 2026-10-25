@@ -205,9 +205,8 @@ function createPluginBindings(
     ) {
       return value;
     }
-    // SAFETY: Each member keeps its declared shape while native iteration sees its bound methods.
     return Array.isArray(value)
-      ? (value.map((entry) => wrap(entry, "", undefined, callbacks)) as T)
+      ? (value.map((entry) => wrap(entry, "", undefined, callbacks)) as T) // SAFETY: Binding preserves each member's shape.
       : wrap(value, "", undefined, callbacks);
   };
   const wrapResult = <T>(
