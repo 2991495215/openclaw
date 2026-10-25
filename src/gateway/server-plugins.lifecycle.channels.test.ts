@@ -420,7 +420,7 @@ it.each([false, true])(
       ok: true,
       payload: {
         ok: true,
-        restartRequired: false,
+        restartRequired: true,
         runtime: { pluginIds: ["instance-binding-probe"] },
       },
     });
