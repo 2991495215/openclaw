@@ -218,27 +218,32 @@ export function prepareSessionCostUsageRefreshLock(
   const refreshKey = observed.canonicalPath;
   let releasing: Promise<void> | undefined;
   let closed = false;
-  let acquired: { writer: ReturnType<typeof createCacheWriter>; completion: Deferred } | undefined;
+  let acquired: ReturnType<typeof createCacheWriter> | undefined;
+  let completion: Deferred | undefined;
   const assertCurrent = () => {
     if (closed || !acquired) {
       throw new Error("Usage cache refresh owner is closed");
     }
     owner?.assertCurrent?.();
-    return acquired.writer;
+    return acquired;
   };
   const release = (): Promise<void> => {
     closed = true;
-    releasing ??= (acquired?.writer.close() ?? Promise.resolve())
+    releasing ??= (acquired?.close() ?? Promise.resolve())
       .then(() => {
-        if (acquired) {
-          activeRefreshes.delete(refreshKey);
-          acquired.completion.resolve();
-          acquired = undefined;
-        }
+        acquired = undefined;
       })
       .catch((error: unknown) => {
         releasing = undefined;
         throw error;
+      })
+      .finally(() => {
+        // Failed cleanup stays retryable, but waiting scans can take their own writer.
+        if (completion) {
+          activeRefreshes.delete(refreshKey);
+          completion.resolve();
+          completion = undefined;
+        }
       });
     return releasing;
   };
@@ -259,11 +264,9 @@ export function prepareSessionCostUsageRefreshLock(
           if (identity.canonicalPath !== observed.canonicalPath) {
             throw new Error("Usage cache refresh changed its originally observed target");
           }
-          acquired = {
-            writer: createCacheWriter(options, identity),
-            completion: createDeferredCore(),
-          };
-          activeRefreshes.set(refreshKey, acquired.completion);
+          acquired = createCacheWriter(options, identity);
+          completion = createDeferredCore();
+          activeRefreshes.set(refreshKey, completion);
           break;
         }
         if (!waitForRefresh) {

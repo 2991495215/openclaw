@@ -25,17 +25,14 @@ export async function refreshCostUsageCacheForAgent(params: {
   const prepared = prepareUsageCostWorker(params);
   const agentId = normalizeAgentId(params.agentId);
   try {
-    const result = await runUsageCostWorker(
-      prepared,
-      {
-        kind: "refresh",
-        maxFiles: params.maxFiles,
-        sessionFiles: params.sessionFiles,
-        startMs: params.startMs,
-        rebuildRows: params.rebuildRows,
-      },
-      params.waitForRefresh,
-    );
+    const operation = {
+      kind: "refresh",
+      maxFiles: params.maxFiles,
+      sessionFiles: params.sessionFiles,
+      startMs: params.startMs,
+      rebuildRows: params.rebuildRows,
+    } satisfies Parameters<typeof runUsageCostWorker>[1];
+    const result = await runUsageCostWorker(prepared, operation, params.waitForRefresh);
     if (result.kind === "busy") {
       return "busy";
     }

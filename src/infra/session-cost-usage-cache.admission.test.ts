@@ -29,6 +29,7 @@ import {
   runOpenClawAgentWriteTransaction,
   withOpenClawAgentDatabaseAsync,
 } from "../state/openclaw-agent-db.js";
+import * as agentExecution from "../state/openclaw-agent-execution.js";
 import * as writerAdmission from "../state/openclaw-agent-write-admission.js";
 import {
   closeOpenClawStateDatabaseAsync,
@@ -806,6 +807,47 @@ it("rolls back the entire rollup batch when a later row fails", async () => {
     db.exec("DROP TRIGGER refuse_rollup_batch");
     expect(await owner.writeRollup(rows)).toBe(true);
     expect(readRows(agentId).map((row) => row.key)).toEqual(["first", "second"]);
+  });
+});
+
+it("releases refresh waiters after failed cleanup without retiring their successor", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const agentId = "usage-cleanup-failure";
+    const databasePath = state.statePath("usage.sqlite");
+    const failure = new Error("Usage writer cleanup failed");
+    const capture = agentExecution.captureOpenClawAgentDatabasePreparationExecution;
+    const captured = vi
+      .spyOn(agentExecution, "captureOpenClawAgentDatabasePreparationExecution")
+      .mockImplementationOnce((...args) => {
+        const execution = capture(...args);
+        const release = execution.release.bind(execution);
+        vi.spyOn(execution, "release").mockImplementationOnce(async () => {
+          await release();
+          throw failure;
+        });
+        return execution;
+      });
+    const owner = prepareLock(agentId, databasePath);
+    const successor = prepareLock(agentId, databasePath);
+    expect(await owner.acquire()).toBe(true);
+    const waiting = successor.acquire(true);
+    try {
+      await expect(owner.release()).rejects.toBe(failure);
+      expect(captured).toHaveBeenCalledTimes(2);
+      expect(await waiting).toBe(true);
+      const row = rollupRow("fresh-session", '{"totalTokens":2}', 2);
+      expect(await successor.writeRollup([row])).toBe(true);
+      expect(readRows(agentId, databasePath)).toEqual([
+        { key: "fresh-session", valueJson: '{"totalTokens":2}', updatedAt: 2, bodyBytes: 0 },
+      ]);
+      await owner.release();
+      expect(await isRefreshing(agentId, databasePath)).toBe(true);
+    } finally {
+      await owner.release();
+      await waiting;
+      await successor.release();
+    }
+    expect(await isRefreshing(agentId, databasePath)).toBe(false);
   });
 });
 
