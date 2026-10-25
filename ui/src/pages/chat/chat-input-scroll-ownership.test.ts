@@ -92,6 +92,26 @@ function setup() {
 }
 
 describe("transcript arrival scroll ownership", () => {
+  it("publishes stream arrival and removal to the pane without publishing continuing text", () => {
+    const { state } = setup();
+    const paneUpdate = vi.fn();
+    disposals.push(chatRunPresentation(state).subscribeNonText(paneUpdate));
+    const publish = (text: string | null) => {
+      chatRunPresentation(state).batch(() => {
+        state.chatStream = text;
+      }, "animation-frame");
+      vi.advanceTimersToNextFrame();
+    };
+
+    publish("First text");
+    expect(paneUpdate).toHaveBeenCalledOnce();
+    paneUpdate.mockClear();
+    publish("First text continues");
+    expect(paneUpdate).not.toHaveBeenCalled();
+    publish(null);
+    expect(paneUpdate).toHaveBeenCalledOnce();
+  });
+
   it("keeps a pending manual command ahead of geometric follow", () => {
     const source = "manual";
     const { state } = setup();
