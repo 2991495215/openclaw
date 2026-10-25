@@ -2,6 +2,19 @@ import type { IndexHtmlTransformContext, Plugin } from "vite";
 import { CONTROL_UI_ROUTE_PRELOAD_ATTRIBUTE } from "../../src/gateway/control-ui-route-preloads.ts";
 import { controlUiBootEntryRoute, controlUiBootManifestKey } from "./control-ui-chunking.ts";
 
+// These common interactions download beside the route, but evaluate only on use.
+// Include the nested option entries too: opening a menu must not start a second RTT.
+const composerInteractionEntries = new Set([
+  "ui/src/pages/chat/components/chat-composer-slash-menu.tsx",
+  "ui/src/pages/chat/components/chat-composer-slash-menu-options.tsx",
+  "ui/src/pages/chat/components/chat-composer-skill-menu.tsx",
+  "ui/src/pages/chat/components/chat-composer-skill-menu-options.tsx",
+  "ui/src/pages/chat/components/chat-composer-mention-menu.tsx",
+  "ui/src/pages/chat/components/chat-composer-mention-menu-options.tsx",
+  "ui/src/pages/chat/components/chat-composer-emoji.tsx",
+  "ui/src/pages/chat/components/chat-composer-emoji-options.tsx",
+]);
+
 export function collectControlUiStaticAssets(
   bundle: NonNullable<IndexHtmlTransformContext["bundle"]>,
   file: string,
@@ -53,7 +66,15 @@ export function collectControlUiBootAssets(
       if (
         entries.some((id) => {
           const owner = controlUiBootEntryRoute(id);
-          return owner === "shared" || owner === route;
+          return (
+            owner === "shared" ||
+            owner === route ||
+            composerInteractionEntries.has(controlUiBootManifestKey(id)) ||
+            (route === "chat" &&
+              (controlUiBootManifestKey(id) ===
+                "ui/src/pages/chat/chat-pane-session-operations.ts" ||
+                controlUiBootManifestKey(id) === "ui/src/pages/chat/chat-send-delivery.runtime.ts"))
+          );
         })
       ) {
         collectControlUiStaticAssets(bundle, chunk.fileName, routes[route]);

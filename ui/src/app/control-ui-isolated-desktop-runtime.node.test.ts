@@ -34,6 +34,7 @@ it.each([false, true])(
     const outbox = modulePath("../lib/chat/outbox-store-projection.ts");
     const chat = modulePath("../pages/chat/route-loader.ts");
     const composer = modulePath("../pages/chat/components/chat-composer.tsx");
+    const composerInteraction = modulePath("../pages/chat/components/chat-composer-slash-menu.tsx");
     // Real manifest entry IDs and payloads above the production group's minimum size.
     const sidebarValue = "sidebar-value-".repeat(12_000);
     const outboxValue = "outbox-value-".repeat(12_000);
@@ -43,6 +44,7 @@ it.each([false, true])(
       [outbox]: `globalThis.desktopBuildFixture.events.push("outbox"); export const value = ${JSON.stringify(outboxValue)};`,
       [chat]: `${hasComposer ? 'import "fixture:composer";' : ""} globalThis.desktopBuildFixture.events.push("chat"); export const value = ${JSON.stringify(chatValue)};`,
       [composer]: 'globalThis.desktopBuildFixture.events.push("composer");',
+      [composerInteraction]: 'globalThis.desktopBuildFixture.events.push("composer-interaction");',
     };
     const files = {
       "package.json": '{"type":"module"}',
@@ -51,6 +53,7 @@ it.each([false, true])(
       "main.js": `globalThis.desktopBuildFixture.loadSidebar = () => import("fixture:sidebar");
        globalThis.desktopBuildFixture.loadOutbox = () => import("fixture:outbox");
        globalThis.desktopBuildFixture.loadChat = () => import("fixture:chat");
+       globalThis.desktopBuildFixture.loadComposerInteraction = () => import("fixture:composer-interaction");
        globalThis.desktopBuildFixture.loadDesktop = () => import("@novnc/novnc");`,
       "desktop.js": `globalThis.desktopBuildFixture.events.push("desktop");
        globalThis.desktopBuildFixture.entered();
@@ -66,6 +69,7 @@ it.each([false, true])(
       "fixture:outbox": outbox,
       "fixture:chat": chat,
       "fixture:composer": composer,
+      "fixture:composer-interaction": composerInteraction,
     };
     const buildFixture = async (isolated: boolean) => {
       const outDir = local(isolated ? "isolated" : "original");
@@ -115,15 +119,19 @@ it.each([false, true])(
     expect(shared).toBeDefined();
     const chatChunk = isolated.chunks.find((chunk) => chat in chunk.modules);
     expect(chatChunk).toBeDefined();
+    const interactionChunk = isolated.chunks.find((chunk) => composerInteraction in chunk.modules);
+    expect(interactionChunk).toBeDefined();
     for (const route of ["chat", "new"] as const) {
       const before = routePreloads(original.html, route);
       const after = routePreloads(isolated.html, route);
       expect(after).toEqual(
         expect.arrayContaining(
-          route === "chat" ? [shared!.fileName, chatChunk!.fileName] : [shared!.fileName],
+          route === "chat"
+            ? [shared!.fileName, chatChunk!.fileName, interactionChunk!.fileName]
+            : [shared!.fileName, interactionChunk!.fileName],
         ),
       );
-      expect(after).toHaveLength(route === "chat" ? 2 : 1);
+      expect(after).toHaveLength(route === "chat" ? 3 : 2);
       expect(before.length).toBeGreaterThan(after.length);
       const routeHints = new RegExp(
         `<template data-openclaw-route-preloads="${route}">([\\s\\S]*?)</template>`,
