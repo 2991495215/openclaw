@@ -171,6 +171,20 @@ describe("config mutations against a running Gateway", () => {
     expect((await gatewayConfig()).gateway.nodes.commands.allow).toEqual(allow.slice(1));
   });
 
+  it("replaces an object holding arrays with a scalar", async () => {
+    const object = await run(env, [
+      "config",
+      "set",
+      "tools.toolSearch",
+      JSON.stringify({ include: [{ source: "mcp" }] }),
+      "--strict-json",
+    ]);
+    expect(object.code, object.stderr).toBe(0);
+    const scalar = await run(env, ["config", "set", "tools.toolSearch", "false"]);
+    expect(scalar.code, scalar.stderr).toBe(0);
+    expect((await gatewayConfig()).tools.toolSearch).toBe(false);
+  });
+
   it("previews then applies a batch file, and unsets the written paths", async () => {
     const batchFile = path.join(env.HOME!, "local-ai.batch.json");
     await fs.writeFile(

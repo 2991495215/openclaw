@@ -7,7 +7,7 @@ import { isPlainObject } from "../infra/plain-object.js";
 // Matches the config.patch request schema.
 const MAX_REPLACE_PATHS = 256;
 
-// Arrays the patch replaces, or removes along with a deleted subtree, are explicit intent.
+// Arrays the patch replaces, or removes with a deleted or replaced subtree, are explicit intent.
 function collectReplacePaths(patch: unknown, base: unknown, parentPath?: string): string[] {
   if (!isPlainObject(patch)) {
     return [];
@@ -15,10 +15,12 @@ function collectReplacePaths(patch: unknown, base: unknown, parentPath?: string)
   return Object.entries(patch).flatMap(([key, value]) => {
     const path = formatConfigPatchPath(parentPath, key);
     const baseValue = isPlainObject(base) ? base[key] : undefined;
-    if (value === null) {
-      return collectBaseArrayPaths(baseValue, path);
+    if (isPlainObject(value)) {
+      return collectReplacePaths(value, baseValue, path);
     }
-    return Array.isArray(value) ? [path] : collectReplacePaths(value, baseValue, path);
+    // Any non-object value (null, scalar or array) also removes the base arrays below it.
+    const removed = collectBaseArrayPaths(baseValue, path);
+    return Array.isArray(value) && !removed.includes(path) ? [path].concat(removed) : removed;
   });
 }
 

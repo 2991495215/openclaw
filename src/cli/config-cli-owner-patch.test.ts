@@ -7,10 +7,12 @@ describe("buildConfigOwnerPatch", () => {
     const previous: OpenClawConfig = {
       gateway: { reload: { mode: "hybrid" }, nodes: { commands: { allow: ["a", "b"] } } },
       agents: { entries: { main: { skills: ["notes"] } } },
+      tools: { toolSearch: { include: [{ source: "mcp" }] } },
     };
     const next: OpenClawConfig = {
       gateway: { reload: { mode: "off" }, nodes: { commands: { allow: ["b"] } } },
       agents: { entries: {} },
+      tools: { toolSearch: false },
     };
     const request = buildConfigOwnerPatch({ previous, next }, "base-hash");
     // v2026.10.7 Gateways accept routed writes but close config.patch over these fields.
@@ -28,10 +30,12 @@ describe("buildConfigOwnerPatch", () => {
     expect(JSON.parse(request.raw)).toEqual({
       gateway: { reload: { mode: "off" }, nodes: { commands: { allow: ["b"] } } },
       agents: { entries: { main: null } },
+      tools: { toolSearch: false },
     });
     expect(request.replacePaths).toEqual([
       "gateway.nodes.commands.allow",
       "agents.entries.main.skills",
+      "tools.toolSearch.include",
     ]);
   });
 
