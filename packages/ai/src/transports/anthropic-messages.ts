@@ -73,14 +73,14 @@ import {
 
 const ANTHROPIC_IMAGE_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 type AnthropicImageMediaType = (typeof ANTHROPIC_IMAGE_MEDIA_TYPES)[number];
-const ANTHROPIC_IMAGE_MEDIA_TYPE_SET = new Set<string>(ANTHROPIC_IMAGE_MEDIA_TYPES);
 // Resource-safety ceiling above Anthropic's direct request envelope; route-specific
 // API limits remain provider policy rather than a shared payload-conversion rule.
 const ANTHROPIC_INLINE_IMAGES_DECODE_SAFETY_BYTES = 64 * 1024 * 1024;
 
 function resolveAnthropicImageMediaType(value: string): AnthropicImageMediaType {
-  if (ANTHROPIC_IMAGE_MEDIA_TYPE_SET.has(value)) {
-    return value as AnthropicImageMediaType;
+  const mediaType = ANTHROPIC_IMAGE_MEDIA_TYPES.find((candidate) => candidate === value);
+  if (mediaType) {
+    return mediaType;
   }
   throw new Error(`Unsupported Anthropic image media type after normalization: ${value}`);
 }
