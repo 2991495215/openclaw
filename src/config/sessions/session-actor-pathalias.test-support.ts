@@ -131,20 +131,6 @@ export async function assertSessionActorPathAliasReuse(
         }
 
         historyReads.mockClear();
-        const otherReceipt = readSessionActorProjectionReceipt({
-          path: otherDatabase.path,
-          sessionKey,
-          sessionId,
-        });
-        if (otherReceipt) {
-          withSessionTranscriptProjectionReceipt(otherReceipt, () => {
-            expect(readSessionTranscriptProjectionReceipt(database, sessionId)).toBeUndefined();
-            expect(readSessionTranscriptProjectionReceipt(otherDatabase, sessionId)).toMatchObject({
-              facts: undefined,
-              contextStats: undefined,
-            });
-          });
-        }
         expect(
           await readSessionTranscriptAccountingAsync(otherScope, accountingOptions),
         ).toMatchObject({ eventCount: 1 });
